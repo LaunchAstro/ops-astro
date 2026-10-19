@@ -36,6 +36,7 @@ import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
 import { SITE_SURFACE } from './surface-site.ts';
 import { LAUNCH_SURFACE } from './surface-launch.ts';
+import { REVIEW_SURFACE } from './surface-review.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -647,6 +648,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
   }),
   ...SITE_SURFACE,
+  ...REVIEW_SURFACE,
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
