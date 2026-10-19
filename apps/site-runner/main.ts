@@ -184,7 +184,9 @@ export async function everyPart({ locate, claims, captures }: Parts): Promise<re
     });
   const located = await run('locate', locate);
   const claimed = claims === undefined ? [] : await run('claims', claims);
-  const captured = captures === undefined ? [] : await run('captures', captures);
+  // A queue the corrections could not read is not asked again for the captures.
+  const captured =
+    captures === undefined || unread !== undefined ? [] : await run('captures', captures);
   for (const { taskId, outcome } of captured) console.log(`review capture ${taskId} ${outcome}`);
   if (unread !== undefined) throw unread;
   const parts = [locate, claims, captures].filter((part) => part !== undefined);
