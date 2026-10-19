@@ -2,7 +2,8 @@
 /* oxlint-disable max-lines-per-function, require-await, unicorn/prefer-string-replace-all, require-unicode-regexp -- the review's S2007-4 proof, kept as written */
 //
 // From the cross-vendor review of #2007 (S2007-4), copied unchanged but for
-// this header and the test name.
+// this header, the test name, and its describe and expect doubles moved to
+// module scope for the lint rule.
 //
 // Independent no-database proof. Executes the committed test callback with
 // controlled asynchronous database doubles, rather than testing copied code.
@@ -15,6 +16,22 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { test } from 'node:test';
 import vm from 'node:vm';
 
+const describe = (_name, body) => body();
+describe.skipIf = () => describe;
+const expect = (actual) => ({
+  toMatchObject(expected) {
+    for (const key of Object.keys(expected)) {
+      assert.deepEqual(actual?.[key], expected[key], `premature observation: ${key}`);
+    }
+  },
+  toBe(expected) {
+    assert.deepEqual(actual, expected);
+  },
+  toEqual(expected) {
+    assert.deepEqual({ ...actual }, { ...expected });
+  },
+});
+
 test('the single-statement proof waits for its lock before observing it', async () => {
   const path = 'tests/tenancy/migration-runner-queued-reader-and-lock-scope.test.ts';
   const revision = process.env.SOL_SOURCE_REVISION;
@@ -24,8 +41,6 @@ test('the single-statement proof waits for its lock before observing it', async 
   const cases = new Map();
   const register = (name, body) => cases.set(name, body);
   register.skipIf = () => register;
-  const describe = (_name, body) => body();
-  describe.skipIf = () => describe;
   class MigrationRefused extends Error {}
   let polls = 0;
   let waiting = false;
@@ -73,19 +88,6 @@ test('the single-statement proof waits for its lock before observing it', async 
     },
     async drop() {},
   };
-  const expect = (actual) => ({
-    toMatchObject(expected) {
-      for (const key of Object.keys(expected)) {
-        assert.deepEqual(actual?.[key], expected[key], `premature observation: ${key}`);
-      }
-    },
-    toBe(expected) {
-      assert.deepEqual(actual, expected);
-    },
-    toEqual(expected) {
-      assert.deepEqual({ ...actual }, { ...expected });
-    },
-  });
   const context = vm.createContext({
     it: register,
     describe,
