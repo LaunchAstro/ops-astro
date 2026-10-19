@@ -263,5 +263,3 @@ describe('C80 publish binding: the revert', () => {
   });
   it('never reverts to a pre-image outside the approved version', revertsApprovedPreImage);
 });
-
-describe('C80 UTF-8 source bytes', () => {});

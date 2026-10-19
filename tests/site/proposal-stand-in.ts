@@ -76,7 +76,10 @@ function commit(held: Held, body: Body): TransportAnswer {
   const content = Buffer.from(body['content'] ?? '', 'base64').toString('utf8');
   held.commits.set(`commit-${n}`, { parent: head, blob: `blob-${n}`, content });
   held.branches.set(branch, `commit-${n}`);
-  return json({ content: { sha: `blob-${n}` }, commit: { sha: `commit-${n}` } }, 200);
+  return json(
+    { content: { sha: `blob-${n}` }, commit: { sha: `commit-${n}`, parents: [{ sha: head }] } },
+    200,
+  );
 }
 
 function openRequest(held: Held, body: Body): TransportAnswer {
