@@ -988,11 +988,11 @@ the address is the key in a business, so a page names one client, and
 several pages may share one file. The repository and the project are each
 unique across the installation (`party_sites_repository_key`,
 `party_sites_project_key`), so no business binds a site another holds.
-`live_corrections`' insert joins the page row of the task's own client, page
-and file as one pair, key-share locked: another client's page, or a page no
-client holds, stores nothing (`PAGE_OUTSIDE_PARTY_SITE`).
+`live_corrections`' insert joins the page row of the task's own client,
+key-share locked: another client's page, or a page no client holds, stores
+nothing (since #1693, one `NOT_FOUND`; see the locate below).
 
-While a correction of the client is open (`requested` to `live`, or
+While a correction of the client is open (`locating` to `live`, or
 `cancelled` after its decision), no page of
 its site is deleted and its providers do not change (`party_site_pages_held`,
 `party_sites_held`, each share-locking the corrections first); a page is
@@ -1049,3 +1049,27 @@ review, recorded by a person with `live_correction.record_review` under
 `gate:decide`, which refuses a digest other than the correction's
 (`VERSION_STALE`). Insert and select only; tenancy-keyed with the restrictive
 policy.
+
+## The locate (20261019010000, #1693)
+
+A request names the task, the page as typed and the two words. Its insert
+resolves the page on the task's own holder's site only, inside the query: the
+exact address, or the address's last path segment in any case (`home` for the
+root). Exactly one match stores the row `locating`; none, several, or another
+holder's page store nothing and answer one `NOT_FOUND`.
+
+`pre_image_digest`, `base_revision`, `version_id` and `version_digest` (the
+pins) are null while `locating`, `unlocated`, or cancelled before a pin, and
+set together exactly once, by the site runner, as the row becomes `requested`
+(`core-records/src/site/locate.ts`, imported by the runner alone). Their forms
+are checked: a 40- or 64-hex commit and `sha256:` digests. `located_at` is
+written by the pin or the unlocate; `verified_at` by the pin, then only forward
+while `requested`; `locate_code` is set exactly in `unlocated` (a fixed code)
+and `superseded` (`CONTENT_DRIFTED`). `next_check_at` (null: due now) and
+`check_failures` schedule the runner's checks and move only while `locating`
+or `requested`, the time only forward. Rows from before were all pinned at
+request, so the migration sets their `located_at` to `created_at`.
+
+An approval lands only while `verified_at` is at most 60 s old by
+`clock_timestamp()` in the update that writes it. `locating` counts as open
+for the site freeze.

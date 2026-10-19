@@ -4,6 +4,7 @@
 // the revert ask, and R5's record of Astra's review.
 
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import { TEST_PIN } from '../site/located.ts';
 
 /** The revert ask: another member's correction recorded live, the admin named its approver. */
 export async function revertBody(context: BodyContext): Promise<Prepared> {
@@ -18,11 +19,11 @@ export async function revertBody(context: BodyContext): Promise<Prepared> {
   return { body: { correctionId } };
 }
 
-/** R5: Astra's review of a seeded request's version; every seeded row pins `sha256:matrix`. */
+/** R5: Astra's review of a seeded request's version; every seeded row is pinned with `TEST_PIN`. */
 export const reviewBody = (correctionId: string): Prepared => ({
   body: {
     correctionId,
-    versionDigest: 'sha256:matrix',
+    versionDigest: TEST_PIN.versionDigest,
     verdict: 'approve',
     review: 'Astra: fine.',
   },

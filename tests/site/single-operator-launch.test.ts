@@ -13,7 +13,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { agentOwnedBy } from '../commands/fixture.ts';
-import { ABOUT, PAGE, type C80World } from './c80-world.ts';
+import { PAGE, pinFromBefore, type C80World } from './c80-world.ts';
+import { pinAsRunner } from './located.ts';
 import { insertLiveCorrection } from '../../packages/core-records/src/index.ts';
 import {
   asEve,
@@ -194,25 +195,20 @@ describe.skipIf(serverUrl === undefined)('after the first Launch', () => {
       w.beta,
       async (tx) =>
         await insertLiveCorrection(tx, {
-          partyId: w.betaParty,
           taskId: w.betaTask,
           requestedByActorId: agent,
           requestedByPersonId: w.eve.personId,
           delegationId: null,
-          targetPath: ABOUT,
+          page: PAGE,
           word: 'friendly',
           replacement: 'welcoming',
-          pageUrl: PAGE,
-          preImageDigest: 'sha256:pre-image',
-          baseRevision: 'rev-1',
           seam: `seam-${randomUUID()}`,
-          versionDigest: 'sha256:the-agents-version',
         }),
     );
     if ('code' in stored) throw new Error(`the agent's request was refused ${stored.code}`);
-    expect(codeOf(await decide(w, { id: stored.id, versionId: stored.versionId }))).toBe(
-      'not-a-refusal',
-    );
+    // Stored `locating`; pinned as the site runner would (#1693).
+    const { versionId } = await pinFromBefore(w.world.db.admin, stored.id);
+    expect(codeOf(await decide(w, { id: stored.id, versionId }))).toBe('not-a-refusal');
     expect(await rowOf(w, stored.id)).toMatchObject({
       decided_by_person_id: w.eve.personId,
       single_operator_self_approval: true,
@@ -225,5 +221,31 @@ describe.skipIf(serverUrl === undefined)('after the first Launch', () => {
       .catch(String);
     const asked = await asEve(w, { command: 'live_correction.revert', correctionId: first.id });
     expect(codeOf(asked)).toBe('not-a-refusal');
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('her own approval and the page check', () => {
+  it('refuses her own approval while the page is unchecked, with nothing written', async () => {
+    // The 60 s check binds the single operator too (#1693, PORT1922-GO): pinned, never checked.
+    const stored = await w.world.db.app.withBusiness(w.beta, async (tx) => {
+      const made = await insertLiveCorrection(tx, {
+        taskId: w.betaTask,
+        requestedByActorId: w.eve.actorId as string,
+        requestedByPersonId: w.eve.personId,
+        delegationId: null,
+        page: PAGE,
+        word: 'friendly',
+        replacement: 'welcoming',
+        seam: `seam-${randomUUID()}`,
+      });
+      if ('code' in made) throw new Error(`eve's request was refused ${made.code}`);
+      return { id: made.id, ...(await pinAsRunner(tx, made.id, { verified: false })) };
+    });
+    expect(codeOf(await decide(w, stored))).toBe('VERSION_UNVERIFIED');
+    expect(await rowOf(w, stored.id)).toMatchObject({
+      state: 'requested',
+      decided_by_person_id: null,
+      single_operator_self_approval: false,
+    });
   });
 });

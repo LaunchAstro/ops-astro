@@ -8,14 +8,19 @@
 // single-operator mode admits it: an approval by the business's one operator,
 // with the mode and the operator count read under the mode's row lock, and the
 // business's first such approval resting on Astra's review of this exact
-// version. Only then is the decision written with its single-operator mark,
-// which the table requires on any decision by the requester.
+// version. A correction the site runner has not pinned names no version to
+// decide (#1693), and an approval, the single operator's too, lands only while
+// the runner's last check of the page is at most 60 s old, read after every
+// lock wait (`writeCorrectionDecision`). Only then is the decision written with
+// its single-operator mark, which the table requires on any decision by the
+// requester.
 
 import {
   GATE_COLLECTION,
   hasSelfApproved,
   isActiveMember,
   isUuid,
+  isVerifiedNow,
   lockConfiguredApprover,
   lockCoveredCorrection,
   lockSingleOperatorMode,
@@ -72,6 +77,18 @@ const STALE = refuseCommand(
   ['versionId'],
   ['Read the correction again and approve the version it shows.'],
 );
+const NOT_READY = refuseCommand(
+  'VERSION_NOT_READY',
+  ['versionId'],
+  ['This correction has no version to decide: ask for the change again.'],
+);
+const UNVERIFIED = refuseCommand(
+  'VERSION_UNVERIFIED',
+  ['versionId'],
+  ['The page has not been checked in the last minute. Read the correction again shortly.'],
+);
+/** States with no version a decision may name (#1693, the guard order's first step). */
+const UNREADY = new Set(['locating', 'unlocated', 'superseded']);
 const DECISION_FIXES: readonly string[] = ['A decision is approve or reject.'];
 
 /**
@@ -114,19 +131,25 @@ export async function decideLiveCorrection(
     return refused(UNCONFIGURED);
   }
   if (approver.toLowerCase() !== session.personId) return refused(NOT_THE_APPROVER);
+  // The guard order (#1693): no version yet, then decided, then the version, then its check.
+  if (UNREADY.has(correction.state)) return refused(NOT_READY);
   if (correction.state !== 'requested') return refused(DECIDED);
   if (correction.versionId !== request.versionId.toLowerCase()) return refused(STALE);
   if (self && !(await reviewed(tx, correction))) return refused(REVIEW_MISSING);
+  const approve = request.decision === 'approve';
+  if (approve && !(await isVerifiedNow(tx, correction.id))) return refused(UNVERIFIED);
   const after = await decisionRefusal(tx, correction, { gate, unseen: NOT_VISIBLE });
   if (after !== undefined) return refused(after);
 
+  // The approval is decided here, its check read again after every wait above.
   const decided = await writeCorrectionDecision(tx, {
     id: correction.id,
-    decision: request.decision === 'approve' ? 'approved' : 'rejected',
+    decision: approve ? 'approved' : 'rejected',
     actorId: session.actorId,
     personId: session.personId,
     selfApproval: self,
   });
+  if (decided === undefined) return refused(UNVERIFIED);
   return applied(decided.id, decided.revision, {
     correctionId: decided.id,
     versionId: decided.versionId,

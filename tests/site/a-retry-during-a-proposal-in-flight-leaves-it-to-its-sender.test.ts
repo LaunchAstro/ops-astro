@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { proposalForBinding, proposeCorrection } from '../../packages/core-commands/src/index.ts';
 import { approved, at, latch, serverUrl, useRegisterWorld, w } from './c80-register-world.ts';
-import { BEFORE } from './c80-world.ts';
+import { REV, BEFORE } from './c80-world.ts';
 import { standIn } from './proposal-stand-in.ts';
 
 useRegisterWorld();
@@ -20,7 +20,7 @@ describe.skipIf(serverUrl === undefined)('a retry during a proposal in flight', 
     const [sending, markSending] = latch();
     const [resume, release] = latch();
     const site = standIn(
-      { revision: 'rev-1', blob: 'blob-base', content: BEFORE },
+      { revision: REV, blob: 'blob-base', content: BEFORE },
       {
         onSend: async (step) => {
           if (step === 'branch') {

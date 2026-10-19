@@ -61,7 +61,7 @@ describe.skipIf(serverUrl === undefined)("a request and an unbind of one client'
     expect({ unbound, ended, asked: await request }).toEqual({
       unbound: { value: { ok: true } },
       ended: 'committed',
-      asked: { value: { ok: false, code: 'PAGE_OUTSIDE_PARTY_SITE' } },
+      asked: { value: { ok: false, code: 'PAGE_NOT_FOUND' } },
     });
   });
 });
