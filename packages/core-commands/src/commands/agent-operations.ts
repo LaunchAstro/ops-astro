@@ -131,8 +131,8 @@ export type TypedOperation<O extends object> =
     })
   | (AgentOperationRow<O> & {
       readonly authority: 'record';
-      /** Where the check finds its task: the lease the body names, the record, or a revision's. */
-      readonly subjectTask: 'lease' | 'record' | 'revision';
+      /** Where the check finds its task: the body's lease or record, a revision's, or a review's. */
+      readonly subjectTask: 'lease' | 'record' | 'revision' | 'review';
       /**
        * Under the delegation, on the task the check was made on, or
        * `undefined` when the call named none and the check fell back to the
