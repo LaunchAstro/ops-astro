@@ -2,10 +2,11 @@
 //
 // The agent test harness (#1626 R11). It runs each case of a set through
 // `core-agent`'s loop, `runAttempt`, with the replay fake as its model: each
-// turn goes to the fake on loopback through the replay adapter, and its
-// answer is read against the replay schema, as the broker reads it. No
-// database, no credential and no host beyond loopback is reached, so a set
-// gives the same results on every run.
+// turn goes to the fake on loopback through the replay adapter, its parts
+// made into messages as the broker makes them (the task, the page `task.read`
+// returned, the answers kept), and its answer is read against the replay
+// schema, as the broker reads it. No database, no credential and no host
+// beyond loopback is reached, so a set gives the same results on every run.
 //
 // A case passes when its attempt ends in the code it expects and, when it
 // finishes, its final answer holds what it must and leaves out what it must
@@ -26,7 +27,12 @@ import {
   startReplayProvider,
   type ReplayProvider,
 } from '../../packages/core-connectors/src/index.ts';
-import type { EndCode, RunOutcome, ToolCall } from '../../packages/core-wire/src/index.ts';
+import type {
+  EndCode,
+  RunOutcome,
+  ToolCall,
+  TurnPart,
+} from '../../packages/core-wire/src/index.ts';
 
 /** What the fake answers one turn with: words and tool calls, or the plan's allowance gone. */
 export type Reply =
@@ -96,6 +102,16 @@ const sum = (usages: readonly Usage[]): Usage => ({
   outputUnits: usages.reduce((total, usage) => total + usage.outputUnits, 0),
 });
 
+/** A turn's part as the message the model reads; the harness gives no definition part. */
+function messageOf(one: AgentCase, part: TurnPart): Readonly<Record<string, unknown>> {
+  if (part.ref === 'answer')
+    return { role: 'assistant', text: part.text, toolCalls: part.toolCalls };
+  if (part.ref === 'definition') throw new Error('the harness sends no definition part');
+  return part.toolCallId === undefined
+    ? { role: 'user', text: one.task }
+    : { role: 'tool', toolCallId: part.toolCallId, text: one.page };
+}
+
 /** One turn sent to the fake, answered with the reply the case gives it. */
 async function send(
   provider: ReplayProvider,
@@ -122,7 +138,8 @@ async function send(
     );
   }
   const callId = `${one.id}:${String(turn.turnOrdinal)}`;
-  const request = replayAdapter({ turn: JSON.stringify(turn.parts) }, callId);
+  const messages = turn.parts.map((part) => messageOf(one, part));
+  const request = replayAdapter({ turn: JSON.stringify(messages) }, callId);
   const response = await fetch(`${provider.origin}${request.path}`, {
     method: request.method,
     body: request.body,
