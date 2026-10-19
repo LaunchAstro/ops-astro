@@ -238,10 +238,10 @@ const runsAround = (source: string, start: number, end: number): string[] =>
     (/^\S*/u.exec(source.slice(end))?.[0] ?? '')
   ).split(/\s+/u);
 
-// A Markdown phrase opens with a letter, a number that is no ordered-list marker or an opening
-// mark, so it starts no heading, list, quote or rule, and holds no emphasis, code, link, table
-// cell or escape.
-const MARKDOWN_PHRASE = /^(?!\p{N}+[.)](?: |$))[\p{L}\p{N}"“‘'(][^*_~`[\]|\\]*$/u;
+// A Markdown phrase opens with a letter, number or opening mark and holds no emphasis, code,
+// link, table cell or escape; a number with `.` or `)` and a space after it is a list marker.
+const MARKDOWN_PHRASE = /^[\p{L}\p{N}"“‘'(][^*_~`[\]|\\]*$/u;
+const ORDERED_MARKER = /^\p{N}+[.)](?:\s|$)/u;
 
 /**
  * Whether `text` at `offset` is body copy, read construct by construct from the body's start:
@@ -262,7 +262,11 @@ function inTextNode(source: string, offset: number, text: string, markdown: bool
   }
   if (!markdown) return true;
   const runs = runsAround(source, offset, offset + text.length);
-  return MARKDOWN_PHRASE.test(text) && runs.every((run) => MARKDOWN_RUN.test(run));
+  return (
+    MARKDOWN_PHRASE.test(text) &&
+    !ORDERED_MARKER.test(source.slice(offset, offset + text.length + 2)) &&
+    runs.every((run) => MARKDOWN_RUN.test(run))
+  );
 }
 
 /** Refuses anything wider than the envelope, naming why. */
