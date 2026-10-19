@@ -262,6 +262,8 @@ export const DECLARED: Readonly<
   'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
   'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
   'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
+  'review.decide': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.record_astra_review': { carry: 'not carried', plant: 'needs a review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

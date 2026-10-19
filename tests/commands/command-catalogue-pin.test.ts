@@ -392,6 +392,11 @@ vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (origin
   ...(await original<object>()),
   pinComment: recorder('pinComment'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-decide.ts', async (original) => ({
+  ...(await original<object>()),
+  decideReview: recorder('decideReview'),
+  recordAstraReview: recorder('recordAstraReview'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -532,8 +537,10 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture': ['revisionId'],
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
+  'review.decide': ['reviewId'],
   'review.open': ['taskId'],
   'review.pin_comment': ['revisionId'],
+  'review.record_astra_review': ['reviewId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -694,10 +701,12 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture',
   'review.capture_claim',
   'review.capture_land',
+  'review.decide',
   'review.open',
   'review.picture',
   'review.pin_comment',
   'review.read',
+  'review.record_astra_review',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1063,6 +1072,15 @@ const REQUESTS: readonly CommandRequest[] = [
     picture: 'AA==',
     observation: {},
   },
+  { command: 'review.decide', operationId: 'op', reviewId: 'r', digest: 'd', response: 'approve' },
+  {
+    command: 'review.record_astra_review',
+    operationId: 'op',
+    reviewId: 'r',
+    digest: 'd',
+    verdict: 'approve',
+    review: 't',
+  },
   {
     command: 'review.pin_comment',
     operationId: 'op',
@@ -1279,6 +1297,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.capture_claim': ['claimCaptureAsPerson', 'request'],
   'review.capture_land': ['landCaptureAsPerson', 'request'],
   'review.pin_comment': ['pinComment', 'request'],
+  'review.decide': ['decideReview', 'request'],
+  'review.record_astra_review': ['recordAstraReview', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
@@ -1378,7 +1398,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-nine from an expected revision', () => {
+  it('exempts the same one hundred and forty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
