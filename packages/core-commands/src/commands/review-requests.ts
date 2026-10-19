@@ -14,4 +14,14 @@ export type ReviewRequest =
       /** The site's own revision of the page, which the revision's digest binds. */
       readonly sourceRevision: string;
     } & Envelope)
-  | ({ readonly command: 'review.capture'; readonly revisionId: string } & Envelope);
+  | ({ readonly command: 'review.capture'; readonly revisionId: string } & Envelope)
+  | ({
+      readonly command: 'review.pin_comment';
+      readonly revisionId: string;
+      /** The capture's width: 1480 or 390. */
+      readonly width: unknown;
+      /** The Web Annotation selectors that find the spot on that capture. */
+      readonly selector: unknown;
+      readonly body: string;
+      readonly audience: string;
+    } & Envelope);

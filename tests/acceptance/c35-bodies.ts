@@ -15,6 +15,7 @@ import type { Caller } from './cast.ts';
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
   'review.capture',
+  'review.pin_comment',
   'review.read',
 ]);
 
@@ -37,12 +38,27 @@ async function openBody(context: BodyContext): Promise<Prepared> {
   };
 }
 
+/** A pin's body (#2012): the revision's captures asked first, then a spot on the desktop one. */
+async function pinBody(context: BodyContext, revisionId: unknown): Promise<Prepared> {
+  const asked = await context.asPerson('review.capture', { revisionId });
+  if (asked.code !== 'ok') throw new Error(`matrix: review.capture refused ${asked.code}`);
+  const spot = {
+    type: 'FragmentSelector',
+    conformsTo: 'http://www.w3.org/TR/media-frags/',
+    value: 'xywh=0,0,9,9',
+  };
+  return {
+    body: { revisionId, width: 1480, selector: [spot], body: 'a pin', audience: 'internal' },
+  };
+}
+
 export async function c35PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   const open = await openBody(context);
   if (name === 'review.open' || !('body' in open)) return open;
   const opened = await context.asPerson('review.open', open.body);
   if (opened.code !== 'ok') throw new Error(`matrix: review.open refused ${opened.code}`);
   const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
+  if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }
     : { body: { reviewId: detail['reviewId'] } };

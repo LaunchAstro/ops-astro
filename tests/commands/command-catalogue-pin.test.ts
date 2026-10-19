@@ -383,6 +383,10 @@ vi.mock('../../packages/core-commands/src/commands/review-commands.ts', async (o
   openReview: recorder('openReview'),
   askReviewCapture: recorder('askReviewCapture'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
+  ...(await original<object>()),
+  pinComment: recorder('pinComment'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -520,6 +524,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'live_correction.revert': ['correctionId'],
   'review.capture': ['revisionId'],
   'review.open': ['taskId'],
+  'review.pin_comment': ['revisionId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -679,6 +684,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'record.create',
   'review.capture',
   'review.open',
+  'review.pin_comment',
   'review.read',
   'run.child_handback',
   'run.delegate_child',
@@ -743,6 +749,7 @@ const PINNED_AGENT_SURFACE = [
   'onboarding.step_result',
   'review.capture',
   'review.open',
+  'review.pin_comment',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1032,6 +1039,15 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'review.capture', operationId: 'op', revisionId: 'v' },
   {
+    command: 'review.pin_comment',
+    operationId: 'op',
+    revisionId: 'v',
+    width: 1480,
+    selector: [],
+    body: 'b',
+    audience: 'internal',
+  },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -1235,6 +1251,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.set_single_operator': ['setSingleOperator', 'request'],
   'review.open': ['openReview', 'request'],
   'review.capture': ['askReviewCapture', 'request'],
+  'review.pin_comment': ['pinComment', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',

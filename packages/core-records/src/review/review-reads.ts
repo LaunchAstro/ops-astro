@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's read (#2011): one review with its revisions and their captures. It
-// filters by the caller's grant at the review's holder inside the query
-// (`covering.ts`), so a party grant reads no other client's review.
+// C35's read (#2011): one review with its revisions and their captures, the latest paired with
+// the one before it, and its pins (#2012). It filters by the caller's grant at the review's
+// holder inside the query (`covering.ts`), so a party grant reads no other client's review.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
 import type { CaptureWidth, Review } from './reviews.ts';
+import { readPins, type PinView } from './pins.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -23,6 +24,11 @@ export interface RevisionView {
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   readonly reviewId: string;
   readonly revisions: readonly RevisionView[];
+  /** The revision under review, the latest; null only for a review with none. */
+  readonly after: RevisionView | null;
+  /** The revision before it, to compare at each width; null for a first revision. */
+  readonly before: RevisionView | null;
+  readonly pins: readonly PinView[];
 }
 
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
@@ -54,6 +60,12 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
+  const views = revisions.map((revision) => ({
+    revisionId: revision.id,
+    number: revision.number,
+    digest: revision.digest,
+    captures: captures.get(revision.id) ?? [],
+  }));
   return {
     reviewId,
     taskId: review.task_id,
@@ -61,12 +73,10 @@ export async function readCoveredReview(
     kind: review.kind,
     pageUrl: review.page_url,
     path: review.path,
-    revisions: revisions.map((revision) => ({
-      revisionId: revision.id,
-      number: revision.number,
-      digest: revision.digest,
-      captures: captures.get(revision.id) ?? [],
-    })),
+    revisions: views,
+    after: views.at(-1) ?? null,
+    before: views.at(-2) ?? null,
+    pins: await readPins(tx, { reviewId, taskId: review.task_id }),
   };
 }
 

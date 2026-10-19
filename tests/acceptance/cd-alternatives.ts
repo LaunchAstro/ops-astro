@@ -70,6 +70,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.record_review': ['correctionId', 'liveCorrection'],
   'review.open': ['taskId', 'review'],
   'review.capture': ['revisionId', 'review'],
+  'review.pin_comment': ['revisionId', 'review'],
   'review.read': ['reviewId', 'review'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],

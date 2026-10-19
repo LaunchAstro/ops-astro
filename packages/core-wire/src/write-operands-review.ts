@@ -7,4 +7,11 @@
 export const REVIEW_OPERANDS = {
   'review.open': { taskId: 'any', pageUrl: 'any', path: 'any', sourceRevision: 'any' },
   'review.capture': { revisionId: 'any' },
+  'review.pin_comment': {
+    revisionId: 'any',
+    width: 'any',
+    selector: 'any',
+    body: 'any',
+    audience: 'any',
+  },
 } as const;

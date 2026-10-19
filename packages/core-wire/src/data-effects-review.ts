@@ -12,5 +12,7 @@ export const REVIEW_EFFECTS: {
 } = {
   'review.open': writing(client('review_revisions', 'reviews')),
   'review.capture': writing(client('review_captures')),
+  // A pin is a comment on the review's task.
+  'review.pin_comment': writing(client('records')),
   'review.read': writing([]),
 };

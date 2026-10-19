@@ -4,10 +4,12 @@
 
 import type { Handler } from './handler-types.ts';
 import { askReviewCapture, openReview } from './review-commands.ts';
+import { pinComment } from './review-pin.ts';
 
-type ReviewWrite = 'review.open' | 'review.capture';
+type ReviewWrite = 'review.open' | 'review.capture' | 'review.pin_comment';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.open': openReview,
   'review.capture': askReviewCapture,
+  'review.pin_comment': pinComment,
 };

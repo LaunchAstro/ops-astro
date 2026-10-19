@@ -5,8 +5,9 @@
 //
 // `review.open` and `review.capture` are `review:write` at the review's holder, the
 // task's client or the business for its own site (`prepare.ts`, TARGET_LOOKUPS), an
-// agent's inside its delegation. The read is `review:read` at the holder, asked
-// inside the query.
+// agent's inside its delegation. `review.pin_comment` (#2012) is `review:comment` there, an
+// agent's inside a delegation for the review's own task. The read is `review:read` at the
+// holder, asked inside the query.
 
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { declare, read } from './surface-builders.ts';
@@ -23,6 +24,13 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     agent: 'delegated',
   }),
   declare('review.capture', 'write', {
+    collection: REVIEW_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['revisionId'],
+    agent: 'delegated',
+  }),
+  declare('review.pin_comment', 'comment', {
     collection: REVIEW_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'target',
