@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `run.end` on the agent prefix (#1623 R1): the worker's own stop,
-// on the lease its delegation holds. The runtime (`core-runtime/src/run-end.ts`)
-// records the outcome and retires the work under its locks; the answer is a
-// retained terminal refusal, `RUN_ENDED` naming the outcome and its code, so
-// the stop commits with its register row and audit event although it revoked
-// the delegation it is judged on, and the same operation id replays it.
+// `run.end` on the agent prefix (#1623 R1): the worker's own stop, on the lease its delegation
+// holds. The runtime (`core-runtime/src/run-end.ts`) records the outcome and retires the work under
+// its locks; the answer is a retained terminal refusal, `RUN_ENDED` naming the outcome and its
+// code, so the stop commits with its register row and audit event although it revoked the
+// delegation it is judged on, and the same operation id replays it.
 
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { endRun } from '../../../core-runtime/src/index.ts';

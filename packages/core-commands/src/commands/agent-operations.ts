@@ -190,7 +190,6 @@ export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed 
 
 /** The operands of a row that reads none beyond its identifiers. */
 const NONE = (): NoOperands => ({});
-
 /**
  * A `recordId` that is present and not a string, refused before any authority
  * in the words the person prefix answers the same body with (`refusal`).
@@ -285,7 +284,6 @@ export async function capabilitiesOf(
 
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
-
 async function serveComment(
   tx: TenantQuery,
   { session, request, declaration }: AgentCall,
