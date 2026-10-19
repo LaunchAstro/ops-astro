@@ -56,7 +56,7 @@ export interface Captured {
 }
 
 /**
- * The fence's pool for review captures (TR-P-1): the configured site's pages when that site is
+ * The fence's pool for review captures: the configured site's pages when that site is
  * the business's own, and nothing when it is a client's. No other page is reachable until the
  * pool's reviews are recorded (#2018).
  */
