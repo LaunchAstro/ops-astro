@@ -79,6 +79,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'review.picture': ['pictureId', 'review'],
   'review.propose_change': ['commentId', 'changeRequest'],
   'review.decide_change': ['changeRequestId', 'changeRequest'],
+  'review.make_change_task': ['changeRequestId', 'changeRequest'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

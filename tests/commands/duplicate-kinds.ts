@@ -265,6 +265,7 @@ export const DECLARED: Readonly<
   // C57: a change request is filed from a client pin and decided; a duplicate carries none.
   'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
   'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },
+  'review.make_change_task': { carry: 'not carried', plant: 'needs an approved change request' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
