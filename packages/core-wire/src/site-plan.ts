@@ -38,12 +38,14 @@ export const SITE_CHANGE_KEYS: ReadonlySet<string> = new Set([
   'estimate',
 ]);
 
-/** One line with something to read, within the bound: no control character, tabs and line breaks included. */
+/**
+ * The request's own text rule (#1987, `core-connectors/src/site/word-pair.ts`), so a
+ * plan approved here is one the request accepts: runs of anything but white space,
+ * a control, markup or an expression, single spaces between, at most 200.
+ */
+const ONE_LINE = /^[^\s\p{C}<>{}]+(?: [^\s\p{C}<>{}]+)*$/u;
 const oneLine = (value: unknown): value is string =>
-  typeof value === 'string' &&
-  /[^\s\p{Cf}]/u.test(value) &&
-  !/\p{Cc}/u.test(value) &&
-  [...value].length <= SITE_TEXT_LIMIT;
+  typeof value === 'string' && ONE_LINE.test(value) && value.length <= SITE_TEXT_LIMIT;
 
 /** The plan a block's fields name, or null when a text is out of bounds or the page is not bound. */
 export function sitePlanOf(

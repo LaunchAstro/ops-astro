@@ -67,7 +67,7 @@ export const taskOf = (chat: Chat): string | null => chat.scope.task?.id ?? chat
  * A reply's line: its words and an offered card when it ends in a proposal
  * this chat may take, otherwise the body as written. An edit needs a task: the
  * chat's own, or, on no task, the reply's targets to pick from. A site change
- * (#1988) needs its page among the pages the server gave with it (`sitePages`).
+ * (#1988) needs a page the server gave (`sitePages`); its create is its one write.
  */
 export function replyLine(
   body: string,
@@ -224,6 +224,7 @@ async function create(
   const { detail, recordId, revision } = settled.value;
   const key = detail?.['key'];
   const task = taskLink(proposal.title ?? '', typeof key === 'string' ? key : recordId);
+  if (proposal.site !== undefined) return { state: 'made', refusal: null, task };
   const assigning = await assignClicker(view.client, source, { recordId, revision });
   if (assigning?.state === 'unknown') return { ...assigning, task: null };
   return { state: 'made', refusal: null, task, ...assigning };

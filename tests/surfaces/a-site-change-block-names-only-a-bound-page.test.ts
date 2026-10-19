@@ -93,6 +93,11 @@ describe('a site change block', () => {
       { before: 'Based in\nBrisbane' },
       { after: 'Based in\tTownsville' },
       { before: '   ' },
+      { before: 'Based  in Brisbane' },
+      { before: ' Based in Brisbane' },
+      { after: 'Based in <b>Townsville</b>' },
+      { after: 'Based in {city}' },
+      { after: 'Based in\u200BTownsville' },
       { after: 'Based in Brisbane' },
     ]) {
       expect(
