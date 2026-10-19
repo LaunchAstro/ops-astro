@@ -167,7 +167,8 @@ function offMachineProblem(
 
 /**
  * The routes setting's entries, each a route or undefined; undefined when it
- * is not a list. Only the carried deployment passes `plan`, so no other
+ * is not a list, or when two routes share a key, since a call names its route
+ * by key alone. Only the carried deployment passes `plan`, so no other
  * install takes the owner's plan route.
  */
 export function routesOf(
@@ -177,9 +178,10 @@ export function routesOf(
   plan = false,
 ): readonly (BrokerRoute | undefined)[] | undefined {
   const entries = parsedJson(text)?.value;
-  return Array.isArray(entries)
-    ? entries.map((entry: unknown) => routeOf(entry, provider, outside, plan))
-    : undefined;
+  if (!Array.isArray(entries)) return undefined;
+  const routes = entries.map((entry: unknown) => routeOf(entry, provider, outside, plan));
+  const keys = routes.flatMap((route) => (route === undefined ? [] : [route.key]));
+  return new Set(keys).size === keys.length ? routes : undefined;
 }
 
 const withoutBroker = (named: AgentProvider): string =>
@@ -235,7 +237,7 @@ export function brokerSettings(
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +
         'credentialRef, credentialKind, installation, ceiling } with a known reach, kind and ' +
-        'provider and a whole-number ceiling of at least 1',
+        'provider and a whole-number ceiling of at least 1, no two sharing a key',
     );
   }
   const listed = routes as readonly BrokerRoute[];

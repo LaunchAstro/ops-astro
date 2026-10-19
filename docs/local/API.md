@@ -419,7 +419,9 @@ their adapters are registered in code there, not configured: the replay
 provider is the only one until the real-provider run. Each route in
 `MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
 the calls in flight on that route across every business of the installation,
-at most (the fair share, "The model call" below).
+at most (the fair share, "The model call" below). No two routes share a `key`,
+since a call names its route by key alone: a list that repeats one stops the
+server, and the carried deployment, as malformed (#2091).
 Two more settings stop the server at start: a `local` route any of whose
 operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the

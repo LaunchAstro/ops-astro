@@ -100,7 +100,7 @@ function problemOf(
     ? undefined
     : 'needs MODEL_BROKER_ROUTES with an Ollama local route, exactly one cloud api_key ' +
         'OpenRouter route with OPS_OUTSIDE_PROVIDER (none without), at most one cloud ' +
-        'subscription ChatGPT plan route, and MODEL_BROKER_INSTALLATION';
+        'subscription ChatGPT plan route, no two sharing a key, and MODEL_BROKER_INSTALLATION';
 }
 
 /** The carried deployment, or why it is refused; absent where `MODEL_BROKER_CARRIER` is unset. */
