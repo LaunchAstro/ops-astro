@@ -39,57 +39,55 @@ function need(result: CommandResult, what: string): Readonly<Record<string, unkn
   return detailOf(result);
 }
 
+/** The agent's live lease on `taskId`, proposed and approved by ava and picked up. */
+async function workerLease(w: C57World, taskId: string): Promise<WorkerLease> {
+  const [task] = await w.world.db.admin.execute<{ readonly revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [taskId],
+  );
+  const proposed = need(
+    await w.as(w.ava, {
+      command: 'task.propose',
+      recordId: taskId,
+      expectedRevision: Number(task?.revision),
+      purpose: `draft_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3_000,
+      currency: 'AUD',
+      payload: { instruction: 'make the approved change request a task' },
+      step: { kind: 'compose', payload: {} },
+    }),
+    'task.propose',
+  );
+  const decided = need(
+    await w.as(w.ava, {
+      command: 'task.decide',
+      gateId: proposed['gateId'],
+      versionId: proposed['versionId'],
+      decision: 'approve',
+      note: 'approved so the worker can make the task',
+    }),
+    'task.decide',
+  );
+  const picked = need(
+    await w.world.asAgent({
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId: decided['reservationId'],
+    }),
+    'task.pickup',
+  );
+  return {
+    leaseId: String(picked['leaseId']),
+    fence: Number(picked['fence']),
+    credential: String(picked['credential']),
+  };
+}
+
 export async function c57bWorld(part: string): Promise<C57bWorld> {
   const w = await c57World(part);
-  const revisionOf = async (taskId: string): Promise<number> =>
-    Number(
-      (
-        await w.world.db.admin.execute<{ readonly revision: string }>(
-          'select revision::text as revision from public.records where id = $1',
-          [taskId],
-        )
-      )[0]?.revision,
-    );
   return {
     ...w,
-    async leaseOn(taskId = w.taskA) {
-      const proposed = need(
-        await w.as(w.ava, {
-          command: 'task.propose',
-          recordId: taskId,
-          expectedRevision: await revisionOf(taskId),
-          purpose: `draft_${randomUUID().slice(0, 8)}`,
-          maximumMinor: 3_000,
-          currency: 'AUD',
-          payload: { instruction: 'make the approved change request a task' },
-          step: { kind: 'compose', payload: {} },
-        }),
-        'task.propose',
-      );
-      const decided = need(
-        await w.as(w.ava, {
-          command: 'task.decide',
-          gateId: proposed['gateId'],
-          versionId: proposed['versionId'],
-          decision: 'approve',
-          note: 'approved so the worker can make the task',
-        }),
-        'task.decide',
-      );
-      const picked = need(
-        await w.world.asAgent({
-          command: 'task.pickup',
-          operationId: randomUUID(),
-          reservationId: decided['reservationId'],
-        }),
-        'task.pickup',
-      );
-      return {
-        leaseId: String(picked['leaseId']),
-        fence: Number(picked['fence']),
-        credential: String(picked['credential']),
-      };
-    },
+    leaseOn: async (taskId = w.taskA) => await workerLease(w, taskId),
     async filed(decision, text) {
       const { clientPin } = await w.pins();
       const id = String(
