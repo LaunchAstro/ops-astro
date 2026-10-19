@@ -7,8 +7,9 @@
 // carries `review`. The agent writes for its delegating person, on the grants the delegation
 // draws on, and both those grants and the delegation are asked again after the write's last
 // lock wait (`review-commands.ts`). An agent credential reaches both through the person
-// envelope with its ticked keys (API-2). The claim and the land are the worker's, asked of
-// the lease's task and served under the delegation `authorise` resolved, as `task.check` is.
+// envelope with its ticked keys (API-2). The claim, the land and the pin carry (#2075) are
+// the worker's, asked of the lease's task and served under the delegation `authorise`
+// resolved, as `task.check` is.
 // A pin (#2012) is a `record` row: `review:comment` on the delegation's own task, served on
 // that task alone (`review-pin.ts`).
 
@@ -29,6 +30,7 @@ import {
   type ReviewCapture,
   type ReviewOpen,
 } from './review-commands.ts';
+import { carryPins } from './review-carry.ts';
 import { PIN_COMMENT } from './review-pin.ts';
 
 /** A review row: checked on the task its body names, and served under that delegation. */
@@ -121,7 +123,9 @@ export interface UnderLease {
   ) => Promise<HandlerOutcome>;
 }
 
-const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease => ({
+const underLease = (
+  serve: typeof claimCapture | typeof landCapture | typeof carryPins,
+): UnderLease => ({
   authority: 'record',
   subjectTask: 'lease',
   replay: 'reauthorise',
@@ -136,6 +140,7 @@ const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease
         width: request['width'],
         picture: request['picture'],
         observation: request['observation'],
+        operationId: request['operationId'],
       },
       { claimant: 'agent', holderActorId: session.actorId, delegation },
     ),
@@ -146,6 +151,7 @@ type ReviewAgentName =
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.carry_pins'
   | 'review.pin_comment';
 
 export const reviewAgentRows = <T>(
@@ -155,5 +161,6 @@ export const reviewAgentRows = <T>(
   ['review.capture', close(CAPTURE)],
   ['review.capture_claim', close(underLease(claimCapture))],
   ['review.capture_land', close(underLease(landCapture))],
+  ['review.carry_pins', close(underLease(carryPins))],
   ['review.pin_comment', close(PIN_COMMENT)],
 ];
