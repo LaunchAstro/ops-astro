@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// FR6-RUNNER: the migration runner refuses to apply anything while another
-// session is connected to its database.
+// FR6-RUNNER: the migration runner refuses to apply anything beside a session
+// that could be using the old schema: active, in a transaction, or holding a
+// lock (#1984).
 //
 // The supported upgrade is the application stopped. Two ways an upgrade that
 // overlaps a live application goes wrong were found in 0030 alone (SOL-R3R-1,
-// SOL-R3R2-1), so the runner checks for other sessions as a backstop. It is
-// not the stop: an idle application that holds no connection passes the
-// check (docs/local/DATA.md, "Upgrade"). One run is all or nothing (FR7), and
-// a role that cannot read every session is refused. Each case builds its own database at 0023 (where the durable
-// local database stands) or at the head, holds a real second session open,
-// and runs the real runner. The CLI case runs `scripts/db-migrate.mjs` as its
-// own process, with nothing in its environment but the admin URL.
+// SOL-R3R2-1), so the runner checks the other sessions as a backstop. It is
+// not the stop: an idle application, or a pooler's idle backend with no
+// transaction and no lock, passes the check (docs/local/DATA.md, "Upgrade").
+// The run locks every table in ops and public first, bounds its lock waits
+// and retries them. One run is all or nothing (FR7), and a role that cannot
+// read every session is refused. Each case builds its own database at 0023
+// (where the durable local database stands) or at the head, holds a real
+// second session open, idle or mid-transaction, and runs the real runner. The
+// CLI cases run `scripts/db-migrate.mjs` as their own process, with nothing in
+// their environment but the admin URL.
 
 import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import postgres from 'postgres';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createEmptyDatabase,
@@ -24,9 +29,11 @@ import {
 } from '../support/fresh-database.ts';
 import {
   applyMigrations,
+  MigrationLockTimeout,
   MigrationRefused,
   MigrationRoleCannotSee,
   migrate,
+  otherSessions,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
@@ -60,7 +67,7 @@ function ownerUrl(db: EmptyDatabase): string {
   return url.toString();
 }
 
-/** A session held open on the database, and its backend's pid. */
+/** A session held open on the database, idle with no transaction, and its backend's pid. */
 async function hold(url: string): Promise<{ readonly pool: ObservedPool; readonly pid: number }> {
   const pool = connectObserved(url, { source: 'held' });
   const [row] = await pool.betweenTransactions<{ readonly pid: number }>(
@@ -68,6 +75,35 @@ async function hold(url: string): Promise<{ readonly pool: ObservedPool; readonl
   );
   if (row === undefined) throw new Error('no pid for the held session');
   return { pool, pid: row.pid };
+}
+
+/**
+ * A session mid-work: a transaction begun, `statement` run in it and no
+ * commit, as a live application's is between two of its statements.
+ */
+async function holdBusy(
+  url: string,
+  statement = 'select 1',
+): Promise<{ readonly pool: Closable; readonly pid: number }> {
+  const sql = postgres(url, { max: 1, onnotice: () => undefined });
+  const session = await sql.reserve();
+  const [row] = await session.unsafe<{ readonly pid: number }[]>(`select pg_backend_pid() as pid`);
+  if (row === undefined) throw new Error('no pid for the busy session');
+  await session.unsafe('begin');
+  await session.unsafe(statement);
+  return {
+    pool: {
+      close: async () => {
+        session.release();
+        await sql.end({ timeout: 1 });
+      },
+    },
+    pid: row.pid,
+  };
+}
+
+interface Closable {
+  close(): Promise<void>;
 }
 
 /** The ledger and everything the migrations make, as one comparable string. */
@@ -124,6 +160,24 @@ async function sleepingOn(watch: AdminConnection, name: string): Promise<boolean
   return false;
 }
 
+/** Whether the backend `pid` comes to wait on a lock, polled from outside its database. */
+async function waitingOnLock(watch: AdminConnection, pid: number): Promise<boolean> {
+  for (let i = 0; i < 100; i += 1) {
+    // oxlint-disable-next-line no-await-in-loop
+    const [row] = await watch.execute<{ readonly waiting: boolean }>(
+      `select coalesce(bool_or(wait_event_type = 'Lock'), false) as waiting
+         from pg_stat_activity where pid = $1`,
+      [pid],
+    );
+    if (row?.waiting === true) return true;
+    // oxlint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+  return false;
+}
+
 function refusal(error: unknown): MigrationRefused {
   if (!(error instanceof MigrationRefused)) throw error;
   return error;
@@ -131,7 +185,7 @@ function refusal(error: unknown): MigrationRefused {
 
 describe.skipIf(serverUrl === undefined)('the runner refuses while connected', () => {
   let db: EmptyDatabase | undefined;
-  const held: ObservedPool[] = [];
+  const held: Closable[] = [];
   const watchers: AdminConnection[] = [];
   const extraRoles: string[] = [];
 
@@ -161,28 +215,29 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     return built;
   }
 
-  it('refuses with an application session held, naming it, and changes nothing', async () => {
+  it('refuses with an application session held mid-transaction, naming it and its state, and changes nothing', async () => {
     const on = await at0023('fr6app');
-    const app = await hold(on.appUrl);
+    const app = await holdBusy(on.appUrl);
     held.push(app.pool);
     const before = await state(on);
 
     const refused = refusal(await migrate(on.admin, 'migrations').catch((error: unknown) => error));
 
     expect(refused.pending).toStrictEqual(PENDING_AFTER_0023);
-    expect(refused.sessions.map((s) => ({ pid: s.pid, usename: s.usename }))).toStrictEqual([
-      { pid: app.pid, usename: on.loginRole },
-    ]);
+    expect(
+      refused.sessions.map((s) => ({ pid: s.pid, usename: s.usename, state: s.state })),
+    ).toStrictEqual([{ pid: app.pid, usename: on.loginRole, state: 'idle in transaction' }]);
+    expect(refused.message).toContain('state idle in transaction');
     expect(refused.message).toContain(`pid ${String(app.pid)} login ${on.loginRole}`);
     expect(refused.message).toContain('Nothing was applied.');
     expect(await state(on)).toBe(before);
     expect(await lastApplied(on)).toBe('0023_delegation_revocation_cause');
   }, 120_000);
 
-  it('refuses with any other client session held, not only the application login', async () => {
+  it('refuses with any other client session held mid-transaction, not only the application login', async () => {
     const on = await at0023('fr6other');
-    const other = await hold(on.restrictedUrl);
-    const owner = await hold(ownerUrl(on));
+    const other = await holdBusy(on.restrictedUrl);
+    const owner = await holdBusy(ownerUrl(on));
     held.push(other.pool, owner.pool);
     const before = await state(on);
 
@@ -203,7 +258,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
 
   it('applies every pending migration once the sessions close', async () => {
     const on = await at0023('fr6closed');
-    const app = await hold(on.appUrl);
+    const app = await holdBusy(on.appUrl);
     await expect(migrate(on.admin, 'migrations')).rejects.toBeInstanceOf(MigrationRefused);
     await app.pool.close();
 
@@ -230,6 +285,99 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // #1984: what a transaction-mode pooler (Supavisor) keeps open, and refills
+  // within 100 ms when it is ended, is a backend idle with no transaction and
+  // no lock. It cannot be mid-work on the old schema, so it does not refuse.
+  it('applies beside an idle pooled session with no transaction and no lock, which stays connected', async () => {
+    const on = await at0023('busyidle');
+    const pooled = await hold(on.appUrl);
+    held.push(pooled.pool);
+
+    const outcome = await migrate(on.admin, 'migrations');
+
+    expect(outcome.applied).toStrictEqual(PENDING_AFTER_0023);
+    expect(await lastApplied(on)).toBe(onDisk.at(-1)?.version);
+    const [still] = await pooled.pool.betweenTransactions<{ readonly pid: number }>(
+      `select pg_backend_pid() as pid`,
+    );
+    expect(still?.pid).toBe(pooled.pid);
+  }, 120_000);
+
+  it('refuses after its bounded lock waits and retries when a session holds a lock on a public table', async () => {
+    const built = await createEmptyDatabase({ part: 'busylock' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const holder = await holdBusy(
+      ownerUrl(built),
+      'lock table public.businesses in access share mode',
+    );
+    held.push(holder.pool);
+    const before = await state(built);
+    const timing = { lockAttempts: 3, lockTimeoutMs: 300, lockPauseMs: 400 };
+
+    const started = performance.now();
+    const outcome = await applyMigrations(
+      built.admin,
+      [...onDisk, syntheticMigration('9001_busy_lock', 'select 1')],
+      timing,
+    ).catch((error: unknown) => error);
+    const elapsed = performance.now() - started;
+
+    expect((outcome as Error).name).toBe('MigrationLockTimeout');
+    if (!(outcome instanceof MigrationLockTimeout)) throw outcome;
+    expect(outcome.attempts).toBe(3);
+    expect(outcome.pending).toStrictEqual(['9001_busy_lock']);
+    const [named] = outcome.sessions;
+    expect({ pid: named?.pid, state: named?.state }).toStrictEqual({
+      pid: holder.pid,
+      state: 'idle in transaction',
+    });
+    expect(named?.holds).toMatch(/AccessShareLock on (public\.)?businesses/u);
+    expect(outcome.message).toContain('Nothing was applied. The database is still at');
+    // Three waits of 300 ms and two pauses of 400 ms, and not much more.
+    expect(elapsed).toBeGreaterThanOrEqual(3 * 300 + 2 * 400);
+    expect(elapsed).toBeLessThan(3 * 300 + 2 * 400 + 5000);
+    expect(await state(built)).toBe(before);
+  }, 120_000);
+
+  it('lets a query that arrives mid-run wait on the locks and then read the new schema', async () => {
+    const built = await createEmptyDatabase({ part: 'busylate' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const pooled = await hold(built.appUrl);
+    held.push(pooled.pool);
+    const altering = syntheticMigration(
+      '9001_busy_late',
+      'alter table public.businesses add column late_seen text; select pg_sleep(3)',
+    );
+    const watch = connectAsAdmin(serverUrl ?? '', { source: 'watch' });
+    watchers.push(watch);
+
+    const running = applyMigrations(built.admin, [...onDisk, altering]).catch(
+      (error: unknown) => error,
+    );
+    expect(await sleepingOn(watch, built.name)).toBe(true);
+    // The column exists only inside the run's uncommitted transaction.
+    const reading = pooled.pool.betweenTransactions(
+      'select late_seen from public.businesses limit 0',
+    );
+
+    expect(await waitingOnLock(watch, pooled.pid)).toBe(true);
+    expect(await running).toMatchObject({ applied: ['9001_busy_late'] });
+    await expect(reading).resolves.toHaveLength(0);
+  }, 120_000);
+
+  it('keeps the strict reader the staging reset asks, which still counts an idle session', async () => {
+    const built = await createEmptyDatabase({ part: 'busyreset' });
+    db = built;
+    const idle = await hold(built.appUrl);
+    held.push(idle.pool);
+
+    const counted = await otherSessions(built.admin.execute);
+
+    expect(counted.map((s) => s.pid)).toContain(idle.pid);
+  }, 120_000);
+
   // MIG-TIMESTAMP: an installation at main's newest migration upgrades onto
   // timestamp IDs, one run at a time, in ID order. The planted IDs are in 2099
   // so they sort after every real migration, timestamped ones included.
@@ -249,7 +397,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await lastApplied(built)).toBe('20991231010000_mt_second');
   }, 120_000);
 
-  it('catches a session that connects after the first check, inside the migration, before its commit', async () => {
+  it('catches a session that starts a transaction after the first check, inside the migration, before its commit', async () => {
     const built = await createEmptyDatabase({ part: 'fr6late' });
     db = built;
     await migrate(built.admin, 'migrations');
@@ -267,7 +415,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     // The runner is inside 9001's transaction: its first check and the one at
     // the start of the transaction have both passed with nobody connected.
     expect(sleeping).toBe(true);
-    const late = await hold(built.appUrl);
+    const late = await holdBusy(built.appUrl);
     held.push(late.pool);
 
     const refused = refusal(await running);
@@ -294,7 +442,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
       (error: unknown) => error,
     );
     expect(await sleepingOn(watch, built.name)).toBe(true);
-    const late = await hold(built.appUrl);
+    const late = await holdBusy(built.appUrl);
     held.push(late.pool);
     const refused = refusal(await running);
 
@@ -617,7 +765,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     url.password = password;
     const runner = connectAsAdmin(url.toString(), { source: 'migration' });
     watchers.push(runner);
-    const app = await hold(built.appUrl);
+    const app = await holdBusy(built.appUrl);
     held.push(app.pool);
     const before = await state(built);
 
@@ -634,7 +782,10 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
 
     // The control: with pg_read_all_stats the same role sees the session and
     // the connection check names it, so the grant the refusal asks for is enough.
+    // pg_maintain lets it take the run's locks first, as the owner can.
     await built.admin.execute(`grant pg_read_all_stats to "${blind}"`);
+    await built.admin.execute(`grant pg_maintain to "${blind}"`);
+    await built.admin.execute(`grant usage on schema public to "${blind}"`);
     const seen = refusal(
       await applyMigrations(runner, [
         ...onDisk,
@@ -684,7 +835,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
 
   it('refuses through the command line, with nothing in the environment to get round it', async () => {
     const on = await at0023('fr6cli');
-    const app = await hold(on.appUrl);
+    const app = await holdBusy(on.appUrl);
     held.push(app.pool);
     const before = await state(on);
 
@@ -703,6 +854,34 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
       `refusing to apply ${String(PENDING_AFTER_0023.length)} pending migration(s)`,
     );
     expect(run.stderr).toContain(`connected: pid ${String(app.pid)}, login ${on.loginRole}`);
+    expect(await state(on)).toBe(before);
+  }, 120_000);
+
+  it('refuses a held lock through the command line after three timed-out attempts, exiting 2', async () => {
+    const on = await at0023('busylockcli');
+    const holder = await holdBusy(
+      ownerUrl(on),
+      'lock table public.businesses in access share mode',
+    );
+    held.push(holder.pool);
+    const before = await state(on);
+
+    const run = await promisify(execFile)(process.execPath, ['scripts/db-migrate.mjs'], {
+      env: { PATH: process.env['PATH'] ?? '', DATABASE_ADMIN_URL: ownerUrl(on) },
+    }).then(
+      () => ({ code: 0, stderr: '' }),
+      (error: { readonly code?: number; readonly stderr?: string }) => ({
+        code: error.code,
+        stderr: error.stderr ?? '',
+      }),
+    );
+
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain(
+      'a lock wait passed 5000 ms on each of 3 attempt(s), 10000 ms apart',
+    );
+    expect(run.stderr).toContain(`connected: pid ${String(holder.pid)}, login `);
+    expect(run.stderr).toContain('state idle in transaction');
     expect(await state(on)).toBe(before);
   }, 120_000);
 });

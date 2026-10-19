@@ -28,15 +28,31 @@
 //   silence.
 // - Statements are split and sent one at a time, so the statement log and any
 //   error name the statement rather than the file.
-// - It checks, when anything is pending, that no other client session is
-//   connected to the database, and refuses to apply anything if one is. The
-//   supported upgrade is the application stopped, and a migration run beside a
-//   live application has two known ways to go wrong in 0030 alone. The check
-//   is a backstop to stopping the application, not the
-//   stop: an idle application that holds no connection passes it
-//   (docs/local/DATA.md, "Upgrade"). A role that cannot read every session is
-//   refused rather than trusted to have seen nobody. Hosted Supabase's own
-//   service logins, named one by one, are not counted: they never stop.
+// - It takes its locks before it looks. When anything is pending, the one
+//   transaction first bounds every lock wait to 5 s (`lock_timeout`, for the
+//   transaction only), then locks every table in `ops` and `public` in ACCESS
+//   EXCLUSIVE mode in one statement, then checks the other sessions. So a
+//   session that starts a statement on one of those tables mid-run waits for
+//   the commit and then sees the new schema.
+// - It refuses to apply anything beside a session that could be using the old
+//   schema: one that is active, has a transaction open (idle or aborted in
+//   it), or holds any lock. A session that is idle with no transaction and no
+//   lock passes, which is what a transaction-mode pooler such as Supavisor
+//   keeps open and refills when it is ended (#1984). So does a single
+//   statement, alone in its transaction and holding no other lock, whose only
+//   wait is on the runner's own locks: it has read nothing yet, and it sees the
+//   new schema when the run commits. The supported upgrade is the
+//   application stopped, and a migration run beside a live application has two
+//   known ways to go wrong in 0030 alone. The check is a backstop to stopping
+//   the application, not the stop (docs/local/DATA.md, "Upgrade"). A role that
+//   cannot read every session is refused rather than trusted to have seen
+//   nobody. Hosted Supabase's own service logins, named one by one, are not
+//   counted: they never stop, and their schemas are never locked.
+// - A lock wait that times out (55P03) anywhere in the run rolls it back whole,
+//   and the run is applied again from the ledger read, three attempts in all
+//   10 s apart, then refused naming the sessions that counted at the last look
+//   (`MigrationLockTimeout`). The attempts, the timeout and the pause are
+//   options for the tests; the CLI passes none.
 
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
@@ -90,33 +106,79 @@ export interface ConnectedSession {
   readonly backend_start: string | null;
 }
 
+/** A session that could be using the old schema, with what makes it count. */
+export interface BusySession extends ConnectedSession {
+  readonly state: string | null;
+  readonly xact_start: string | null;
+  /** The locks it holds, as `<mode> on <relation or lock type>`, or null for none. */
+  readonly holds: string | null;
+}
+
+function named(sessions: readonly BusySession[]): string {
+  if (sessions.length === 0) return 'none';
+  return sessions
+    .map(
+      (s) =>
+        `pid ${String(s.pid)} login ${s.usename ?? '?'} application "${s.application_name ?? ''}" ` +
+        `from ${s.client_addr ?? 'local socket'} since ${s.backend_start ?? '?'}, ` +
+        `state ${s.state ?? '?'}, transaction since ${s.xact_start ?? 'none'}, ` +
+        `holding ${s.holds ?? 'no lock'}`,
+    )
+    .join('; ');
+}
+
 /**
- * Thrown when pending migrations meet other sessions on the database.
+ * Thrown when pending migrations meet sessions that could be using the old
+ * schema.
  *
- * Wherever the run was when it looked, nothing was applied: before the
- * transaction nothing had started, and inside it the whole run rolls back.
+ * Every look is inside the run's one transaction, so nothing was applied: the
+ * whole run rolls back.
  */
 export class MigrationRefused extends Error {
-  readonly sessions: readonly ConnectedSession[];
+  readonly sessions: readonly BusySession[];
   readonly pending: readonly string[];
 
-  constructor(sessions: readonly ConnectedSession[], pending: readonly string[]) {
-    const named = sessions
-      .map(
-        (s) =>
-          `pid ${String(s.pid)} login ${s.usename ?? '?'} application "${s.application_name ?? ''}" ` +
-          `from ${s.client_addr ?? 'local socket'} since ${s.backend_start ?? '?'}`,
-      )
-      .join('; ');
+  constructor(sessions: readonly BusySession[], pending: readonly string[], startedAt: string) {
     super(
       `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
-        `(${pending.join(', ')}) while ${String(sessions.length)} other session(s) are connected ` +
-        `to this database: ${named}. Nothing was applied. Stop the application (the API and GoTrue) and ` +
-        `anything else connected to this database, then run it again.`,
+        `(${pending.join(', ')}) while ${String(sessions.length)} other session(s) could be using ` +
+        `the old schema (active, in a transaction or holding a lock): ${named(sessions)}. ` +
+        `Nothing was applied. The database is still ${startedAt}. Stop the application (the API ` +
+        `and GoTrue) and anything else working on this database, then run it again.`,
     );
     this.name = 'MigrationRefused';
     this.sessions = sessions;
     this.pending = pending;
+  }
+}
+
+/**
+ * Thrown when a lock wait timed out on every attempt. Each attempt rolled back
+ * whole, so nothing was applied. `sessions` are the ones that counted at a
+ * look taken after the last attempt.
+ */
+export class MigrationLockTimeout extends Error {
+  readonly sessions: readonly BusySession[];
+  readonly pending: readonly string[];
+  readonly attempts: number;
+
+  constructor(
+    sessions: readonly BusySession[],
+    pending: readonly string[],
+    timing: LockTiming,
+    startedAt: string,
+  ) {
+    super(
+      `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
+        `(${pending.join(', ')}): a lock wait passed ${String(timing.timeoutMs)} ms on each of ` +
+        `${String(timing.attempts)} attempt(s), ${String(timing.pauseMs)} ms apart. Sessions that ` +
+        `could be using the old schema at the last look: ${named(sessions)}. Nothing was applied. ` +
+        `The database is still ${startedAt}. Stop what holds the lock, then run it again.`,
+    );
+    this.name = 'MigrationLockTimeout';
+    this.sessions = sessions;
+    this.pending = pending;
+    this.attempts = timing.attempts;
   }
 }
 
@@ -169,7 +231,51 @@ export async function otherSessions(
   return sessions.filter((s) => s.usename === null || !HOSTED_SERVICE_LOGINS.has(s.usename));
 }
 
-/** Refuse, naming what is connected, when anything but this backend is. */
+/**
+ * The sessions of `OTHER_SESSIONS` that could be using the old schema: not
+ * idle, or with a transaction open, or holding or awaiting any lock. A null
+ * state counts. One statement queued behind the run's own locks does not:
+ * its wait is on a lock that only this backend blocks, it is its
+ * transaction's only statement (`xact_start = query_start`), and it holds no
+ * granted lock but its own virtual transaction id. It has read nothing yet,
+ * a function definition included, and reads the new schema after the commit.
+ * A transaction with any statement before the waiting one counts, because a
+ * function takes no lock and that statement may have run the old one
+ * (S2007-1). Outside a transaction this backend holds nothing, so the clause
+ * matches nobody.
+ */
+const BUSY_SESSIONS = `select a.pid, a.usename::text as usename, a.application_name,
+       host(a.client_addr) as client_addr, a.backend_start::text as backend_start,
+       a.state, a.xact_start::text as xact_start,
+       (select string_agg(held.lock, ', ' order by held.lock)
+          from (select distinct l.mode || ' on ' || coalesce(l.relation::regclass::text, l.locktype) as lock
+                  from pg_locks l where l.pid = a.pid and l.granted) held) as holds
+  from pg_stat_activity a
+ where a.datname = current_database()
+   and a.backend_type = 'client backend'
+   and a.pid <> pg_backend_pid()
+   and (a.state is distinct from 'idle'
+        or a.xact_start is not null
+        or exists (select 1 from pg_locks l where l.pid = a.pid))
+   and not (a.wait_event_type is not distinct from 'Lock'
+            and pg_blocking_pids(a.pid) = array[pg_backend_pid()]
+            and a.xact_start = a.query_start
+            and not exists (select 1 from pg_locks l
+                             where l.pid = a.pid and l.granted and l.locktype <> 'virtualxid'))
+ order by a.pid`;
+
+/**
+ * The sessions a run refuses to apply beside (`MigrationRefused`). Narrower
+ * than `otherSessions`, which a caller about to empty a database still asks.
+ */
+export async function busySessions(
+  execute: AdminConnection['execute'],
+): Promise<readonly BusySession[]> {
+  await execute(`select pg_stat_clear_snapshot()`);
+  const sessions = await execute<BusySession>(BUSY_SESSIONS);
+  return sessions.filter((s) => s.usename === null || !HOSTED_SERVICE_LOGINS.has(s.usename));
+}
+
 /**
  * Thrown when the runner's role cannot read every session's row in
  * `pg_stat_activity`. PostgreSQL hides `backend_type` for another role's
@@ -180,12 +286,13 @@ export class MigrationRoleCannotSee extends Error {
   readonly role: string;
   readonly pending: readonly string[];
 
-  constructor(role: string, pending: readonly string[]) {
+  constructor(role: string, pending: readonly string[], startedAt: string) {
     super(
       `migrate: refusing to apply ${String(pending.length)} pending migration(s) ` +
         `(${pending.join(', ')}): the role ${role} cannot read every session in ` +
         `pg_stat_activity, so it cannot tell whether anything else is connected. Nothing was ` +
-        `applied. Run it as a superuser, or grant ${role} pg_read_all_stats.`,
+        `applied. The database is still ${startedAt}. Run it as a superuser, or grant ${role} ` +
+        `pg_read_all_stats.`,
     );
     this.name = 'MigrationRoleCannotSee';
     this.role = role;
@@ -202,21 +309,46 @@ export class MigrationRoleCannotSee extends Error {
 async function refuseIfBlind(
   execute: AdminConnection['execute'],
   pending: readonly string[],
+  startedAt: string,
 ): Promise<void> {
   const [row] = await execute<{ readonly role: string; readonly sees: boolean }>(
     `select current_user::text as role,
             coalesce((select rolsuper from pg_roles where rolname = current_user), false)
               or pg_has_role(current_user, 'pg_read_all_stats', 'usage') as sees`,
   );
-  if (row?.sees !== true) throw new MigrationRoleCannotSee(row?.role ?? '?', pending);
+  if (row?.sees !== true) throw new MigrationRoleCannotSee(row?.role ?? '?', pending, startedAt);
 }
 
-async function refuseIfConnected(
+async function refuseIfBusy(
   execute: AdminConnection['execute'],
   pending: readonly string[],
+  startedAt: string,
 ): Promise<void> {
-  const sessions = await otherSessions(execute);
-  if (sessions.length > 0) throw new MigrationRefused(sessions, pending);
+  const sessions = await busySessions(execute);
+  if (sessions.length > 0) throw new MigrationRefused(sessions, pending, startedAt);
+}
+
+/**
+ * Every ordinary and partitioned table in the schemas the migrations own, in
+ * one fixed order, quoted. Supabase's own schemas are not among them.
+ */
+const OWN_TABLES = `select format('%I.%I', n.nspname, c.relname) as name
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname in ('ops', 'public') and c.relkind in ('r', 'p')
+ order by n.nspname, c.relname`;
+
+/** Bound every lock wait in the transaction, then lock every table it may alter. */
+async function lockFirst(execute: AdminConnection['execute'], timeoutMs: number): Promise<void> {
+  // set_config rather than SET LOCAL, which the statement log cannot read.
+  await execute(`select set_config('lock_timeout', $1, true)`, [`${String(timeoutMs)}ms`]);
+  const tables = await execute<{ readonly name: string }>(OWN_TABLES);
+  if (tables.length === 0) return;
+  // ONLY each one: without it LOCK TABLE takes every inheritance child and
+  // partition too, wherever its schema is, `auth` included (S2007-2). The
+  // children in ops and public are on the list themselves.
+  await execute(
+    `lock table ${tables.map((t) => `only ${t.name}`).join(', ')} in access exclusive mode`,
+  );
 }
 
 /**
@@ -311,11 +443,47 @@ async function readLedger(
   return new Map(rows.map((row) => [row.version, row.checksum]));
 }
 
+/** How long a run waits on one lock, and how often and how far apart it tries. */
+export interface MigrateOptions {
+  /** Attempts in all while a lock wait times out. Default 3. */
+  readonly lockAttempts?: number;
+  /** The run's `lock_timeout`. Default 5000. */
+  readonly lockTimeoutMs?: number;
+  /** The pause before the next attempt. Default 10000. */
+  readonly lockPauseMs?: number;
+}
+
+interface LockTiming {
+  readonly attempts: number;
+  readonly timeoutMs: number;
+  readonly pauseMs: number;
+}
+
+/** The options with their defaults, each a whole number in range or refused. */
+function lockTiming(options: MigrateOptions): LockTiming {
+  const timing = {
+    attempts: options.lockAttempts ?? 3,
+    timeoutMs: options.lockTimeoutMs ?? 5000,
+    pauseMs: options.lockPauseMs ?? 10_000,
+  };
+  for (const [option, value, least] of [
+    ['lockAttempts', timing.attempts, 1],
+    ['lockTimeoutMs', timing.timeoutMs, 1],
+    ['lockPauseMs', timing.pauseMs, 0],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < least) {
+      throw new Error(`migrate: ${option} must be a whole number of at least ${String(least)}`);
+    }
+  }
+  return timing;
+}
+
 export async function migrate(
   admin: AdminConnection,
   directory: string,
+  options: MigrateOptions = {},
 ): Promise<MigrationOutcome> {
-  return await applyMigrations(admin, readMigrations(directory));
+  return await applyMigrations(admin, readMigrations(directory), options);
 }
 
 /** What the ledger already holds, checked against its file, and what it does not. */
@@ -388,14 +556,64 @@ async function retryOnSharedRace<T>(apply: () => Promise<T>): Promise<T> {
 export async function applyMigrations(
   admin: AdminConnection,
   migrations: readonly Migration[],
+  options: MigrateOptions = {},
 ): Promise<MigrationOutcome> {
-  return await retryOnSharedRace(async () => await applyOnce(admin, migrations));
+  const timing = lockTiming(options);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- one attempt after another, never two at once
+      return await retryOnSharedRace(
+        async () => await applyOnce(admin, migrations, timing.timeoutMs),
+      );
+    } catch (error) {
+      if (!(error instanceof LockWaitTimedOut)) throw error;
+      if (attempt >= timing.attempts) {
+        throw new MigrationLockTimeout(
+          // oxlint-disable-next-line no-await-in-loop -- the last look, after the last attempt
+          await busySessions(admin.execute),
+          error.pending,
+          timing,
+          error.startedAt,
+        );
+      }
+    }
+    // oxlint-disable-next-line no-await-in-loop -- the next attempt follows this pause
+    await pause(timing.pauseMs);
+  }
+}
+
+/** An attempt that rolled back whole because a lock wait passed `lock_timeout`. */
+class LockWaitTimedOut extends Error {
+  readonly pending: readonly string[];
+  readonly startedAt: string;
+
+  constructor(pending: readonly string[], startedAt: string, cause: unknown) {
+    super('migrate: a lock wait timed out; the attempt rolled back', { cause });
+    this.pending = pending;
+    this.startedAt = startedAt;
+  }
+}
+
+/**
+ * Whether a lock wait passed `lock_timeout` (55P03, lock_not_available),
+ * raised by the runner's own statement or, wrapped, by a file's.
+ */
+function timedOutOnALock(error: unknown): boolean {
+  return (
+    sqlState(error) === '55P03' ||
+    sqlState(error instanceof Error ? error.cause : undefined) === '55P03'
+  );
+}
+
+function sqlState(error: unknown): unknown {
+  return (error as { readonly code?: unknown } | null | undefined)?.code;
 }
 
 /** One attempt: the ledger read, every check, and the one transaction. */
 async function applyOnce(
   admin: AdminConnection,
   migrations: readonly Migration[],
+  lockTimeoutMs: number,
 ): Promise<MigrationOutcome> {
   refuseOutsideATransaction(migrations);
   const ledger = await readLedger(admin);
@@ -409,52 +627,66 @@ async function applyOnce(
   const last = [...(ledger?.keys() ?? [])].toSorted().at(-1);
   const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
 
-  // The check runs before the transaction, inside it before each file, and
-  // once more before the commit, so a session that connects after the first
-  // look still refuses the run, and the whole run rolls back.
-  await refuseIfBlind(admin.execute, names);
-  await refuseIfConnected(admin.execute, names);
-  await admin.transaction(
-    async (execute) => {
-      const opened = await transactionId(execute);
-      // Migrations are ordered and each one may depend on the last, so they are
-      // applied one at a time on purpose. The same goes for the statements
-      // inside one migration. `Promise.all` here would apply a schema in an
-      // order nobody wrote.
-      for (const migration of pending) {
-        // oxlint-disable-next-line no-await-in-loop
-        await refuseIfConnected(execute, names);
-        for (const statement of migration.statements) {
-          try {
-            // oxlint-disable-next-line no-await-in-loop
-            await execute(statement);
-          } catch (cause) {
-            throw new Error(
-              `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
-                `applied; the database is still ${startedAt}.`,
-              { cause },
-            );
-          }
-          // The tripwire. The guard and the backstop are readings; this is
-          // the server's word that the run's one transaction is still open.
+  // Every look is inside the transaction, after its locks: once they are
+  // held, then before each file, and once more before the commit, so a
+  // session that gets busy after the first look still refuses the run, and
+  // the whole run rolls back. A look before the locks would refuse a lock
+  // holder at once, where the bounded wait and its retries give a transient
+  // one time to finish.
+  await refuseIfBlind(admin.execute, names, startedAt);
+  try {
+    await admin.transaction(
+      async (execute) => {
+        const opened = await transactionId(execute);
+        await lockFirst(execute, lockTimeoutMs).catch((cause: unknown) => {
+          throw new Error(
+            `migrate: could not lock the tables in ops and public before the run. Nothing was ` +
+              `applied; the database is still ${startedAt}.`,
+            { cause },
+          );
+        });
+        // Migrations are ordered and each one may depend on the last, so they are
+        // applied one at a time on purpose. The same goes for the statements
+        // inside one migration. `Promise.all` here would apply a schema in an
+        // order nobody wrote.
+        for (const migration of pending) {
           // oxlint-disable-next-line no-await-in-loop
-          if ((await transactionId(execute)) !== opened) {
-            throw new Error(
-              `migrate: ${migration.version} ended the run's transaction on: ` +
-                `${statement.slice(0, 200)}. The run stopped there. Work before it in this run ` +
-                `may be committed, so read ops.schema_migrations and the schema before running again.`,
-            );
+          await refuseIfBusy(execute, names, startedAt);
+          for (const statement of migration.statements) {
+            try {
+              // oxlint-disable-next-line no-await-in-loop
+              await execute(statement);
+            } catch (cause) {
+              throw new Error(
+                `migrate: ${migration.version} failed on: ${statement.slice(0, 200)}. Nothing was ` +
+                  `applied; the database is still ${startedAt}.`,
+                { cause },
+              );
+            }
+            // The tripwire. The guard and the backstop are readings; this is
+            // the server's word that the run's one transaction is still open.
+            // oxlint-disable-next-line no-await-in-loop
+            if ((await transactionId(execute)) !== opened) {
+              throw new Error(
+                `migrate: ${migration.version} ended the run's transaction on: ` +
+                  `${statement.slice(0, 200)}. The run stopped there. Work before it in this run ` +
+                  `may be committed, so read ops.schema_migrations and the schema before running again.`,
+              );
+            }
           }
+          // oxlint-disable-next-line no-await-in-loop
+          await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
+            migration.version,
+            migration.checksum,
+          ]);
         }
-        // oxlint-disable-next-line no-await-in-loop
-        await execute(`insert into ops.schema_migrations (version, checksum) values ($1, $2)`, [
-          migration.version,
-          migration.checksum,
-        ]);
-      }
-      await refuseIfConnected(execute, names);
-    },
-    { oneCommandEach: true },
-  );
+        await refuseIfBusy(execute, names, startedAt);
+      },
+      { oneCommandEach: true },
+    );
+  } catch (error) {
+    if (timedOutOnALock(error)) throw new LockWaitTimedOut(names, startedAt, error);
+    throw error;
+  }
   return { applied: names, alreadyApplied };
 }
