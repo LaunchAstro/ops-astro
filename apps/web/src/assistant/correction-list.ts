@@ -3,17 +3,23 @@
 // #1695: a desk's cards as `live_correction.list` answers them. A card the
 // desk holds takes the listed state; a correction it does not hold yet is
 // added, its page named by its address.
+//
+// #2108: the list names a version but not its check. A card listed at a new
+// version drops the check it held on the old one, so it offers no Approve
+// until a read of the new version answers.
 
 import type { CorrectionListItem } from '../../../../packages/core-wire/src/index.ts';
 import { cardState } from './correction.ts';
 import type { Correction } from './correction-desks.ts';
 
-/** Where a listed correction stands, as the list answered it. */
-const standing = (item: CorrectionListItem): Partial<Correction> => ({
+/** A held card as the list answered it: a new version keeps no check from the old one. */
+const standing = (held: Correction, item: CorrectionListItem): Correction => ({
+  ...held,
   state: cardState(item.state),
   approver: item.approver,
   versionId: item.versionId,
   refusal: null,
+  ...(item.versionId === held.versionId ? {} : { verifiedForMs: 0, readAt: null }),
 });
 
 /** A listed correction as its card holds it; the page is named by its address. */
@@ -38,7 +44,7 @@ export const withListed = (
   const byId = new Map(items.map((item) => [item.correctionId, item]));
   const held = list.map((each) => {
     const item = byId.get(each.correctionId);
-    return item === undefined ? each : { ...each, ...standing(item) };
+    return item === undefined ? each : standing(each, item);
   });
   const known = new Set(list.map((each) => each.correctionId));
   const fresh = items.filter((item) => !known.has(item.correctionId)).map((item) => listed(item));
