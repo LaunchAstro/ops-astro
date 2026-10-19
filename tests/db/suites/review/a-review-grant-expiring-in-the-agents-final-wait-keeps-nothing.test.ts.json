@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 under a delegation, after the final wait: an agent's open or capture whose delegating person's review:write expires while the call waits on the agent actor's for share is refused DELEGATION_NARROWED, keeping no revision or capture."
+}
