@@ -21,6 +21,7 @@ import {
 import {
   AGENT_MODEL_CALL_LIMIT,
   AGENT_TOOLS,
+  isWorkerEndCode,
   outcomeOf,
   type EndCode,
   type RunOutcome,
@@ -36,11 +37,24 @@ export interface AgentRunnerOptions {
   readonly task?: string;
 }
 
-/** A refusal or fault is the attempt's stop; `run.end` records it unless a stop already did. */
-const stopOf = (answer: Unanswered): { readonly refused: EndCode; readonly recorded: false } => ({
+type Stop = { readonly refused: EndCode; readonly recorded: false };
+
+/** A turn's refusal is the broker's own end code, which it records; a fault is an answer lost. */
+const turnStopOf = (answer: Unanswered): Stop => ({
   refused: ('refused' in answer ? answer.refused.code : 'ANSWER_LOST') as EndCode,
   recorded: false,
 });
+
+/**
+ * A read's or a tool's refusal is the attempt's stop, which `run.end` records:
+ * a code the worker may end with stands, and any other (a correction the door
+ * refuses, `CHANGE_ENVELOPE_EXCEEDED` among them) is `TOOL_REFUSED` (S2010-1).
+ */
+const stopOf = (answer: Unanswered): Stop => {
+  if (!('refused' in answer)) return { refused: 'ANSWER_LOST', recorded: false };
+  const { code } = answer.refused;
+  return { refused: isWorkerEndCode(code) ? code : 'TOOL_REFUSED', recorded: false };
+};
 
 /** The task a read answers, under its detail as the worker's proposal reads it (`proposal.ts`). */
 const taskOf = (answer: Answered): Readonly<Record<string, unknown>> | undefined =>
@@ -58,7 +72,7 @@ function brokerOver(context: StepContext, operation: string): BrokerPort {
         ...turn,
       });
       if (!('body' in answer)) {
-        const stop = stopOf(answer);
+        const stop = turnStopOf(answer);
         return { stopped: stop.refused, recorded: stop.recorded };
       }
       const { callId, text, toolCalls, terminal } = answer.detail;
