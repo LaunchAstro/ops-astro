@@ -1656,7 +1656,7 @@ CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
   held there (owner line 72): an answer by the digest its settlement kept
   (`answer_digest`, sha256 of the canonical JSON of `{v, text, toolCalls}`;
   the words are never stored), scoped to the business and the attempt. Tool
-  calls nested 64 deep or more have no digest: the call still settles priced,
+  calls nested 64 deep or more, or holding a non-finite number, have no digest: the call still settles priced,
   and the attempt ends `cancelled / TURN_MALFORMED`, since a later turn could
   never bind that answer; a part of that depth is `PROVENANCE_UNBOUND`. The
   turn's class is its strictest source's, kept on the answer as

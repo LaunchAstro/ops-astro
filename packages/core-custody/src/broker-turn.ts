@@ -43,10 +43,17 @@ const ANSWER_DEPTH = 64;
 /**
  * The answer's digest: sha256 of the canonical JSON (RFC 8785's order) of its bytes. Tool
  * calls nested ANSWER_DEPTH deep or more have none, judged without recursion, so the
- * canonical writer only ever recurses within the bound and no answer makes it throw.
+ * canonical writer only ever recurses within the bound; nor does a value it refuses (a
+ * non-finite number), so no answer makes the digest throw.
  */
-export const answerDigest = (text: string, toolCalls: readonly ToolCall[]): string | undefined =>
-  nestsTooDeep(toolCalls, ANSWER_DEPTH) ? undefined : payloadDigest({ v: 1, text, toolCalls });
+export function answerDigest(text: string, toolCalls: readonly ToolCall[]): string | undefined {
+  if (nestsTooDeep(toolCalls, ANSWER_DEPTH)) return undefined;
+  try {
+    return payloadDigest({ v: 1, text, toolCalls });
+  } catch {
+    return undefined;
+  }
+}
 
 /** The task fields an external reader, and so the agent, is shown. */
 const SHOWN = TASK_SPINE.filter((field) => field.visibilityClass === 'shared').map((f) => f.key);
