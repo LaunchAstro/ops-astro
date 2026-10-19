@@ -150,9 +150,10 @@ the browser makes only same-origin requests.
 volume, so the data survives.
 
 To upgrade an existing install to a newer head, stop the application first.
-The runner checks for it: with a migration pending and anything else connected
-to the database, it applies nothing and names what is connected. It cannot
-tell a stopped application from an idle one, so the stop below is your step
+The runner checks for it: with a migration pending and any other session
+active, in a transaction or holding a lock, it applies nothing and names
+each one. It cannot tell a stopped application from an idle one, so the stop
+below is your step
 ([DATA.md, "Upgrade"](DATA.md#upgrade)).
 
 1. Stop the API: `kill <pid>` on the process you started with `api:up`, as
@@ -166,8 +167,8 @@ tell a stopped application from an idle one, so the stop below is your step
 A refusal exits 2 and prints each session it found, one per line:
 
 ```
-db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) while 1 other session(s) are connected to this database: ... Nothing was applied. Stop the application (the API and GoTrue) and anything else connected to this database, then run it again.
-db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00
+db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) while 1 other session(s) could be using the old schema (active, in a transaction or holding a lock): ... Nothing was applied. The database is still at 0023_delegation_revocation_cause. Stop the application (the API and GoTrue) and anything else working on this database, then run it again.
+db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00, state idle in transaction, transaction since 2026-09-24 16:58:02+00, holding ExclusiveLock on virtualxid
 ```
 
 Nothing changed. A run is one transaction, so a refusal, at whatever point
