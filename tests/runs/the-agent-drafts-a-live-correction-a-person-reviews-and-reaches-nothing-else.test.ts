@@ -49,11 +49,11 @@ import {
 } from './run-stop-world.ts';
 import {
   agentBroker,
+  anEarlierLeasesCorrection,
   answerPart,
   askedTurn,
   correctionsOn,
   delegationOfLease,
-  endAsAgent,
   namingCorrection,
   OWN_PAGE,
   ownSiteOf,
@@ -67,7 +67,7 @@ import {
   UUID,
   WORDS,
   workOn,
-  type Detail,
+  type Earlier,
 } from './agent-draft-world.ts';
 
 useStopWorld('r7agentdraft');
@@ -219,19 +219,6 @@ describe.skipIf(serverUrl === undefined)('the agent asks only as a person would'
   }, 60_000);
 });
 
-/** A correction the agent asked on its own task under a lease it then ended. Its id and task. */
-async function anEndedLeasesCorrection(): Promise<{
-  readonly id: string;
-  readonly taskId: string;
-}> {
-  const work = await workOn(await createTask(s, 'an earlier lease'));
-  const asked = await requestAsAgent(work, requestOf(work.taskId));
-  if (asked.status !== 200) throw new Error(`setup: request ${JSON.stringify(asked.body)}`);
-  await endAsAgent(work);
-  const id = String((asked.body['detail'] as Detail | undefined)?.['correctionId']);
-  return { id, taskId: work.taskId };
-}
-
 /** A correction a person of the other business asked on their own site. */
 async function anotherBusinessesCorrection(): Promise<string> {
   const taskId = await createTask(other, 'their own task');
@@ -240,8 +227,8 @@ async function anotherBusinessesCorrection(): Promise<string> {
   return String(appliedDetail(asked, 'their request')['correctionId']);
 }
 
-/** The correction an ended lease asked, made once before the cases that name it. */
-let ended: { readonly id: string; readonly taskId: string };
+/** The correction an earlier lease asked, made once before the cases that name it. */
+let earlier: Earlier;
 
 /** Each a correction no turn of the work may carry back. */
 const CASES: readonly {
@@ -250,13 +237,16 @@ const CASES: readonly {
 }[] = [
   {
     name: "another lease's delegation, on the same task",
-    make: async () => ({ work: await workOn(ended.taskId), correctionId: ended.id }),
+    make: async () => ({
+      work: await workOn(earlier.taskId, earlier.lineageId),
+      correctionId: earlier.id,
+    }),
   },
   {
     name: 'another task of this business',
     make: async () => ({
       work: await workOn(await createTask(s, 'not that task')),
-      correctionId: ended.id,
+      correctionId: earlier.id,
     }),
   },
   {
@@ -272,7 +262,7 @@ describe.skipIf(serverUrl === undefined)('a correction result that is not the ru
   const refusals: Answer[] = [];
 
   beforeAll(async () => {
-    ended = await anEndedLeasesCorrection();
+    earlier = await anEarlierLeasesCorrection();
   }, 120_000);
 
   it.each(CASES)(
