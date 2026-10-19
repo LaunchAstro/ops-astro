@@ -1,29 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-12, part one: the four shared fakes (TEST.md 4), each capability the
-// cases lean on, all of them run with every egress denied.
+// cases lean on. That the agent's loop over them needs no egress is A6's,
+// proven under kernel confinement (`agent:egress:conformance`).
 
-import { createSocket } from 'node:dgram';
-import dns from 'node:dns';
-import { request } from 'node:http';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
-import { denyEgress, type EgressGuard } from './deny-egress.ts';
 import { CORPUS_WINDOWS, fakeClock, sourceCorpus } from './fake-clock-corpus.ts';
 import { fakeEffect, type EffectState } from './fake-effect.ts';
 import { digestOf, fakeModel, SLOW_MS, unitsOf, type ModelReply } from './fake-model.ts';
 
 const WINDOW = REPLAY_MODEL_WINDOW.contextUnits;
 const LINE = { input: 'Summarise fp-s-001.', text: 'A grounded summary.', outputUnits: 30 };
-
-let guard: EgressGuard;
-beforeEach(() => {
-  guard = denyEgress();
-});
-afterEach(() => {
-  guard.release();
-  expect(guard.attempts).toEqual([]);
-});
 
 const settled = async <T>(promise: Promise<T>): Promise<T | 'pending'> =>
   await Promise.race([
@@ -160,38 +148,5 @@ describe('AW-12 fakes: FP-C and FP-S', () => {
     expect(sourceCorpus()).toEqual(corpus);
     expect(corpus[0]).toMatchObject({ id: 'fp-s-001', revision: 1 });
     expect(corpus[0]?.digest).toMatch(/^[0-9a-f]{64}$/u);
-  });
-});
-
-describe('AW-12 fakes: all egress denied', () => {
-  it('the guard refuses a socket, a datagram, a lookup, a resolve and a fetch, and records each (the control)', async () => {
-    const control = denyEgress();
-    const udp = createSocket('udp4');
-    try {
-      await expect(fetch('http://203.0.113.9/collect')).rejects.toThrow(/egress denied/u);
-      const refused = await new Promise<string>((done) => {
-        const outbound = request({ host: '127.0.0.1', port: 9, path: '/' });
-        outbound.on('error', (error) => done(error.message));
-        outbound.end();
-      });
-      expect(refused).toMatch(/egress denied/u);
-      expect(() => udp.send('x', 9, '127.0.0.1')).toThrow(/egress denied/u);
-      expect(() => dns.resolve4('a.aw12.invalid', () => {})).toThrow(/egress denied/u);
-      await expect(dns.promises.resolveTxt('b.aw12.invalid')).rejects.toThrow(/egress denied/u);
-      expect(() => new dns.Resolver().resolve6('c.aw12.invalid', () => {})).toThrow(/denied/u);
-      await expect(new dns.promises.Resolver().resolve('d.aw12.invalid')).rejects.toThrow(
-        /denied/u,
-      );
-      expect(() => dns.lookup('e.aw12.invalid', () => {})).toThrow(/egress denied/u);
-      expect(control.attempts).toEqual([
-        'fetch http://203.0.113.9/collect',
-        'socket 9',
-        'udp 9',
-        ...['a', 'b', 'c', 'd', 'e'].map((host) => `dns ${host}.aw12.invalid`),
-      ]);
-    } finally {
-      udp.close();
-      control.release();
-    }
   });
 });

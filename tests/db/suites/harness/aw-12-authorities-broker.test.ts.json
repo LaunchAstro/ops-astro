@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "named in tests/db/named-suites/ before each suite had its own file; its reason is in tests/db/suites-history.json"
+  "why": "#1905 AW-12 A3, A4 and A5 on the real agent stack: the shipped agent runner at an accepted plan's compute, through the real door and broker. A turn no reservation covers is refused BUDGET_UNAVAILABLE, recorded and not sent, and the agent's turn on a handed-back or made-up lease is refused writing nothing; custody's planted key reaches the provider and nothing the agent holds; a tool the catalogue does not name ends the run TOOL_NOT_CATALOGUED, recorded, and a free-text verb is refused DELEGATION_EXCLUDES_OPERATION with its audit row; each beside its positive control. A call reserved before a sibling dropped unknown is released unsent."
 }

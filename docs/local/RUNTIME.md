@@ -2270,28 +2270,54 @@ after the business-wide keys. Tests: `aw-01-occurrence-run`,
 ## Framework authority tests
 
 The A1 to A8 suite and the four shared fakes stay in `tests/harness/`.
-Tests: `aw-12-authorities` in three files, and `aw-12-fakes`.
+Tests: `aw-12-the-agent-holds-no-task-approval-or-retry-authority`,
+`aw-12-authorities-broker`, `aw-12-authorities`, the A6 conformance suite
+below, and `aw-12-fakes`.
 
-A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
-worker's place, handed a worker's settings, one model client and tools by
-name, with its own state store and retry setting. One case per authority,
-each with a positive control, and each shown red once against a broken
-boundary in the test world: deleting the stand-in's whole store leaves the
-task, its versions and its history as they were, and its plan is in no
-product row (A1); its own resume from its checkpoint (pickup, heartbeat,
-dispatch, and a decision as the agent) moves nothing until a person decides
-the gate (A2); its own model call with no reservation to cover it, on spent
-work, after the hand-back or on an invented lease, is refused with nothing
-sent (A3); a planted provider key in custody's file reaches the provider
-and nothing the stand-in, the broker's configuration, the environment or the
-ledger holds (A4); a tool the catalogue does not name is refused and
-recorded, as a step at the broker and an audit row on the agent surface (A5);
-its loop over the four fakes needs no egress, and a tool that calls home is
-refused and recorded at the network layer (A6); one failed model call with
-its retries off gives one dropped attempt and exactly one new attempt and
-reservation, the hand-back's replay none more (A7); and the restricted worker
-role, the canary for a harness's role, is refused 42501 on updating the run,
-its steps and its events, which the application role reaches (A8).
+The framework is the real one (#1905): the shipped agent runner
+(`apps/worker/agent-runner.ts`, core-agent's loop on the pinned stack) in the
+shipped worker, through the real agent door and broker to the replay
+provider. One case per authority, each with a positive control, and each
+shown red once against a broken boundary: the agent's working state reaches
+the provider and no product row, and its next step is a person's decision on
+the review gate the product holds (A1); its own resume of its handed-back
+attempt, the same lease and credential computed again, sends nothing and
+moves no gate, decision, lease, call or outcome until a person decides (A2);
+its own turn with no reservation to cover it, after the hand-back or on an
+invented lease, is refused with nothing sent (A3); a planted provider key in
+custody's file reaches the provider and nothing the agent, the worker's
+settings, the broker's configuration, the environment or the ledger holds
+(A4); a tool the catalogue does not name ends the run `TOOL_NOT_CATALOGUED`
+and is recorded, and a free-text verb is refused with its audit row on the
+agent surface (A5); a failed turn is sent once, recorded
+`liability_unknown`, never sent again by the agent or re-asked by the product
+(A7); and the restricted worker role, the canary for a harness's role, is
+refused 42501 on updating the run, its steps and its events, which the
+application role reaches (A8). The test-only stand-in and the in-process
+egress patch it ran under are gone (#509).
+
+A6, that the loop needs no egress, is proved under the kernel: `pnpm run agent:egress:conformance`
+(`scripts/proofs/agent-egress-conformance.sh`, Linux, as root or through
+sudo). It starts the supervisor's fixtures, a TCP listener and a DNS
+responder on a controlled IPv4 and IPv6 address, in a network namespace of
+their own, and runs the healthy control first: unconfined, as the dropped
+uid, a captured socket, raw TCP on both families, a fresh resolver, fetch and
+a child process each reach the fixtures and raise their counters. Then, under
+`unshare --net` with loopback up and only the labelled broker double and
+LangSmith recorder listening, `setpriv` drops uid, gid, groups, every
+capability and privilege escalation before the confined suite
+(`tests/harness/agent-loop-reaches-no-network.confined.ts`) imports the
+pinned stack. core-agent's `runAttempt` ends a scripted `task.read` turn and a
+final answer in success through its broker port, and the same ways out each
+meet the kernel's refusal (`ENETUNREACH`, and `ECONNREFUSED` from the
+resolver) with no counter risen. The suite refuses unless a root-owned,
+read-only receipt names its namespace, an ancestor's pid, its dropped
+identity, loopback-only routes, its listeners, its Node and its lockfile;
+`agent-egress-suite-refuses-without-its-confinement` shows it failing with no
+wrapper and under a forged receipt, and the wrapper refusing a missing
+`unshare`, a `setpriv` that drops nothing and an `unshare` that makes no
+namespace. `pnpm test` never collects the confined suite: a `.confined.ts`
+file is outside the default include, and it runs under its own config.
 
 ## The agent's output takes its own review round
 
