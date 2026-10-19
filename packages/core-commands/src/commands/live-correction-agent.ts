@@ -42,13 +42,14 @@ const OUTSIDE_DELEGATION = refuseCommand(
  * the delegation carrying `run` and `write`, and the delegating person's live
  * grant covering `run:write` at the task's client now. Another task is outside
  * the purpose whatever the delegation carries, and the operands' shape is
- * judged after both, so a caller holding nothing is told that first.
+ * judged after both, so a caller holding nothing is told that first. The
+ * party it was asked at (null on the business's own site) goes with it.
  */
 async function withinDelegation(
   tx: TenantQuery,
   sent: Readonly<Record<string, unknown>>,
   delegation: Delegation,
-): Promise<RequestOperands | { readonly refusal: CommandRefusal }> {
+): Promise<Within | { readonly refusal: CommandRefusal }> {
   const taskId = sent['taskId'];
   if (typeof taskId !== 'string' || delegation.purposeScope.id !== taskId.toLowerCase()) {
     return { refusal: OUT_OF_PURPOSE };
@@ -65,8 +66,10 @@ async function withinDelegation(
     action: 'write',
     scope: partyId === null ? { kind: 'business', id: null } : { kind: 'party', id: partyId },
   });
-  return covered.ok ? operands : { refusal: covered.refusal };
+  return covered.ok ? { operands, partyId } : { refusal: covered.refusal };
 }
+
+type Within = { readonly operands: RequestOperands; readonly partyId: string | null };
 
 /**
  * On the business's own site (no party), the refusal unless the task is the
@@ -77,9 +80,9 @@ async function withinDelegation(
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
-  operands: RequestOperands,
+  { operands, partyId }: Within,
 ): Promise<CommandRefusal | undefined> {
-  if (operands.partyId !== null) return undefined;
+  if (partyId !== null) return undefined;
   const task = await readPage(tx, operands.taskId);
   const own = task !== undefined && task.clientId === null && ownersOwn(task.source);
   return own ? undefined : NOT_OWN_WORK;
@@ -96,11 +99,11 @@ export async function requestAsAgent(
   sent: Readonly<Record<string, unknown>>,
   delegation: Delegation,
 ): Promise<HandlerOutcome> {
-  const operands = await withinDelegation(tx, sent, delegation);
-  if ('refusal' in operands) return refused(operands.refusal);
-  const stored = await storeAsAgent(tx, agentActorId, operands, delegation);
+  const within = await withinDelegation(tx, sent, delegation);
+  if ('refusal' in within) return refused(within.refusal);
+  const stored = await storeAsAgent(tx, agentActorId, within.operands, delegation);
   if (isRefused(stored)) return stored;
-  return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, operands) };
+  return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, within) };
 }
 
 async function storeAsAgent(

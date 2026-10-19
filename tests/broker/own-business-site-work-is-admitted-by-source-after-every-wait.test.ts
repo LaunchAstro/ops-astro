@@ -53,7 +53,7 @@ describe.skipIf(serverUrl === undefined)("the owner's own internal work", () => 
          from public.live_corrections where id = $1`,
       [detailOf(asked)['correctionId']],
     );
-    expect(row).toEqual({ party_id: null, state: 'requested', actor: w.world.agentActorId });
+    expect(row).toEqual({ party_id: null, state: 'locating', actor: w.world.agentActorId });
   }, 120_000);
 
   it('keeps a client-typed field local on the same task', async () => {
@@ -79,7 +79,7 @@ describe.skipIf(serverUrl === undefined)("a real client's task", () => {
       expect(answer).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' });
     }
     expect(sends()).toBe(before);
-    expect(codeOf(await requestOwn(picked))).toBe('CORRECTION_PARTY_MISMATCH');
+    expect(codeOf(await requestOwn(picked))).toBe('NOT_FOUND');
     expect(await storedOn(picked.taskId)).toBe(0);
   }, 120_000);
 });

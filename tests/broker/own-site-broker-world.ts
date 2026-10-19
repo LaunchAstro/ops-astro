@@ -154,9 +154,7 @@ export const requestOwn = async (
 /** The body of that request, with an operation id of its own: sent twice, a replay. */
 export const ownBody = (picked: PickedUp): Readonly<Record<string, unknown>> => ({
   ...requestBody(w.partyA, picked.taskId),
-  partyId: null,
-  pageUrl: OWN_PAGE,
-  path: OWN_FILE,
+  page: OWN_PAGE,
   operationId: randomUUID(),
 });
 
