@@ -22,7 +22,7 @@ import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
-import { proposeStep, selfOf, type Proposer } from './proposal.ts';
+import { delegatedTask, proposeStep, selfOf, type Proposer } from './proposal.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
@@ -136,9 +136,8 @@ async function applyOnce(
 }
 
 /**
- * The queued work on `taskId` that this agent proposed, read before any
- * delegation (`agent-envelope.ts`). Work another actor proposed on the same
- * task is theirs: a person's approval of it never runs this worker's step.
+ * The queued work on `taskId` it runs (`agent-envelope.ts`): its own, or the
+ * owner's accepted plan on the task its delegation names, read under it now.
  */
 async function ask(
   options: WorkerOptions,
@@ -150,13 +149,16 @@ async function ask(
   const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
-  // Its own proposal of its own step: an approval of any other step never runs this one.
-  const work = entries.find(
-    (entry) =>
-      entry['taskId'] === taskId &&
-      entry['proposedByActorId'] === actorId &&
-      entry['purpose'] === SYNTHETIC_STEP.kind,
+  const steps = entries.filter(
+    (entry) => entry['taskId'] === taskId && entry['purpose'] === SYNTHETIC_STEP.kind,
   );
+  let work = steps.find((entry) => entry['proposedByActorId'] === actorId);
+  const owners = steps.find((entry) => entry['ownerProposed'] === true);
+  if (work === undefined && owners !== undefined) {
+    const delegated = await delegatedTask(agentCall(options, options.delegation));
+    if (typeof delegated !== 'string') return delegated;
+    if (delegated === taskId) work = owners;
+  }
   if (work === undefined) return { idle: { taskId } };
   return { reservationId: work['reservationId'], operationId: randomUUID() };
 }

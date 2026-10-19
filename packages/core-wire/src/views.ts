@@ -522,8 +522,10 @@ export interface QueuedWork {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
-  /** The reading agent when it proposed the version, else null: a worker takes only its own. */
+  /** The reading agent when it proposed the version, else null. */
   readonly proposedByActorId: string | null;
+  /** A person then holding the owner role proposed it: the role, never who (ROUTE1905). */
+  readonly ownerProposed: boolean;
 }
 
 /**
