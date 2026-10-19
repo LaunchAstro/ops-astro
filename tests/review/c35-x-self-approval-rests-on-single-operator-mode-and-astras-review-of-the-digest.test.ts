@@ -93,6 +93,14 @@ describe.skipIf(serverUrl === undefined)('C35-X self-approval', () => {
       review: ASTRA,
       recorded_by_person_id: w.eve.personId,
     });
+    // The audit keeps the command, its outcome and digests: never Astra's words.
+    const audit = await w.world.db.admin.execute<{ readonly row: string }>(
+      `select to_jsonb(e)::text as row from public.audit_events e
+        where business_id = $1 and command like 'review.%'`,
+      [w.beta],
+    );
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit.filter((one) => one.row.includes(ASTRA))).toStrictEqual([]);
   });
 
   it('C35-X self-approval refused without single-operator mode', async () => {
