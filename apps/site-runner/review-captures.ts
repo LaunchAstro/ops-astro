@@ -10,9 +10,10 @@
 // the widths not yet landed, so a retry never overwrites one.
 //
 // Spare work: the host runs it after the corrections, one capture a pass. A queue it cannot
-// read fails the pass (`QueueUnread`), as the corrections' does. A capture the fence or the
-// browser refused lands nothing and hands the lease back failed with the fence's code; a
-// lost lease has nothing to hand back. Only codes are printed or reported, never a path.
+// read fails the pass (`QueueUnread`), as the corrections' does, and so does a claim refused or
+// never answered (`CaptureUnclaimed`). A capture the fence or the browser refused lands nothing
+// and hands the lease back failed with the fence's code; a lost lease has nothing to hand back.
+// Only codes are printed or reported, never a path.
 
 import {
   capturePage,
@@ -47,6 +48,18 @@ export interface CaptureJob {
   /** The fence's inputs: the agency's own pages (`reviewPool`), the resolver and the transport. */
   readonly capture: CaptureOptions;
   readonly browserAt: SizedBrowser;
+}
+
+/** A capture claim refused, or with no usable answer: the pass fails on it, as on an unread queue. */
+export class CaptureUnclaimed extends Error {
+  /** The refusal's code as it may be printed, or `CLAIM_FAULT`. */
+  readonly code: string;
+
+  constructor(code: string) {
+    super(`the capture claim ended ${code}`);
+    this.name = 'CaptureUnclaimed';
+    this.code = code;
+  }
 }
 
 /** One capture step taken: its task, and `landed` or the code it ended on. */
@@ -118,15 +131,21 @@ async function taken(
   return { observation: observation.value, pictures };
 }
 
-/** Claim, capture and land under `lease`: `landed`, or the code it stopped on. */
-async function captureUnder(job: CaptureJob, taskId: string, lease: Lease): Promise<string> {
+/** Claim, capture and land under `lease`: `landed`, the code it stopped on, or an unclaimed capture. */
+async function captureUnder(
+  job: CaptureJob,
+  taskId: string,
+  lease: Lease,
+): Promise<string | CaptureUnclaimed> {
   const { call } = job;
   const { leaseId, fence, pickup } = lease;
   const asked = await askedOn(job.db, job.business, taskId);
   if (asked === undefined) return 'NO_CAPTURE_ASKED';
   const { revisionId } = asked;
-  const claimed = await call('review.capture_claim', { leaseId, fence, revisionId }, pickup);
-  if (!('detail' in claimed)) return codeOf(claimed, 'CLAIM_FAULT');
+  const claimed = await call('review.capture_claim', { leaseId, fence, revisionId }, pickup).catch(
+    () => ({ fault: true }) as const,
+  );
+  if (!('detail' in claimed)) return new CaptureUnclaimed(codeOf(claimed, 'CLAIM_FAULT'));
   const handed = claimed.detail['widths'];
   const widths = CAPTURE_WIDTHS.filter((width) => Array.isArray(handed) && handed.includes(width));
   const capture = await taken(asked.pageUrl, widths, job);
@@ -145,7 +164,10 @@ async function captureUnder(job: CaptureJob, taskId: string, lease: Lease): Prom
   return 'landed';
 }
 
-/** One queued capture step: picked up, captured under its lease, and handed back. */
+/**
+ * One queued capture step: picked up, captured under its lease, handed back and logged by its
+ * task and code. An unclaimed capture throws after its hand-back.
+ */
 async function captureStep(
   job: CaptureJob,
   entry: Readonly<Record<string, unknown>>,
@@ -160,7 +182,8 @@ async function captureStep(
     fence: Number(picked.detail['fence']),
     pickup: String(picked.detail['credential']),
   };
-  const outcome = await captureUnder(job, taskId, lease).catch(() => 'CAPTURE_FAULT');
+  const ended = await captureUnder(job, taskId, lease).catch(() => 'CAPTURE_FAULT');
+  const outcome = ended instanceof CaptureUnclaimed ? ended.code : ended;
   if (outcome !== 'LEASE_LOST') {
     const { leaseId, fence, pickup } = lease;
     const done = outcome === 'landed' ? 'completed' : 'failed';
@@ -168,6 +191,8 @@ async function captureStep(
     // A hand-back that never answered leaves the lease to lapse.
     await call('task.handback', body, pickup).catch(() => null);
   }
+  console.log(`review capture ${taskId} ${outcome}`);
+  if (ended instanceof CaptureUnclaimed) throw ended;
   return { taskId, outcome };
 }
 
