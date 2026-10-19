@@ -25,8 +25,10 @@
 //
 // **In order.** A desk reads `live_correction.list` each time it is drawn,
 // and an approved card reads its correction again until a final state. Each
-// answer lands unless one sent after it landed first (`correction-order.ts`),
-// and the list counts as a read of every correction it carries.
+// answer, a refusal included, lands unless one sent after it landed first
+// (`correction-order.ts`), and the list counts as a read of every correction it
+// carries. A decision's refusal is said with the read that follows it, so it
+// lands or is dropped with that read.
 
 import { useEffect, useState } from 'react';
 import type {
@@ -101,9 +103,11 @@ const failureWords = (failed: Failure): string => refusalWords(failedCode(failed
 
 /**
  * The correction's decision as `live_correction.read` answers it now, under
- * `key`; false where the read failed, its failure then the card's refusal. The
- * answer is timed from when the read was sent, so a slow answer grants no extra
- * time. `lands` says whether its answer may still land; an overtaken one is dropped.
+ * `key`, with `said` (a decision's refusal) as the card's refusal; false where
+ * the read failed, its failure then the refusal instead. The answer is timed
+ * from when the read was sent, so a slow answer grants no extra time. `lands`
+ * says whether its answer may still land; an overtaken one, a refusal
+ * included, is dropped.
  */
 async function readInto(
   client: OperationsClient,
@@ -111,6 +115,7 @@ async function readInto(
   key: string,
   correctionId: string,
   lands: () => boolean,
+  said: string | null,
 ): Promise<boolean> {
   const sentAt = performance.now();
   const settled = settle(
@@ -129,7 +134,7 @@ async function readInto(
     verifiedForMs: Number.isFinite(verifiedForMs) && verifiedForMs > 0 ? verifiedForMs : 0,
     readAt: sentAt,
     reason: typeof refusal === 'string' ? refusal : null,
-    refusal: null,
+    refusal: said,
   });
   return true;
 }
@@ -230,9 +235,9 @@ async function receiptsInto(
 /** `readInto`, in `order`: an answer overtaken by a newer one already landed is dropped. */
 const orderedRead =
   (client: OperationsClient, amend: Amend, order: Order) =>
-  (key: string, id: string): Promise<boolean> => {
+  (key: string, id: string, said: string | null = null): Promise<boolean> => {
     const nth = order.next();
-    return readInto(client, amend, key, id, () => order.lands(key, id, nth));
+    return readInto(client, amend, key, id, () => order.lands(key, id, nth), said);
   };
 
 export function useCorrections(
@@ -262,8 +267,7 @@ export function useCorrections(
     const settled = settle(
       await client.mutate('live_correction.decide', { correctionId: id, versionId, decision }),
     );
-    const fresh = await read(key, id);
-    if (settled.kind !== 'ok' && fresh) amend(key, id, { refusal: failureWords(settled) });
+    await read(key, id, settled.kind === 'ok' ? null : failureWords(settled));
   };
   return {
     list: mine.list,
