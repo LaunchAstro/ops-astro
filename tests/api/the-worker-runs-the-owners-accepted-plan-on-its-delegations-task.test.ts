@@ -6,8 +6,9 @@
 // route and is carried there, because the owner started it (#1620 P4). A
 // member's proposal, another business's plan and a plan on another
 // delegation's task stay queued, and a revoked delegation picks nothing up.
-// The worker's own proposal still runs as it did, and the plan route still
-// refuses it: an agent-proposed run is never owner-started. The worker runs
+// The worker's own proposal still runs as it did on a key, and the plan route
+// still refuses it: an agent-proposed run is never owner-started, and that
+// refusal ends its attempt cancelled (#1623 R1, B2). The worker runs
 // against the served API over a real database, and each plan call goes
 // through the real broker and custody, the replay provider answering for the
 // plan's host. The last six cases are review S2113's proofs.
@@ -43,6 +44,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { createWorker, SYNTHETIC_STEP } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
+import { attemptOfLease, outcomesOfAttempt } from '../runs/run-outcomes-read.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   approve as approveInBravo,
@@ -365,7 +367,8 @@ describe.skipIf(serverUrl === undefined)("the worker runs the owner's accepted p
     expect((await reservation(reservationId))?.lease_id).toEqual(expect.any(String));
   }, 120_000);
 
-  it("its own proposal the owner accepted still runs as before: refused the owner's plan, carried on a key", async () => {
+  /** The worker's own step proposed on a fresh task of the owner's, and accepted by the owner. */
+  async function ownProposalAccepted() {
     const { taskId, credential } = await ownersTask();
     const proposed = await workerOn(transport, credential).proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
@@ -374,23 +377,54 @@ describe.skipIf(serverUrl === undefined)("the worker runs the owner's accepted p
       [proposed.proposed.gateId],
     );
     await ownerAccepts({ gateId: proposed.proposed.gateId, versionId: gate?.version_id });
+    return { taskId, credential };
+  }
+
+  it('its own proposal the owner accepted still runs as before, carried on a key', async () => {
+    const { taskId, credential } = await ownProposalAccepted();
     const pickups: Pickup[] = [];
-    const worker = workerOn(callingOn([PLAN_ROUTE, API_ROUTE], taskId, pickups), credential);
+    const worker = workerOn(callingOn([API_ROUTE], taskId, pickups), credential);
 
     const outcome = await worker.applyOnce(taskId);
 
     expect(outcome, JSON.stringify(outcome)).toHaveProperty('handedBack');
-    expect(pickups[0]?.calls).toEqual([
-      expect.objectContaining({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' }),
-      expect.objectContaining({ ok: true }),
-    ]);
+    expect(pickups[0]?.calls).toEqual([expect.objectContaining({ ok: true })]);
     expect(await callsOn(pickups[0]?.detail['leaseId'])).toEqual([
-      expect.objectContaining({ state: 'refused', refusal_code: 'SUBSCRIPTION_NOT_OWNER_STARTED' }),
       expect.objectContaining({
         state: 'settled',
         route_key: 'replay',
         credential_kind: 'api_key',
       }),
+    ]);
+  }, 120_000);
+
+  // The plan's refusal is a definitive stop: it ends the attempt cancelled and
+  // retires its lease and delegation (#1623 R1, B2), so no key carries it after.
+  it("its own proposal is refused the owner's plan, and that ends its attempt cancelled", async () => {
+    const { taskId, credential } = await ownProposalAccepted();
+    const pickups: Pickup[] = [];
+    const worker = workerOn(callingOn([PLAN_ROUTE, API_ROUTE], taskId, pickups), credential);
+
+    const outcome = await worker.applyOnce(taskId);
+
+    expect(outcome, JSON.stringify(outcome)).toEqual({
+      refused: { code: 'DELEGATION_NOT_LIVE', names: [] },
+    });
+    expect(pickups).toHaveLength(1);
+    expect(pickups[0]?.calls, JSON.stringify(pickups[0]?.calls)).toEqual([
+      expect.objectContaining({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' }),
+      expect.objectContaining({ ok: false }),
+    ]);
+    expect(await callsOn(pickups[0]?.detail['leaseId'])).toEqual([
+      expect.objectContaining({ state: 'refused', refusal_code: 'SUBSCRIPTION_NOT_OWNER_STARTED' }),
+    ]);
+    const { attemptId } = await attemptOfLease(
+      fixture.db.admin,
+      fixture.business,
+      String(pickups[0]?.detail['leaseId']),
+    );
+    expect(await outcomesOfAttempt(fixture.db.admin, fixture.business, attemptId)).toEqual([
+      expect.objectContaining({ outcome: 'cancelled', end_code: 'SUBSCRIPTION_NOT_OWNER_STARTED' }),
     ]);
   }, 120_000);
 
