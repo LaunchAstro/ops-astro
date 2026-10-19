@@ -86,15 +86,23 @@ function brokerOver(context: StepContext, operation: string): BrokerPort {
   };
 }
 
-/** The catalogue's tools, each the product's own command under the work's credential. */
+/**
+ * The catalogue's tools, each the product's own command under the work's
+ * credential. A request's operation id is the attempt's own and its place in
+ * it (#1717), set over whatever the model wrote, so the same attempt asking
+ * again replays and no model's id ever names an operation.
+ */
 function toolsOver(context: StepContext): ReadonlyMap<string, ToolRun> {
+  let requests = 0;
   const read: ToolRun = async (args) => {
     const answer = await context.call('task.read', { recordId: args['taskId'] });
     if (!('body' in answer)) return stopOf(answer);
     return { revision: revisionOf(answer), content: JSON.stringify(taskOf(answer)) };
   };
   const request: ToolRun = async (args) => {
-    const answer = await context.call('live_correction.request', args);
+    requests += 1;
+    const operationId = `correction:${context.attemptId}:${String(requests)}`;
+    const answer = await context.call('live_correction.request', { ...args, operationId });
     if (!('body' in answer)) return stopOf(answer);
     const correctionId = String(answer.detail['correctionId']);
     return {
