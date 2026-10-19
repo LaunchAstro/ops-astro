@@ -6,7 +6,7 @@
 // `TURN_MALFORMED`, never a re-ask.
 
 import { canonicalPayload } from '../../core-digest/src/index.ts';
-import type { ToolCall, TurnPart } from '../../core-wire/src/index.ts';
+import { declarationOf, type ToolCall, type TurnPart } from '../../core-wire/src/index.ts';
 import type { TurnRequest } from './broker-types.ts';
 
 const MOST_PARTS = 64;
@@ -14,19 +14,11 @@ const MOST_ARGUMENT_BYTES = 16 * 1024;
 
 /**
  * A correction's operands, as a person sends them (#1624 R7): the agent's
- * request names exactly these, so it asks nothing a person could not.
+ * request names exactly the command's declared operands, `{taskId, page,
+ * word, replacement}` (#1693), so it asks nothing a person could not, and
+ * never a base revision: the M5 pins that (register 65).
  */
-const REQUEST_KEYS = [
-  'partyId',
-  'taskId',
-  'path',
-  'word',
-  'replacement',
-  'pageUrl',
-  'baseRevision',
-  'before',
-  'after',
-] as const;
+const REQUEST_KEYS = Object.keys(declarationOf('live_correction.request').operands ?? {});
 
 /** The tools the catalogue offers a turn (`AGENT_TOOLS`), each with its arguments' schema. */
 const TOOLS: ReadonlyMap<string, (args: Readonly<Record<string, unknown>>) => boolean> = new Map([
