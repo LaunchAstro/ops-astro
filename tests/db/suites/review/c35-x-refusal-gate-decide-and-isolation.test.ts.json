@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35-X gate:decide is a person's at the review's holder: a member without it and an agent are refused, another client's or business's review is not found, and a revision or mode changed during the lock wait is read again."
+}
