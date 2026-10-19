@@ -85,11 +85,20 @@ export interface TextChange {
   readonly added: string;
 }
 
-/** The one changed run between two texts, by what they share at each end; null when equal. */
+/** The UTF-16 unit at `at` opens a surrogate pair: a code point past the basic plane starts there. */
+const opensPair = (text: string, at: number): boolean =>
+  at >= 0 && (text.codePointAt(at) ?? 0) > 0xffff;
+
+/**
+ * The one changed run between two texts, by what they share at each end; null when equal.
+ * Neither end splits a surrogate pair, so an emoji changed for another is shown whole.
+ */
 export function changedText(before: string, after: string): TextChange | null {
   if (before === after) return null;
-  const head = shared(before, after, false);
-  const tail = Math.min(shared(before, after, true), before.length - head, after.length - head);
+  let head = shared(before, after, false);
+  if (opensPair(before, head - 1)) head -= 1;
+  let tail = Math.min(shared(before, after, true), before.length - head, after.length - head);
+  if (tail > 0 && opensPair(before, before.length - tail - 1)) tail -= 1;
   return {
     at: head,
     removed: before.slice(head, before.length - tail),
