@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#2053: the site runner's own locate pass, configured for the business's own site, pins the correction the shipped agent runner drafted, and a runner for a client's site or another business leaves it and sends nothing; live_correction.list answers the pinned row to the owner at its version, and a member without task read, a member with a client's run grant and another business's owner list none of it."
+}
