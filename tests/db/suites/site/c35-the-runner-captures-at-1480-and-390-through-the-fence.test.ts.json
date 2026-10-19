@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 (#2013): the site runner picks a person's approved review_capture step off the real queue, claims the review's captures under its own lease, takes both pictures at 1480 and 390 in headless Chromium and the page observation through the fence, and lands them through the API; review.read shows both widths landed, and only the fence fetched anything."
+}
