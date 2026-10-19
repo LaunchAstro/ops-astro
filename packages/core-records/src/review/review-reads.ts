@@ -31,6 +31,8 @@ export interface RevisionView {
   readonly captures: readonly CaptureView[];
   /** Its approval on its exact digest, or null: undecided. */
   readonly decision: DecisionView | null;
+  /** The live correction whose published page it captures (#2120), or null. */
+  readonly correctionId: string | null;
 }
 
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
@@ -68,8 +70,9 @@ export async function readCoveredReview(
     readonly id: string;
     readonly number: number;
     readonly digest: string;
+    readonly correction_id: string | null;
   }>(
-    `select id, number, digest from public.review_revisions
+    `select id, number, digest, correction_id from public.review_revisions
       where business_id = $1 and review_id = $2 order by number`,
     [tx.businessId, reviewId],
   );
@@ -81,6 +84,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
     decision: decisions.get(revision.id) ?? null,
+    correctionId: revision.correction_id,
   }));
   return {
     reviewId,

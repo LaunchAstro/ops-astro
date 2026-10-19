@@ -1175,3 +1175,17 @@ with `review.record_astra_review` under `gate:decide`, bound by foreign key to
 the revision's digest; a digest other than the latest revision's is refused
 (`VERSION_STALE`). Both tables are insert and select only, tenancy-keyed with
 the restrictive policy.
+
+## The revision's correction (20261019180000, #2120)
+
+`review_revisions.correction_id` names the live correction whose published page
+a revision captures, so the review workspace can show that publish's Receipt.
+It is review metadata, written once with the revision by `review.open`, which
+takes `correctionId` only for a correction on the review's own task, page and
+file whose receipts the opener reads through `live_correction.receipts`' own
+query (`run:write` at the correction's party and `task:read` on its task, a
+person on the team, never an agent credential), with `run:write` read again
+after the last lock wait; anything else is one `NOT_FOUND`. The foreign key
+holds it to a correction of the same business. `review.read` returns it on each
+revision; the Receipt itself is read through `live_correction.receipts`
+unchanged, so a reader that read does not reach sees none.

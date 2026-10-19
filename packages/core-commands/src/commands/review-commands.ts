@@ -9,13 +9,22 @@
 // path with its person's ticked keys; a pickup's one-task delegation never
 // carries `review` and is refused before it (`review-agent.ts`).
 //
+// A revision opened on a page after its live correction published may name that correction
+// (#2120), so the workspace can show its Receipt: one on the review's own task, page and file
+// whose receipts the opener reads (`live_correction.receipts`' own read, `run:write` and
+// `task:read`), with `run:write` read again after the last wait. Anything else, a foreign id
+// included, is one `NOT_FOUND`, so the open confirms no correction.
+//
 // Refusals carry fixed text only: no page, path or revision reaches a refused caller.
 
 import {
   askCaptures,
+  correctionOnPage,
   isUuid,
   openPageReview,
+  readReadableReceipts,
   REVIEW_COLLECTION,
+  RUN_COLLECTION,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Covering, ReviewRefusal, TenantQuery } from '../../../core-records/src/index.ts';
@@ -25,6 +34,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
+import { isInternalReader } from '../reads/tasks.ts';
 
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
 
@@ -44,6 +54,12 @@ const REFUSALS: Readonly<Record<ReviewRefusal['code'], CommandRefusal>> = {
   ),
 };
 
+const NO_CORRECTION = refuseCommand(
+  'NOT_FOUND',
+  ['correctionId'],
+  ['Name a correction of this task’s page whose receipts you can read, or none.'],
+);
+
 const reviewWrite = (context: CommandContext): Covering => ({
   subjects: subjectsOf(context.session),
   collection: REVIEW_COLLECTION,
@@ -61,9 +77,33 @@ async function endedSince(
   tx: TenantQuery,
   context: CommandContext,
   partyId: string | null,
+  covering: Covering = reviewWrite(context),
 ): Promise<HandlerOutcome | undefined> {
-  const stood = await standsAfterWaits(tx, { covering: reviewWrite(context), partyId });
+  const stood = await standsAfterWaits(tx, { covering, partyId });
   return stood === 'stands' ? undefined : refused(endedRefusal(stood, false));
+}
+
+/** The correction a revision names, lowercase: null for none, undefined when it may not. */
+async function namedCorrection(
+  tx: TenantQuery,
+  context: CommandContext,
+  request: Of<'review.open'>,
+): Promise<string | null | undefined> {
+  const sent = request.correctionId;
+  if (sent === undefined) return null;
+  if (typeof sent !== 'string' || !isUuid(sent)) return undefined;
+  // The receipts read is a person's on the team, never an agent credential's.
+  const { session } = context;
+  if (session.credentialScope !== undefined || !isInternalReader(session.roleKey)) return undefined;
+  const correctionId = sent.toLowerCase();
+  const page = {
+    taskId: request.taskId.toLowerCase(),
+    pageUrl: request.pageUrl,
+    path: request.path,
+  };
+  if (!(await correctionOnPage(tx, correctionId, page))) return undefined;
+  const reached = await readReadableReceipts(tx, correctionId, subjectsOf(session));
+  return reached === undefined ? undefined : correctionId;
 }
 
 const OPEN_OPERANDS = ['pageUrl', 'path', 'sourceRevision'] as const;
@@ -89,15 +129,26 @@ export async function openReview(
   }
   const unstorable = unstorableOperands(request, OPEN_OPERANDS);
   if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
+  const correctionId = await namedCorrection(tx, context, request);
+  if (correctionId === undefined) return refused(NO_CORRECTION);
   const opened = await openPageReview(tx, {
     taskId: request.taskId.toLowerCase(),
     pageUrl: request.pageUrl,
     path: request.path,
     sourceRevision: request.sourceRevision,
     writer: writerOf(context),
+    correctionId,
   });
   if ('code' in opened) return refused(REFUSALS[opened.code]);
-  const ended = await endedSince(tx, context, opened.review.partyId);
+  const ended =
+    (await endedSince(tx, context, opened.review.partyId)) ??
+    (correctionId === null
+      ? undefined
+      : await endedSince(tx, context, opened.review.partyId, {
+          subjects: subjectsOf(context.session),
+          collection: RUN_COLLECTION,
+          action: 'write',
+        }));
   if (ended !== undefined) return ended;
   return applied(opened.review.id, null, {
     reviewId: opened.review.id,

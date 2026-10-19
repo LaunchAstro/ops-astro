@@ -13,6 +13,8 @@ export type ReviewRequest =
       readonly path: string;
       /** The site's own revision of the page, which the revision's digest binds. */
       readonly sourceRevision: string;
+      /** The live correction this revision captures the published page of (#2120). */
+      readonly correctionId?: unknown;
     } & Envelope)
   | ({ readonly command: 'review.capture'; readonly revisionId: string } & Envelope)
   | ({
@@ -40,6 +42,8 @@ export type ReviewRequest =
       readonly selector: unknown;
       readonly body: string;
       readonly audience: string;
+      /** The live view's width when the pin was made on it (#2120); absent for a capture pin. */
+      readonly liveViewport?: unknown;
     } & Envelope)
   | ({
       readonly command: 'review.propose_change';
