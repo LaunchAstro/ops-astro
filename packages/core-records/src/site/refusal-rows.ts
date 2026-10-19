@@ -55,4 +55,16 @@ export const LIVE_CORRECTION_ROWS = [
       "An agent asks on the business's own site only from a task its owner started that no client, agent or worker has written",
     source: 'R6 part 2, #1699',
   },
+  {
+    code: 'VERSION_NOT_READY',
+    status: 409,
+    meaning: 'The correction has no version to decide: it is locating, unlocated or superseded',
+    source: '#1693, the guard order',
+  },
+  {
+    code: 'VERSION_UNVERIFIED',
+    status: 409,
+    meaning: "The site runner has not checked the correction's page in the last 60 seconds",
+    source: '#1693, register 65',
+  },
 ] as const;

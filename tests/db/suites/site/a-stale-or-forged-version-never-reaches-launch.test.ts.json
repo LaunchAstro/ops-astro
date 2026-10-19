@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1693: no caller supplies a revision, a file or a digest; a retired operand is refused on the agent path storing nothing, and the storage refuses a pin not in its commit and sha256 forms."
+}

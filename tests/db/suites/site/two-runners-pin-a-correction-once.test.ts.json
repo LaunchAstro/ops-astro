@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1693 races on separate connections: two pins write once, a pin against a cancel never pins a cancelled row, a stamp never vouches for a superseded version, and the 60 s bound is read after the decision's lock wait."
+}

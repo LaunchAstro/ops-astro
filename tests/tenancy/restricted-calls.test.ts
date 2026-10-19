@@ -352,10 +352,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.live_corrections': `insert into public.live_corrections
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
-        version_id, version_digest)
+        version_id, version_digest, state, located_at)
      select p.business_id, gen_random_uuid(), gen_random_uuid(), r.id, a.id, p.id,
             'src/pages/about.md', 'friendly', 'welcoming', 'https://agency.example/about/',
-            'sha256:seed', 'rev-1', 'seam-seed', gen_random_uuid(), 'sha256:seed'
+            'sha256:' || repeat('ab', 32), repeat('c0', 20), 'seam-seed', gen_random_uuid(), 'sha256:' || repeat('cd', 32),
+            'requested', now()
        from public.people p
        join public.actors a on a.business_id = p.business_id
        join public.records r on r.business_id = p.business_id

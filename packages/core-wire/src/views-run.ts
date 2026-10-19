@@ -207,6 +207,12 @@ export interface ReceiptResult {
  * the request and decide commands name it, the person who decided it (the
  * configured approver at that moment) by name or null, and its version; the
  * card already holds the page, the word and the lines, so none comes back.
+ *
+ * #1693: a request is `locating` until the site runner pins its version
+ * (`versionId` null until then), and may end `unlocated` or `superseded`
+ * with a fixed `refusal` code. `verifiedForMs` is how much longer the last
+ * check of the page vouches for the version, computed by the server in its
+ * read, 0 when none does: Launch is offered only while it is above 0.
  */
 export interface LiveCorrectionReadResult {
   readonly ok: true;
@@ -214,6 +220,9 @@ export interface LiveCorrectionReadResult {
     readonly correctionId: string;
     readonly state: string;
     readonly approver: string | null;
-    readonly versionId: string;
+    readonly versionId: string | null;
+    readonly verifiedAt: string | null;
+    readonly verifiedForMs: number;
+    readonly refusal: string | null;
   };
 }

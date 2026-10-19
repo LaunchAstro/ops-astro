@@ -50,7 +50,8 @@ export interface Claims {
   readonly take: () => Promise<readonly Claim[]>;
   /** The lease renewed; false once it is lost. */
   readonly beat: (claim: Claim) => Promise<boolean>;
-  readonly release: (claim: Claim) => Promise<void>;
+  /** The lease handed back with the claim's last outcome: `live`, a refusal's code or `LEASE_LOST`. */
+  readonly release: (claim: Claim, outcome: string) => Promise<void>;
 }
 
 /** The provider ports, every call guarded and every credential borrowed from custody. */
@@ -169,8 +170,9 @@ async function settle(runner: Runner, claim: Claim, outcome: string): Promise<Pa
   runner.following.delete(claim.correctionId);
   const lost = outcome === 'LEASE_NOT_OWNED';
   if (lost) await raising(runner, claim)('LEASE_LOST');
-  await runner.deps.claims.release(claim);
-  return { correctionId: claim.correctionId, outcome: lost ? 'LEASE_LOST' : outcome };
+  const settled = lost ? 'LEASE_LOST' : outcome;
+  await runner.deps.claims.release(claim, settled);
+  return { correctionId: claim.correctionId, outcome: settled };
 }
 
 /** One run of the publish; `accepted` keeps it followed until the cap. */

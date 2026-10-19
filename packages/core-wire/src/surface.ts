@@ -657,7 +657,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'target',
-    untargetedIdentifiers: ['partyId', 'taskId'],
+    untargetedIdentifiers: ['taskId'],
     agent: 'delegated',
   }),
   declare('live_correction.decide', 'decide', DECIDE_AT_CORRECTION),

@@ -44,12 +44,7 @@ beforeAll(async () => {
 
 /** Ava's request on the client's page, through the command: its correction and version. */
 async function requested(client: FreshClient, page: Page) {
-  const asked = await w.request(w.ava, {
-    partyId: client.partyId,
-    taskId: client.taskId,
-    pageUrl: page.pageUrl,
-    path: page.path,
-  });
+  const asked = await w.request(w.ava, { taskId: client.taskId, page: page.pageUrl });
   expect(codeOf(asked)).toBe('not-a-refusal');
   const detail = detailOf(asked);
   return { correctionId: String(detail['correctionId']), versionId: String(detail['versionId']) };

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1693: the locate's state contract held by the storage (pins whole and once, codes fixed, checks forward only) and the decision's guard order, with the revision unchanged on every refusal."
+}

@@ -339,8 +339,12 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     "the agent loop on the pinned stack (#1715); the worker's agent step runner, its first product importer, arrives in #1905",
   ],
   [
-    'apps/site-runner/runner.ts',
-    "the site runner's composition (#1692); its launchd entry point, apps/site-runner/main.ts, arrives in #1692's second pull request",
+    'packages/core-records/src/site/locate.ts',
+    "the locate's runner-only writes (#1693); the site runner's locate imports it in the stacked #1924, which removes this entry",
+  ],
+  [
+    'apps/site-runner/main.ts',
+    "the site runner's launchd entry point (deploy/m5/ops-astro-site-runner.plist); nothing imports an entry point but its tests",
   ],
   [
     'apps/local-agent/stack.ts',

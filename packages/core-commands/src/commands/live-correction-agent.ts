@@ -7,7 +7,7 @@
 // goes back only to a delegation that could make that request now.
 
 import { ownersOwn, readPage } from '../../../core-custody/src/index.ts';
-import { checkAuthority, RUN_COLLECTION } from '../../../core-records/src/index.ts';
+import { checkAuthority, RUN_COLLECTION, taskClient } from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -40,7 +40,7 @@ const OUTSIDE_DELEGATION = refuseCommand(
 /**
  * The request inside `delegation`: worked under the delegation's own task,
  * the delegation carrying `run` and `write`, and the delegating person's live
- * grant covering `run:write` at the named party now. Another task is outside
+ * grant covering `run:write` at the task's client now. Another task is outside
  * the purpose whatever the delegation carries, and the operands' shape is
  * judged after both, so a caller holding nothing is told that first.
  */
@@ -58,8 +58,8 @@ async function withinDelegation(
   if (!carries) return { refusal: OUTSIDE_DELEGATION };
   const operands = typedOperands(sent);
   if ('refusal' in operands) return operands;
-  // A request on the business's own site (no party) is asked of the business (R6).
-  const { partyId } = operands;
+  // Asked at the task's client; a task with no client is the business's own site (R6).
+  const partyId = (await taskClient(tx, operands.taskId)) ?? null;
   const covered = await checkAuthority(tx, [{ kind: 'person', id: delegation.delegatePersonId }], {
     collection: RUN_COLLECTION,
     action: 'write',
@@ -69,19 +69,21 @@ async function withinDelegation(
 }
 
 /**
- * On the business's own site (no party), the refusal unless the task is the
- * owner's own internal work, judged as the broker judges a run's task (S2,
- * owner line 72, R6 #1699). A request asks it last, after the agent's own
- * standing waits (`lastCheck`), so a write that names the task without moving
- * its row, committed during any wait, is read too; a replay asks it as well.
+ * On the business's own site (a task with no client), the refusal unless the
+ * task is the owner's own internal work, judged as the broker judges a run's
+ * task (S2, owner line 72, R6 #1699). A request asks it last, after the
+ * agent's own standing waits (`lastCheck`), so a write that names the task
+ * without moving its row, committed during any wait, is read too; a replay
+ * asks it as well. The request names no party (#1693): the task's client, read
+ * here, is the site it lands on.
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
   operands: RequestOperands,
 ): Promise<CommandRefusal | undefined> {
-  if (operands.partyId !== null) return undefined;
   const task = await readPage(tx, operands.taskId);
-  const own = task !== undefined && task.clientId === null && ownersOwn(task.source);
+  if (task !== undefined && task.clientId !== null) return undefined;
+  const own = task !== undefined && ownersOwn(task.source);
   return own ? undefined : NOT_OWN_WORK;
 }
 

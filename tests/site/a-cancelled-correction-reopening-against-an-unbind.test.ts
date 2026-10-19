@@ -44,14 +44,7 @@ beforeAll(async () => {
 /** A correction on the client's first page, approved, then cancelled after its dispatch. */
 async function cancelledAfterApproval(client: FreshClient): Promise<string> {
   const [page] = client.pages;
-  const asked = detailOf(
-    await w.request(w.ava, {
-      partyId: client.partyId,
-      taskId: client.taskId,
-      pageUrl: page.pageUrl,
-      path: page.path,
-    }),
-  );
+  const asked = detailOf(await w.request(w.ava, { taskId: client.taskId, page: page.pageUrl }));
   const id = String(asked['correctionId']);
   expect(codeOf(await w.approve(w.ben, id, String(asked['versionId'])))).toBe('not-a-refusal');
   await inAlpha(w, async (tx) => await moveTo(tx, id, 'cancelled'));

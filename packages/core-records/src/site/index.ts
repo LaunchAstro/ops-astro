@@ -11,17 +11,21 @@ export {
   insertLiveCorrection,
   listCoveredCorrections,
   lockCoveredCorrection,
-  writeCorrectionDecision,
   type CorrectionState,
   type LiveCorrection,
   type NewLiveCorrection,
-  type PartyRefused,
+  type PageRefused,
+  type StoredCorrection,
+  type UnpinnedCorrection,
 } from './live-corrections.ts';
 export {
   holdsAnywhere,
   isActiveMember,
+  isVerifiedNow,
+  writeCorrectionDecision,
   lockConfiguredApprover,
   readCoveredDecision,
+  VERIFIED_FOR_MS,
   type CorrectionDecision,
 } from './correction-decisions.ts';
 export {
@@ -47,6 +51,7 @@ export {
   bindPartySite,
   isBoundPage,
   readPartySite,
+  taskClient,
   unbindPartySitePage,
   type PartySiteRecord,
   type SiteWrite,
