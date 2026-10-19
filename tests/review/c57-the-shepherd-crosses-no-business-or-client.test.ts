@@ -111,7 +111,7 @@ describe.skipIf(noDatabase)('C57 the shepherd crosses no business or client', ()
     ).toMatchObject({ ok: true });
   });
 
-  it('C57 isolation: another person, with no covering or with no decision key, finds no send', async () => {
+  it('C57 isolation: another person finds no send, and an agent key is refused before any read', async () => {
     const { scene: s, raised } = await raisedScene('alpha');
     const ask = { sendId: raised.sendId, digest: raised.digest };
     const approvalsBefore = await approvals();
@@ -131,7 +131,16 @@ describe.skipIf(noDatabase)('C57 the shepherd crosses no business or client', ()
       await approveAs('alpha', decider, { ...ask, sendId: 'not-an-id' }),
     ];
     for (const answer of answers) expect(answer).toStrictEqual({ ok: false, code: 'NOT_FOUND' });
-    namesNone(answers, [s.review, s.client, s.task, s.marker, raised.commentId]);
+    // The decider's own person through an agent credential, even one that ticked the decision
+    // key, is refused before any read: only a person's own session approves a client email.
+    const agentKeys = [
+      await approveAs('alpha', decider, ask, ['task:read']),
+      await approveAs('alpha', decider, ask, ['proposal:decide']),
+    ];
+    for (const answer of agentKeys) {
+      expect(answer).toStrictEqual({ ok: false, code: 'ONLY_A_PERSON_APPROVES' });
+    }
+    namesNone([...answers, ...agentKeys], [s.review, s.client, s.task, s.marker, raised.commentId]);
     const [row] = await w.db.admin.execute<{ readonly approved: string | null }>(
       'select approved_digest as approved from public.review_shepherd_sends where id = $1',
       [raised.sendId],
