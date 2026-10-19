@@ -50,8 +50,7 @@ import { lockFacts, type Checked } from './broker-facts.ts';
 import { lockEnvelope } from './broker-give-back.ts';
 import { carriesHere, sweepCarried, writeCarriers } from './broker-carriage.ts';
 import type { Handoff } from './carriage.ts';
-import { refusedAtStart } from './broker-stop.ts';
-import { releaseUnsent } from './broker-release.ts';
+import { releaseRefused, releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
@@ -130,20 +129,8 @@ async function markStarted(
     const checked = here
       ? startable(facts, request, reserved, unknown, copied)
       : ({ ok: false, code: 'CARRIAGE_UNAVAILABLE' } as const);
-    if (!checked.ok) {
-      const released = await tx.query(
-        `update public.model_calls
-            set state = 'released', ended_at = clock_timestamp(),
-                route_key = $3, route_reach = $4, credential_kind = $5,
-                provider = $6, credential_ref = $7, account = $8
-          where business_id = $1 and id = $2 and state = 'reserved'
-          returning id`,
-        [tx.businessId, reserved.callId, ...route],
-      );
-      if (released.length > 0)
-        await refusedAtStart(tx, reserved.callId, checked.code, facts, broker);
-      return checked.code;
-    }
+    if (!checked.ok)
+      return await releaseRefused(tx, reserved.callId, route, checked.code, facts, broker);
     const started = await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),

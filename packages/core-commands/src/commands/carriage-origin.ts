@@ -220,10 +220,7 @@ export async function recordSend(
 
 type Fenced = Awaited<ReturnType<Handoff['fence']>>;
 
-/**
- * The send judgement, whose transaction (`open`, handing its work whatever the
- * judgement is made by) holds its locks until released or W after `heardAt`.
- */
+/** The send judgement in `open`'s transaction, its locks held until released or W after `heardAt`. */
 export function holdSend<By>(
   open: (work: (tx: TenantQuery, by: By) => Promise<void>) => Promise<unknown>,
   judge: (tx: TenantQuery, by: By) => Promise<Judged>,
