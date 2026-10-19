@@ -5,13 +5,12 @@
 // `{taskId, page, word, replacement}` with no base revision. The
 // broker keeps nothing else, a correction's result comes back as its row by
 // id, and the agent's runner computes a draft through the worker's one call
-// port with no connection of its own (egress denied throughout).
+// port alone; that it opens no connection is A6's, under kernel confinement.
 
 import { describe, expect, it } from 'vitest';
 import { agentRunner } from '../../apps/worker/agent-runner.ts';
 import type { Answered, Call } from '../../apps/worker/agent-call.ts';
 import { readTurn, toolsKept } from '../../packages/core-custody/src/broker-turn-read.ts';
-import { denyEgress } from '../harness/deny-egress.ts';
 
 const TASK = '00000000-0000-4000-8000-0000000000a1';
 const CORRECTION = '00000000-0000-4000-8000-0000000000c7';
@@ -114,22 +113,15 @@ function scriptedDoor(): { readonly call: Call; readonly sent: Sent[] } {
 }
 
 describe("the agent's runner", () => {
-  it('drafts one correction through the call port, with no connection of its own', async () => {
+  it('drafts one correction through the call port alone', async () => {
     const door = scriptedDoor();
-    const guard = denyEgress();
-    let end;
-    try {
-      end = await agentRunner({ operation: 'model.replay_turn' }).compute({
-        phase: 'compute',
-        taskId: TASK,
-        attemptId: 'attempt',
-        lease: { leaseId: 'lease', fence: 1 },
-        call: door.call,
-      });
-    } finally {
-      guard.release();
-    }
-    expect(guard.attempts).toEqual([]);
+    const end = await agentRunner({ operation: 'model.replay_turn' }).compute({
+      phase: 'compute',
+      taskId: TASK,
+      attemptId: 'attempt',
+      lease: { leaseId: 'lease', fence: 1 },
+      call: door.call,
+    });
     expect(end).toEqual({ outcome: 'success', endCode: 'COMPLETED' });
     expect(door.sent.map((each) => each.verb)).toEqual([
       'task.read',
