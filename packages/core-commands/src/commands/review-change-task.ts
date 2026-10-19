@@ -51,6 +51,12 @@ const REFUSALS: Readonly<Record<ObservedRefusal, CommandRefusal>> = {
   GATE_NOT_APPROVED: refuseNotFound(),
 };
 
+const MISSING_REQUEST = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['changeRequestId'],
+  ['Send changeRequestId as an identifier.'],
+);
+
 export interface MakeChangeTask {
   readonly leaseId: unknown;
   readonly fence: unknown;
@@ -99,6 +105,8 @@ export async function makeChangeTask(
   request: MakeChangeTask,
 ): Promise<HandlerOutcome> {
   const { leaseId, fence, changeRequestId } = request;
+  // An id left out is the caller's to send; a malformed one names nothing, as a fabricated one.
+  if (typeof changeRequestId !== 'string') return refused(MISSING_REQUEST);
   if (!isUuid(changeRequestId)) return refused(refuseNotFound());
   if (typeof leaseId !== 'string' || !isUuid(leaseId) || !Number.isSafeInteger(fence)) {
     return refused(REFUSALS.LEASE_NOT_OWNED);
