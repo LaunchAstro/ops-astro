@@ -91,6 +91,13 @@ async function startedBy(role: 'owner' | 'member', title: string): Promise<Work>
   return await liveWork(s, `${title} ${randomUUID()}`, 2_000);
 }
 
+/** A run on `taskId`, proposed, approved and picked up by whoever holds the role now. */
+async function runOn(taskId: string): Promise<Work> {
+  const proposal = await propose(s, taskId, { maximumMinor: 2000, purpose: freshPurpose() });
+  const decision = await approve(s, proposal);
+  return { taskId, proposal, decision, picked: await pickup(s, decision['reservationId']) };
+}
+
 /** The run's call on the plan, nobody attending it. */
 async function ask(work: Work, on: Broker = onPlan()) {
   await stepOf(work);
@@ -167,11 +174,12 @@ describe.skipIf(serverUrl === undefined)('application writes after the run start
   it('application writes cannot backfill owner standing over a member-started run', async () => {
     await holdsRole('owner');
     const taskId = await createTask(s, `owner task ${randomUUID()}`);
+    const secondTask = await createTask(s, `owner task ${randomUUID()}`);
     await holdsRole('member');
-    const proposal = await propose(s, taskId, { maximumMinor: 2000, purpose: freshPurpose() });
-    const decision = await approve(s, proposal);
-    const picked = await pickup(s, decision['reservationId']);
-    const work = { taskId, proposal, decision, picked };
+    const work = await runOn(taskId);
+    // A second member-started run, picked before the write: the first ask's refusal stops its
+    // attempt and retires its lease (#1623 R1, B2), so the ask after the write is this run's.
+    const again = await runOn(secondTask);
     expect(await ask(work)).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' });
     // Real application credentials, no administrator, trigger changes or disabled RLS.
     // Insert an ended historical owner membership covering the run's two events.
@@ -181,11 +189,11 @@ describe.skipIf(serverUrl === undefined)('application writes after the run start
         (business_id,id,person_id,role_key,active,joined_at,ended_at)
         select $1,$2,$3,'owner',false,v.created_at - interval '1 second',clock_timestamp()
         from public.proposal_versions v where v.business_id = $1 and v.id = $4`,
-        [s.business, randomUUID(), s.decider.personId, proposal['versionId']],
+        [s.business, randomUUID(), s.decider.personId, work.proposal['versionId']],
       );
     });
     const seen = world.provider.seen.length;
-    const answer = await ask(work);
+    const answer = await ask(again);
     expect.soft(world.provider.seen.length).toBe(seen);
     expect(answer).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' });
   }, 120_000);
@@ -193,6 +201,8 @@ describe.skipIf(serverUrl === undefined)('application writes after the run start
   it('promoting a member to owner after their run started does not carry that run', async () => {
     await holdsRole('member');
     const work = await liveWork(s, `member's task ${randomUUID()}`, 2_000);
+    // A second run started before the promotion: the first ask's refusal retires its lease (#1623 R1, B2).
+    const again = await liveWork(s, `member's task ${randomUUID()}`, 2_000);
     expect(await ask(work)).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' });
     await s.db.app.withBusiness(s.business, async (tx) => {
       await tx.query(
@@ -202,7 +212,7 @@ describe.skipIf(serverUrl === undefined)('application writes after the run start
       );
     });
     const seen = world.provider.seen.length;
-    const answer = await ask(work);
+    const answer = await ask(again);
     expect.soft(world.provider.seen.length).toBe(seen);
     expect(answer).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_OWNER_STARTED' });
     expect(await rowsOf(answer.callId)).toMatchObject([
