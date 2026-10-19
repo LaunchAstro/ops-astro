@@ -3,8 +3,8 @@
 // #1623 R3, the definition part: the run's kept copy of a pinned file stays
 // insert-only for the application (0086), so the broker never reads it back,
 // and a turn that names a definition is refused `PROVENANCE_UNBOUND` at
-// binding, never a server error. Proof by Sol (GPT-6.1-Sol), review of #1900 at
-// 2e629a9af4, finding S1900-1; assertions unchanged.
+// binding, never a server error. Proof by Sol (GPT-6.1-Sol), review of #1900,
+// finding S1900-1; assertions unchanged.
 
 import { describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';

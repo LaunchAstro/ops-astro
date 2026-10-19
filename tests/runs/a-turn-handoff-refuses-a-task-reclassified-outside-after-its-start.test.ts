@@ -3,8 +3,8 @@
 // #1623 R3 with owner line 72: a turn's subscription send is judged again at
 // custody's handoff from the rows, as a fields call is. A task an agent's
 // write made outside after the start committed is not admitted to the
-// subscription's cloud route. Proof by Sol (GPT-6.1-Sol), review of #1900 at
-// 2e629a9af4, finding S1900-2; assertions unchanged.
+// subscription's cloud route. Proof by Sol (GPT-6.1-Sol), review of #1900,
+// finding S1900-2; assertions unchanged.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';

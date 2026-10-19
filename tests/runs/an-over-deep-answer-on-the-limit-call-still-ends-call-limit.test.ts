@@ -5,8 +5,8 @@
 // `call_limit / CALL_LIMIT_REACHED` whatever its answer, a deep one included;
 // only a deep answer before the limit ends `cancelled / TURN_MALFORMED`. The
 // digest binding keeps its scope, and a part too deep to digest is unbound
-// before any stored answer is read. Proof by Sol (GPT-6.1-Sol), review of #1900
-// at 2e618c3d00, assertions unchanged.
+// before any stored answer is read. Proof by Sol (GPT-6.1-Sol), review of #1900,
+// finding S1900-7, assertions unchanged.
 
 import { expect, it } from 'vitest';
 import { settledAnswer } from '../../packages/core-custody/src/broker-limit.ts';

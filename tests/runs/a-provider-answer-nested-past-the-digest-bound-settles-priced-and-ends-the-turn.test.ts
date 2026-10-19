@@ -6,7 +6,7 @@
 // priced and the attempt ends `cancelled / TURN_MALFORMED`: the answer can never
 // be bound by a later turn, and a digest is judged without recursion, so nothing
 // throws away the settlement of a call already sent. The first case is the
-// proof by Sol (GPT-6.1-Sol), review of #1900 at 790e99dc5b, assertions
+// proof by Sol (GPT-6.1-Sol), review of #1900, finding S1900-6, assertions
 // unchanged; the second states what the settlement keeps.
 
 import { createServer } from 'node:http';
