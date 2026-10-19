@@ -55,6 +55,7 @@ const PINNED_IDENTIFIERS = {
   'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': ['incidentId'],
+  'review.picture': ['pictureId'],
   'review.read': ['reviewId'],
   'secret.list': [],
   'session.capabilities': [],
@@ -248,6 +249,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
   // C35's review, which none of these bodies carries.
   'review.read': unsent('reviewId', 'Send reviewId as the review.'),
+  'review.picture': unsent('pictureId', 'Send pictureId as the landed picture.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
@@ -263,7 +265,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-seven reads', () => {
+  it('names the same forty-eight reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
