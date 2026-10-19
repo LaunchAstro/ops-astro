@@ -71,7 +71,7 @@ async function withinDelegation(
 /**
  * On the business's own site (no party), the refusal unless the task is the
  * owner's own internal work, judged as the broker judges a run's task (S2,
- * owner line 72, R6 #1699). A request asks it last, after the agent's own
+ * owner line 72, R6). A request asks it last, after the agent's own
  * standing waits (`lastCheck`), so a write that names the task without moving
  * its row, committed during any wait, is read too; a replay asks it as well.
  */
