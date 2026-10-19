@@ -10,6 +10,7 @@
  * revisions, captures and pins, and a landed picture are read.
  * A person files a client pin as a change request and a person decides it (C57, #2016); a
  * worker makes an approved one a task under its lease (#2117).
+ * A person decides its latest revision and records Astra's review of it (#2014).
  */
 export type ReviewCommandName =
   | 'review.open'
@@ -22,4 +23,6 @@ export type ReviewCommandName =
   | 'review.decide_change'
   | 'review.make_change_task'
   | 'review.read'
-  | 'review.picture';
+  | 'review.picture'
+  | 'review.decide'
+  | 'review.record_astra_review';
