@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
+//
+// #1988, from Sol's review of #2100 (S2100-1): the site plan's click sends
+// task.create and nothing else, task.assign included.
 import { afterEach, expect, it } from 'vitest';
 import { answered, block, drawer } from './chat-proposal-drawer.tsx';
 import { track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
 afterEach(unmountAll);
-it('Sol proof, criterion 1: accepting a site plan performs no second write', async () => {
+it('accepting a site plan performs no second write', async () => {
   const sitePages = [{ repository: 'agency-astro/site', page: 'https://agencyastro.com/about' }];
   const body = block(
     JSON.stringify({
