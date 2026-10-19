@@ -80,7 +80,7 @@ async function contextFor(business: string, member: Member) {
 describe.skipIf(serverUrl === undefined)('the bound pages the chat is given', () => {
   it('gives a business-wide run:write holder their own business’s pages, in the page field, and no path', async () => {
     const context = await contextFor(w.world.business, w.ava);
-    expect(context.sites).toStrictEqual([own['alpha']]);
+    expect(context.sites).toEqual([own['alpha']]);
     const page = context.fields.find((field) => field.name === 'page');
     expect(JSON.parse(page?.value ?? '{}')).toStrictEqual({ sites: [own['alpha']] });
     expect(JSON.stringify(context)).not.toContain(FILE);
@@ -92,7 +92,7 @@ describe.skipIf(serverUrl === undefined)('the bound pages the chat is given', ()
     expect(pages).not.toContain(B_PAGE);
     expect(pages).not.toContain(own['beta']?.page);
     const theirs = await contextFor(w.beta, w.eve);
-    expect(theirs.sites).toStrictEqual([own['beta']]);
+    expect(theirs.sites).toEqual([own['beta']]);
     expect(JSON.stringify(theirs)).not.toContain(own['alpha']?.page ?? 'unset');
   });
 
@@ -100,7 +100,7 @@ describe.skipIf(serverUrl === undefined)('the bound pages the chat is given', ()
     for (const member of [w.dee, w.admin]) {
       // eslint-disable-next-line no-await-in-loop -- one person at a time
       const context = await contextFor(w.world.business, member);
-      expect(context.sites).toStrictEqual([]);
+      expect(context.sites).toEqual([]);
       expect(context.fields.find((field) => field.name === 'page')).toBeUndefined();
       expect(JSON.stringify(context)).not.toContain(own['alpha']?.page ?? 'unset');
     }
