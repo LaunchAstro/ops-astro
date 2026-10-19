@@ -26,7 +26,8 @@ export interface PinFormProps {
   readonly revisionId: string;
   readonly width: number;
   readonly spot: Spot;
-  readonly onPinned: () => void;
+  /** Told the spot it pinned, which may no longer be the one marked. */
+  readonly onPinned: (spot: Spot) => void;
   readonly onCancel: () => void;
 }
 
@@ -50,6 +51,7 @@ function usePin(props: PinFormProps) {
       audience,
     };
     const intent = JSON.stringify(command);
+    const { spot } = props;
     const operationId = held.current.get(intent) ?? props.client.newOperationId();
     held.current.set(intent, operationId);
     run(
@@ -61,7 +63,7 @@ function usePin(props: PinFormProps) {
       (settlement) => {
         if (settlement.kind !== 'ok') return;
         setBody((now) => (now.trim() === words ? '' : now));
-        props.onPinned();
+        props.onPinned(spot);
       },
     );
   };
