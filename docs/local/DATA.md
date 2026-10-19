@@ -67,23 +67,77 @@ SOL-R3R2-1), so the runner checks the rule rather than leaving it to this page,
 within the limit below.
 
 When at least one migration is pending, the runner
-(`packages/core-records/src/tenancy/migrate.ts`) reads `pg_stat_activity` for
-every client backend on its own database except its own
-(`datname = current_database()`, `backend_type = 'client backend'`,
-`pid <> pg_backend_pid()`). If it finds any, it throws `MigrationRefused`,
-which names each one by pid, login, application name, client address and
-start time. It has applied nothing and written no ledger row. The CLI prints
-the same and exits 2. It counts any client session: the application login, GoTrue
-(which connects as `postgres` on the local install), a `psql` you left open, another tool. None of
-them can be told apart from an application safely, and there is no flag or
-environment variable that skips the check. The one exception is hosted
+(`packages/core-records/src/tenancy/migrate.ts`) opens its one transaction
+and, before any file runs, does three things in this order.
+
+1. It bounds every lock wait in the transaction to 5 s
+   (`select set_config('lock_timeout', '5000ms', true)`, for the transaction
+   only).
+2. It locks every ordinary and partitioned table in the `ops` and `public`
+   schemas in ACCESS EXCLUSIVE mode, in one `LOCK TABLE` statement, in schema
+   and name order, each named `ONLY` so the lock never reaches an inheritance
+   child or partition in another schema. Those are the schemas the migrations own. Supabase's own
+   (`auth`, `storage`, `realtime`) are never locked. The list is read from the
+   catalogue on each attempt, not from the files, so no table a file alters can
+   be missed. Tables the pending files create need no lock: they do not exist
+   yet.
+3. It reads `pg_stat_activity` for every client backend on its own database
+   except its own (`datname = current_database()`,
+   `backend_type = 'client backend'`, `pid <> pg_backend_pid()`), and counts
+   the ones that could be using the old schema: `state` other than `idle` (a
+   null state counts), a transaction open (`xact_start` set, including idle or
+   aborted in one), or any lock held or awaited in `pg_locks`. If it finds any,
+   it throws `MigrationRefused`, which names each by pid, login, application
+   name, client address, start time, state, transaction start and the locks it
+   holds.
+
+**The rule: a session idle with no transaction and no lock passes.** That is
+what a transaction-mode pooler keeps open. On hosted staging, Supavisor holds
+one idle backend per runtime login (port 6543) and opens a new one within
+100 ms when it is ended, so a rule that counted any session could never pass
+there (#1984, 19 October 2026). Such a backend cannot be mid-work on the old
+schema. Any statement it starts on a table in `ops` or `public` waits on the
+run's locks, and once the run commits, it reads the new schema. A session
+that is already waiting on the run's locks when the runner looks still counts,
+and the run refuses naming it, applying nothing. A function takes no lock, so
+its transaction, or the same statement, may already have run an old definition
+(S2007-3), and `pg_stat_activity` cannot tell one statement from several sent
+in one message. Once the run has rolled back, the waiting statement finishes on
+the old schema. A session in a transaction refuses whatever it has done, and
+so does one holding any lock, an advisory lock included.
+
+A refused run has applied nothing and written no ledger row. The CLI prints
+the refusal and each session and exits 2. The rule applies to any client
+session: the application login, GoTrue (which connects as `postgres` on the
+local install), a `psql` you left open, another tool. None of them can be
+told apart from an application safely, and there is no flag, environment
+variable or option that skips the check. The one exception is hosted
 Supabase's own services, which never stop: sessions whose login is exactly
 `authenticator`, `pgbouncer`, `supabase_admin`, `supabase_auth_admin` or
 `supabase_storage_admin` are left out of the count, so on hosted Supabase it
 does not see Data API, Auth, Storage or Realtime traffic, and none of those roles exists on
 the local install. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
-The runner's role must be able to read every session in `pg_stat_activity`:
+
+**A lock wait that times out is retried, then refused.** `lock_timeout` bounds
+the run's own `LOCK TABLE` and every file's statements. A wait that passes it
+(SQLSTATE `55P03`) rolls the run back whole, as any failure does. The runner
+waits 10 s and runs it again from the ledger read, three attempts in all. After
+the third, it throws `MigrationLockTimeout`. That error names the attempts, the
+timeout, the pause and the sessions that counted at a look taken after the last
+attempt. The CLI prints it like `MigrationRefused` and exits 2. The 10 s pause
+gives a transient reader time to finish; it is not for a pool to drain, which
+Supavisor's never does. The attempts, timeout and pause are options of
+`migrate` and `applyMigrations` for the tests; `db-migrate.mjs` passes none.
+The retry composes with the shared-role retry below, which keeps its own
+schedule. Every refusal says nothing was applied and names the version the
+database is still at.
+
+The runner's role must be able to lock those tables: the owner can, and so can
+a role with `MAINTAIN`, `UPDATE`, `DELETE` or `TRUNCATE` on each. A lock it may
+not take fails the run before any file runs, naming the version it is still
+at.
+The runner's role must also be able to read every session in `pg_stat_activity`:
 a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of
 `pg_read_all_stats`. PostgreSQL hides another role's `backend_type` from any
 other role, so a role without that would find nobody connected. With a
@@ -131,39 +185,48 @@ transaction, so the runner stops at once and says which file and statement
 did it, and that work before it in the run may be committed. That error never
 says nothing was applied.
 
-A session can connect after that first look. So the runner looks again inside
-the transaction, before each file's first statement and once more after the
-last ledger row, just before commit. It clears the backend's statistics
-snapshot first, because otherwise a later look inside one transaction would
-repeat the first. A session caught there refuses the run, and the whole run
-rolls back. That leaves one window: a session that connects after the look
-before commit and before the commit completes. It can begin a transaction
-against the old schema and carry on after the commit, which a session that
-connects afterwards cannot; a migration that needs to rule that out takes its
-locks before its checks, as 0030 does. A run of many files also holds its
-locks until the one commit, so an application that is somehow still up waits
-longer. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
-LIMIT` to close that window, because a crash between setting it and restoring
-it would leave the install refusing its own application.
+Every look is inside the transaction, after the locks. A session can get busy
+after one look, so the runner looks before each file's first statement and
+once more after the last ledger row, just before commit. It clears the
+backend's statistics snapshot first, because otherwise a later look inside one
+transaction would repeat the first. A session caught there refuses the run,
+and the whole run rolls back. There is no look before the transaction: it
+would refuse a lock holder at once, where the bounded wait and its retries
+give a transient one time to finish. The window a look cannot close, a session
+that begins a transaction after the look before commit and before the commit
+completes, is closed by the locks for every table in `ops` and `public`. Its
+first statement on one of them waits for the commit and then sees the new
+schema. The locks are held until the one commit, so an application that is
+somehow still up waits for the whole run, up to 5 s for each lock. Nothing
+changes the database's `ALLOW_CONNECTIONS` or `CONNECTION LIMIT`, because a
+crash between setting it and restoring it would leave the install refusing its
+own application.
 
 **The check cannot tell a stopped application from an idle one.** The API's
 pool (`postgres`, `tenancy/database.ts`) opens a connection when a query needs
-one, and an idle API or GoTrue may hold none between requests. A live drill on
-the local install saw none from a running, healthy API and GoTrue, and one from
-the API right after a request to `/api/health`. So an idle application passes
-the check, and reconnects on its next request, on whichever schema is there by
-then. Stopping the API and GoTrue is the operator's step, as README.md's
+one, and an idle API or GoTrue may hold none between requests, or hold one
+idle. A live drill on the local install saw none from a running, healthy API
+and GoTrue, and one from the API right after a request to `/api/health`. So an
+idle application passes the check. Its next statement on a locked table waits
+for the run and then sees the new schema; one outside `ops` and `public` does
+not wait. Stopping the API and GoTrue is the operator's step, as README.md's
 upgrade steps give it, and a script that upgrades must stop them itself before
 `db:migrate`; the runner's check is a backstop, not the stop.
 
 `tests/tenancy/migration-runner-guard.test.ts` holds real sessions open against
 databases at 0023 and at the head. It covers the refusal with the application
-login held, with other client sessions held, the ledger and schema unchanged
-after it, the apply once they close, an up-to-date install with the
-application connected, a session that arrives inside a migration, a session
-that arrives during the second of two pending files and a failure in the
-second of two (neither leaves the first), the refusal of each statement the
-transaction cannot hold, and the CLI.
+login mid-transaction, with other client sessions mid-transaction, the ledger
+and schema unchanged after it, the apply once they close, the apply beside an
+idle pooled session, a held lock refused after the bounded retries, a query
+that arrives mid-run and waits refusing the run and then reading the old
+schema, an up-to-date install
+with the application connected, a session that starts a transaction inside a
+migration, one that does so during the second of two pending files and a
+failure in the second of two (neither leaves the first), the refusal of each
+statement the transaction cannot hold, the strict reader the staging reset
+keeps, and the CLI, the lock-timeout refusal included.
+`tests/ci/staging-hosted-roles.test.ts` covers a platform login holding a lock
+outside `ops` and `public`, which neither refuses nor delays the run.
 The test harness's `closeSessions()` ends its own application pool before a
 test migrates. Nothing in the runner has a bypass.
 

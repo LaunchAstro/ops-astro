@@ -14,14 +14,17 @@
 // that runs migrations has to be a different one, and naming it here is part of
 // how that stays true.
 //
-// The runner refuses while anything else is connected to the database, and
-// this script offers no way round that: no flag, no environment variable. The
-// supported upgrade is the API and GoTrue stopped, this, then both started.
+// The runner refuses beside any session that could be using the old schema
+// (active, in a transaction or holding a lock), and after its bounded lock
+// waits, and this script offers no way round either: no flag, no environment
+// variable, no options. The supported upgrade is the API and GoTrue stopped,
+// this, then both started.
 
 import { fileURLToPath } from 'node:url';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import {
+  MigrationLockTimeout,
   MigrationRefused,
   MigrationRoleCannotSee,
   migrate,
@@ -51,15 +54,20 @@ try {
       `${applied.length + alreadyApplied.length} in the ledger`,
   );
 } catch (error) {
-  if (!(error instanceof MigrationRefused) && !(error instanceof MigrationRoleCannotSee)) {
+  if (
+    !(error instanceof MigrationRefused) &&
+    !(error instanceof MigrationLockTimeout) &&
+    !(error instanceof MigrationRoleCannotSee)
+  ) {
     throw error;
   }
   console.error(`db-migrate: ${error.message}`);
-  for (const s of error instanceof MigrationRefused ? error.sessions : []) {
+  for (const s of error instanceof MigrationRoleCannotSee ? [] : error.sessions) {
     console.error(
       `db-migrate:   connected: pid ${s.pid}, login ${s.usename}, ` +
         `application "${s.application_name ?? ''}", from ${s.client_addr ?? 'local socket'}, ` +
-        `since ${s.backend_start}`,
+        `since ${s.backend_start}, state ${s.state ?? '?'}, ` +
+        `transaction since ${s.xact_start ?? 'none'}, holding ${s.holds ?? 'no lock'}`,
     );
   }
   process.exitCode = 2;

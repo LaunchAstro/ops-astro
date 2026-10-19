@@ -463,11 +463,15 @@ reaches it; a login dropped while the loop runs is skipped rather than failing
 the upgrade (FR8-0031). Migration 20261012052116 repeats it for every role that
 holds the group through another role, and for that middle role.
 
-**Upgrading a running install.** The migration runner refuses to apply a
-pending migration while any other client session is connected to the database
-(the API, GoTrue, a `psql`), names each by pid, login, application, address and
-start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
-`tests/tenancy/migration-runner-guard.test.ts`). Stop the API and GoTrue, run
+**Upgrading a running install.** The migration runner locks every table in
+`ops` and `public` first, with each lock wait bounded to 5 s, then refuses to
+apply a pending migration while any other client session (the API, GoTrue, a
+`psql`) is active, in a transaction or holding a lock. It names each by pid,
+login, application, address, start, state and locks, and changes nothing
+(`MigrationRefused`, `tenancy/migrate.ts`;
+`tests/tenancy/migration-runner-guard.test.ts`). An idle session with no
+transaction and no lock, such as a pooler's, passes. A lock wait that times out
+is retried, three attempts 10 s apart, then refused (`MigrationLockTimeout`). Stop the API and GoTrue, run
 `pnpm db:migrate`, and start them again. With nothing pending the check does not
 run. An upgrade run is all or nothing: `db:migrate` applies every pending
 migration in one transaction, so a refusal (another session connected) or a
