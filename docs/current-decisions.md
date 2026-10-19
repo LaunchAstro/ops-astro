@@ -105,7 +105,11 @@ accepted it on 18 October 2026 (owner question d; the round register, items
 - The proposal reads the correction's site through the same binding.
 - Admitting own-business work on a subscription route, judged by the task's
   source, is the second part of R6 (#1699). Client-party work never gains
-  plan eligibility.
+  plan eligibility. The broker reads the run's task's client and source after
+  its last lock wait at admission, and again at custody's handoff. An agent
+  asks on the business's own site only while its task is still the owner's
+  own work, read after the request's lock wait by the broker's own reader
+  (`CORRECTION_NOT_OWN_WORK`).
 
 ## Selected foundation
 

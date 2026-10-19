@@ -59,7 +59,9 @@ export async function workJudged(
     const ran = await work();
     if (isRefused(ran)) return ran;
     standing.ended = await agentStanding(tx, judged);
-    return standing.ended === undefined ? ran : refused(standing.ended);
+    if (standing.ended !== undefined) return refused(standing.ended);
+    const last = await ran.lastCheck?.();
+    return last === undefined ? ran : refused(last);
   });
   return standing.ended === undefined ? outcome : { ended: standing.ended };
 }
