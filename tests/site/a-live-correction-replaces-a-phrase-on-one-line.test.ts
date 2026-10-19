@@ -222,6 +222,8 @@ describe('a Markdown phrase changes no markup', () => {
     ['a heading marker', '# Big news'],
     ['a list item', '- We walk'],
     ['an ordered item', '1. We walk'],
+    ['an ordered item closed by a bracket', '12) We walk'],
+    ['an ordered item with nothing after it', '3.'],
     ['emphasis', 'We *walk* with you.'],
     ['a link', 'We walk [with](you) you.'],
     ['code', 'We `walk`'],

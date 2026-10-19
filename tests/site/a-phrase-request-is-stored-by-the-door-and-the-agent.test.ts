@@ -7,7 +7,7 @@
 // two lines is refused with nothing stored, its fix line saying what is asked.
 
 import { randomUUID } from 'node:crypto';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -22,6 +22,9 @@ beforeAll(async () => {
   if (serverUrl === undefined) return;
   w = await c80World('phrase');
 }, 120_000);
+afterAll(async () => {
+  if (serverUrl !== undefined) await w.world.drop();
+});
 
 const HEADING = 'We are a friendly studio, here to help.';
 const REWRITE = 'A welcoming studio that answers the phone.';

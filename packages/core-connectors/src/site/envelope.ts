@@ -238,9 +238,10 @@ const runsAround = (source: string, start: number, end: number): string[] =>
     (/^\S*/u.exec(source.slice(end))?.[0] ?? '')
   ).split(/\s+/u);
 
-// A Markdown phrase opens with a letter or an opening mark, so it starts no heading, list,
-// quote or rule, and holds no emphasis, code, link, table cell or escape.
-const MARKDOWN_PHRASE = /^[\p{L}"“‘'(][^*_~`[\]|\\]*$/u;
+// A Markdown phrase opens with a letter, a number that is no ordered-list marker or an opening
+// mark, so it starts no heading, list, quote or rule, and holds no emphasis, code, link, table
+// cell or escape.
+const MARKDOWN_PHRASE = /^(?!\p{N}+[.)](?: |$))[\p{L}\p{N}"“‘'(][^*_~`[\]|\\]*$/u;
 
 /**
  * Whether `text` at `offset` is body copy, read construct by construct from the body's start:
