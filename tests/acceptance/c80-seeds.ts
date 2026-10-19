@@ -11,4 +11,9 @@ export interface C80Seeds {
   seedLiveCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
   /** Bind a client's own about page, for C80's request; the page's address. */
   bindClientSite?(partyId: string): Promise<string>;
+  /**
+   * C35-X: the next revision of the admin's review of this page, written by a new member
+   * through the records' open, so the admin decides a revision that is not their own.
+   */
+  reviseAsAnother?(page: Readonly<Record<string, unknown>>): Promise<{ readonly digest: string }>;
 }

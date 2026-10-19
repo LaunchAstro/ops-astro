@@ -80,6 +80,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'review.propose_change': ['commentId', 'changeRequest'],
   'review.decide_change': ['changeRequestId', 'changeRequest'],
   'review.make_change_task': ['changeRequestId', 'changeRequest'],
+  'review.decide': ['reviewId', 'review'],
+  'review.record_astra_review': ['reviewId', 'review'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

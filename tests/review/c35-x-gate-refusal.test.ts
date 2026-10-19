@@ -68,7 +68,7 @@ const reviewState = async (): Promise<readonly unknown[]> =>
             `select md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as digest
                from public.${table} t`,
           )
-          .catch((error: unknown) => String(error)),
+          .catch(String),
     ),
   );
 

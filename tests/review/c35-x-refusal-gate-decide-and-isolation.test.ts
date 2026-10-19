@@ -96,10 +96,10 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
           purposeScope: { kind: 'record', id: w.taskA },
           expiresAt: new Date(Date.now() + 3_600_000),
         });
-        return minted.ok ? minted.value.credential : undefined;
+        return minted.ok ? minted.value.credential : null;
       })
-      .catch(() => undefined);
-    if (gateDelegation !== undefined) {
+      .catch(() => null);
+    if (gateDelegation !== null) {
       expect(await asAgent(decideBody, gateDelegation)).not.toBe('not-a-refusal');
     }
     expect(await count('review_decisions', w.world.business)).toBe(0);

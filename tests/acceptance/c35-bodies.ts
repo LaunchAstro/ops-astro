@@ -14,6 +14,10 @@ import type { Caller } from './cast.ts';
 import type { Answer } from './world.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { makeTaskBody } from './c57b-bodies.ts';
+import { enrol } from '../commands/fixture.ts';
+import { openPageReview } from '../../packages/core-records/src/review/reviews.ts';
+import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { C80Seeds } from './c80-seeds.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -26,6 +30,8 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.propose_change',
   'review.decide_change',
   'review.make_change_task',
+  'review.decide',
+  'review.record_astra_review',
 ]);
 
 /** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
@@ -96,6 +102,24 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   }
   if (name === 'review.propose_change' || name === 'review.decide_change') {
     return await changeBody(context, name, detail['revisionId']);
+  }
+  if (name === 'review.record_astra_review') {
+    return {
+      body: {
+        reviewId: detail['reviewId'],
+        digest: detail['digest'],
+        verdict: 'approve',
+        review: 'Astra: as asked',
+      },
+    };
+  }
+  if (name === 'review.decide') {
+    // The admin decides a revision another member wrote: their own is R5's case alone.
+    if (context.reviseAsAnother === undefined) {
+      return { exception: 'this harness writes no second revision (C35-X)' };
+    }
+    const next = await context.reviseAsAnother(open.body);
+    return { body: { reviewId: detail['reviewId'], digest: next.digest, response: 'approve' } };
   }
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }
@@ -288,3 +312,24 @@ export async function c35AgentBody(
   detailOf(await harness.asAgent('review.capture_claim', lease, credential), 'agent claim');
   return { ...lease, ...LANDING };
 }
+
+/** C35-X's seed (`C80Seeds`): the page's next revision, by a new member of `alpha`. */
+export const reviseAsAnother =
+  (world: {
+    readonly db: { readonly app: Database };
+    readonly alpha: string;
+  }): Required<C80Seeds>['reviseAsAnother'] =>
+  async (page) => {
+    const reviser = await enrol(world.db.app, world.alpha, 'reviser');
+    return await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const opened = await openPageReview(tx, {
+        taskId: String(page['taskId']),
+        pageUrl: String(page['pageUrl']),
+        path: String(page['path']),
+        sourceRevision: `rev-${randomUUID()}`,
+        writer: { actorId: reviser.actorId, personId: reviser.personId, delegationId: null },
+      });
+      if ('code' in opened) throw new Error(`matrix: the second revision refused ${opened.code}`);
+      return { digest: opened.revision.digest };
+    });
+  };
