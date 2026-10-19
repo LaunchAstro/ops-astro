@@ -94,7 +94,9 @@ describe.skipIf(serverUrl === undefined)('task comments', () => {
         .toSorted();
       // `parent` (MP-4-5, R42): a reply goes to its message's audience, so the
       // id it carries is a client message's on the client side.
+      // `anchor` (C35, #2012): a client pin is shown with its spot.
       expect(shared).toStrictEqual([
+        'anchor',
         'audience',
         'author',
         'body',

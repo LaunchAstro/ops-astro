@@ -35,7 +35,8 @@ async function delegated(
       agentActorId: w.world.agentActorId,
       delegatePersonId: w.ava.personId,
       mintedByActorId: w.ava.actorId,
-      purpose: 'pin_what_the_review_found',
+      // One live delegation per purpose: each test credential names its own.
+      purpose: `pin_${actions.join('_')}_${taskId.slice(0, 8)}`,
       collections: ['review'],
       actions: [...actions],
       purposeScope: { kind: 'record', id: taskId },
@@ -65,14 +66,24 @@ async function capturedOn(taskId: string, pageUrl?: string, path?: string): Prom
   return String(opened['revisionId']);
 }
 
-const auditOf = async (since: Date) =>
+/** The newest audit row's time in alpha, read on the database's clock. */
+const auditMark = async (): Promise<string> =>
+  (
+    await w.world.db.admin.execute<{ readonly at: string }>(
+      `select coalesce(max(occurred_at), 'epoch')::text as at from public.audit_events
+        where business_id = $1`,
+      [w.world.business],
+    )
+  )[0]?.at ?? 'epoch';
+
+const auditOf = async (since: string) =>
   (
     await w.world.db.admin.execute<{
       readonly command: string;
       readonly refusal_code: string | null;
     }>(
       `select command, refusal_code from public.audit_events
-        where business_id = $1 and command = 'review.pin_comment' and occurred_at >= $2
+        where business_id = $1 and command = 'review.pin_comment' and occurred_at > $2
         order by occurred_at, id`,
       [w.world.business, since],
     )
@@ -128,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('C35 review:comment', () => {
 
   it('C35 audit readback (pinned comment created)', async () => {
     const revisionId = await capturedOn(w.taskA);
-    const since = new Date(Date.now() - 1000);
+    const since = await auditMark();
     expect(codeOf(await w.pin(w.ava, revisionId))).toBe('not-a-refusal');
     expect(codeOf(await w.pin(w.cal, revisionId))).toBe('SCOPE_NOT_GRANTED');
     expect(await auditOf(since)).toStrictEqual([
