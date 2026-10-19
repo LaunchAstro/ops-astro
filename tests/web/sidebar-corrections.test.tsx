@@ -96,14 +96,16 @@ describe('the card never publishes; a person decides through the decision path',
       const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
       // oxlint-disable-next-line no-await-in-loop
       await askFor(view, ABOUT);
-      expect(controls(view), state).toStrictEqual([]);
+      // A published or reverted card opens its receipts (#1695), and decides nothing.
+      const receipted = state === 'live' || state === 'reverted';
+      expect(controls(view), state).toStrictEqual(receipted ? ['Receipts'] : []);
       // oxlint-disable-next-line no-await-in-loop
       await view.unmount();
     }
     const { client } = business('alpha', 'requested');
     const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
     await askFor(view, ABOUT);
-    expect(controls(view)).toStrictEqual(['Approve', 'Decline']);
+    expect(controls(view)).toStrictEqual(['Launch', 'Decline']);
     expect(view.text()).not.toMatch(/publish now|publish this/iu);
   });
 
@@ -120,6 +122,7 @@ describe('the card never publishes; a person decides through the decision path',
     const paths = new Set(calls.map((call) => call.path));
     expect([...paths].toSorted()).toStrictEqual([
       '/live_correction/decide',
+      '/live_correction/list',
       '/live_correction/read',
     ]);
   });
@@ -171,7 +174,8 @@ describe('the desks hold the active business’s corrections only', () => {
     await view.render(<SidebarCorrections client={alpha.client} propose={mock.port} />);
     await tick();
     expect(view.all('[data-correction-card]')).toHaveLength(1);
-    expect(bravo.calls).toStrictEqual([]);
+    // Bravo was sent its own list read and nothing of Alpha's.
+    expect(bravo.calls).toStrictEqual([{ path: '/live_correction/list', body: {} }]);
   });
 });
 
@@ -213,19 +217,20 @@ describe('the door on the real command client', () => {
     );
     await askFor(view, ABOUT);
     await askFor(view, { ...ABOUT, word: 'teams', replacement: 'people' });
-    const ids = calls.filter((call) => call.path === '/live_correction/read');
-    const second = String(ids[1]?.body['correctionId']);
+    // Newest first, so the first asked is drawn second.
+    const read = calls.find((call) => call.path === '/live_correction/read');
+    const first = String(read?.body['correctionId']);
     await view.click(`[data-correction-card]:nth-of-type(2) [data-correction-decide="reject"]`);
     await tick();
     const decided = calls.filter((call) => call.path === '/live_correction/decide');
     expect(decided.map(({ body: { operationId: _o, ...rest } }) => rest)).toStrictEqual([
-      { correctionId: second, versionId: `v-${second}`, decision: 'reject' },
+      { correctionId: first, versionId: `v-${first}`, decision: 'reject' },
     ]);
   });
 });
 
 describe('the assistant sidebar', () => {
-  it('sends the door’s ask as live_correction.request when handed the site read, and draws no door without', async () => {
+  it('sends the door’s ask as live_correction.request when handed the site read, and draws the desks with no door without', async () => {
     const { client, calls } = business('alpha', 'requested');
     const drawer = (locate?: typeof aboutPage) => (
       <AssistantView
@@ -243,6 +248,7 @@ describe('the assistant sidebar', () => {
     expect(calls.filter((call) => call.path === '/live_correction/request')).toHaveLength(1);
     await view.render(drawer());
     await tick();
-    expect(view.find('[data-assistant="corrections"]')).toBeNull();
+    expect(view.find('[data-assistant="corrections"]')).not.toBeNull();
+    expect(view.find('[data-correction-door]')).toBeNull();
   });
 });
