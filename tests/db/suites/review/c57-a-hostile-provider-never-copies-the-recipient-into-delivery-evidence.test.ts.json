@@ -1,5 +1,5 @@
 {
   "kind": "conformance",
   "isolation": false,
-  "why": "C57 (#2017) canary: a provider that answers the recipient's local part as its message id never puts it in the send's delivery evidence."
+  "why": "C57 (#2017) canary: a provider that answers the recipient's local part as its message id never puts it in the send's delivery evidence, and an ordinary provider id for an initialled recipient is kept so its delivery webhook lands."
 }
