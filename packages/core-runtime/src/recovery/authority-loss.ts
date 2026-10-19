@@ -156,7 +156,7 @@ export async function classifyAuthorityLoss<T>(
       await revokeDelegation(tx, unit.revoke, 'authority_lost');
     }
     const work = workAfter.filter((row) => unit.match(row));
-    await retireWork(tx, work, locks);
+    await retireWork(tx, work, locks, 'AUTHORITY_LOST');
     ended.push(...work.map((row) => row.run_id));
     const holds = heldAfter.filter((row) => unit.match(row));
     classified.push(

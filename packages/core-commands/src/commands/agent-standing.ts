@@ -40,10 +40,12 @@ const NOT_LIVE_FIXES: readonly string[] = ['ask the authorising person for a cur
 
 /** What an agent call is judged on: the call, the bearer it presented, its row's authority. */
 export interface Judged {
-  readonly call: Pick<AgentCall, 'session' | 'credential'>;
+  readonly call: Pick<AgentCall, 'session' | 'credential' | 'declaration'>;
   readonly presented: VerifiedSubject;
   readonly authority: AgentOperation['authority'];
 }
+
+const STOPS: ReadonlySet<string> = new Set(['model.call', 'run.end']);
 
 /**
  * The handler's work in its savepoint, judged again once it has applied. A
@@ -59,19 +61,27 @@ export async function workJudged(
   const standing: { ended: CommandRefusal | undefined } = { ended: undefined };
   const outcome = await inSavepoint(tx, async () => {
     const ran = await work();
-    if (isRefused(ran)) return ran;
-    standing.ended = await agentStanding(tx, judged, ran.handsOver);
+    // Only a stop that retired its own work (#1623 R1) keeps rows that are judged.
+    const retained = isRefused(ran);
+    if (retained && (ran.retains !== true || !STOPS.has(judged.call.declaration.name))) return ran;
+    const handsOver = retained ? undefined : ran.handsOver;
+    standing.ended = await agentStanding(tx, judged, retained, handsOver);
     if (standing.ended !== undefined) return refused(standing.ended);
+    if (retained) return ran;
     const last = await ran.lastCheck?.();
     return last === undefined ? ran : refused(last);
   });
   return standing.ended === undefined ? outcome : { ended: standing.ended };
 }
 
-/** The refusal the door would give this applied agent call now, or nothing. */
+/**
+ * The refusal the door would give this agent call now, or nothing. A retained
+ * stop's own retirement of its delegation is the write, not a lapse.
+ */
 async function agentStanding(
   tx: TenantQuery,
   { call: { session, credential }, presented, authority }: Judged,
+  retained: boolean,
   handsOver: string | undefined,
 ): Promise<CommandRefusal | undefined> {
   const delegationId =
@@ -104,7 +114,10 @@ async function agentStanding(
   // Only the rows that served under a delegation answer to it. A helper's
   // handback answers to its credential, live or not (`agent-authority.ts`).
   if (authority !== 'record' && authority !== 'purpose') return undefined;
-  if (delegationId !== undefined && (await delegationStands(tx, session.actorId, delegationId))) {
+  if (
+    delegationId !== undefined &&
+    (await delegationStands(tx, session.actorId, delegationId, retained))
+  ) {
     return undefined;
   }
   return refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
@@ -139,19 +152,23 @@ async function stillTheAgent(tx: TenantQuery, session: AgentCall['session']): Pr
 /**
  * Live now, or handed back by this very call: a handback settles its own
  * delegation (`settleDelegation` stamps the transaction's `now()`), and that
- * is the write, not a lapse. A revocation or an expiry still refuses it.
+ * is the write, not a lapse. So is a retained stop's retirement of its own work (`revokeDelegation`
+ * stamps `now()` too, cause `work_retired`). Another revocation or an expiry still refuses it.
  */
 async function delegationStands(
   tx: TenantQuery,
   agentActorId: string,
   delegationId: string,
+  retained: boolean,
 ): Promise<boolean> {
   if ((await resolveLiveById(tx, agentActorId, delegationId)) !== undefined) return true;
   const rows = await tx.query(
     `select 1 from public.delegations
-      where business_id = $1 and id = $2 and revoked_at is null
-        and settled_at = now() and expires_at > clock_timestamp()`,
-    [tx.businessId, delegationId],
+      where business_id = $1 and id = $2 and expires_at > clock_timestamp()
+        and ((revoked_at is null and settled_at = now())
+          or ($3 and revocation_cause = 'work_retired'
+              and revoked_at = greatest(now(), granted_at)))`,
+    [tx.businessId, delegationId, retained],
   );
   return rows.length > 0;
 }

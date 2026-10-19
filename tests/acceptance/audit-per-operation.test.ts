@@ -2,18 +2,19 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 182 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 183 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 182; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 183; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those seven are a case of their own below. `model.call`'s
 // applied row is the command's; the broker's settlement writes its own
-// `model.call_dispatched` event beside it, a different command.
+// `model.call_dispatched` event beside it, a different command. `run.end`
+// applies as the retained `RUN_ENDED`: refused in its row, its stop committed.
 //
 // **I08** (CONTRACT-LEDGER I08, contract 8.2 case 6). An agent's call draws on
 // its approver's grant (`tasks-pickup.ts` `claim`, `delegations.ts:365-372`); once
@@ -54,6 +55,8 @@ interface Cell {
   readonly code: string | null;
   /** A read on the person path records no operation identity (`reads/dispatch.ts:83`). */
   readonly personRead: boolean;
+  /** A retained terminal refusal (`RUN_ENDED`): audited as refused, and its writes commit. */
+  readonly retained?: true;
 }
 
 const READ_NAMES: ReadonlySet<CommandName> = new Set(READS);
@@ -322,13 +325,26 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   const ownTake = async (): Promise<Cell> =>
     agentCell(await freshAgent(), 'task.take_launch', {}, undefined, null);
 
-  /** AW-11's two and the take on an agent's own login; every other operation as `applied` builds it. */
+  /**
+   * The worker's own stop on a fresh agent's lease (#1623 R1), with a code that
+   * needs no proof in the run's records: its applied answer is `RUN_ENDED`.
+   */
+  async function endedCell(): Promise<Cell> {
+    const agent = await freshAgent();
+    const p = await pickUpBy(w.h.world.ada, agent, 'work its worker ends');
+    const body = { leaseId: p.leaseId, fence: p.fence, endCode: 'TOOL_REFUSED' };
+    return { ...agentCell(agent, 'run.end', body, p.credential, 'RUN_ENDED'), retained: true };
+  }
+
+  /** AW-11's two, the take and the stop on an agent's own login; every other operation as `applied` builds it. */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
       ? await childCell(declaration.name)
       : declaration.name === 'task.take_launch'
         ? await ownTake()
-        : await applied(declaration);
+        : declaration.name === 'run.end'
+          ? await endedCell()
+          : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
@@ -506,7 +522,8 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   /** Send one cell and answer every way it departs from I13, or nothing. */
   async function check(label: string, name: CommandName, cell: Cell): Promise<readonly string[]> {
     const problems: string[] = [];
-    const before = cell.code === null ? undefined : await domainState(w.h, both());
+    const before =
+      cell.code === null || cell.retained === true ? undefined : await domainState(w.h, both());
     const mark = await auditMark(w.h);
     const answer = await cell.send();
     const rows = await auditSince(w.h, mark);
@@ -570,12 +587,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 182 exported operations both ways', () => {
+  it('covered all 183 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(182);
+    expect(names).toHaveLength(183);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 182.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 183.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

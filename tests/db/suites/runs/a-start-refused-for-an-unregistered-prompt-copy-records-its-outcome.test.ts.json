@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: a start refused COPY_NOT_REGISTERED sends nothing, records cancelled / COPY_NOT_REGISTERED for its attempt and releases the lease, as every other recorded refusal does."
+}

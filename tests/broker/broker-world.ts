@@ -28,6 +28,7 @@ import {
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
+import { lockDropAtSettlement } from '../../packages/core-runtime/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
 import { openSchedules, type Schedules, type Work } from '../runtime/schedules-harness.ts';
 
@@ -77,15 +78,22 @@ export let broker: Broker;
 
 export const withRoutes = (routes: readonly BrokerRoute[]): Broker => ({ ...broker, routes });
 
+/** The broker's audit, written as `actorId`: another business's calls audit as its own agent. */
+export const auditAs =
+  (actorId: string) =>
+  async (tx: TenantQuery, note: AuditNote): Promise<void> => {
+    await writeAuditEvent(tx, {
+      actorId,
+      command: note.action,
+      outcome: note.outcome,
+      refusalCode: note.refusalCode,
+      payloadDigest: digestOf(note.detail),
+      attempted: note.outcome === 'refused' ? note.detail : null,
+    });
+  };
+
 const audit = async (tx: TenantQuery, note: AuditNote): Promise<void> => {
-  await writeAuditEvent(tx, {
-    actorId: s.agentActorId,
-    command: note.action,
-    outcome: note.outcome,
-    refusalCode: note.refusalCode,
-    payloadDigest: digestOf(note.detail),
-    attempted: note.outcome === 'refused' ? note.detail : null,
-  });
+  await auditAs(s.agentActorId)(tx, note);
 };
 
 const steps = new Map<string, string>();
@@ -204,6 +212,8 @@ export function useBrokerWorld(label: string): void {
       routes: [CLOUD],
       installation: 'here',
       audit,
+      // As model.call builds it: a provider drop at settlement records T3e1's drop (#1623 R1).
+      drops: lockDropAtSettlement,
     };
   }, 180_000);
 

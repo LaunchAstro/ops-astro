@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: once a stop has recorded an attempt's outcome and retired its work, the old credential cannot read, dispatch or hand back, and its late calls leave the one outcome row as written."
+}

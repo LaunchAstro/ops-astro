@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1623 R1: task.execution gives each run its stored outcome and end code; across a business, a client and a person the read answers none of it; run_outcomes has forced row security and no role but its owner may change a row."
+}

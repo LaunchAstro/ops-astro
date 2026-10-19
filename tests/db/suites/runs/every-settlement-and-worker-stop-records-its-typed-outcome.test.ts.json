@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: each settlement and run.end stop (usage missing, lost answer, plan limit, nothing happened, an undeclared release reason, definition mismatch, tracing, a door refusal) records its one typed outcome, with no re-ask or handback after a restart or clock advance."
+}

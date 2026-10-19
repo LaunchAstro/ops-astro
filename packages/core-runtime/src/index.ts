@@ -97,6 +97,7 @@ export {
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { endRun, type RunEndRequest } from './run-end.ts';
 export { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
@@ -147,6 +148,7 @@ export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.t
 export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
 export {
   DROP_FAULT,
+  lockDropAtSettlement,
   recordDrop,
   REPORTED_DROP_CAUSES,
   sweepLostWorkers,

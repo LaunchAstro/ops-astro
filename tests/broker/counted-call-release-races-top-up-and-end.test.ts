@@ -6,6 +6,7 @@ import { endAtBudgetStop, topUpAtBudgetStop } from '../../packages/core-runtime/
 import { grantTo } from '../commands/fixture.ts';
 import { liveWork, racer, type Work } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
+import { unsentCall } from '../runtime/version-room-world.ts';
 import {
   broker,
   call,
@@ -17,7 +18,7 @@ import {
   useBrokerWorld,
   world,
 } from './broker-world.ts';
-import { calls, decider, envelopeActual, runOf } from './give-back-world.ts';
+import { calls, decider, envelopeActual, reservationOf, runOf } from './give-back-world.ts';
 
 useBrokerWorld('sol940race');
 beforeAll(async () => {
@@ -38,7 +39,15 @@ async function stoppedUnsent(): Promise<Work> {
   );
   expect(reserved.ok).toBe(true);
   expect(await call(work)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
-  expect(await calls(work)).toMatchObject([{ state: 'reserved', reserved: '500' }]);
+  // #1623 R1 (B2): the stop releases its own unsent call (`releaseNeverSent`), and no
+  // product path leaves one uncounted for the hold's first count any more. The race
+  // needs one, so it is seeded on the stopped hold's lease: `giveBackReleased` is
+  // still the only thing that gives back a call the sweep releases under the count.
+  await unsentCall(s, reservationOf(work), 500);
+  expect(await calls(work)).toMatchObject([
+    { state: 'released', reserved: '500' },
+    { state: 'reserved', reserved: '500' },
+  ]);
   return work;
 }
 
@@ -77,7 +86,9 @@ for (const answer of ['top-up', 'end'] as const) {
     try {
       await reached;
       await s.db.app.withBusiness(s.business, async (tx) => await sweepModelCalls(tx));
+      // #1623 R1 (B2): the stop's released call, then the seeded one the sweep released.
       expect(await calls(work), 'the concurrent sweep released the unsent call').toMatchObject([
+        { state: 'released' },
         { state: 'released' },
       ]);
       resume?.();
