@@ -23,19 +23,38 @@ export interface C35World extends C80World {
   open(member: Member, overrides?: Body, business?: string): Promise<CommandResult>;
   capture(member: Member, revisionId: unknown, business?: string): Promise<CommandResult>;
   read(member: Member, reviewId: unknown, business?: string): ReturnType<typeof executeRead>;
+  /** `review.pin_comment` on `revisionId`, an internal pin on the desktop capture unless told. */
+  pin(
+    member: Member,
+    revisionId: unknown,
+    overrides?: Body,
+    business?: string,
+  ): Promise<CommandResult>;
   /** Rows of a C35 table in `business`, counted as the administrator sees them. */
   count(
-    table: 'reviews' | 'review_revisions' | 'review_captures',
+    table: 'reviews' | 'review_revisions' | 'review_captures' | 'pins',
     business: string,
   ): Promise<number>;
 }
 
 const WHOLE: Scope = { kind: 'business', id: null };
 
+export const MEDIA_FRAGMENTS = 'http://www.w3.org/TR/media-frags/';
+
+/** A media fragment selector on one capture, the spot a pin marks. */
+export const spot = (
+  value = 'xywh=120,340,300,48',
+): { readonly type: 'FragmentSelector'; readonly conformsTo: string; readonly value: string } => ({
+  type: 'FragmentSelector',
+  conformsTo: MEDIA_FRAGMENTS,
+  value,
+});
+
 async function reviewKeys(w: C80World, business: string, member: Member, scope: Scope) {
   await w.world.db.app.withBusiness(business, async (tx) => {
     await grantTo(tx, member, 'write', scope, false, 'review');
     await grantTo(tx, member, 'read', scope, false, 'review');
+    await grantTo(tx, member, 'comment', scope, false, 'review');
   });
 }
 
@@ -63,11 +82,24 @@ export async function c35World(part: string): Promise<C35World> {
         read: 'review.read',
         reviewId,
       } as never),
+    pin: async (member, revisionId, overrides = {}, business = alpha) =>
+      await w.asIn(business, member, {
+        command: 'review.pin_comment',
+        revisionId,
+        width: 1480,
+        selector: [spot()],
+        body: 'Move this heading above the fold',
+        audience: 'internal',
+        ...overrides,
+      }),
     count: async (table, business) =>
       Number(
         (
           await w.world.db.admin.execute<{ readonly n: string }>(
-            `select count(*)::text as n from public.${table} where business_id = $1`,
+            table === 'pins'
+              ? `select count(*)::text as n from public.records
+                  where business_id = $1 and data ? 'anchor'`
+              : `select count(*)::text as n from public.${table} where business_id = $1`,
             [business],
           )
         )[0]?.n,
