@@ -6,7 +6,9 @@
 // request's task under that lease (`review.make_change_task`).
 
 import { randomUUID } from 'node:crypto';
+import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { detailOf } from '../commands/agent-fixture.ts';
 import { c57World, type C57World } from './c57-world.ts';
@@ -98,18 +100,29 @@ export async function c57bWorld(part: string): Promise<C57bWorld> {
       if (decision !== undefined) need(await w.decide(w.ava, id, decision), 'decide');
       return id;
     },
-    make: async (lease, changeRequestId, extra = {}) =>
-      await w.world.asAgent(
-        {
-          command: 'review.make_change_task',
-          operationId: randomUUID(),
-          leaseId: lease.leaseId,
-          fence: lease.fence,
-          changeRequestId,
-          ...extra,
-        },
-        lease.credential,
-      ),
+    // Each call on a connection of its own, as the agent's calls arrive: two at once race in
+    // Postgres rather than queueing on the world's one-connection pool.
+    async make(lease, changeRequestId, extra = {}) {
+      const own = connect(w.world.db.appUrl);
+      try {
+        return await executeAgentCommand(
+          own,
+          w.world.business,
+          { provider: 'supabase', subject: w.world.agentSubject() },
+          lease.credential,
+          {
+            command: 'review.make_change_task',
+            operationId: randomUUID(),
+            leaseId: lease.leaseId,
+            fence: lease.fence,
+            changeRequestId,
+            ...extra,
+          } as never,
+        );
+      } finally {
+        await own.close();
+      }
+    },
     taskRow: async (id) =>
       (
         await w.world.db.admin.execute<TaskRow>(
