@@ -42,8 +42,11 @@ const stopOf = (answer: Unanswered): { readonly refused: EndCode; readonly recor
   recorded: false,
 });
 
-const revisionOf = (answer: Answered): number =>
-  Number((answer.body['task'] as Readonly<Record<string, unknown>> | undefined)?.['revision']);
+/** The task a read answers, under its detail as the worker's proposal reads it (`proposal.ts`). */
+const taskOf = (answer: Answered): Readonly<Record<string, unknown>> | undefined =>
+  answer.detail['task'] as Readonly<Record<string, unknown>> | undefined;
+
+const revisionOf = (answer: Answered): number => Number(taskOf(answer)?.['revision']);
 
 function brokerOver(context: StepContext, operation: string): BrokerPort {
   return {
@@ -74,7 +77,7 @@ function toolsOver(context: StepContext): ReadonlyMap<string, ToolRun> {
   const read: ToolRun = async (args) => {
     const answer = await context.call('task.read', { recordId: args['taskId'] });
     if (!('body' in answer)) return stopOf(answer);
-    return { revision: revisionOf(answer), content: JSON.stringify(answer.body['task']) };
+    return { revision: revisionOf(answer), content: JSON.stringify(taskOf(answer)) };
   };
   const request: ToolRun = async (args) => {
     const answer = await context.call('live_correction.request', args);
