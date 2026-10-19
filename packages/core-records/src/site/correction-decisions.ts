@@ -135,7 +135,7 @@ export interface DecisionWrite {
 }
 
 /** How long the runner's last check of the page vouches for the version (#1693, register 65). */
-const FRESH = `c.verified_at >= clock_timestamp() - interval '60 seconds'`;
+export const FRESH = `c.verified_at >= clock_timestamp() - interval '60 seconds'`;
 
 /**
  * Whether the runner checked the locked row's page within the window, by the clock read in this

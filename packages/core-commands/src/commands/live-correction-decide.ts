@@ -88,7 +88,7 @@ const UNVERIFIED = refuseCommand(
   ['The page has not been checked in the last minute. Read the correction again shortly.'],
 );
 /** States with no version a decision may name (#1693, the guard order's first step). */
-const UNREADY = new Set(['locating', 'unlocated', 'superseded']);
+export const UNREADY: ReadonlySet<string> = new Set(['locating', 'unlocated', 'superseded']);
 const DECISION_FIXES: readonly string[] = ['A decision is approve or reject.'];
 
 /**

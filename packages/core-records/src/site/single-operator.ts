@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { FRESH } from './correction-decisions.ts';
 
 export const SINGLE_OPERATOR_SETTING = 'single_operator_mode';
 
@@ -76,14 +77,26 @@ export interface NewReview {
   readonly personId: string;
 }
 
-/** Record Astra's review of a correction the caller has locked and checked; its id. */
-export async function insertReview(tx: TenantQuery, review: NewReview): Promise<string> {
+/**
+ * Record Astra's review of a correction the caller has locked and checked; its id. The review
+ * lands only while the correction is `requested` at this version and the runner's last check of
+ * its page is within the window, by the clock read in this statement, after every wait the review
+ * took (#2063). Undefined: it does not, and nothing is written.
+ */
+export async function insertReview(
+  tx: TenantQuery,
+  review: NewReview,
+): Promise<string | undefined> {
   const id = randomUUID();
-  await tx.query(
+  const rows = await tx.query<{ readonly id: string }>(
     `insert into public.live_correction_reviews
        (business_id, id, correction_id, version_digest, verdict, review,
         recorded_by_actor_id, recorded_by_person_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+     select c.business_id, $2::uuid, c.id, c.version_digest, $5, $6, $7::uuid, $8::uuid
+       from public.live_corrections c
+      where c.business_id = $1 and c.id = $3 and c.state = 'requested'
+        and c.version_digest = $4 and ${FRESH}
+     returning id`,
     [
       tx.businessId,
       id,
@@ -95,5 +108,5 @@ export async function insertReview(tx: TenantQuery, review: NewReview): Promise<
       review.personId,
     ],
   );
-  return id;
+  return rows.length === 0 ? undefined : id;
 }

@@ -5,9 +5,12 @@
 // `gate:decide` as the approval names the version digest the review read, and
 // the server checks it against the stored version, so a review of an earlier
 // version is refused rather than stored against this one (owner question c, the
-// recommended answer). `settings.set_single_operator` turns the mode on only
-// while the business has one operator, counted under the mode's row lock, which
-// the membership trigger takes before it makes a second.
+// recommended answer). It keeps decide's guard order (#1693, #2063): a
+// correction with no version yet, then one decided, then another version's
+// digest, then a page the runner has not checked in the last 60 s, read in the
+// review's own insert after every wait. `settings.set_single_operator` turns
+// the mode on only while the business has one operator, counted under the
+// mode's row lock, which the membership trigger takes before it makes a second.
 
 import {
   GATE_COLLECTION,
@@ -24,7 +27,7 @@ import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, isRefused, refused, type HandlerOutcome } from './outcome.ts';
-import { DECIDED, NOT_VISIBLE } from './live-correction-decide.ts';
+import { DECIDED, NOT_VISIBLE, UNREADY } from './live-correction-decide.ts';
 import { endedRefusal, standsAfterWaits, writerStillHolds } from './live-correction-standing.ts';
 import { setBusinessSetting } from './settings-write.ts';
 
@@ -40,6 +43,16 @@ const STALE = refuseCommand(
   'VERSION_STALE',
   ['versionDigest'],
   ['Read the correction again; Astra reviews the version it shows.'],
+);
+const NOT_READY = refuseCommand(
+  'VERSION_NOT_READY',
+  ['versionDigest'],
+  ['This correction has no version to review: ask for the change again.'],
+);
+const UNVERIFIED = refuseCommand(
+  'VERSION_UNVERIFIED',
+  ['versionDigest'],
+  ['The page has not been checked in the last minute. Read the correction again shortly.'],
 );
 const NOT_SINGLE = refuseCommand(
   'SINGLE_OPERATOR_REFUSED',
@@ -75,6 +88,7 @@ export async function recordReview(
   const gate = { subjects: subjectsOf(session), collection: GATE_COLLECTION, action: 'decide' };
   const correction = await lockCoveredCorrection(tx, request.correctionId, gate);
   if (correction === undefined) return refused(NOT_VISIBLE);
+  if (UNREADY.has(correction.state)) return refused(NOT_READY);
   if (correction.state !== 'requested') return refused(DECIDED);
   if (correction.versionDigest !== request.versionDigest) return refused(STALE);
   const stood = await standsAfterWaits(tx, { covering: gate, partyId: correction.partyId });
@@ -87,6 +101,7 @@ export async function recordReview(
     actorId: session.actorId,
     personId: session.personId,
   });
+  if (id === undefined) return refused(UNVERIFIED);
   return applied(id, null, { reviewId: id, correctionId: correction.id, verdict: request.verdict });
 }
 
