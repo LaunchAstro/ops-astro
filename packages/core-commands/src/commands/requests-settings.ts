@@ -10,6 +10,11 @@ export type SettingsRequest<Envelope> =
       readonly expectedRevision?: number;
     } & Envelope)
   | ({
+      readonly command: 'settings.set_single_operator';
+      readonly value: boolean;
+      readonly expectedRevision?: number;
+    } & Envelope)
+  | ({
       readonly command: 'settings.set_client_sign_off';
       readonly value: boolean;
       readonly expectedRevision?: number;

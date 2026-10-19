@@ -3,13 +3,12 @@
 // C80's records: the live correction, its decision and its receipts (0311).
 //
 // Every read here filters by the caller's grant inside the query, at the
-// correction's own party, so a party-scoped grant on one client's site reaches
-// no other client's correction and a caller with no grant meets the same
-// answer as a correction that does not exist. A correction on the business's
-// own site has no party (R6, #1688), and only a business-wide grant reaches it. The writes lock the row they
-// judge, and the approval reads the configured approver under a share lock on
-// its setting, so an approver changed at the same moment is either seen or
-// waited for, never half-read.
+// correction's own party (none on the business's own site, R6: business-wide
+// grants only), so a party-scoped grant on one client's site reaches no other
+// client's correction and a caller with no grant meets the same answer as a
+// correction that does not exist. The writes lock the row they judge, and the
+// approval reads the configured approver under a share lock on its setting, so
+// an approver changed at the same moment is either seen or waited for.
 //
 // The system write that records an observed publish or revert with its
 // receipt is `correction-receipts.ts`; the decision read and the approver
@@ -63,18 +62,20 @@ export interface LiveCorrection {
   readonly decidedByPersonId: string | null;
   /** The version digest the decision approved; the storage keeps it the pinned one. */
   readonly decidedVersionDigest: string | null;
+  readonly singleOperatorSelfApproval: boolean;
   readonly revision: number;
 }
 
+type Decided = 'decidedByPersonId' | 'decidedVersionDigest' | 'singleOperatorSelfApproval';
 export type NewLiveCorrection = Omit<
   LiveCorrection,
-  'id' | 'state' | 'decidedByPersonId' | 'decidedVersionDigest' | 'revision' | 'versionId'
+  'id' | 'state' | Decided | 'revision' | 'versionId'
 >;
 
 const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
   c.delegation_id, c.target_path, c.word, c.replacement, c.page_url, c.pre_image_digest,
   c.base_revision, c.seam, c.version_id, c.version_digest, c.state, c.decided_by_person_id,
-  c.decided_version_digest, c.revision`;
+  c.decided_version_digest, c.single_operator_self_approval, c.revision`;
 
 interface Row {
   readonly id: string;
@@ -95,6 +96,7 @@ interface Row {
   readonly state: CorrectionState;
   readonly decided_by_person_id: string | null;
   readonly decided_version_digest: string | null;
+  readonly single_operator_self_approval: boolean;
   readonly revision: number;
 }
 
@@ -118,6 +120,7 @@ function correctionFrom(row: Row): LiveCorrection {
     state: row.state,
     decidedByPersonId: row.decided_by_person_id,
     decidedVersionDigest: row.decided_version_digest,
+    singleOperatorSelfApproval: row.single_operator_self_approval,
     revision: row.revision,
   };
 }
@@ -271,6 +274,7 @@ export interface DecisionWrite {
   readonly decision: 'approved' | 'rejected';
   readonly actorId: string;
   readonly personId: string;
+  readonly selfApproval: boolean;
 }
 
 /**
@@ -285,10 +289,10 @@ export async function writeCorrectionDecision(
     `update public.live_corrections as c
         set state = $3, decided_by_actor_id = $4, decided_by_person_id = $5,
             decided_at = now(), decided_version_digest = c.version_digest,
-            revision = c.revision + 1, updated_at = now()
+            single_operator_self_approval = $6, revision = c.revision + 1, updated_at = now()
       where c.business_id = $1 and c.id = $2 and c.state = 'requested'
       returning ${COLUMNS}`,
-    [tx.businessId, write.id, write.decision, write.actorId, write.personId],
+    [tx.businessId, write.id, write.decision, write.actorId, write.personId, write.selfApproval],
   );
   const [row] = rows;
   if (row === undefined) throw new Error('writeCorrectionDecision: the row left requested');

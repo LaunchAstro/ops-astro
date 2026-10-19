@@ -18,18 +18,32 @@ export const LIVE_CORRECTION_OPERANDS = {
   'live_correction.decide': { correctionId: 'id', versionId: 'id', decision: 'text' },
   'live_correction.revert': { correctionId: 'id' },
   'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
+  'live_correction.record_review': {
+    correctionId: 'id',
+    versionDigest: 'any',
+    verdict: 'any',
+    review: 'any',
+  },
+  'settings.set_single_operator': { value: 'any', expectedRevision: 'any' },
 } as const;
 
 /**
  * Where the approval and the revert ask are asked: `gate:decide` at the
  * correction's own party (`prepare.ts`), never an agent's. Their rows in
- * `surface.ts`, which is at its line limit, take these whole.
+ * `surface-site.ts` take these whole.
  */
 export const DECIDE_AT_CORRECTION = {
   collection: 'gate',
   targetsExistingRecord: false,
   authorisedOn: 'target',
   untargetedIdentifiers: ['correctionId', 'versionId'],
+} as const;
+/** R5: Astra's review is recorded under the approval's own `gate:decide`, never by an agent. */
+export const REVIEW_AT_CORRECTION = {
+  collection: 'gate',
+  targetsExistingRecord: false,
+  authorisedOn: 'target',
+  untargetedIdentifiers: ['correctionId'],
 } as const;
 export const REVERT_AT_CORRECTION = {
   collection: 'gate',

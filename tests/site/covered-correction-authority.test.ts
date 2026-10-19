@@ -54,6 +54,7 @@ describeWorld('covered approval and reads judge the grant live', 'sol365fix1', (
         decision: 'approved',
         actorId: other.actorId,
         personId: other.personId,
+        selfApproval: false,
       });
     });
     try {
