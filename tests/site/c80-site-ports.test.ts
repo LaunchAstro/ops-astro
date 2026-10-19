@@ -31,12 +31,12 @@ async function approvedPastTheStore(pageUrl: string, path: string): Promise<stri
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         delegation_id, target_path, word, replacement, page_url, pre_image_digest,
         base_revision, seam, version_id, version_digest, state, decided_by_actor_id,
-        decided_by_person_id, decided_at, decided_version_digest)
+        decided_by_person_id, decided_at, decided_version_digest, located_at, verified_at)
      select business_id, $2::uuid, party_id, task_id, requested_by_actor_id,
             requested_by_person_id, delegation_id, $4, word, replacement, $3,
             pre_image_digest, base_revision, 'seam-' || $2, gen_random_uuid(), version_digest,
             state, decided_by_actor_id, decided_by_person_id, decided_at,
-            decided_version_digest
+            decided_version_digest, located_at, verified_at
        from public.live_corrections where id = $1`,
     [own, id, pageUrl, path],
   );
@@ -272,7 +272,7 @@ describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approv
   it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
-    const id = await approved({ before, after });
+    const id = await approved(before);
     const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);

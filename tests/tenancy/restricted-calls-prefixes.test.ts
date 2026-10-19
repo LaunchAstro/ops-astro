@@ -175,11 +175,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     word: 'friendly',
     replacement: 'welcoming',
     page_url: 'https://agency.example/about/',
-    pre_image_digest: 'sha256:seed',
-    base_revision: 'rev-1',
+    // #1693: pinned in the forms the storage checks, as a row from before the locate was.
+    pre_image_digest: `sha256:${'ab'.repeat(32)}`,
+    base_revision: 'c0'.repeat(20),
     seam: 'seam-seed',
     version_id: randomUUID(),
-    version_digest: 'sha256:seed',
+    version_digest: `sha256:${'cd'.repeat(32)}`,
+    state: 'requested',
+    located_at: '2026-10-19T00:00:00Z',
   },
   // C80: a client's site and one page of it; nothing the journey does binds one. Each names
   // its holder (R6) as its trigger keeps it, for the prefixes that have the column.

@@ -5,7 +5,8 @@
 // its own, an agent under a live delegation, and the people each named test
 // needs. Built on the agent fixture so the delegation and the worker lease are
 // the runtime's own, never a stand-in. A correction's party is its task's
-// client (P26 low 4), so every request names the pair that belongs together.
+// client (P26 low 4), read from the task in the insert. Each applied request
+// is pinned as the site runner would (#1693, `c80-located.ts`).
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -26,28 +27,21 @@ import type {
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { Scope } from '../../packages/core-records/src/authority/grants.ts';
 import { ABOUT, PAGE, bindSites, nameApprovers } from './c80-sites.ts';
+import { located } from './c80-located.ts';
 
 export { ABOUT, PAGE };
-export const BEFORE =
-  '---\ntitle: About\n---\n\nWe are a friendly studio.\n\nA friendly decoy line.\n';
-export const AFTER =
-  '---\ntitle: About\n---\n\nWe are a welcoming studio.\n\nA friendly decoy line.\n';
+export { AFTER, BEFORE, REV, pinFromBefore } from './c80-located.ts';
 
-/** The one-word request on the about page, at a party and under a task. */
+/** The one-word request on the about page under a task; the server reads the party from it. */
 export const requestBody = (
-  partyId: string,
+  _partyId: string,
   taskId: string,
 ): Readonly<Record<string, unknown>> => ({
   command: 'live_correction.request',
-  partyId,
   taskId,
-  path: ABOUT,
+  page: PAGE,
   word: 'friendly',
   replacement: 'welcoming',
-  pageUrl: PAGE,
-  baseRevision: 'rev-1',
-  before: BEFORE,
-  after: AFTER,
 });
 
 /** The grants a correction touches, on one scope. */
@@ -83,6 +77,8 @@ export interface C80World {
   readonly taskA: string;
   readonly taskB: string;
   as(member: Member, body: Readonly<Record<string, unknown>>): Promise<CommandResult>;
+  /** As `as`, with no stand-in pin: a request answers as the server does, `locating`. */
+  asRaw(member: Member, body: Readonly<Record<string, unknown>>): Promise<CommandResult>;
   asIn(
     business: string,
     member: Member,
@@ -186,11 +182,13 @@ export async function c80World(part: string): Promise<C80World> {
   const partyA = await clientHere(world.db.admin, world.business, randomUUID());
   const partyB = await clientHere(world.db.admin, world.business, randomUUID());
   const people = await seedAlpha(world, partyB);
-  const asIn: AsIn = async (id, member, body) =>
+  const rawIn: AsIn = async (id, member, body) =>
     await executeCommand(world.db.app, id, member.presented, 'api', {
       operationId: randomUUID(),
       ...body,
     } as never);
+  const asIn: AsIn = async (id, member, body) =>
+    await located(world, body, await rawIn(id, member, body));
   const as = async (member: Member, body: Body) => await asIn(world.business, member, body);
   const theirs = await seedBeta(world, asIn);
   const alpha = { business: world.business, by: people.ava, sharer: people.admin };
@@ -207,6 +205,7 @@ export async function c80World(part: string): Promise<C80World> {
     taskA,
     taskB,
     as,
+    asRaw: async (member, body) => await rawIn(world.business, member, body),
     asIn,
     ...commands(world, as, { partyA, taskA, admin: people.admin }),
     pickUpUnder: async (by, title, partyId) =>

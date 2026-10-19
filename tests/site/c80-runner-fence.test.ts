@@ -75,7 +75,7 @@ async function bindOnSiteA(pageUrl: string): Promise<void> {
 /** An approved correction whose stored page is `pageUrl`. */
 async function approved(pageUrl = PAGE): Promise<string> {
   await bindOnSiteA(pageUrl);
-  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl }));
+  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, page: pageUrl }));
   const id = String(detail['correctionId']);
   expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
   return id;
@@ -147,7 +147,7 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
 
 describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => {
   it('answers an unapproved correction with its approval first, raising nothing', async () => {
-    const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl: ELSEWHERE }));
+    const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, page: ELSEWHERE }));
     const ports = doubles();
     expect(await publish(String(detail['correctionId']), ports)).toEqual({
       kind: 'refused',

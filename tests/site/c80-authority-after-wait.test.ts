@@ -152,7 +152,11 @@ describe.skipIf(serverUrl === undefined)('C80 request, authority after the task 
       return await grantTo(tx, fern, 'write', WHOLE, false, 'run');
     });
     const raced = await whileParked(
-      { table: 'records', id: w.taskA, statement: /^insert into public\.live_corrections/u },
+      {
+        table: 'records',
+        id: w.taskA,
+        statement: /^with task as \(.* insert into public\.live_corrections /u,
+      },
       async () => await w.as(fern, requestBody(w.partyA, w.taskA)),
       async () => await revokeElsewhere(runWrite),
     );

@@ -206,19 +206,19 @@ export async function shareClientSite(tx: TenantQuery, partyId: string | null): 
 }
 
 /**
- * Whether the task is a live task of the named party, or one with no client
- * where the party is null: asked only of the operand party.
+ * The client of a live task (null: a task with no client, whose site is the business's own), or
+ * undefined where the id names no live task in this business. A plain read: the request reads
+ * the task again, share-locked, in its insert.
  */
-export async function isPartysTask(
+export async function taskClient(
   tx: TenantQuery,
-  input: { readonly partyId: string | null; readonly taskId: string },
-): Promise<boolean> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select r.id from public.records r
+  taskId: string,
+): Promise<string | null | undefined> {
+  const rows = await tx.query<{ readonly party: string | null }>(
+    `select r.uuid_7 as party from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task'
-        and r.uuid_7 is not distinct from $3::uuid and r.deleted_at is null`,
-    [tx.businessId, input.taskId, input.partyId],
+      where r.business_id = $1 and r.id = $2::uuid and t.key = 'task' and r.deleted_at is null`,
+    [tx.businessId, taskId],
   );
-  return rows.length > 0;
+  return rows[0] === undefined ? undefined : rows[0].party;
 }
