@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The audit matrix's review.read probe is refused by authority, SCOPE_NOT_GRANTED, and its one audit row records that code rather than an operand error."
+}
