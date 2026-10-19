@@ -37,6 +37,8 @@ export type ConversationReply =
       readonly plan?: PlanOffer;
       /** The records the answer read, unchecked until `citesOf` reads them. */
       readonly cites?: unknown;
+      /** #1666: the tasks an edit may apply to, unchecked until `targetsOf` reads them. */
+      readonly targets?: unknown;
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 

@@ -16,6 +16,7 @@ import type {
   AllowanceResult,
   PlanningAllowanceView,
 } from '../../../../packages/core-wire/src/index.ts';
+import type { Chat } from '../assistant/chats.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
 
 export interface AllowanceLineProps {
@@ -72,4 +73,13 @@ export function AllowanceLine(props: AllowanceLineProps): ReactElement | null {
       {words(allowance, conversationId !== null)}
     </p>
   );
+}
+
+/** The tab's allowance line, read again as each of its answers settles. */
+export function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactElement {
+  // Every message but the person's own is a settled answer: a reply, a note or a failure.
+  const settled =
+    chat?.messages.filter((line) => line.role !== 'user' && line.writing !== true).length ?? 0;
+  const conversationId = chat?.conversationId ?? null;
+  return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
 }

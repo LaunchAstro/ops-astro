@@ -18,8 +18,14 @@
 // by the reply's message id so a reload keeps it too, and in memory as well, so a
 // tab whose site storage refuses writes still applies a live edit. The click sends
 // `task.update` at that revision: a task changed since is refused as stale and
-// nothing newer is overwritten. A chat on no task draws no edit card, the model
-// never names the task, and a card with no kept baseline applies nothing.
+// nothing newer is overwritten. The model never names the task, and a card with
+// no kept baseline applies nothing.
+//
+// **Edit in a chat on no task** (#1666) applies to a task the chat created,
+// which the person picks on the card from the reply's targets (`targets.ts`),
+// at the revision the server kept with the reply. A reply with no usable
+// targets draws no edit card. A stale or refused click shows the server's own
+// reason.
 //
 // **One write per reply.** The click's operation id is derived from the
 // reply's message id (a live reply's line and a kept one's both carry it) and
@@ -27,7 +33,7 @@
 // presents the same attempt with the same payload, and the register replays its
 // first outcome (`register-store.ts`), refusal included.
 
-import type { AssistantMessage, AssistantProposal } from '@launchastro/ui';
+import type { AssistantMessage, AssistantPick, AssistantProposal } from '@launchastro/ui';
 import {
   proposalCreate,
   proposalEdit,
@@ -40,12 +46,13 @@ import { pathTo } from '../routes.ts';
 import { isRecord, isUuid, jsonSlot, tabStorage } from '../session/storage-slot.ts';
 import { keyIn, READ_LINE, type AssistantState, type Chat } from './chats.ts';
 import { assignClicker } from './assignees.ts';
+import { pickedTarget, targetsOf } from './targets.ts';
 
 /** A live reply's card line: the server's message id after it, for the click. */
 export const PROPOSAL_LINE = 'proposal-';
 
 /** The reply's message id a card's line carries, or null on a line that has none. */
-function sourceOf(id: string): string | null {
+export function sourceOf(id: string): string | null {
   for (const prefix of [PROPOSAL_LINE, READ_LINE]) {
     if (id.startsWith(prefix)) return id.slice(prefix.length);
   }
@@ -57,15 +64,19 @@ export const taskOf = (chat: Chat): string | null => chat.scope.task?.id ?? chat
 
 /**
  * A reply's line: its words and an offered card when it ends in a proposal
- * this chat may take, otherwise the body as written. An edit needs a task.
+ * this chat may take, otherwise the body as written. An edit needs a task: the
+ * chat's own, or, on no task, the reply's targets to pick from.
  */
 export function replyLine(
   body: string,
   onTask: boolean,
+  targets?: unknown,
 ): Pick<AssistantMessage, 'body' | 'proposal'> {
   const { words, proposal } = readProposal(body);
-  if (proposal === null || (proposal.action === 'edit' && !onTask)) return { body };
-  return { body: words, proposal: { ...proposal, state: 'offered', task: null, refusal: null } };
+  const pick = proposal?.action === 'edit' && !onTask ? targetsOf(targets) : undefined;
+  if (proposal === null || pick === null) return { body };
+  const offered = { ...proposal, state: 'offered', task: null, refusal: null } as const;
+  return { body: words, proposal: pick === undefined ? offered : { ...offered, pick } };
 }
 
 /**
@@ -149,7 +160,7 @@ export function keepBaseline(
   slot.write(Object.fromEntries(kept.slice(-BASELINE_LIMIT)));
 }
 
-type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task'>;
+type Settled = Pick<AssistantProposal, 'state' | 'refusal' | 'task' | 'pick'>;
 
 /** One card's click, in flight or answered, in tab `key` or the tab it was folded into. */
 export function settleProposal(
@@ -178,6 +189,9 @@ export function settleProposal(
 
 export const STALE_EDIT =
   'This task changed after the answer, so nothing was applied. Ask again for a change to the task as it is now.';
+
+export const UNPICKED_EDIT =
+  'This change is not tied to a task you picked in this tab, so it is not applied. Ask again to change the task.';
 
 export const UNBOUND_EDIT =
   'This change is not tied to a version of the task kept in this tab, so it is not applied. Ask again to change the task.';
@@ -212,27 +226,42 @@ async function create(
   return { state: 'made', refusal: null, task, ...assigning };
 }
 
+/** The task an edit writes, at its revision: the chat's baseline, or the target picked. */
+function boundOf(view: ClickView, pick: AssistantPick | undefined, source: string) {
+  if (pick !== undefined) return pickedTarget(view.grantKey, source, pick);
+  return keptBaseline(view, source) ?? null;
+}
+
 async function edit(
   view: ClickView,
   _chat: Chat,
   proposal: AssistantProposal,
   source: string,
 ): Promise<Settled> {
-  const baseline = keptBaseline(view, source);
-  if (baseline === undefined) return { state: 'stale', refusal: UNBOUND_EDIT, task: null };
-  const write = proposalEdit(proposal, source, baseline);
+  const { pick } = proposal;
+  const bound = boundOf(view, pick, source);
+  const unbound = pick === undefined ? UNBOUND_EDIT : UNPICKED_EDIT;
+  if (bound === null) return { state: 'stale', refusal: unbound, task: null };
+  const write = proposalEdit(proposal, source, bound);
   const settled = settle(
     await view.client.mutate('task.update', write.body, {
       operationId: write.operationId,
       expectedRevision: write.expectedRevision,
     }),
   );
-  if (settled.kind === 'stale') return { state: 'stale', refusal: STALE_EDIT, task: null };
-  if (settled.kind !== 'ok') return unsettled(settled);
+  const frozen =
+    pick === undefined ? {} : { pick: { ...pick, chosen: bound.taskId, frozen: true } };
+  if (settled.kind === 'stale') {
+    const refusal = pick === undefined ? STALE_EDIT : settled.because;
+    return { state: 'stale', refusal, task: null, ...frozen };
+  }
+  if (settled.kind !== 'ok') return { ...unsettled(settled), ...frozen };
+  const key = pick?.rows?.find((row) => row.id === bound.taskId)?.key ?? bound.taskId;
   return {
     state: 'made',
     refusal: null,
-    task: taskLink(proposal.title ?? 'Open the task', baseline.taskId),
+    task: taskLink(proposal.title ?? 'Open the task', key),
+    ...frozen,
   };
 }
 
@@ -259,6 +288,7 @@ export async function sendProposal(
   const source = sourceOf(id);
   if (chat === undefined || proposal === undefined || source === null) return;
   if (proposal.state !== 'offered' && proposal.state !== 'unknown') return;
+  if (proposal.pick?.chosen === null) return;
   store.update((current) => settleProposal(current, key, id, { state: 'sending', refusal: null }));
   const send = proposal.action === 'create' ? create : edit;
   const settled = await send(view, chat, proposal, source);
