@@ -33,6 +33,7 @@ afterEach(() => {
 it.each([
   ['refusal', refused('SCOPE_NOT_GRANTED', ['task']), 403],
   ['outage', {}, 503],
+  ['unreadable page', {}, 200],
 ])(
   'a refresh %s after an earlier-page success withdraws all days while the next refresh waits',
   async (_, failure, status) => {
