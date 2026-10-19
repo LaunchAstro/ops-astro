@@ -28,8 +28,8 @@ operation names and refusal codes, never a value.
    30 days.
 3. File each in Bitwarden as the item's password, under these names (names
    only ever go in tickets and notes):
-   - `Ops Astro custody: agency site GitHub (agency-astro-astro)`
-   - `Ops Astro custody: agency site Vercel (agency-astro-web project)`
+   - `GitHub - Ops Astro Site Custody (agency-astro-astro)`
+   - `Vercel - Ops Astro Site Custody (agency-astro-web)`
 
 If they are filed under other names, use those below and correct this page.
 
@@ -40,9 +40,9 @@ in that shell. The value goes from Bitwarden straight into the load on its
 standard input; it is never typed, pasted or put in an argument:
 
 ```sh
-bw get password "Ops Astro custody: agency site GitHub (agency-astro-astro)" |
+bw get password "GitHub - Ops Astro Site Custody (agency-astro-astro)" |
   node scripts/m5/site-custody.ts load --entry source_control --file ~/.ops-astro/custody/site.json
-bw get password "Ops Astro custody: agency site Vercel (agency-astro-web project)" |
+bw get password "Vercel - Ops Astro Site Custody (agency-astro-web)" |
   node scripts/m5/site-custody.ts load --entry hosting --file ~/.ops-astro/custody/site.json
 ```
 
