@@ -388,6 +388,10 @@ vi.mock('../../packages/core-commands/src/commands/review-captures.ts', async (o
   claimCaptureAsPerson: recorder('claimCaptureAsPerson'),
   landCaptureAsPerson: recorder('landCaptureAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-carry.ts', async (original) => ({
+  ...(await original<object>()),
+  carryPinsAsPerson: recorder('carryPinsAsPerson'),
+}));
 vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
   ...(await original<object>()),
   pinComment: recorder('pinComment'),

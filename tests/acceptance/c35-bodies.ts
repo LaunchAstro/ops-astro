@@ -135,9 +135,12 @@ const detailOf = (answer: Answer, what: string): Fields => {
  * both widths' captures asked: what a person working their own pickup claims and lands under.
  * The proposal locks the client, so the client is set and its page bound first (P26 low 4).
  */
-async function leasedCapture(
-  context: BodyContext,
-): Promise<{ readonly leaseId: string; readonly fence: number; readonly revisionId: string }> {
+async function leasedCapture(context: BodyContext): Promise<{
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly revisionId: string;
+  readonly opened: Fields;
+}> {
   const open = await openBody(context);
   if (!('body' in open)) throw new Error(`matrix: ${open.exception}`);
   const taskId = String(open.body['taskId']);
@@ -166,18 +169,70 @@ async function leasedCapture(
   const opened = detailOf(await context.asPerson('review.open', open.body), 'review.open');
   const revisionId = String(opened['revisionId']);
   detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture');
-  return { leaseId: String(picked['leaseId']), fence: Number(picked['fence']), revisionId };
+  return {
+    leaseId: String(picked['leaseId']),
+    fence: Number(picked['fence']),
+    revisionId,
+    opened: open.body,
+  };
+}
+
+/** Claim a revision under `lease` and land it at both widths. */
+async function landBoth(context: BodyContext, lease: Fields): Promise<void> {
+  detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await context.asPerson('review.capture_land', { ...lease, ...LANDING, width });
+    detailOf(landed, 'review.capture_land');
+  }
 }
 
 /**
- * The claim under the admin's own lease, a land of what it claimed, the carry once both widths
- * landed, and the landed picture.
+ * A carry with a pin to carry: the first revision landed and pinned, the next one opened and
+ * landed; the body carries onto the next.
+ */
+async function carryBody(context: BodyContext): Promise<Prepared> {
+  const { opened, ...lease } = await leasedCapture(context);
+  await landBoth(context, lease);
+  const pin = await context.asPerson('review.pin_comment', {
+    revisionId: lease.revisionId,
+    width: 1480,
+    selector: [
+      {
+        type: 'FragmentSelector',
+        conformsTo: 'http://www.w3.org/TR/media-frags/',
+        value: 'xywh=0,0,40,40',
+      },
+    ],
+    body: 'a pin the carry takes onward',
+    audience: 'internal',
+  });
+  detailOf(pin, 'review.pin_comment');
+  const next = detailOf(
+    await context.asPerson('review.open', {
+      ...opened,
+      sourceRevision: `${String(opened['sourceRevision'])}-next`,
+    }),
+    'review.open next',
+  );
+  const revisionId = String(next['revisionId']);
+  detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture next');
+  const onto = { leaseId: lease.leaseId, fence: lease.fence, revisionId };
+  await landBoth(context, onto);
+  return { body: onto };
+}
+
+/**
+ * The claim under the admin's own lease, a land of what it claimed, the carry of a pin onto a
+ * landed next revision, and the landed picture.
  */
 async function workerBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (context.bindClientSite === undefined) {
     return { exception: 'this harness binds no client site (C35)' };
   }
-  const lease = await leasedCapture(context);
+  if (name === 'review.carry_pins') return await carryBody(context);
+  const { opened: _opened, ...lease } = await leasedCapture(context);
   if (name === 'review.capture_claim') return { body: { ...lease } };
   detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
   if (name === 'review.capture_land') return { body: { ...lease, ...LANDING } };
@@ -185,12 +240,7 @@ async function workerBody(name: CommandName, context: BodyContext): Promise<Prep
     await context.asPerson('review.capture_land', { ...lease, ...LANDING }),
     'review.capture_land',
   );
-  if (name !== 'review.carry_pins') return { body: { pictureId: landed['pictureId'] } };
-  detailOf(
-    await context.asPerson('review.capture_land', { ...lease, ...LANDING, width: 390 }),
-    'review.capture_land 390',
-  );
-  return { body: { ...lease } };
+  return { body: { pictureId: landed['pictureId'] } };
 }
 
 /** A media review on `taskId` with both widths asked, as the ask writes them; its revision. */

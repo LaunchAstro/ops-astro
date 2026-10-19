@@ -236,6 +236,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // C35: the journey lands no picture; one stored object of four bytes.
   'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
+  // C35-X: the journey carries no pin; one lost carry between made-up revisions.
+  'public.review_pin_carries': {
+    review_id: randomUUID(),
+    comment_id: randomUUID(),
+    from_revision_id: randomUUID(),
+    to_revision_id: randomUUID(),
+    state: 'lost',
+    lease_id: randomUUID(),
+    fence: 1,
+    operation_id: randomUUID(),
+    carried_by_actor_id: randomUUID(),
+  },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),
