@@ -56,6 +56,9 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
     "the agent prefix only, on a child the parent's lease made: the task already has content",
   'task.take_launch':
     'the agent login only (the person path refuses it), on a launch: the task already has content',
+  // #1623 R1: the worker's own stop, agent-only like `model.call`.
+  'run.end':
+    'the agent prefix only (the person path refuses it), under a lease: the task already has content',
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(

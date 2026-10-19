@@ -234,3 +234,27 @@ export async function personWriteLive(
   );
   return held.ok;
 }
+
+/**
+ * A stop ends its attempt (#1623 R1, B2); only a person's `task.restart` starts the next. The
+ * stops a person or the clock answers keep their branches: an expired or lost lease (R5), a
+ * budget stop a top-up answered (AW-05), an authority loss (T5). Read under the claim's locks.
+ */
+export async function claimStopped(
+  tx: TenantQuery,
+  attemptId: string,
+): Promise<{ readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> } | undefined> {
+  const stopped = await tx.query(
+    `select 1 from public.run_outcomes
+      where business_id = $1 and attempt_id = $2 and coalesce(stop_cause, end_code)
+            not in ('LEASE_EXPIRED', 'LEASE_NOT_OWNED', 'BUDGET_UNAVAILABLE', 'AUTHORITY_LOST')`,
+    [tx.businessId, attemptId],
+  );
+  if (stopped.length === 0) return undefined;
+  const refusal = refuse(
+    'RESERVATION_NOT_CLAIMABLE',
+    'this attempt has ended at a recorded stop',
+    'A person restarts the task for a new attempt.',
+  );
+  return { kind: 'refuse', refusal };
+}

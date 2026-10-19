@@ -720,6 +720,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
         ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
+        // A code it may end on, so the lease is what is compared (#1623 R1).
+        ['run.end', { endCode: 'TOOL_REFUSED' }],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

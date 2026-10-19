@@ -23,8 +23,9 @@ import {
 } from './broker-fault.ts';
 import type { CredentialKind } from './credentials.ts';
 import type { CustodyOutcome } from './custody.ts';
-import { lockCall } from './broker-facts.ts';
+import { lockCall, lockedState } from './broker-facts.ts';
 import { giveBack } from './broker-give-back.ts';
+import { dropAfterStop, releaseEndOf, stopAtSettlement, UNPROVEN_RELEASE } from './broker-stop.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,
@@ -258,20 +259,30 @@ export async function settle(
   broker: Broker,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
+    const drop = await dropAfterStop(tx, settlement, request.leaseId, broker);
     const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;
     const state = await lockedState(tx, callId);
     if (state !== 'liability_unknown' && !open(state)) return closed(callId);
-    if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
+    // #1623 R1: an unknown, a release and an unproven release each end the attempt.
+    // A provider drop (only an unknown settlement has one) is recorded after the stop.
+    const unknown = async (observed: number | null, failure: Parameters<typeof hold>[3]) => {
+      const held = await hold(tx, reserved, observed, failure, broker);
+      const stopped = await stopAtSettlement(tx, request.leaseId, work, 'LIABILITY_UNKNOWN', held);
+      if (work === 'stands') await drop?.();
+      return stopped;
+    };
+    if (settlement.kind === 'unknown') return await unknown(null, settlement);
     if (settlement.kind === 'nothing') {
+      const end = releaseEndOf(settlement.reason, reserved.operation);
+      if (end === undefined) return await unknown(null, UNPROVEN_RELEASE);
       const released = await release(tx, reserved, settlement.reason, broker);
       await giveBack(tx, callId);
-      return released;
+      return await stopAtSettlement(tx, request.leaseId, work, end, released);
     }
     const { costMinor } = settlement;
     if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
-      const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
-      return await hold(tx, reserved, observed, null, broker);
+      return await unknown(Number.isSafeInteger(costMinor) ? costMinor : null, null);
     }
     await settlePriced(tx, reserved, settlement, broker);
     await giveBack(tx, callId);
@@ -285,16 +296,4 @@ export async function settle(
       releasedMinor: reservedMinor - costMinor,
     };
   });
-}
-
-/**
- * The call's state, read and locked under its envelope's and reservation's
- * locks before it settles: a call already closed stays closed.
- */
-async function lockedState(tx: TenantQuery, callId: string): Promise<string | undefined> {
-  const [call] = await tx.query<{ readonly state: string }>(
-    'select state from public.model_calls where business_id = $1 and id = $2 for update',
-    [tx.businessId, callId],
-  );
-  return call?.state;
 }

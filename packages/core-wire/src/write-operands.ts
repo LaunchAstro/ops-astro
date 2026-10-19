@@ -18,7 +18,6 @@ import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
 export type OperandSpec = Readonly<Record<string, Operand>>;
-
 // Each write's operands, as `requests.ts` types them. `recordId` is here on
 // every targeted command, and `operationId` and `expectedRevision` nowhere:
 // the envelope reads those two itself. An operand whose kind its command
@@ -190,6 +189,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     providerStarting: 'any',
   },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  'run.end': { leaseId: 'any', fence: 'any', endCode: 'any' },
   // Minor units, of the maximum the person saw; no standing ceiling (Q168).
   'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
   // The task, the attempt held unknown, and one of the three outcomes (O7).
