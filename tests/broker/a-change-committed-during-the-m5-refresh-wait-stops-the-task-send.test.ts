@@ -21,6 +21,10 @@ const serverUrl = databaseUrlFromEnvironment();
 
 useBrokerWorld('carrywait');
 
+const fresh = async (title: string): Promise<Work> =>
+  await liveWork(s, `${title} ${randomUUID()}`, 2_000);
+
+// oxlint-disable-next-line max-lines-per-function -- one world, six changes
 describe.skipIf(serverUrl === undefined)('a change committed during the refresh wait', () => {
   let world: CarriedTaskWorld;
 
@@ -49,9 +53,6 @@ describe.skipIf(serverUrl === undefined)('a change committed during the refresh 
       world.duringPrepare = async () => {};
     }
   }
-
-  const fresh = async (title: string): Promise<Work> =>
-    await liveWork(s, `${title} ${randomUUID()}`, 2_000);
 
   it('stops the send when a client is linked to the task during the wait', async () => {
     const work = await fresh('Client link mid-wait');

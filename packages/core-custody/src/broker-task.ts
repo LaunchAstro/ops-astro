@@ -153,11 +153,7 @@ export async function lockTask(
   await tx.query(LOCK_TASK, [tx.businessId, leaseId]);
   const [task] = await tx.query<
     TaskRow & { run_id: string; owner_ran: boolean; starter: string | null }
-  >(READ_TASK, [
-    tx.businessId,
-    leaseId,
-    LEAVES_ROW_DATA,
-  ]);
+  >(READ_TASK, [tx.businessId, leaseId, LEAVES_ROW_DATA]);
   if (task === undefined) return undefined;
   return {
     runId: task.run_id,
