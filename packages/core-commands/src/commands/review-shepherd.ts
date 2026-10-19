@@ -134,7 +134,11 @@ export type ShepherdApproveOutcome =
   | { readonly ok: true; readonly id: string; readonly digest: string }
   | {
       readonly ok: false;
-      readonly code: 'NOT_FOUND' | 'SHEPHERD_DIGEST_STALE' | 'SHEPHERD_ALREADY_APPROVED';
+      readonly code:
+        | 'ONLY_A_PERSON_APPROVES'
+        | 'NOT_FOUND'
+        | 'SHEPHERD_DIGEST_STALE'
+        | 'SHEPHERD_ALREADY_APPROVED';
     };
 
 /**
@@ -147,6 +151,8 @@ export async function approveShepherdSendAsPerson(
   session: Session,
   ask: { readonly sendId: string; readonly digest: string },
 ): Promise<ShepherdApproveOutcome> {
+  // A person's alone: an agent credential never approves a client email, whatever it ticked.
+  if (session.credentialScope !== undefined) return { ok: false, code: 'ONLY_A_PERSON_APPROVES' };
   if (!isUuid(ask.sendId)) return { ok: false, code: 'NOT_FOUND' };
   const covering: Covering = {
     subjects: subjectsOf(session),
