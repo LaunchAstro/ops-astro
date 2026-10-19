@@ -21,7 +21,7 @@
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { lockFacts, type Facts } from './broker-facts.ts';
-import { resolveFields } from './broker-sources.ts';
+import { fieldsOf } from './broker-turn.ts';
 import type {
   Broker,
   BrokerRoute,
@@ -123,7 +123,11 @@ export async function judgeCarriedTask(
   });
   if (!carry.ok) return carry;
   if (facts.clientId !== null) return { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
-  const resolved = resolveFields(task.request.fields, facts.source);
+  // A turn is bound again here, as at the start, so a task written in the M5's wait sends nothing (#2091).
+  const resolved = await fieldsOf(tx, task.request, operation, {
+    leaseId: facts.leaseId,
+    source: facts.source,
+  });
   if (!resolved.ok) return resolved;
   const still = eligibleRoutes(operation.fields, resolved.fields, [route]);
   if (!still.ok || still.routes.length === 0) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
