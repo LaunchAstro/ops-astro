@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1693: a locating correction holds its site's providers and page still; a pin finding another repository settles SITE_CHANGED, and a pin racing an unbind on a second connection is never made on a gone page."
+}

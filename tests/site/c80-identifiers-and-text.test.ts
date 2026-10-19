@@ -4,10 +4,9 @@
 // or task as its lower-case spelling and gets the same decision; a correction
 // id that is no UUID names no correction, as a fabricated one does; and request
 // text the stores cannot hold (a NUL) is refused by name on the person and the
-// agent route, so none of them becomes a database fault. A quoted brace in
-// unchanged frontmatter leaves the paragraph below it body copy, a fence with
-// trailing whitespace still closes it, and a word in expression or frontmatter
-// code is refused with nothing stored.
+// agent route, so none of them becomes a database fault. The request carries
+// no file text (#1693), so the body-copy scanner is proved where it reads the
+// file: `envelope-refuses-what-it-cannot-read.test.ts` and the site runner's locate.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,7 +14,6 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
-import { ASTRO_FILE, ASTRO_PAGE } from './c80-sites.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
@@ -75,13 +73,13 @@ describe.skipIf(serverUrl === undefined)(
       const before = await w.world.db.admin.execute<{ readonly n: string }>(
         'select count(*)::text as n from public.live_corrections',
       );
-      const asPerson = await w.request(w.ava, { baseRevision: 'rev-1\u0000' });
+      const asPerson = await w.request(w.ava, { page: 'about\u0000' });
       expect(codeOf(asPerson)).toBe('FIELD_VALUE_INVALID');
-      expect(isCommandRefusal(asPerson) ? asPerson.names : []).toStrictEqual(['baseRevision']);
+      expect(isCommandRefusal(asPerson) ? asPerson.names : []).toStrictEqual(['page']);
       const picked = await w.pickUpUnder(w.ava, 'nul text', w.partyA);
       const sent = {
         ...requestBody(w.partyA, picked.taskId),
-        baseRevision: 'rev-1\u0000',
+        page: 'about\u0000',
         operationId: randomUUID(),
       };
       expect(codeOf(await w.world.asAgent(sent, picked.credential))).toBe('FIELD_VALUE_INVALID');
@@ -92,52 +90,3 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
-
-describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () => {
-  it('stores the one-word correction below frontmatter that quotes an opening brace', async () => {
-    const before = "---\nconst marker = '{';\n---\n<p>We are a friendly studio.</p>\n";
-    const made = await w.request(w.ava, {
-      path: ASTRO_FILE,
-      pageUrl: ASTRO_PAGE,
-      before,
-      after: before.replace('friendly', 'welcoming'),
-    });
-    expect(codeOf(made)).toBe('not-a-refusal');
-    expect(await w.stateOf(String(detailOf(made)['correctionId']))).toBe('requested');
-  });
-
-  it('stores the correction below a closing fence that has trailing whitespace', async () => {
-    const before = "---\nconst marker = 'plain';\n--- \n<p>We are a friendly studio.</p>\n";
-    const made = await w.request(w.ava, {
-      path: ASTRO_FILE,
-      pageUrl: ASTRO_PAGE,
-      before,
-      after: before.replace('friendly', 'welcoming'),
-    });
-    expect(codeOf(made)).toBe('not-a-refusal');
-    expect(await w.stateOf(String(detailOf(made)['correctionId']))).toBe('requested');
-  });
-
-  it('refuses and stores nothing for a word in expression or frontmatter code', async () => {
-    const count = 'select count(*)::text as n from public.live_corrections';
-    const stored = await w.world.db.admin.execute<{ readonly n: string }>(count);
-    const sources = [
-      "<p>{'}' + 'friendly'}</p>\n",
-      '---\nconst message = `{\n---\nfriendly\n`;\n---\n<p>Unchanged.</p>\n',
-    ];
-    const made = await Promise.all(
-      sources.map(async (before) =>
-        codeOf(
-          await w.request(w.ava, {
-            path: ASTRO_FILE,
-            pageUrl: ASTRO_PAGE,
-            before,
-            after: before.replace('friendly', 'welcoming'),
-          }),
-        ),
-      ),
-    );
-    expect(made).toStrictEqual(['CHANGE_ENVELOPE_EXCEEDED', 'CHANGE_ENVELOPE_EXCEEDED']);
-    expect(await w.world.db.admin.execute<{ readonly n: string }>(count)).toStrictEqual(stored);
-  });
-});

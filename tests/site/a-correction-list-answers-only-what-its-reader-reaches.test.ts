@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { requestBody } from './c80-world.ts';
-import { B_FILE, B_PAGE } from './c80-sites.ts';
+import { B_PAGE } from './c80-sites.ts';
 import { grantTo, shareWithClient } from '../commands/fixture.ts';
 import { code, correctionReadsWorld, listed, type ReadsWorld } from './correction-reads-world.ts';
 
@@ -29,8 +29,8 @@ afterAll(async () => {
   if (serverUrl !== undefined) await r.w.world.drop();
 });
 
-/** A request's overrides for party B's page, under task B. */
-const atB = () => ({ partyId: r.w.partyB, taskId: r.w.taskB, pageUrl: B_PAGE, path: B_FILE });
+/** A request's overrides for party B's page, under task B; the server reads the party from the task. */
+const atB = () => ({ taskId: r.w.taskB, page: B_PAGE });
 
 /** The answer carries none of these. */
 const carriesNone = (answer: unknown, markers: readonly string[]) => {
@@ -54,7 +54,7 @@ describe.skipIf(serverUrl === undefined)('live_correction.list, in reach', () =>
       state: 'requested',
       approver: null,
       versionId: first.versionId,
-      pageUrl: requestBody(r.w.partyA, r.w.taskA)['pageUrl'],
+      pageUrl: requestBody(r.w.partyA, r.w.taskA)['page'],
       word: 'friendly',
       replacement: 'welcoming',
       requestedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/u),

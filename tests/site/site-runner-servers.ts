@@ -13,7 +13,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Provider } from './c80-site-provider.ts';
-import { PAGE } from './c80-world.ts';
+import { REV, PAGE } from './c80-world.ts';
 import { custodySites } from '../../apps/site-runner/sites.ts';
 import type { Sites } from '../../apps/site-runner/runner.ts';
 import type { Transport } from '../../packages/core-connectors/src/index.ts';
@@ -86,7 +86,7 @@ function asHost(site: Provider, host: string, authorizations: string[]): Server 
 }
 
 /** The base revision every correction in the world is requested at (`requestBody`). */
-const BASE_REVISION = 'rev-1';
+const BASE_REVISION = REV;
 
 const html = (text: string): string =>
   `<!doctype html><html><body><main>${text}</main></body></html>`;

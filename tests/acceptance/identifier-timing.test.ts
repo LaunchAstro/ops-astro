@@ -367,7 +367,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID() }),
       },
     );
-    const request = { ...C80_REQUEST, partyId: randomUUID() };
+    const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
       operand: 'taskId',
