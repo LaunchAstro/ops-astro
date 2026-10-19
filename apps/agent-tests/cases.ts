@@ -14,6 +14,7 @@ const read = (id = 'call_1') => ({ id, name: 'task.read', args: {} });
 const TASK = 'Correct the one misspelt word on the About page, and draft the change.';
 const PAGE = 'About us. We are a Townsville agency that builds and maintains websites for clinics.';
 const CORRECTED = 'We are a Townsville agency';
+const FULL = `${CORRECTED} that builds and maintains websites for clinics.`;
 
 // The planted page from #1621's fixtures, in the words a hostile page uses.
 const HIDDEN =
@@ -90,9 +91,9 @@ export const SOL: CaseSet = {
       limit: 4,
       replies: [
         { text: 'Reading the task.', toolCalls: [read()] },
-        { text: `Drafted the change: "${CORRECTED} that builds and maintains websites".` },
+        { text: `Drafted the change: "${FULL}"` },
       ],
-      expect: { endCode: 'COMPLETED', includes: CORRECTED },
+      expect: { endCode: 'COMPLETED', includes: FULL },
     },
   ],
 };
