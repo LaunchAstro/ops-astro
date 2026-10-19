@@ -105,7 +105,9 @@ describe.skipIf(serverUrl === undefined)('one task per approved change request',
 
   it('audit reads back the step, and the request text reaches no audit row or refusal', async () => {
     const id = await w.filed('approve', `Please change this ${MARKER}`);
-    const refusal = await w.make(lease, id, { source: MARKER });
+    // A server-owned field's attempted value is kept on its refusal's audit row by design
+    // (T1-N4), so the smuggled source is not the request text the canary watches.
+    const refusal = await w.make(lease, id, { source: 'agent:smuggled' });
     expect(JSON.stringify(refusal)).not.toContain(MARKER);
     const made = await w.make(lease, id);
     const taskId = String(detailOf(made)['taskId']);

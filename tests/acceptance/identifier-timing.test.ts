@@ -728,6 +728,19 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ leaseId: randomUUID(), fence: 1, ...extra }),
       });
     }
+    // #2117: the worker's own lease, naming bravo's change request or a made-up one.
+    out.push({
+      op: 'review.make_change_task',
+      operand: 'changeRequestId',
+      by: agent,
+      code: 'NOT_FOUND',
+      foreign: () => ({ leaseId: picked.leaseId, fence: picked.fence, changeRequestId: change }),
+      fabricated: () => ({
+        leaseId: picked.leaseId,
+        fence: picked.fence,
+        changeRequestId: randomUUID(),
+      }),
+    });
     return out;
   }
 
