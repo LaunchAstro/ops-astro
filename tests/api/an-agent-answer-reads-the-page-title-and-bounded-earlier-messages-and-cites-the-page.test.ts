@@ -283,7 +283,13 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
           foreign,
         ),
     );
-    expect(context).toEqual({ refused: true, fields: [], cites: [], authors: [] });
+    expect(context).toEqual({
+      refused: true,
+      fields: [],
+      cites: [],
+      authors: [],
+      created: { snapshot: null, cut: null, sources: [] },
+    });
     expect(JSON.stringify(model.provider.seen)).not.toContain(foreignTitle);
   });
 });

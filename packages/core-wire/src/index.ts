@@ -192,6 +192,7 @@ export type {
   AttributionResult,
   ConversationModelsResult,
   ConversationModelView,
+  ConversationTargetsView,
   PlanningAllowanceView,
   PreReviewAttribution,
   PreReviewRun,

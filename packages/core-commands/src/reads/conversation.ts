@@ -35,6 +35,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationListResult,
   ConversationMessageView,
+  ConversationTargetsView,
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -43,6 +44,7 @@ import {
   DEFAULT_TITLE,
   holdsOwnConversations,
 } from '../commands/conversations.ts';
+import { targetsFor } from '../commands/conversation-targets.ts';
 import { doorOf, mayRead } from './conversation-door.ts';
 import {
   addressReader,
@@ -66,28 +68,45 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
-/** The body, oldest first. */
+interface MessageRow {
+  readonly id: string;
+  readonly role: 'person' | 'agent';
+  readonly body: string;
+  readonly created_at: Date;
+}
+
+/** One message as the wire carries it, with the targets kept with it where the reader has them. */
+function viewOf(
+  message: MessageRow,
+  kept: ConversationTargetsView | undefined,
+): ConversationMessageView {
+  const view = {
+    id: message.id,
+    role: message.role,
+    body: message.body,
+    createdAt: message.created_at.toISOString(),
+  };
+  return kept === undefined ? view : { ...view, targets: kept };
+}
+
+/** The body, oldest first; each reply's kept targets only as `targetsFor` gives them to this reader (#1666). */
 async function messagesOf(
   tx: TenantQuery,
+  session: Session,
   conversationId: string,
 ): Promise<readonly ConversationMessageView[]> {
-  const rows = await tx.query<{
-    id: string;
-    role: 'person' | 'agent';
-    body: string;
-    created_at: Date;
-  }>(
+  const rows = await tx.query<MessageRow>(
     `select id, role, body, created_at from conversation_messages
       where business_id = $1 and conversation_id = $2
       order by created_at, id`,
     [tx.businessId, conversationId],
   );
-  return rows.map((message) => ({
-    id: message.id,
-    role: message.role,
-    body: message.body,
-    createdAt: message.created_at.toISOString(),
-  }));
+  const targets = await targetsFor(
+    tx,
+    session,
+    rows.filter((message) => message.role === 'agent').map((message) => message.id),
+  );
+  return rows.map((message) => viewOf(message, targets.get(message.id)));
 }
 
 /**
@@ -141,7 +160,7 @@ async function served(
   conversationId: string,
 ): Promise<ConversationReadResult> {
   // Before the row: a purge committing between them reads as purged, not as an empty body.
-  const body = await messagesOf(tx, conversationId);
+  const body = await messagesOf(tx, session, conversationId);
   const rows = await tx.query<ConversationRow>(
     `${EFFECTIVE_GRANTS}
      select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
