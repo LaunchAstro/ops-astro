@@ -2293,6 +2293,29 @@ reservation, the hand-back's replay none more (A7); and the restricted worker
 role, the canary for a harness's role, is refused 42501 on updating the run,
 its steps and its events, which the application role reaches (A8).
 
+A6 is also proved under the kernel: `pnpm run agent:egress:conformance`
+(`scripts/proofs/agent-egress-conformance.sh`, Linux, as root or through
+sudo). It starts the supervisor's fixtures, a TCP listener and a DNS
+responder on a controlled IPv4 and IPv6 address, in a network namespace of
+their own, and runs the healthy control first: unconfined, as the dropped
+uid, a captured socket, raw TCP on both families, a fresh resolver, fetch and
+a child process each reach the fixtures and raise their counters. Then, under
+`unshare --net` with loopback up and only the labelled broker double and
+LangSmith recorder listening, `setpriv` drops uid, gid, groups, every
+capability and privilege escalation before the confined suite
+(`tests/harness/agent-loop-reaches-no-network.confined.ts`) imports the
+pinned stack. core-agent's `runAttempt` ends a scripted `task.read` turn and a
+final answer in success through its broker port, and the same ways out each
+meet the kernel's refusal (`ENETUNREACH`, and `ECONNREFUSED` from the
+resolver) with no counter risen. The suite refuses unless a root-owned,
+read-only receipt names its namespace, an ancestor's pid, its dropped
+identity, loopback-only routes, its listeners, its Node and its lockfile;
+`agent-egress-suite-refuses-without-its-confinement` shows it failing with no
+wrapper and under a forged receipt, and the wrapper refusing a missing
+`unshare`, a `setpriv` that drops nothing and an `unshare` that makes no
+namespace. `pnpm test` never collects the confined suite: a `.confined.ts`
+file is outside the default include, and it runs under its own config.
+
 ## The agent's output takes its own review round
 
 AW-09 (`review-round.ts`). Whatever the agent hands back with a successor is
