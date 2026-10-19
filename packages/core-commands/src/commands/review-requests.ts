@@ -14,4 +14,20 @@ export type ReviewRequest =
       /** The site's own revision of the page, which the revision's digest binds. */
       readonly sourceRevision: string;
     } & Envelope)
-  | ({ readonly command: 'review.capture'; readonly revisionId: string } & Envelope);
+  | ({ readonly command: 'review.capture'; readonly revisionId: string } & Envelope)
+  | ({
+      readonly command: 'review.capture_claim';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly revisionId: string;
+    } & Envelope)
+  | ({
+      readonly command: 'review.capture_land';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly revisionId: string;
+      readonly width: number;
+      /** The picture's bytes, base64. */
+      readonly picture: string;
+      readonly observation: Readonly<Record<string, unknown>>;
+    } & Envelope);
