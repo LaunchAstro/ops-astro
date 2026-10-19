@@ -105,6 +105,9 @@ export function props(over: Over = {}): TeamPanelProps & { readonly calls: Calls
     onSend: (to, body) => calls.sends.push([to, body]),
     groups: over.groups ?? [],
     onGroup: (action) => calls.groups.push(action),
+    unsent: [],
+    onResend: () => {},
+    onDiscard: () => {},
   };
   return {
     people: over.people ?? PEOPLE,

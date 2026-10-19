@@ -182,3 +182,24 @@ a.tmc__n:hover {
 .tmc__with {
   color: var(--text-muted);
 }
+
+/* #1339 unsent words, waiting between the thread and the composer. */
+.tmc__unsent {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-3) 0 0;
+  list-style: none;
+}
+.tmc__unsent li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.tmc__unsent p {
+  flex-basis: 100%;
+  margin: 0;
+}
