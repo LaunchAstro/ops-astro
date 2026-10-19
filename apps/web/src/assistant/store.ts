@@ -126,7 +126,7 @@ export function answersTo(
     line: (key, role, words, _after, cites) => store.line(key, role, words, question, cites),
     plan: (key, words, offer) => store.plan(key, words, offer, question),
     answer: (key, reply, _after, cites) => {
-      keepBaseline(view.grantKey, reply, baseline);
+      keepBaseline(view, reply, baseline);
       store.answer(key, reply, question, cites);
     },
   };

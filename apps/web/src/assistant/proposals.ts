@@ -15,7 +15,8 @@
 // asked at. A question in a chat on a task first reads that task, before it is
 // sent, so the revision kept is never newer than the one the answer read; an
 // edit the reply proposes is bound to that task and revision, kept in the tab
-// by the reply's message id so a reload keeps it too. The click sends
+// by the reply's message id so a reload keeps it too, and in memory as well, so a
+// tab whose site storage refuses writes still applies a live edit. The click sends
 // `task.update` at that revision: a task changed since is refused as stale and
 // nothing newer is overwritten. A chat on no task draws no edit card, the model
 // never names the task, and a card with no kept baseline applies nothing.
@@ -102,6 +103,26 @@ const baselineSlot = (grantKey: string | undefined) =>
     isBaselines,
   );
 
+/**
+ * The baselines kept in memory for one client's drawer, by session and reply,
+ * so a refused storage write loses nothing a live card needs. A reload starts
+ * empty and reads the tab's slot, as before.
+ */
+const held = new WeakMap<OperationsClient, Map<string, Baseline>>();
+
+const heldBy = (client: OperationsClient): Map<string, Baseline> => {
+  const found = held.get(client) ?? new Map<string, Baseline>();
+  held.set(client, found);
+  return found;
+};
+
+/** The baseline kept for a reply: memory first, then the tab's slot. */
+function keptBaseline(view: ClickView, source: string): Baseline | undefined {
+  if (view.grantKey === undefined) return undefined;
+  const inMemory = heldBy(view.client).get(`${view.grantKey}:${source}`);
+  return inMemory ?? baselineSlot(view.grantKey).read()?.[source];
+}
+
 /** The chat's task read before its question is sent; none off a task, or unread. */
 export async function baselineOf(client: OperationsClient, chat: Chat): Promise<Baseline | null> {
   const taskId = taskOf(chat);
@@ -113,11 +134,16 @@ export async function baselineOf(client: OperationsClient, chat: Chat): Promise<
 
 /** A reply's edit bound to the baseline its question was asked at, kept for the tab. */
 export function keepBaseline(
-  grantKey: string | undefined,
+  view: ClickView,
   reply: { readonly messageId: string; readonly body: string },
   baseline: Baseline | null,
 ): void {
-  if (baseline === null || readProposal(reply.body).proposal?.action !== 'edit') return;
+  const { grantKey } = view;
+  if (grantKey === undefined || baseline === null) return;
+  if (readProposal(reply.body).proposal?.action !== 'edit') return;
+  const memory = heldBy(view.client);
+  memory.set(`${grantKey}:${reply.messageId}`, baseline);
+  for (const oldest of [...memory.keys()].slice(0, -BASELINE_LIMIT)) memory.delete(oldest);
   const slot = baselineSlot(grantKey);
   const kept = Object.entries({ ...slot.read(), [reply.messageId]: baseline });
   slot.write(Object.fromEntries(kept.slice(-BASELINE_LIMIT)));
@@ -192,7 +218,7 @@ async function edit(
   proposal: AssistantProposal,
   source: string,
 ): Promise<Settled> {
-  const baseline = baselineSlot(view.grantKey).read()?.[source];
+  const baseline = keptBaseline(view, source);
   if (baseline === undefined) return { state: 'stale', refusal: UNBOUND_EDIT, task: null };
   const write = proposalEdit(proposal, source, baseline);
   const settled = settle(

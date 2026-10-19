@@ -10,7 +10,7 @@
 // the network only (`chat-proposal-drawer.tsx`).
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STALE_EDIT, UNBOUND_EDIT } from '../../apps/web/src/assistant/proposals.ts';
 import {
   answered,
@@ -24,7 +24,10 @@ import {
 } from './chat-proposal-drawer.tsx';
 import { track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
 
-afterEach(unmountAll);
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await unmountAll();
+});
 
 // eslint-disable-next-line max-lines-per-function -- each edit leg of the card, in the page's order
 describe('chat proposal edit', () => {
@@ -55,6 +58,25 @@ describe('chat proposal edit', () => {
     ).toStrictEqual({
       [REPLY]: { taskId: TASK.id, revision: 7 },
     });
+    expect(page.find('[data-proposal="done"]')?.textContent).toContain('Task updated');
+  });
+
+  it('a live edit keeps its question’s baseline when the browser refuses site storage', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    });
+    const { page, ask, click, writes } = await drawer({ replies: [answered(EDIT)] }, true);
+    track(page);
+    await ask('Rename this for the second draft');
+    expect(sessionStorage.getItem(`ops-astro:proposal-baselines:${GRANT}`)).toBeNull();
+    await click();
+    expect(writes()).toStrictEqual([
+      {
+        name: 'task.update',
+        body: { recordId: TASK.id, fields: { title: 'Spring brief, second draft' } },
+        options: { operationId: `task-proposal:${REPLY}`, expectedRevision: 7 },
+      },
+    ]);
     expect(page.find('[data-proposal="done"]')?.textContent).toContain('Task updated');
   });
 
