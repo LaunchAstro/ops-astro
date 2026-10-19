@@ -103,6 +103,39 @@ The claims are a port (`Claims` in `runner.ts`), bound to the API in
 `claims.ts`. A person task the runner raises is an internal comment on the
 correction's task, written under its lease, and a line in its log.
 
+## Review captures
+
+The runner also takes review captures (#2013, C35), as spare work after the
+corrections. It never treats a correction's claim as a capture's.
+
+1. A person puts a `review_capture` step on the review's task and approves
+   its gate. The approval puts a reservation on the queue.
+2. Each pass, after the corrections, the runner reads `task.queue` again and
+   picks up one `review_capture` entry at most, however many wait.
+3. Under that lease it finds the task's oldest revision with a width not yet
+   landed and claims its captures (`review.capture_claim`). The claim hands
+   out only the widths still to land, so a retry never overwrites one.
+4. It takes the page observation once (`capturePage`) and a picture at each
+   width handed out (`capturePicture`), all through the C18-1 fence. Each
+   picture is its own headless Chromium (`picture-browser.ts`): started with
+   `PICTURE_BROWSER_ARGS`, a fresh context 1480 by 900 or 390 by 844, no
+   script, service workers blocked, every request handed to the fence's
+   route. The browser is closed whatever happens.
+5. It renews the lease with `task.heartbeat`, lands each width
+   (`review.capture_land`), and hands the lease back: `completed` once both
+   landed, else `failed` with the code in its report.
+
+The fence's pool for captures holds the configured site's pages only when
+that site is the business's own (`reviewPool`, TR-P-1). A runner configured
+for a client's site captures nothing, and no other page is reachable until
+the pool's reviews are recorded (#2018). A refused page lands nothing and
+its lease goes back `failed` with the fence's code. A queue the captures
+cannot read fails the pass and pings no heartbeat, as the corrections' does.
+Only codes are printed or reported, never a path or a credential.
+
+Finding the review grants nothing: the API judges the lease, its fence and
+the capture rows under lock at the claim and at every land.
+
 ## The database login
 
 The runner needs a database handle for the library. It gets its own login and
