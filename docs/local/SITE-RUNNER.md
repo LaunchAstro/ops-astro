@@ -80,7 +80,9 @@ The runner's process never holds a site token. It starts custody
 (`startCustody`) with the two site destinations, `source_control` on
 `api.github.com` and `hosting` on `api.vercel.com`, built from the catalogue
 by `siteDestination`. Each guarded call borrows its credential through
-`siteCustody`. The page capture goes through the C18-1 fence: agency pages
+`siteCustody`, named for the correction's party (`siteCustody(custody,
+partyId)`): with `source_control` filed as the GitHub App, custody mints only
+for that party's bound repository (`deploy/m5/site-custody.md`). The page capture goes through the C18-1 fence: agency pages
 only, public addresses only, no redirects. These are the only ways out.
 
 ## The re-observe loop
