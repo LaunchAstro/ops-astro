@@ -64,12 +64,8 @@ export async function workJudged(
     // Only a stop that retired its own work (#1623 R1) keeps rows that are judged.
     const retained = isRefused(ran);
     if (retained && (ran.retains !== true || !STOPS.has(judged.call.declaration.name))) return ran;
-    standing.ended = await agentStanding(
-      tx,
-      judged,
-      retained,
-      retained ? undefined : ran.handsOver,
-    );
+    const handsOver = retained ? undefined : ran.handsOver;
+    standing.ended = await agentStanding(tx, judged, retained, handsOver);
     return standing.ended === undefined ? ran : refused(standing.ended);
   });
   return standing.ended === undefined ? outcome : { ended: standing.ended };
