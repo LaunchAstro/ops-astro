@@ -74,9 +74,12 @@ describe.skipIf(serverUrl === undefined)('C57 filing a change request', () => {
         async (text) => await w.propose(w.ava, clientPin, { text }),
       ),
     );
-    expect(unbounded.map((answer) => codeOf(answer))).toStrictEqual(
-      Array(4).fill('FIELD_VALUE_INVALID'),
-    );
+    expect(unbounded.map((answer) => codeOf(answer))).toStrictEqual([
+      'FIELD_VALUE_INVALID',
+      'FIELD_VALUE_INVALID',
+      'FIELD_VALUE_INVALID',
+      'FIELD_VALUE_INVALID',
+    ]);
     expect((await w.requests(w.world.business)).length).toBe(before);
 
     expect(codeOf(await w.propose(w.ava, clientPin))).toBe('not-a-refusal');
