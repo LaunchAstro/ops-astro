@@ -395,6 +395,13 @@
         "tests/identity/login-subject-fixed-during-ban-proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "require-await": "off" }
+    },
+    {
+      "files": [
+        "tests/web/c57-change-request-panel.test.tsx",
+        "tests/web/c57-change-request-dock-hook.test.tsx"
+      ],
+      "rules": { "max-lines-per-function": "off" }
     }
   ]
 }
