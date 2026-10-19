@@ -4,7 +4,7 @@
 // be on `https://auth.openai.com` exactly, with no credentials in it. Anything
 // else, a loopback test issuer included, is refused here at start with a
 // typed refusal, before any lock, file or request. Tests build `tokenHolder`
-// on their 127.0.0.1 issuer instead. Inert until P4 (#1702) wires it.
+// on their 127.0.0.1 issuer instead. Custody's process builds it (`custody-plan.ts`).
 
 import { tokenHolder, type TokenHolder, type TokenHolderOptions } from './plan-token.ts';
 import { planIssuer } from './token-refresh.ts';

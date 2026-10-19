@@ -16,7 +16,10 @@
 // A request on a template route is answered with its declared fields only,
 // or `withheld` whole: `malformed` when it is not JSON or does not fill them,
 // `echoed` when the caller could rebuild the credential from them.
-// A `deadlineAt` gates the write itself (`egress.ts`).
+// A `deadlineAt` gates the write itself (`egress.ts`). The owner's ChatGPT
+// plan, where custody's environment names it, is held apart from the
+// credential file (`custody-plan.ts`): `prepare` makes its token ready, and a
+// dispatch to the plan is presented with that token, never filed.
 //
 // Every refusal and fault it writes names a kind, never a value.
 
@@ -32,6 +35,7 @@ import {
 } from './egress.ts';
 import { keptOf } from './egress-answer.ts';
 import { METHODS, pathAllowed, templateFilled, type Extras } from './egress-routes.ts';
+import { PLAN_DESTINATION, planDispatch, planHolderOf, prepared } from './custody-plan.ts';
 import { redact, withholds } from './redaction.ts';
 import { openaiSse } from './stream-decode.ts';
 
@@ -103,6 +107,12 @@ function sendGateOf(at: unknown, reply: (body: Message) => void) {
 }
 
 const loaded = load();
+
+/** The plan's holder, built once at start; refused settings stop custody before it serves. */
+const plan = await planHolderOf(process.env);
+if (plan === 'refused') fail('plan settings refused');
+delete process.env['CUSTODY_PLAN_TOKEN_FILE'];
+delete process.env['CUSTODY_PLAN_ISSUER'];
 
 /**
  * A PUT its destination lists no route for, or a POST to a destination that
@@ -241,6 +251,10 @@ process.on('message', (message: unknown) => {
     reply(described(credential, shape['destination']));
     return;
   }
+  if (shape['type'] === 'prepare' && id !== '') {
+    void prepared(plan).then(reply);
+    return;
+  }
   if (shape['type'] !== 'dispatch' || id === '') {
     reply({ type: 'refused', code: 'CUSTODY_UNKNOWN_REQUEST' });
     return;
@@ -249,6 +263,16 @@ process.on('message', (message: unknown) => {
   const sendGate = sendGateOf(shape['deadlineAt'], reply);
   if (!isRequest(request) || unrouted(request) || sendGate === null) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
+    return;
+  }
+  if (request.destination === PLAN_DESTINATION) {
+    // Never from the credential file, and never held for an admission.
+    if (plan === undefined || shape['gated'] === true) {
+      reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
+      return;
+    }
+    reply({ type: 'started' });
+    void planDispatch(plan, loaded.destinations, request, sendGate).then(reply);
     return;
   }
   if (credential === undefined || credential.destination !== request.destination) {

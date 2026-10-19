@@ -7,14 +7,15 @@
 //
 // Per call, under this process's `runner` (a restart is a new one):
 // `offered → accepted → running → done`. Accepted: it joined the call's line
-// and sent its sealed accept, stamped `A` on its own clock; the deadline is
-// `A + W`. Running: only from accepted, in one turn, by the first request
-// that opens (the broker's seal, this call and runner, unexpired), passes the
-// request check, and comes by the deadline on a machine not too busy. A
-// repeat finds it running and is ignored, or done and gets the last word
-// again. Done: answered or refused; a request after the deadline is refused
-// `SEND_LAPSED`, so the function knows nothing was written. A call is kept
-// 10 minutes, and a stopped agent accepts nothing more.
+// at `J`, the clock the function learns, then (custody first preparing the
+// plan's token where it is set: `prepare.ts`) sent its sealed accept stamped
+// `A`; the deadline is `A + W`. Running: only from accepted, in one turn, by
+// the first request that opens (the broker's seal, this call and runner,
+// unexpired), passes the request check, and comes by the deadline on a machine
+// not too busy. A repeat finds it running and is ignored, or done and gets the
+// last word again. Done: answered or refused; a request after the deadline is
+// refused `SEND_LAPSED`, so the function knows nothing was written. Calls are
+// kept 10 minutes; a stopped agent or a lapsed prepare accepts nothing.
 //
 // Custody writes only before the deadline and says `written`. The answer is
 // custody's own outcome, sent again until `settled`. Custody lost mid-answer
@@ -43,6 +44,7 @@ import {
   type Sealed,
 } from '../../packages/core-custody/src/agent.ts';
 import { piecesFor } from './pieces.ts';
+import { preparedInTime } from './prepare.ts';
 import { chatOf, keysOf, same } from './request-check.ts';
 
 /** Above this one-minute load the machine is too busy to start a model. */
@@ -55,6 +57,8 @@ export interface AgentCustody {
     gate: { readonly deadlineAt: number; readonly onWritten: () => void },
     onPiece: (text: string) => void,
   ): Promise<CustodyOutcome>;
+  /** The plan's token made ready, before an accept; present only when the plan is set. */
+  prepare?(): Promise<unknown>;
 }
 
 export interface ModelAgentOptions {
@@ -246,18 +250,18 @@ async function onOffer(agent: Agent, message: unknown): Promise<void> {
     callTopic(agent.options.business, k),
     await agent.options.token(),
   );
-  if (!joined.ok || agent.stopped) {
+  const joinedAt = agent.now();
+  if (!(joined.ok && (await preparedInTime(agent.options.custody))) || agent.stopped) {
     call.state = 'done';
-    // Stopped while joining: the line is left, and nothing is accepted.
     if (joined.ok) await joined.line.leave();
-    agent.log('call line refused');
+    agent.log(joined.ok && !agent.stopped ? 'prepare lapsed' : 'call line refused');
     return;
   }
   call.line = joined.line;
   joined.line.hear((event, said) => heard(agent, k, call, event, said));
   call.acceptedAt = agent.now();
   call.state = 'accepted';
-  say(agent, k, call, 'accept', { acceptedAt: call.acceptedAt });
+  say(agent, k, call, 'accept', { acceptedAt: call.acceptedAt, joinedAt });
   agent.log('accept');
 }
 

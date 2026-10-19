@@ -6,9 +6,28 @@ custody holds it, refreshes it and presents it. It never reaches the laptop,
 the hosted site, Git, chat or a log.
 
 This page is the owner's one-time sign-in checklist (#1705). Only the owner
-runs it, and only on the M5. No agent runs any step here. The plan's route
-(`chatgpt-plan`) arrives with a later part of #1620; until then this sign-in
-only puts the token in custody.
+runs it, and only on the M5. No agent runs any step here.
+
+## The plan's route
+
+The model agent sends a plan call (`chatgpt_plan`) only when its settings name
+all three of `planTokenFile` (this sign-in's token file, by absolute path),
+`planOrigin` (exactly `https://api.openai.com`) and `planIssuer` (exactly
+`https://auth.openai.com`). Without them it refuses every plan request and
+sends nothing ([model agent](model-agent.md)).
+
+- It carries only runs the owner started; any other is refused
+  `SUBSCRIPTION_NOT_OWNER_STARTED`, and the call is recorded as a
+  `subscription` call.
+- Its body is only Responses' `model`, `instructions`, `input`, optional
+  strict function `tools`, `store: false` and `stream: true`.
+- An offer names no route, so with the plan set the agent asks custody to
+  make the token ready before every accept, for up to 30 seconds. A plan
+  call waits up to 35 seconds for its accept. Any other call still waits 5,
+  so an Ollama call that comes while a refresh runs past 5 seconds is
+  released `MODEL_MACHINE_AWAY`, with nothing sent.
+- Custody sends the token only to `https://api.openai.com`. It never reaches
+  the agent, the hosted site or a log, and it is never filed as a credential.
 
 ## How the sign-in works
 

@@ -390,14 +390,6 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'packages/core-records/src/tenancy/privileges.ts',
     "the tenancy wrapper's default-deny conformance check, part of that protected component",
   ],
-  [
-    'packages/core-custody/src/plan-token-production.ts',
-    "the production composition's plan token holder, pinned to the plan issuer; inert until P4 (#1702) wires it",
-  ],
-  [
-    'packages/core-custody/src/plan-answer.ts',
-    "#1620 P3's Responses fold and named plan results; inert until P4 (#1702) wires it into the chatgpt-plan route",
-  ],
 ]);
 
 const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file);
