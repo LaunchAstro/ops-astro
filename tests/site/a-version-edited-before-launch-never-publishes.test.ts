@@ -2,8 +2,9 @@
 //
 // #1693, gap 2: a version whose page is edited between its stamp and its
 // publish never publishes. Launch reads the runner's last check, at most 60 s
-// old; the effect is settled at the publish's contents write, whose blob
-// precondition refuses an edit that landed after every check. On a real
+// old; the effect is settled at the publish's advance of the default branch,
+// a fast-forward from the approved base that refuses once any commit landed
+// after every check. On a real
 // database, the runner's locate and its proposal and publish run over a
 // double of the repository (each commit's files and the default branch's
 // head) and the providers' double (every request kept):
@@ -12,10 +13,12 @@
 //   nothing sent and one person task;
 // - a locate pass between the edit and Launch supersedes the version, and
 //   Launch is refused with the row untouched;
-// - an edit landing after every check and just before the publish's write is
-//   refused by the blob precondition, nothing written, one person task;
-// - an edit to another file after the pin leaves the version fresh, and it
-//   publishes.
+// - an edit landing after every check and just before the publish's advance is
+//   refused as not a fast-forward, nothing applied, one person task;
+// - an edit to another file after the pin leaves the version fresh, but the
+//   default branch has moved from its base, so the publish refuses it
+//   `BASE_MOVED` with nothing sent and one person task (re-pinning at Accept
+//   is #2101).
 // The design's table also names a review before Launch: there is no review
 // command (only `live_correction.decide`), so no case calls one.
 /* eslint-disable max-lines-per-function -- each case keeps its stamp, edit, Launch and run in one place */
@@ -23,13 +26,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { codeOf } from '../commands/agent-fixture.ts';
 import { contentDigest } from '../../packages/core-connectors/src/index.ts';
-import { AFTER, BEFORE, PAGE } from './c80-world.ts';
+import { BEFORE, PAGE } from './c80-world.ts';
 import { receipt, serverUrl, w } from './c80-register-world.ts';
 import { dueNow, HEAD_COMMIT, locateOnce, noneWaiting, requestOn, rowOf } from './locate-world.ts';
 import { merges, runnerOn, useRunnerWorld, writes } from './site-runner-world.ts';
 import {
-  blobOf,
-  commit,
+  commitOnMain,
   CONTACT,
   EDITED,
   editAbout,
@@ -119,11 +121,11 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
     expect(given.locate.requests.every((asked) => asked.startsWith('GET '))).toBe(true);
   });
 
-  it('refuses the publish by its blob when the page is edited after every check and before the write', async () => {
+  it('refuses the publish as not a fast-forward when the page is edited after every check and before the advance', async () => {
     const given = edited();
     const { id, versionId } = await stamped(given);
     expect(codeOf(await launch(id, versionId))).toBe('not-a-refusal');
-    // The edit lands after the head check and the publish's own reads, just before its write.
+    // The edit lands after the head check and the publish's own reads, just before its advance.
     given.beforePublish.edit = () => {
       editAbout(given, EDITED);
     };
@@ -131,28 +133,24 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
     const { runner, released } = runnerOn(id, given.world);
     const passed = await runner.pass();
 
-    // One contents write on the default branch, refused by its blob precondition (sha_mismatch).
+    // One advance of the default branch, refused as not a fast-forward: it applied nothing.
     expect(merges(given.world.site)).toHaveLength(1);
-    expect(given.published).toEqual([409]);
+    expect(given.published).toEqual([422]);
     expect(given.world.site.state.content).toBe(EDITED);
-    expect(given.world.site.state.blob).toBe(blobOf(EDITED));
+    expect(given.world.site.state.mainHead).toBe(given.repository.head);
     expect(released).toEqual([id]);
-    // The design's table says `failed`. The code reads a sha_mismatch back through its seam
-    // (`reconciled`): the default branch holds neither the pre-image nor the change, so nothing
-    // proves the write absent and the publish is recorded unknown, waiting on a person.
-    expect(passed).toEqual([{ correctionId: id, outcome: 'unknown' }]);
-    expect(await w.stateOf(id)).toBe('unknown');
-    expect(given.world.raised).toEqual(['RECONCILE_UNPROVEN']);
+    expect(passed).toEqual([{ correctionId: id, outcome: 'failed' }]);
+    expect(await w.stateOf(id)).toBe('failed');
+    expect(given.world.raised).toEqual(['NOT_FAST_FORWARD']);
     const publish = await receipt(id, 'publish');
     expect(publish['waits_on']?.observed).toBe('person');
-    expect(publish['unknown_outcome_reconciliation']?.observed).toContain('RECONCILE_UNPROVEN');
   });
 
-  it('keeps a version fresh when another file is edited after the pin, and publishes it', async () => {
+  it('keeps a version fresh when another file is edited after the pin, and refuses its publish as the base moved', async () => {
     const given = edited();
     const { id, versionId } = await stamped(given);
     const { verified_at: stampedAt } = await rowOf(id);
-    commit(given.repository, { [OTHER]: `${CONTACT}\nOpen on weekdays.\n` });
+    commitOnMain(given, { [OTHER]: `${CONTACT}\nOpen on weekdays.\n` });
     expect(given.repository.head).not.toBe(HEAD_COMMIT);
 
     // The next pass reads the new head: the page's file is as pinned, so it is stamped again.
@@ -168,11 +166,11 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
 
     expect(codeOf(await launch(id, versionId))).toBe('not-a-refusal');
     const { runner } = runnerOn(id, given.world);
-    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'live' }]);
-    expect(merges(given.world.site)).toHaveLength(1);
-    expect(given.published).toEqual([200]);
-    expect(given.world.site.state.content).toBe(AFTER);
-    expect(given.world.raised).toEqual([]);
-    expect(await w.stateOf(id)).toBe('live');
+    // The default branch is no longer the pinned base: nothing is advanced, a person asks again.
+    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'BASE_MOVED' }]);
+    expect(merges(given.world.site)).toEqual([]);
+    expect(given.published).toEqual([]);
+    expect(given.world.site.state.content).toBe(BEFORE);
+    expect(given.world.raised).toEqual(['BASE_MOVED']);
   });
 });

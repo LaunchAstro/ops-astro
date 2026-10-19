@@ -5,8 +5,9 @@
 // each commit's files and the default branch's head, the locate's source host
 // answering from it through custody, and the runner's ports, whose proposal
 // reads the head and the file from the repository and whose every write goes
-// to the providers' double. An edit of the About page is a new commit and the
-// providers' file and blob together, so every read agrees on it.
+// to the providers' double. A commit on the default branch moves the
+// repository's head and the providers' together, and an edit of the About page
+// is one such commit with the providers' file and blob, so every read agrees.
 
 import { createHash, randomBytes } from 'node:crypto';
 import type { Sites } from '../../apps/site-runner/runner.ts';
@@ -92,26 +93,22 @@ export interface Edited {
   readonly world: World;
   readonly repository: Repository;
   readonly locate: SourceDouble;
-  /** The status the provider answered each contents write on the default branch with. */
+  /** The status the provider answered each advance of the default branch with. */
   readonly published: number[];
-  /** `edit` runs once, just before the publish's contents write reaches the provider. */
+  /** `edit` runs once, just before the publish's advance reaches the provider. */
   readonly beforePublish: { edit: (() => void) | undefined };
 }
 
 const NOT_CATALOGUED = { kind: 'refused', code: 'SEAM_READ_NOT_CATALOGUED' } as const;
 
-/** The publish: the contents write on the default branch. */
-function isPublish(request: TransportRequest): boolean {
-  if (request.method !== 'PUT' || request.body === undefined) return false;
-  if (request.url.pathname !== `/repos/${REPOSITORY}/contents/${ABOUT}`) return false;
-  const body = JSON.parse(new TextDecoder().decode(request.body)) as Record<string, unknown>;
-  return body['branch'] === 'main';
-}
+/** The publish: the advance of the default branch. */
+const isPublish = (request: TransportRequest): boolean =>
+  request.method === 'PATCH' && request.url.pathname === `/repos/${REPOSITORY}/git/refs/heads/main`;
 
 const html = (text: string): Uint8Array =>
   new TextEncoder().encode(`<!doctype html><html><body><main>${text}</main></body></html>`);
 
-/** The providers' transport, `edit` run just before the publish's write, each publish's status kept. */
+/** The providers' transport, `edit` run just before the publish's advance, each publish's status kept. */
 function watched(
   site: Provider,
   published: number[],
@@ -183,7 +180,12 @@ export function edited(): Edited {
     head: HEAD_COMMIT,
     commits: new Map([[HEAD_COMMIT, { [ABOUT]: BEFORE, [OTHER]: CONTACT }]]),
   };
-  const site = provider({ content: BEFORE, blob: blobOf(BEFORE) });
+  const site = provider({
+    content: BEFORE,
+    blob: blobOf(BEFORE),
+    mainHead: HEAD_COMMIT,
+    proposalParent: HEAD_COMMIT,
+  });
   const captured: string[] = [];
   const published: number[] = [];
   const beforePublish: Edited['beforePublish'] = { edit: undefined };
@@ -201,9 +203,17 @@ export function edited(): Edited {
   };
 }
 
+/** A new commit on the default branch with `files` changed, in the repository and at the providers. */
+export function commitOnMain(given: Edited, files: Readonly<Record<string, string>>): void {
+  const { state } = given.world.site;
+  commit(given.repository, files);
+  state.parents[given.repository.head] = state.mainHead;
+  state.mainHead = given.repository.head;
+}
+
 /** The About page edited on the default branch: a new commit, and the providers' file and blob. */
 export function editAbout(given: Edited, content: string): void {
-  commit(given.repository, { [ABOUT]: content });
+  commitOnMain(given, { [ABOUT]: content });
   given.world.site.state.content = content;
   given.world.site.state.blob = blobOf(content);
 }

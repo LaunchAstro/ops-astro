@@ -61,9 +61,7 @@ describe.skipIf(serverUrl === undefined)('the cap survives a late observation', 
     await early;
     await runLivePublish(w.world.db.app, at(id), ports(), { lastPass: true });
     expect(
-      site.sent
-        .map(line)
-        .filter((sent) => sent === 'PUT /repos/agency/site/contents/src/pages/about.md'),
+      site.sent.map(line).filter((sent) => sent === 'PATCH /repos/agency/site/git/refs/heads/main'),
     ).toHaveLength(1);
     expect(raised).toEqual(['DEPLOYMENT_NOT_FOUND']);
     expect(await w.stateOf(id)).toBe('unknown');

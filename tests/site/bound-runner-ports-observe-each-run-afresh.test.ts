@@ -22,7 +22,10 @@ describe.skipIf(serverUrl === undefined)('bound runner ports', () => {
     expect(await revert(id, runner)).toMatchObject({ kind: 'recorded', state: 'reverted' });
     expect(await w.stateOf(id)).toBe('reverted');
     expect(raised).toEqual([]);
-    expect(site.sent.filter((request) => request.method === 'PUT')).toHaveLength(2);
+    // One advance published it, one contents write reverted it forward.
+    expect(site.sent.map((request) => request.method).filter((method) => method !== 'GET')).toEqual(
+      ['PATCH', 'PUT'],
+    );
   });
 
   it('a transient alias failure does not poison later observation on the bound ports', async () => {
@@ -39,6 +42,6 @@ describe.skipIf(serverUrl === undefined)('bound runner ports', () => {
     const retried =
       first.kind === 'recorded' && first.state === 'live' ? first : await publish(id, runner);
     expect(retried).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect(site.sent.filter((request) => request.method === 'PUT')).toHaveLength(1);
+    expect(site.sent.filter((request) => request.method === 'PATCH')).toHaveLength(1);
   });
 });

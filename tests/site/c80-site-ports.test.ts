@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C80's runner on its site ports through guarded provider calls. Publish
-// writes the approved file on the default branch and the request remains the
-// human review screen. Bindings refuse other corrections before provider
+// advances the default branch from the approved base to the proposal's head,
+// which closes the human review request as merged. Bindings refuse other corrections before provider
 // calls, captures or reconciliation receipts. Nothing reaches a live system.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { AFTER, BEFORE } from './c80-world.ts';
-import { line } from './c80-site-provider.ts';
+import { AFTER, BEFORE, REV } from './c80-world.ts';
+import { HEAD, line } from './c80-site-provider.ts';
 import { bound, B_PAGE, B_FILE, OTHER_SEAM } from './c80-site-ports-bound.ts';
 import {
   approved,
@@ -44,7 +44,10 @@ async function approvedPastTheStore(pageUrl: string, path: string): Promise<stri
 }
 
 const SOURCE = 'GET /repos/agency/site/contents/src/pages/about.md?ref=main';
-const WRITE = 'PUT /repos/agency/site/contents/src/pages/about.md';
+const HEAD_READ = 'GET /repos/agency/site/git/ref/heads/main';
+const ADVANCE = 'PATCH /repos/agency/site/git/refs/heads/main';
+const advances = (site: Awaited<ReturnType<typeof bound>>['site']) =>
+  site.sent.filter((sent) => line(sent) === ADVANCE);
 const refusalsOn = async (id: string, step: string): Promise<string[]> =>
   ((await receipt(id, step))['refusals_raised']?.observed ?? '').split(' ');
 
@@ -55,18 +58,23 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.sent.map(line)).toEqual([
       SOURCE,
+      HEAD_READ,
       SOURCE,
       SOURCE,
-      SOURCE,
-      WRITE,
-      'GET /v6/deployments?projectId=prj_site&sha=c0ffee02&target=production&limit=1',
+      'GET /repos/agency/site/branches/main/protection',
+      HEAD_READ,
+      ADVANCE,
+      HEAD_READ,
+      'GET /v6/deployments?projectId=prj_site&sha=c0ffee01&target=production&limit=1',
       'GET /v13/deployments/dpl_merged',
       'GET /v9/projects/prj_site',
       'GET /v4/aliases/agency.example?projectId=prj_site',
       'GET /v13/deployments/dpl_merged',
       'GET /v9/projects/prj_site',
       'GET /v4/aliases/agency.example?projectId=prj_site',
+      'GET /repos/agency/site/pulls/17',
     ]);
+    expect(site.state.request?.merged).toBe(true);
     expect(site.state.content).toBe(AFTER);
     site.sent.length = 0;
     expect(await revert(id, ports())).toMatchObject({ kind: 'recorded', state: 'reverted' });
@@ -89,25 +97,27 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
 describe.skipIf(serverUrl === undefined)(
   'C80 runner on the site ports: what it cannot place',
   () => {
-    it('keeps a concurrent default-branch edit when the atomic write refuses', async () => {
+    it('keeps a concurrent default-branch commit when the fast-forward refuses', async () => {
       const id = await approved();
       const concurrent = BEFORE + '<p>Another footer.</p>\n';
       const { site, ports, raised } = await bound(id, {
         wrap: (double) => async (request) => {
-          if (request.method === 'PUT') {
+          if (request.method === 'PATCH') {
             double.state.content = concurrent;
-            double.state.blob = 'blob-concurrent';
+            double.state.parents['concurrent-commit'] = REV;
+            double.state.mainHead = 'concurrent-commit';
           }
           return await double.deps.transport(request);
         },
       });
-      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'unknown' });
+      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'failed' });
       expect(site.state.content).toBe(concurrent);
+      expect(site.state.mainHead).toBe('concurrent-commit');
       expect(site.state.deployments).toEqual({});
-      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect(advances(site)).toHaveLength(1);
+      expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
       expect(site.state.request?.merged).toBe(false);
-      expect(raised).toContain('RECONCILE_UNPROVEN');
+      expect(raised).toHaveLength(1);
       expect(await refusalsOn(id, 'publish')).toContain('PROVIDER_REFUSED');
     });
 
@@ -174,22 +184,24 @@ describe.skipIf(serverUrl === undefined)(
 );
 
 describe.skipIf(serverUrl === undefined)(
-  'C80 publication leaves the human review request unmerged',
+  'C80 publication advances the default branch by the approved commit only',
   () => {
-    it('publishes only the approved file from a proposal holding an additional file', async () => {
+    it('advances to the stored head, never a commit pushed onto the seam since', async () => {
       const id = await approved();
       const { site, ports } = await bound(id);
-      site.state.proposalExtras['src/pages/contact.md'] = 'unapproved contact';
       site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
+      // Another commit on the seam after the proposal: the request now shows it as its head.
+      site.state.parents['c0ffee99'] = HEAD;
+      if (site.state.request) site.state.request.head = 'c0ffee99';
       expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
       expect(site.state.content).toBe(AFTER);
+      expect(site.state.mainHead).toBe(HEAD);
       expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
-      expect(site.state.request?.merged).toBe(false);
-      expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
-      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect(advances(site).map((sent) => sent.body)).toEqual([{ sha: HEAD }]);
+      expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
     });
 
-    it('publishes on the default branch after the request is retargeted', async () => {
+    it('advances the default branch after the request is retargeted', async () => {
       const id = await approved();
       const { site, ports } = await bound(id);
       if (site.state.request) site.state.request.base = 'staging';
@@ -197,9 +209,10 @@ describe.skipIf(serverUrl === undefined)(
       expect(site.state.content).toBe(AFTER);
       expect(site.state.stagingContent).toBe(BEFORE);
       expect(site.state.request?.merged).toBe(false);
-      expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+      expect(advances(site)).toHaveLength(1);
+      expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
       expect((await receipt(id, 'publish'))['published_revision']).toEqual({
-        observed: 'c0ffee02',
+        observed: HEAD,
       });
     });
   },
@@ -266,7 +279,7 @@ describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approv
     expect(outcome).toMatchObject({ kind: 'recorded' });
     expect(outcome).not.toMatchObject({ state: 'live' });
     expect(site.state.content).toBe(BEFORE);
-    expect(site.sent.filter((sent) => sent.method === 'PUT')).toEqual([]);
+    expect(site.sent.filter((sent) => sent.method !== 'GET')).toEqual([]);
   });
 
   it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
@@ -276,9 +289,6 @@ describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approv
     const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);
-    const write = site.sent.find((sent) => sent.method === 'PUT');
-    expect(Buffer.from(write?.body['content'] ?? '', 'base64').subarray(0, 3)).toEqual(
-      Buffer.from([0xef, 0xbb, 0xbf]),
-    );
+    expect(advances(site)).toHaveLength(1);
   });
 });

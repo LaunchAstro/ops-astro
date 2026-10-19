@@ -13,7 +13,8 @@ import { approved, publish, revert, serverUrl, useRegisterWorld, w } from './c80
 
 useRegisterWorld();
 
-const writes = (site: Provider) => site.sent.filter((sent) => sent.method === 'PUT');
+/** Every write: the publish's advance, then any revert's contents write. */
+const writes = (site: Provider) => site.sent.filter((sent) => sent.method !== 'GET');
 
 describe.skipIf(serverUrl === undefined)(
   'a correction reads live only while its deployment serves the page',
@@ -30,6 +31,8 @@ describe.skipIf(serverUrl === undefined)(
         'GET /v13/deployments/dpl_merged',
         'GET /v9/projects/prj_site',
         'GET /v4/aliases/agency.example?projectId=prj_site',
+        // Live: the review request read once, to name one left open.
+        'GET /repos/agency/site/pulls/17',
       ]);
     });
 
