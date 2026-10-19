@@ -62,7 +62,8 @@ secret by name.
    `pageUrl` is an exact https address and each `path` a page file under
    `src/pages/`. The capture checks only these pages. The runner refuses to
    start when anyone else can read the file, when the database address does
-   not require TLS, or when a setting is missing, unknown or malformed. Its
+   not require TLS, when the heartbeat address is not an https address off
+   the machine, or when a setting is missing, unknown or malformed. Its
    one line names the setting and never its value.
 
    **Locate only.** With `SITE_RUNNER_LOCATE_ONLY` set to `"1"` the runner
@@ -88,5 +89,8 @@ secret by name.
   ran, its id and a code, and pings the heartbeat, no more often than
   `OPS_HEARTBEAT_EVERY_MS`. A correction found bound to
   any other site logs `<id> SITE_NOT_CONFIGURED`. A stopped or failing runner pings nothing, so the
-  watcher mails. A raised person task logs `raised <code> on task <id>` and
+  watcher mails. A refused queue logs `the queue was refused: <code>` and a
+  queue with no usable answer logs `a pass failed: QueueFault`; neither pings,
+  so a runner that can no longer read its queue reads as failing, never as
+  idle. A raised person task logs `raised <code> on task <id>` and
   is written as an internal comment on the correction's task.

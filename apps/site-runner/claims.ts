@@ -44,10 +44,29 @@ async function correctionOn(
   });
 }
 
-const entriesOf = (answer: Answer): readonly Readonly<Record<string, unknown>>[] =>
-  'detail' in answer
-    ? ((answer.detail['queue'] ?? []) as readonly Readonly<Record<string, unknown>>[])
-    : [];
+/** What a refusal's code may be when printed: the server's text it came with never is. */
+const CODE = /^[A-Z][A-Z0-9_]{0,63}$/u;
+
+/** A `task.queue` the API refused: the pass fails on it, never reading the queue as empty. */
+export class QueueRefused extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    const printed = CODE.test(code) ? code : 'unreadable';
+    super(`the queue was refused: ${printed}`);
+    this.name = 'QueueRefused';
+    this.code = printed;
+  }
+}
+
+/** The queue's work; a refused queue, or one with no list of work, fails the pass. */
+function entriesOf(answer: Answer): readonly Readonly<Record<string, unknown>>[] {
+  if ('refused' in answer) throw new QueueRefused(answer.refused);
+  const queue = 'detail' in answer ? answer.detail['queue'] : undefined;
+  if (!Array.isArray(queue))
+    throw Object.assign(new Error('the queue gave no usable answer'), { name: 'QueueFault' });
+  return queue as readonly Readonly<Record<string, unknown>>[];
+}
 
 type Lease = Omit<Claim, 'correctionId' | 'taskId'>;
 

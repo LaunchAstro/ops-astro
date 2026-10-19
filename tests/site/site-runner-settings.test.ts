@@ -94,8 +94,9 @@ describe('the site runner, its settings', () => {
     const heartbeats = [
       settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: address }),
       settingsFrom(GOOD),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: '' }),
     ].map((settings) => (typeof settings === 'string' ? settings : settings.heartbeat));
-    expect(heartbeats).toEqual([address, undefined]);
+    expect(heartbeats).toEqual([address, undefined, undefined]);
   });
 });
 

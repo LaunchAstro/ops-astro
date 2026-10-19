@@ -22,7 +22,7 @@ import { paced, ping } from '../worker/heartbeat.ts';
 import { pinnedTransport, systemResolver } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import { connect, type BusinessId, type Database } from '../../packages/core-records/src/index.ts';
-import { queueClaims, type AgentCall } from './claims.ts';
+import { QueueRefused, queueClaims, type AgentCall } from './claims.ts';
 import { holderRefuses } from './configured.ts';
 import { locatePass } from './locate.ts';
 import { createSiteRunner, FOLLOW_EVERY_MS, type Claim, type Passed } from './runner.ts';
@@ -178,14 +178,20 @@ export interface Passes {
 
 /**
  * A pass every interval until `stopping` aborts. Each pass logs one line per
- * correction and then pings the heartbeat; a failed pass logs its fault's name
- * and pings nothing, so a broken runner goes quiet as a stopped one does.
+ * correction and then pings the heartbeat; a failed pass logs its fault's name,
+ * or a refused queue's code, and pings nothing, so a broken runner goes quiet
+ * as a stopped one does.
  */
 export async function passes({ pass, ping: beat, sleep: wait, stopping }: Passes): Promise<void> {
   while (!stopping.aborted) {
     // oxlint-disable-next-line no-await-in-loop -- one pass at a time
     const passed = await pass().catch((fault: unknown) => {
-      console.error(`site-runner: a pass failed: ${fault instanceof Error ? fault.name : 'fault'}`);
+      const name = fault instanceof Error ? fault.name : 'fault';
+      const line =
+        fault instanceof QueueRefused
+          ? `the queue was refused: ${fault.code}`
+          : `a pass failed: ${name}`;
+      console.error(`site-runner: ${line}`);
       return null;
     });
     for (const { correctionId, outcome } of passed ?? []) console.log(`${correctionId} ${outcome}`);
