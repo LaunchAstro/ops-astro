@@ -216,6 +216,11 @@ export async function purgeConversation(
   if (covering[0]?.n === '0') return { ok: false, code: 'WRAP_UP_ABSENT' };
   const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window, true);
   if (hold !== undefined) return { ok: false, code: hold };
+  // An answer copy (#1563) goes with the body; one being made held the row above until it committed.
+  await tx.query(
+    `delete from conversation_answer_copies where business_id = $1 and conversation_id = $2`,
+    [tx.businessId, request.conversationId],
+  );
   const purged = await tx.query<{ id: string }>(
     `delete from conversation_messages
       where business_id = $1 and conversation_id = $2 returning id`,
