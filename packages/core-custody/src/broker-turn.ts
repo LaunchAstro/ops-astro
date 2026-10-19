@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A model turn at the broker (#1623 R3, design R4 and R7): read, bound, then
-// made into the one field its operation sends.
+// made into the one field its operation sends, with the tools it offered
+// beside it where the operation declares a `tools` field (#2091).
 //
 // 1. Read (`broker-turn-read.ts`). The bounded parsers take the turn's shape
 //    and order before anything is looked up: at most 64 parts, a system part
@@ -194,7 +195,15 @@ export async function fieldsOf(
   const bound = await bindTurn(tx, facts, turn);
   if (bound === undefined) return { ok: false, code: 'PROVENANCE_UNBOUND' };
   if (!toolsKept(turn)) return MALFORMED;
-  return { ok: true, fields: [{ name: 'turn', source: bound.source, value: bound.value }] };
+  const field = { name: 'turn', source: bound.source, value: bound.value };
+  // The offered tools reach a provider only where its operation declares them (#2091).
+  if (!Object.hasOwn(operation.fields, 'tools')) return { ok: true, fields: [field] };
+  const tools = {
+    name: 'tools',
+    source: 'business_internal' as const,
+    value: JSON.stringify(turn.tools),
+  };
+  return { ok: true, fields: [field, tools] };
 }
 
 /**
