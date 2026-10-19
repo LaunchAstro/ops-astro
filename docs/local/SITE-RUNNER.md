@@ -69,8 +69,50 @@ parts run apart, so a failure in one leaves the other and the heartbeat going.
 
 Before its first write, the proposal reads the head again and the file at it.
 If the file no longer holds the pinned pre-image, the proposal refuses
-`CONTENT_DRIFTED` with one person task and writes nothing. The publish's blob
-precondition stays the final check.
+`CONTENT_DRIFTED` with one person task and writes nothing.
+
+## The publish
+
+The proposal is one commit on the pinned base: the seam branch, the approved
+file written on it, and the review request opened from it. A commit that does
+not sit directly on the base (another commit reached the branch first) is
+`PROPOSAL_NOT_ON_BASE`, and no request is opened.
+
+The publish then moves the default branch to that commit (`site.source.advance`,
+#1986). It sends nothing unless each check holds, in this order:
+
+1. The file on the default branch is still the pinned pre-image
+   (`CONTENT_DRIFTED`).
+2. The branch's protection refuses force pushes and deletions, administrators
+   included (`ANCESTRY_NOT_ENFORCED`).
+3. The branch's head is the pinned base (`BASE_MOVED`).
+4. The review request's head is still the proposal's commit, read through
+   `site.request.read` (`REQUEST_HEAD_MOVED`). A request that cannot be read
+   refuses the same way.
+
+The update names the default branch and the commit, with no `force`, so the
+provider applies it only as a fast-forward. The branch moves from the approved
+base to the base and the approved file, or not at all. Because the request's
+head is then on its base, the provider closes the request as merged, so nothing
+is left open on GitHub. The published revision is that commit, and the
+deployment is found by it.
+
+- A commit landing on the default branch in between makes the provider refuse
+  (422). Nothing is applied. The refusal is read back: the branch's head is
+  neither the commit nor the base, so the publish is `unknown`
+  (`RECONCILE_UNPROVEN`), and one person task names it.
+- A send whose answer was lost is read back by the branch's head: at the commit
+  it landed, at the base it did not. A send that did not land is sent once more,
+  then read back again. Once an answer has been lost, a later refusal proves
+  nothing about it (`EARLIER_SEND_UNSETTLED`), and two sends that never landed
+  stay `unknown` (`ADVANCE_NOT_LANDED`). Each waits on one person task.
+- Once live, the runner reads the request. One the provider has not closed as
+  merged raises one person task, `REQUEST_LEFT_OPEN`.
+- Any commit to the default branch since the locate stops the publish with
+  nothing sent. The read back before the send already finds the branch's head
+  neither the commit nor the base, so the task reads `RECONCILE_UNPROVEN`;
+  `BASE_MOVED` is reached only when the head moves between that read and the
+  check. The person asks for the correction again (#2101 re-pins instead).
 
 With `SITE_RUNNER_LOCATE_ONLY=1` the runner takes no claim and signs in to no
 API, and custody holds the catalogued reads only.
@@ -139,7 +181,10 @@ The runner's process never holds a site token. It starts custody
 (`startCustody`) with the two site destinations, `source_control` on
 `api.github.com` and `hosting` on `api.vercel.com`, built from the catalogue
 by `siteDestination`. Each guarded call borrows its credential through
-`siteCustody`. The page capture goes through the C18-1 fence: agency pages
+`siteCustody`. The one PATCH custody holds is the advance's: its route names
+`refs/heads/{branch}`, and custody refuses any body but one object holding the
+commit's `sha` as a string, so no `force` can leave. The runner's admission
+takes the branch only as the configured default branch. The page capture goes through the C18-1 fence: agency pages
 only, public addresses only, no redirects. These are the only ways out.
 
 ## The re-observe loop

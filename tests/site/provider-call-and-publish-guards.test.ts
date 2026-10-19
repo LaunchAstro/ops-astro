@@ -160,15 +160,8 @@ it('a credential echoed in a declared string field cannot escape', async () => {
   const canary = 'Sol-synthetic-secret-provider-echo';
   const recorded: string[] = [];
   const result = await callConnector(
-    siteOperation('site.publish'),
-    {
-      repository: 'agency/site',
-      path: target.path,
-      branch: 'main',
-      sha: 'blob-before',
-      content: 'PHA+',
-      message: 'Live correction',
-    },
+    siteOperation('site.source.advance'),
+    { repository: 'agency/site', branch: 'main', sha: 'c0ffee01' },
     {
       resolve: async () => ['140.82.112.6'],
       credential: async () => canary,
@@ -177,7 +170,7 @@ it('a credential echoed in a declared string field cannot escape', async () => {
       },
       transport: async (request) => {
         expect(request.headers['authorization']).toBe(`Bearer ${canary}`);
-        return json({ content: { sha: 'blob-after' }, commit: { sha: canary } });
+        return json({ ref: 'refs/heads/main', object: { sha: canary } });
       },
     },
   );

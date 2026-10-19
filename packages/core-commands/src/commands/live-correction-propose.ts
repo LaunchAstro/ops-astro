@@ -12,7 +12,8 @@
 // nothing here holds a credential: the connector borrows one per call. Before
 // the first write the default branch's head is read afresh and its file must
 // still hold the pinned pre-image, or nothing is sent (`CONTENT_DRIFTED`, one
-// person task); the publish's blob precondition stays the final check.
+// person task); the publish's fast-forward from the pinned base stays the final
+// check (`mergeAndFind`).
 
 import {
   claimProposal,

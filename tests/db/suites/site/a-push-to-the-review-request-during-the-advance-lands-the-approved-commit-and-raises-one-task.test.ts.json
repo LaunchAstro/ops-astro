@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "S2106-1's accepted residual (register 176): a push to the review request during the advance lands exactly the approved commit on main, leaves the request open and raises one person task naming it (#1986)."
+}

@@ -18,6 +18,7 @@
 // its answer is cut to (`fields`, the catalogued response schema, at most four).
 
 import type { Fields } from './egress-answer.ts';
+import { bodyOf, fieldsOf, headersOf, isObject } from './egress-shapes.ts';
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -28,39 +29,23 @@ export interface PathRoute {
   readonly path: string;
 }
 
-/** A catalogued call's whole shape, path and query, and the fields its answer keeps. */
+/**
+ * A catalogued call's whole shape, path and query, and the fields its answer keeps. A PATCH is
+ * only ever a template, and names its body: one JSON object of exactly those names, each a string.
+ */
 export interface TemplateRoute {
-  readonly method: 'GET' | 'POST' | 'PUT';
+  readonly method: 'GET' | 'POST' | 'PUT' | 'PATCH';
   readonly template: string;
   readonly fields: Fields;
+  readonly body?: readonly string[];
 }
 
 export type Route = PathRoute | TemplateRoute;
 
 export type Method = 'POST' | Route['method'];
 
-export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT'];
+export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT', 'PATCH'];
 
-/** A lower-case token: one spelling per name, so no two can collide by case. */
-const HEADER_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
-/** Visible ASCII, inner spaces only: no CR, LF, tab or other control byte. */
-const HEADER_VALUE = /^[!-~](?:[ -~]{0,254}[!-~])?$/u;
-/** Names custody or the transport owns: the credential, framing and routing. */
-const RESERVED = new Set([
-  'authorization',
-  'proxy-authorization',
-  'x-api-key',
-  'cookie',
-  'host',
-  'content-type',
-  'content-length',
-  'transfer-encoding',
-  'connection',
-  'keep-alive',
-  'te',
-  'upgrade',
-  'expect',
-]);
 /** Plain segments from the root; no empty, `.` or `..` segment. */
 const ROUTE_PATH = /^(?:\/(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]+)+$/u;
 /** What a `/*` stands for: one identifier segment. */
@@ -91,12 +76,6 @@ const PATH_SLOT = /^(?!\.\.?$)[A-Za-z0-9._~-]{1,256}$/u;
 const QUERY_SLOT = /^(?:[A-Za-z0-9*._~+-]|%[0-9A-F]{2}){1,768}$/u;
 /** A template slot: `{name}` for one segment or value, `{name*}` for one segment or more. */
 const SLOT = /^\{[a-z]+(\*?)\}$/u;
-/** A declared field: dotted names, as the catalogue writes them. */
-const FIELD = /^[A-Za-z0-9_$]{1,64}(?:\.[A-Za-z0-9_$]{1,64}){0,7}$/u;
-const KINDS: ReadonlySet<unknown> = new Set(['string', 'number', 'boolean']);
-/** A schema of more fields would make custody's echo check (`withholds`) too costly. */
-const MOST_FIELDS = 4;
-
 function templateOf(template: string): boolean {
   const [path = '', query, ...more] = template.split('?');
   return (
@@ -176,40 +155,26 @@ function fills(template: string, path: string): boolean {
   return wantQuery === undefined || queryFills(wantQuery.split('&'), (givenQuery ?? '').split('&'));
 }
 
-function fieldsOf(value: unknown): Fields | undefined {
-  if (!isObject(value)) return undefined;
-  const entries = Object.entries(value);
-  const valid =
-    entries.length <= MOST_FIELDS &&
-    entries.every(([name, kind]) => FIELD.test(name) && KINDS.has(kind));
-  return valid ? (Object.fromEntries(entries) as Fields) : undefined;
-}
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-function headersOf(value: unknown): Record<string, string> | undefined {
-  if (!isObject(value)) return undefined;
-  const entries = Object.entries(value);
-  const valid = entries.every(
-    ([name, text]) =>
-      HEADER_NAME.test(name) &&
-      !RESERVED.has(name) &&
-      typeof text === 'string' &&
-      HEADER_VALUE.test(text),
-  );
-  return valid ? Object.fromEntries(entries as [string, string][]) : undefined;
+function templateRouteOf(value: Record<string, unknown>): TemplateRoute | undefined {
+  const { method, template } = value;
+  const fields = fieldsOf(value['fields']);
+  if (typeof template !== 'string' || !templateOf(template) || fields === undefined)
+    return undefined;
+  if (method === 'PATCH') {
+    const body = bodyOf(value['body']);
+    return body === undefined ? undefined : { method, template, fields, body };
+  }
+  const known = method === 'GET' || method === 'POST' || method === 'PUT';
+  return known && value['body'] === undefined ? { method, template, fields } : undefined;
 }
 
 function routeOf(value: unknown): Route | undefined {
-  if (isObject(value) && Object.keys(value).toSorted().join() === 'fields,method,template') {
-    const { method, template } = value;
-    const fields = fieldsOf(value['fields']);
-    const known = method === 'GET' || method === 'POST' || method === 'PUT';
-    return known && typeof template === 'string' && templateOf(template) && fields !== undefined
-      ? { method, template, fields }
-      : undefined;
-  }
+  const keys = isObject(value) ? Object.keys(value).toSorted().join() : '';
+  if (
+    isObject(value) &&
+    (keys === 'fields,method,template' || keys === 'body,fields,method,template')
+  )
+    return templateRouteOf(value);
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
   const { method, path } = value;
   if (typeof path !== 'string') return undefined;
@@ -271,10 +236,13 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
  * before, unless the destination takes none or lists the only ones it takes;
  * for any other method, only a route the destination lists.
  */
-export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
+export function pathAllowed(extras: Extras, method: Method, path: string, body?: string): boolean {
   if (path.length > MOST_PATH) return false;
   const routes = extras.routes ?? [];
-  if (templateFilled(extras, method, path) !== undefined) return true;
+  const filled = templateFilled(extras, method, path);
+  // A PATCH goes only on a template route, with exactly the body it names.
+  if (method === 'PATCH') return bodyFits(filled?.body, body);
+  if (filled !== undefined) return true;
   if (!PATH.test(path) || path.includes('..')) return false;
   if (method === 'POST') {
     return extras.post !== false && (extras.posts === undefined || extras.posts.includes(path));
@@ -285,6 +253,19 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
+}
+
+/** Whether a PATCH's body is one JSON object of exactly its route's body names, each a string. */
+function bodyFits(names: readonly string[] | undefined, body: string | undefined): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body ?? '');
+  } catch {
+    return false;
+  }
+  if (names === undefined || !isObject(parsed) || Object.keys(parsed).length !== names.length)
+    return false;
+  return names.every((name) => Object.hasOwn(parsed, name) && typeof parsed[name] === 'string');
 }
 
 /** The template route a request fills, if any: its answer is cut to the route's fields. */

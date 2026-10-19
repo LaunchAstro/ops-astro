@@ -10,8 +10,10 @@
 // already exists included) is that refusal, with nothing else sent. Once the
 // branch is made, any later step that does not answer leaves a partial
 // proposal, so the composition is `unknown`, read back by the branch name it
-// named before dispatch, never `failed`. Nothing here merges: the proposal is
-// reversible by deleting its branch. It is made only on the correction's own
+// named before dispatch, never `failed`. The commit must be one child of the
+// base (`PROPOSAL_NOT_ON_BASE` otherwise, and no request is opened), because the
+// publish advances the default branch to it. Nothing here publishes: the
+// proposal is reversible by deleting its branch. It is made only on the correction's own
 // party's site (`partySiteRefuses`, as the binding is): another party's site,
 // or a page and file that site does not hold, sends nothing.
 
@@ -93,6 +95,9 @@ export async function proposeSource(
     deps,
   );
   if (committed.kind !== 'ok') return incomplete(committed.code, deps);
+  // The publish advances the default branch to this commit, its whole tree: it must sit on the base.
+  if (committed.value['commit.parents.0.sha'] !== input.baseRevision)
+    return incomplete('PROPOSAL_NOT_ON_BASE', deps);
   const opened = await callConnector(
     siteOperation('site.source.propose.request'),
     { repository, title: `Live correction ${branch}`, head: branch, base: defaultBranch },

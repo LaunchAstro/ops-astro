@@ -7,12 +7,10 @@
 //
 // - The source is the site file on the default branch, decoded as UTF-8 from
 //   canonical base64 only.
-// - Publish writes the job's verified after-image on the default branch. The
-//   contents write uses the blob holding the approved pre-image as its exact
-//   precondition, so a concurrent file edit refuses the write atomically.
-//   The request remains the human review screen and is never merged.
-// - The deployment is found by the written commit, a bounded number of tries.
-//   Found for another commit is unknown after the write; not found yet is not
+// - Publish is the advance (`advance.ts`): the default branch moved to the
+//   proposal's head from the approved base, a fast-forward only.
+// - The deployment is found by that commit, a bounded number of tries.
+//   Found for another commit is unknown after the advance; not found yet is not
 //   published yet, accepted without it and looked up again when observed.
 // - The revert writes the pre-image back on the default branch, only over the
 //   published change and at the blob just read, and finds its deployment the
@@ -27,12 +25,15 @@
 // that are not the version the proposal names, so a revert writes back only
 // the approved pre-image.
 
-import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
+import {
+  callConnector,
+  type CallDependencies,
+  type ConnectorResult,
+  type ProviderResult,
+} from '../call.ts';
 import { siteOperation } from './operations.ts';
-import type { Published, PublishPorts } from './publish.ts';
-import { checkEnvelope } from './envelope.ts';
 import { findDeployment } from './serving.ts';
-import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
+import { versionDigestOf, type VersionPin } from './version.ts';
 
 export { findDeployment, readServed } from './serving.ts';
 
@@ -58,6 +59,8 @@ export interface SiteBinding {
   readonly project: string;
   /** The correction's catalogued page. */
   readonly pageUrl: string;
+  /** The default branch's head the pre-image was pinned at: the one commit the publish advances from. */
+  readonly baseRevision: string;
   /**
    * The branch is the correction's seam; the head is the commit the request
    * was opened at; the version digest is the version whose bytes it proposed.
@@ -132,6 +135,7 @@ export function siteBindingFor(
       defaultBranch,
       project,
       pageUrl: correction.pageUrl,
+      baseRevision: made.version.baseRevision,
       proposal: { branch: correction.seam, ...made.proposal },
       change: made.change,
     },
@@ -156,18 +160,27 @@ const LOOKUP_WAIT_MS = 5_000;
 
 type Deployed = { readonly revision: string; readonly deploymentId: string };
 
-const call = async (
+/** One catalogued site operation through the guarded call. */
+export const call = async (
   name: string,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
-) => await callConnector(siteOperation(name), params, deps);
+): Promise<ConnectorResult> => await callConnector(siteOperation(name), params, deps);
 
-function stop(kind: 'refused' | 'unknown', code: string, deps: CallDependencies) {
+/** A refusal or unknown, its code recorded for the receipt. */
+export function stop<K extends 'refused' | 'unknown'>(
+  kind: K,
+  code: string,
+  deps: CallDependencies,
+): { readonly kind: K; readonly code: string } {
   deps.record(code);
-  return { kind, code } as const;
+  return { kind, code };
 }
 
-const ok = <T>(value: T) => ({ kind: 'ok', value }) as const;
+export const ok = <T>(value: T): { readonly kind: 'ok'; readonly value: T } => ({
+  kind: 'ok',
+  value,
+});
 
 /**
  * The text a provider's base64 encodes, line breaks aside, or undefined
@@ -203,7 +216,7 @@ export async function readSiteSource(
 }
 
 /** `findDeployment`, tried until found or the attempts run out. */
-async function deploymentOf(
+export async function deploymentOf(
   binding: SiteBinding,
   commit: string,
   deps: BindingDependencies,
@@ -213,51 +226,6 @@ async function deploymentOf(
   if (found.kind !== 'ok' || found.value !== undefined || attempt >= LOOKUP_ATTEMPTS) return found;
   await deps.wait(LOOKUP_WAIT_MS);
   return await deploymentOf(binding, commit, deps, attempt + 1);
-}
-
-/** `site.publish`: one approved contents write, through a binding holding the approved bytes its revert needs. */
-export async function mergeAndFind(
-  binding: SiteBinding,
-  input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
-  deps: BindingDependencies,
-): Promise<ProviderResult<Published>> {
-  if (input.seam !== binding.proposal.branch) return stop('refused', 'SEAM_MISMATCH', deps);
-  const [file] = input.change.files;
-  if (
-    input.versionDigest !== binding.proposal.versionDigest ||
-    versionDigestOf(input) !== input.versionDigest ||
-    input.pageUrl !== binding.pageUrl ||
-    input.target.path !== binding.path ||
-    !checkEnvelope(input.change, input.target).ok ||
-    file === undefined ||
-    file.before !== binding.change.before ||
-    file.after !== binding.change.after ||
-    contentDigest(file.before) !== input.preImageDigest
-  ) {
-    return stop('refused', 'PROPOSAL_SUPERSEDED', deps);
-  }
-  const current = await readSiteSource(binding, deps);
-  if (current.kind !== 'ok') return current;
-  if (current.value.content !== file.before) return stop('refused', 'CONTENT_DRIFTED', deps);
-  const written = await call(
-    'site.publish',
-    {
-      repository: binding.repository,
-      path: binding.path,
-      branch: binding.defaultBranch,
-      sha: current.value.revision,
-      content: Buffer.from(file.after, 'utf8').toString('base64'),
-      message: `Live correction ${input.seam}`,
-    },
-    deps,
-  );
-  if (written.kind !== 'ok') return written;
-  const revision = String(written.value['commit.sha']);
-  const deployed = await deploymentOf(binding, revision, deps);
-  if (deployed.kind !== 'ok') return deployed;
-  // None found yet is not published yet: accepted, its deployment looked up again when observed.
-  const deploymentId = deployed.value === undefined ? {} : { deploymentId: deployed.value };
-  return ok({ revision, ...deploymentId, liveUrl: binding.pageUrl });
 }
 
 /** `site.source.revert`: the pre-image back over the published change, then its deployment. */

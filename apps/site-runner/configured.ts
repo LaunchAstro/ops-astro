@@ -43,7 +43,12 @@ export const pairConfigured = (site: ConfiguredSite, pageUrl: string, path: stri
   site.pages.some((page) => page.pageUrl === pageUrl && page.path === path);
 
 /** Operations that act on the default branch by name, and the one that opens a request onto it. */
-const ON_DEFAULT_BRANCH = new Set(['site.source.head', 'site.publish', 'site.source.revert']);
+const ON_DEFAULT_BRANCH = new Set([
+  'site.source.head',
+  'site.source.advance',
+  'site.source.protection',
+  'site.source.revert',
+]);
 const ONTO_DEFAULT_BRANCH = 'site.source.propose.request';
 
 /**

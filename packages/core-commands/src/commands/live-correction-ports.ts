@@ -12,10 +12,10 @@
 // correction's seam, so a read back, publish or revert for any other seam
 // sends nothing, and a publish of any version but the one it proposed sends
 // nothing either.
-// A read back answers absent only on proof that nothing landed (the
-// pre-image still on the default branch; the published change still there), and
-// unknown otherwise: neither read names the commit a landing made, so a
-// landing it cannot place waits on a person. Every refusal and unknown the
+// A read back answers absent only on proof that nothing landed (the default
+// branch's head still the approved base; the published change still there),
+// landed only at the proposal's head, and unknown otherwise, so a landing it
+// cannot place waits on a person. Every refusal and unknown the
 // guarded calls and the fence record on this run is kept, by code only, for
 // the receipt.
 
@@ -23,6 +23,8 @@ import {
   bindingRefuses,
   findDeployment,
   mergeAndFind,
+  readAdvanced,
+  requestClosed,
   readServing,
   readSiteSource,
   revertForward,
@@ -69,12 +71,8 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
   const fenceRecord = deps.capture.record;
   return {
     readSource: async () => await readSiteSource(binding, guarded),
-    // `site.source.read`: absent only while the default branch holds the pre-image.
-    readBack: async ({ seam }): Promise<ReadBack<never>> => {
-      if (!ours(seam)) return UNKNOWN;
-      const read = await readSiteSource(binding, guarded);
-      return read.kind === 'ok' && read.value.content === binding.change.before ? ABSENT : UNKNOWN;
-    },
+    // `site.source.head`: landed at the proposal's head, absent only at the approved base.
+    readBack: async ({ seam }) => (ours(seam) ? await readAdvanced(binding, guarded) : UNKNOWN),
     publish: async (input) => await mergeAndFind(binding, input, guarded),
     // Served only while it serves the bound page; the page's host is read once for these ports.
     readDeployment: readServing(binding, guarded),
@@ -93,6 +91,7 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
       return head.kind === 'ok' && head.value.content === binding.change.after ? ABSENT : UNKNOWN;
     },
     revert: async (input) => await revertForward(binding, input, guarded),
+    requestClosed: async () => await requestClosed(binding, guarded),
     raiseTask: deps.raiseTask,
     now: deps.now,
     // A run's refusals, read once at its receipt: the next run on these ports starts with none.

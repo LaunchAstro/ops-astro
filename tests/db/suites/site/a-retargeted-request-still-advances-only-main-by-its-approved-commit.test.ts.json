@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A review request retargeted to another branch on the provider changes nothing sent: main is advanced to the approved head, the other branch receives nothing, and one person task names the request left open (#1986)."
+}

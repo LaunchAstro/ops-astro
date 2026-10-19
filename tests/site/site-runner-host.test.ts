@@ -12,7 +12,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { BEFORE } from './c80-world.ts';
+import { BEFORE, REV } from './c80-world.ts';
 import { provider, type Provider } from './c80-site-provider.ts';
 import {
   approved,
@@ -46,7 +46,7 @@ async function hosted(): Promise<{
   given: World;
   stop: () => Promise<void>;
 }> {
-  const site = provider({ content: BEFORE });
+  const site = provider({ content: BEFORE, mainHead: REV, proposalParent: REV });
   const served = await serve(site);
   const custody = await custodyOver(served).catch(async (fault: unknown) => {
     await served.close();

@@ -173,12 +173,15 @@ it('custody passes back only the declared fields, with the media type the provid
 
 it('a non-JSON content type cannot become a successful write through custody', async () => {
   contentType = 'text/html';
-  body = JSON.stringify({ content: { sha: 'blob-after' }, commit: { sha: 'commit-after' } });
+  body = JSON.stringify({
+    content: { sha: 'blob-after' },
+    commit: { sha: 'commit-after', parents: [{ sha: 'commit-before' }] },
+  });
   expect(
-    await callConnector(siteOperation('site.publish'), writeParams, dependencies(false)),
+    await callConnector(siteOperation('site.source.propose'), writeParams, dependencies(false)),
   ).toEqual({ kind: 'unknown', code: 'PROVIDER_RESPONSE_MALFORMED' });
   const result = await callConnector(
-    siteOperation('site.publish'),
+    siteOperation('site.source.propose'),
     writeParams,
     dependencies(true),
   );
@@ -189,12 +192,12 @@ it('a body labelled JSON that does not parse, or does not fill the declared fiel
   contentType = 'application/json';
   for (const text of [
     '{"content": {"sha": "a"',
-    '{"content": {"sha": 1}, "commit": {"sha": "b"}}',
+    '{"content": {"sha": 1}, "commit": {"sha": "b", "parents": [{"sha": "c"}]}}',
   ]) {
     body = text;
     // oxlint-disable-next-line no-await-in-loop
     const result = await callConnector(
-      siteOperation('site.publish'),
+      siteOperation('site.source.propose'),
       writeParams,
       dependencies(true),
     );
@@ -212,18 +215,22 @@ it('a body that is not JSON is malformed, and the borrowing path keeps its own c
   ).toEqual({ kind: 'refused', code: 'PROVIDER_RESPONSE_MALFORMED' });
   contentType = 'application/json';
   const commit = randomBytes(20).toString('hex');
+  const parent = randomBytes(20).toString('hex');
   body = JSON.stringify({
     content: { sha: randomBytes(20).toString('hex') },
-    commit: { sha: commit },
+    commit: { sha: commit, parents: [{ sha: parent }] },
   });
   const borrowed = await callConnector(
-    siteOperation('site.publish'),
+    siteOperation('site.source.propose'),
     writeParams,
     dependencies(false),
   );
   expect(borrowed).toMatchObject({ kind: 'ok', value: { 'commit.sha': commit } });
-  body = JSON.stringify({ content: { sha: `x${canary}` }, commit: { sha: commit } });
+  body = JSON.stringify({
+    content: { sha: `x${canary}` },
+    commit: { sha: commit, parents: [{ sha: parent }] },
+  });
   expect(
-    await callConnector(siteOperation('site.publish'), writeParams, dependencies(false)),
+    await callConnector(siteOperation('site.source.propose'), writeParams, dependencies(false)),
   ).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
 });

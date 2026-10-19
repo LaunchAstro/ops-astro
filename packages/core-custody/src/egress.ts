@@ -264,7 +264,7 @@ export async function send(
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
-  if (!pathAllowed(destination, request.method, request.path)) {
+  if (!pathAllowed(destination, request.method, request.path, request.body)) {
     return { ok: false, fault: 'bad_path', status: null };
   }
   const url = new URL(request.path, destination.origin);

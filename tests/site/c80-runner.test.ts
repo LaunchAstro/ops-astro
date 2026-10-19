@@ -236,7 +236,7 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, crossings', () => 
 });
 
 describe.skipIf(serverUrl === undefined)('C80 publish runner, after the dispatch', () => {
-  it('keeps an unreadable answer unknown, raises a task, and never dispatches again', async () => {
+  it('keeps an answer that never lands unknown after its two sends, raises a task, and never dispatches again', async () => {
     const id = await correction(true);
     const ports = doubles({
       publish: (input) => {
@@ -245,13 +245,13 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, after the dispatch
       },
     });
     expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'unknown' });
-    expect(ports.seen.raised).toEqual(['PROVIDER_TIMEOUT']);
+    expect(ports.seen.raised).toEqual(['ADVANCE_NOT_LANDED']);
     expect(await publish(id, ports)).toEqual({
       kind: 'refused',
       code: 'OUTCOME_UNKNOWN',
       waitsOn: 'person',
     });
-    expect([ports.seen.dispatched.length, await w.receiptsOf(id)]).toEqual([1, 2]);
+    expect([ports.seen.dispatched.length, await w.receiptsOf(id)]).toEqual([2, 2]);
   });
 
   it('records accepted until served, then observes live without a second dispatch', async () => {

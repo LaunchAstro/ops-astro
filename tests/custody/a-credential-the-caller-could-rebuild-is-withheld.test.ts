@@ -32,6 +32,9 @@ const LONG = `proof-canary-${hex(18)}`;
 const SHORT = hex(6);
 const FIXED = 'abcdefghijkl';
 const TOKEN_SHAPED = `github_pat_${hex(41)}`;
+/** The sample contents write, and the parent sha every doubled answer of it names. */
+const PROPOSE = siteOperation('site.source.propose');
+const PARENT = hex(20);
 
 let server: Server;
 let folder: string;
@@ -117,20 +120,12 @@ it('a split credential remains withheld when JSON field order differs from schem
   contentType = 'application/json';
   // Each field holds only part of the canary; the schema reads content.sha before commit.sha.
   body = JSON.stringify({
-    commit: { sha: canary.slice(12) },
+    commit: { sha: canary.slice(12), parents: [{ sha: PARENT }] },
     content: { sha: canary.slice(0, 12) },
   });
-  const legacy = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(false),
-  );
+  const legacy = await callConnector(PROPOSE, writeParams, dependencies(false));
   expect(legacy).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
-  const result = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(true),
-  );
+  const result = await callConnector(PROPOSE, writeParams, dependencies(true));
   // A boolean assertion avoids printing the canary.
   const leaked = result.kind === 'ok' && Object.values(result.value).join('').includes(canary);
   expect(leaked).toBe(false);
@@ -143,16 +138,13 @@ it('an undeclared string cannot hide a split credential from the schema-filtered
   body = JSON.stringify({
     content: { sha: canary.slice(0, 12) },
     ignored: 'separator',
-    commit: { sha: canary.slice(12) },
+    commit: { sha: canary.slice(12), parents: [{ sha: PARENT }] },
   });
-  expect(
-    await callConnector(siteOperation('site.publish'), writeParams, dependencies(false)),
-  ).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
-  const result = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(true),
-  );
+  expect(await callConnector(PROPOSE, writeParams, dependencies(false))).toEqual({
+    kind: 'unknown',
+    code: 'PROVIDER_CREDENTIAL_ECHOED',
+  });
+  const result = await callConnector(PROPOSE, writeParams, dependencies(true));
   const leaked = result.kind === 'ok' && Object.values(result.value).join('').includes(canary);
   expect(leaked).toBe(false);
 });
@@ -160,20 +152,15 @@ it('an undeclared string cannot hide a split credential from the schema-filtered
 it('a valid twelve-character credential split into two six-character fields stays withheld', async () => {
   const { canary, dependencies } = held(SHORT);
   contentType = 'application/json';
-  body = JSON.stringify({ content: { sha: canary.slice(0, 6) }, commit: { sha: canary.slice(6) } });
-  const legacy = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(false),
-  );
+  body = JSON.stringify({
+    content: { sha: canary.slice(0, 6) },
+    commit: { sha: canary.slice(6), parents: [{ sha: PARENT }] },
+  });
+  const legacy = await callConnector(PROPOSE, writeParams, dependencies(false));
   expect(legacy).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
-  const result = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(true),
-  );
+  const result = await callConnector(PROPOSE, writeParams, dependencies(true));
   // Check the leak as a boolean so a failure never prints the credential.
-  const leaked = result.kind === 'ok' && Object.values(result.value).join('') === canary;
+  const leaked = result.kind === 'ok' && Object.values(result.value).join('').includes(canary);
   expect(leaked).toBe(false);
   expect(result).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
 });
@@ -190,13 +177,13 @@ it('pieces of the credential each encoded on their own, in two kept fields, are 
     ['abcdef%6', '7hijkl'],
   ];
   for (const [first = '', second = ''] of splits) {
-    body = JSON.stringify({ content: { sha: first }, commit: { sha: second }, other: 'x' });
+    body = JSON.stringify({
+      content: { sha: first },
+      commit: { sha: second, parents: [{ sha: PARENT }] },
+      other: 'x',
+    });
     // oxlint-disable-next-line no-await-in-loop
-    const result = await callConnector(
-      siteOperation('site.publish'),
-      writeParams,
-      dependencies(true),
-    );
+    const result = await callConnector(PROPOSE, writeParams, dependencies(true));
     expect(result, `${first} ${second}`).toEqual({
       kind: 'unknown',
       code: 'PROVIDER_CREDENTIAL_ECHOED',
@@ -218,14 +205,16 @@ it('an answer of ordinary hashes and ids passes for a twelve-character key and a
     const content = fileContent(`<h1>About us</h1>\n<p>${hex(200)}</p>\n`);
     const id = `dpl_${randomBytes(18).toString('base64url')}`;
     contentType = 'application/json';
-    body = JSON.stringify({ content: { sha: blob, size: 120 }, commit: { sha: commit } });
+    body = JSON.stringify({
+      content: { sha: blob, size: 120 },
+      commit: { sha: commit, parents: [{ sha: PARENT }] },
+    });
     // oxlint-disable-next-line no-await-in-loop
-    const published = await callConnector(
-      siteOperation('site.publish'),
-      writeParams,
-      dependencies(true),
-    );
-    expect(published).toEqual({ kind: 'ok', value: { 'content.sha': blob, 'commit.sha': commit } });
+    const published = await callConnector(PROPOSE, writeParams, dependencies(true));
+    expect(published).toEqual({
+      kind: 'ok',
+      value: { 'content.sha': blob, 'commit.sha': commit, 'commit.parents.0.sha': PARENT },
+    });
     body = JSON.stringify({ sha: blob, content, encoding: 'base64', name: 'about.astro' });
     // oxlint-disable-next-line no-await-in-loop
     const source = await callConnector(
@@ -259,24 +248,27 @@ it('a sha sharing the key’s first six or eight characters, and a near miss of 
   const short = held(SHORT);
   const eight = `${SHORT.slice(0, 8)}${hex(16)}`;
   const six = `${SHORT.slice(0, 6)}${hex(17)}`;
-  body = JSON.stringify({ content: { sha: eight }, commit: { sha: six } });
-  expect(
-    await callConnector(siteOperation('site.publish'), writeParams, short.dependencies(true)),
-  ).toEqual({ kind: 'ok', value: { 'content.sha': eight, 'commit.sha': six } });
+  body = JSON.stringify({
+    content: { sha: eight },
+    commit: { sha: six, parents: [{ sha: PARENT }] },
+  });
+  expect(await callConnector(PROPOSE, writeParams, short.dependencies(true))).toEqual({
+    kind: 'ok',
+    value: { 'content.sha': eight, 'commit.sha': six, 'commit.parents.0.sha': PARENT },
+  });
   // No hex character is `l`, so no other kept value can finish the key.
   const fixed = held(FIXED);
   const commit = hex(20);
   for (const near of [FIXED.slice(0, -1), `${FIXED.slice(0, -1)}X`]) {
-    body = JSON.stringify({ content: { sha: near }, commit: { sha: commit } });
+    body = JSON.stringify({
+      content: { sha: near },
+      commit: { sha: commit, parents: [{ sha: PARENT }] },
+    });
     // oxlint-disable-next-line no-await-in-loop
-    const result = await callConnector(
-      siteOperation('site.publish'),
-      writeParams,
-      fixed.dependencies(true),
-    );
+    const result = await callConnector(PROPOSE, writeParams, fixed.dependencies(true));
     expect(result, near).toEqual({
       kind: 'ok',
-      value: { 'content.sha': near, 'commit.sha': commit },
+      value: { 'content.sha': near, 'commit.sha': commit, 'commit.parents.0.sha': PARENT },
     });
   }
 });
@@ -286,12 +278,14 @@ it('the key whole in an undeclared field is dropped, not withheld, and the kept 
   contentType = 'application/json';
   const commit = hex(20);
   const blob = hex(20);
-  body = JSON.stringify({ content: { sha: blob }, commit: { sha: commit, note: canary } });
-  const result = await callConnector(
-    siteOperation('site.publish'),
-    writeParams,
-    dependencies(true),
-  );
-  expect(result).toEqual({ kind: 'ok', value: { 'content.sha': blob, 'commit.sha': commit } });
+  body = JSON.stringify({
+    content: { sha: blob },
+    commit: { sha: commit, note: canary, parents: [{ sha: PARENT }] },
+  });
+  const result = await callConnector(PROPOSE, writeParams, dependencies(true));
+  expect(result).toEqual({
+    kind: 'ok',
+    value: { 'content.sha': blob, 'commit.sha': commit, 'commit.parents.0.sha': PARENT },
+  });
   expect(JSON.stringify(result).includes(canary)).toBe(false);
 });

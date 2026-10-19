@@ -10,7 +10,7 @@
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
-import { APPROVED, MERGED, PAGE, SEAM, binding, line, proposed } from './c80-site-provider.ts';
+import { APPROVED, HEAD, PAGE, SEAM, binding, line, proposed } from './c80-site-provider.ts';
 import { bound } from './c80-site-ports-bound.ts';
 import {
   approved,
@@ -27,8 +27,8 @@ import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 
 useRegisterWorld();
 
-const WRITE = 'PUT /repos/agency/site/contents/src/pages/about.md';
-const LOOKUP = 'GET /v6/deployments?projectId=prj_site&sha=c0ffee02&target=production&limit=1';
+const WRITE = 'PATCH /repos/agency/site/git/refs/heads/main';
+const LOOKUP = 'GET /v6/deployments?projectId=prj_site&sha=c0ffee01&target=production&limit=1';
 
 /** One pass of the host: the runner on fresh ports, its last pass when `lastPass`. */
 const pass = async (id: string, ports: RunnerPorts, lastPass = false) =>
@@ -151,12 +151,12 @@ async function queuedOnTheCorrection(count: number): Promise<void> {
 }
 
 describe('the publish binding', () => {
-  it('answers a written commit with no deployment found yet without a deployment, not unknown', async () => {
+  it('answers an advanced commit with no deployment found yet without a deployment, not unknown', async () => {
     const site = proposed();
     site.state.lookupMisses = 6;
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'ok',
-      value: { revision: MERGED, liveUrl: PAGE },
+      value: { revision: HEAD, liveUrl: PAGE },
     });
     expect(site.waits).toEqual([5_000, 5_000, 5_000, 5_000, 5_000]);
     expect(site.sent.map(line).filter((sent) => sent === WRITE)).toHaveLength(1);

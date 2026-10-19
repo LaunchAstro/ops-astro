@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80: the thirteen catalogued operations (the release decision's section 3.1,
-// the four the publish binding adds, the two reads of what serves the page and
-// the head read a locate pins at, #1693), each registered with all twelve
+// C80: the fourteen catalogued operations (the release decision's section 3.1,
+// the four the publish binding adds, the two reads of what serves the page,
+// the head read a locate pins at, #1693, and the advance that publishes with the
+// protection read it needs, #1986), each registered with all twelve
 // declarations, and a registration missing one refuses. The strictest-default rule means nothing registers by omission.
 
 import { describe, expect, it } from 'vitest';
@@ -18,7 +19,8 @@ import {
 const NAMES = [
   'site.source.read',
   'site.source.propose',
-  'site.publish',
+  'site.source.advance',
+  'site.source.protection',
   'site.source.revert',
   'site.deployment.read',
   'site.capture',
@@ -38,7 +40,7 @@ function registration(name: string): OperationRegistration {
 }
 
 describe('C80 twelve declarations', () => {
-  it('registers exactly the thirteen catalogued operations, each declaring all twelve', () => {
+  it('registers exactly the fourteen catalogued operations, each declaring all twelve', () => {
     const catalogue = siteCatalogue();
     expect(catalogue.ok).toBe(true);
     if (!catalogue.ok) return;
@@ -67,7 +69,7 @@ describe('C80 twelve declarations', () => {
   });
 
   it('refuses a declaration present but undefined, as missing rather than defaulted', () => {
-    const candidate = registration('site.publish') as unknown as {
+    const candidate = registration('site.source.advance') as unknown as {
       declaration: Record<string, unknown>;
     };
     candidate.declaration['reconcile_mode'] = undefined;
@@ -120,7 +122,7 @@ describe('C80 twelve declarations', () => {
 
 describe('C80 twelve declarations', () => {
   it('refuses a reconcilable operation with no seam held before dispatch', () => {
-    const candidate = registration('site.publish');
+    const candidate = registration('site.source.advance');
     const mutable = candidate as unknown as { declaration: Record<string, unknown> };
     mutable.declaration['reconcile_seam'] = {
       read_operation: 'site.deployment.read',
@@ -143,7 +145,7 @@ describe('C80 twelve declarations', () => {
   });
 
   it('refuses a connector whose credential belongs to another host, even with a matching release', () => {
-    const candidate = registration('site.publish');
+    const candidate = registration('site.source.advance');
     const connector = { ...candidate.connector, host: 'api.vercel.com' };
     const crossed = {
       connector,
@@ -157,10 +159,10 @@ describe('C80 twelve declarations', () => {
 });
 
 describe('C80 twelve declarations', () => {
-  it('keeps publish at R2 and accepted only, and capture with no credential at all', () => {
-    const publish = registration('site.publish').declaration;
-    expect(publish.reversibility_strategy).toBe('R2');
-    expect(publish.acknowledgement_semantics).toBe('accepted');
+  it('keeps the advance at R2 and accepted only, and capture with no credential at all', () => {
+    const advance = registration('site.source.advance').declaration;
+    expect(advance.reversibility_strategy).toBe('R2');
+    expect(advance.acknowledgement_semantics).toBe('accepted');
     expect(registration('site.deployment.read').declaration.acknowledgement_semantics).toBe(
       'landed',
     );
@@ -191,16 +193,30 @@ describe('C80 twelve declarations', () => {
   });
 });
 
-describe('C80 atomic file publication catalogue', () => {
-  it('declares one contents write with exact blob refusal and default-branch source readback', () => {
-    const publish = registration('site.publish');
-    expect(publish.connector.pathTemplate).toBe('/repos/{repository*}/contents/{path*}');
-    expect(publish.connector.bodyParams).toEqual(['message', 'content', 'sha', 'branch']);
-    expect(publish.connector.refusalProofs).toEqual({
-      '409': 'sha_mismatch',
-      '422': 'sha_mismatch',
+describe('C80 advance catalogue', () => {
+  it('declares the publish as a fast-forward of the default branch: a sha alone, never force', () => {
+    const advance = registration('site.source.advance');
+    expect(advance.connector.method).toBe('PATCH');
+    expect(advance.connector.pathTemplate).toBe('/repos/{repository*}/git/refs/heads/{branch}');
+    expect(advance.connector.bodyParams).toEqual(['sha']);
+    expect(advance.connector.refusalProofs).toEqual({
+      '404': 'ref_missing',
+      '422': 'not_fast_forward',
     });
-    expect(publish.declaration.nothing_happened_proof).toEqual(['sha_mismatch']);
-    expect(publish.declaration.reconcile_seam.read_operation).toBe('site.source.read');
+    expect(advance.declaration.nothing_happened_proof).toEqual(['not_fast_forward', 'ref_missing']);
+    expect(advance.declaration.reconcile_seam.read_operation).toBe('site.source.head');
+  });
+
+  it('retires the contents write on the default branch: no publish entry, the contents write proposes', () => {
+    expect(
+      SITE_OPERATIONS.some((entry) => entry.declaration.operation_name === 'site.publish'),
+    ).toBe(false);
+    const writes = SITE_OPERATIONS.filter(
+      (entry) => entry.connector.pathTemplate === '/repos/{repository*}/contents/{path*}',
+    ).filter((entry) => entry.connector.method === 'PUT');
+    expect(writes.map((entry) => entry.declaration.operation_name).toSorted()).toEqual([
+      'site.source.propose',
+      'site.source.revert',
+    ]);
   });
 });

@@ -8,12 +8,13 @@
 // After dispatch, the answer is at most accepted, never live (D21-5). An
 // unreadable answer keeps its reference and raises a task (case 6), and late
 // cancellation is an uncertain effect (case 7). Live requires observation.
-// Every send reads back through the seam first; unknown retries are never
-// sent blind (broker contract 3.4).
+// Every send reads back through the seam first, and a lost answer is resent
+// once only on proof it did not land (`attempted`, broker contract 3.4).
 
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
+  attempted,
   calibrated,
   claimed,
   flipped,
@@ -65,10 +66,9 @@ type Seamed = { readonly seam: string; readonly dispatchToken: string };
 export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
-  /** `site.source.read` of the default branch: absent only while it holds the pre-image. */
-  // A read without the written commit cannot establish a landing.
+  /** `site.source.head` of the default branch (`readAdvanced`): landed at the proposal's head, absent at the base. */
   readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
-  /** `site.publish`, once. */
+  /** `site.source.advance`, through the binding's checks; at most twice (`attempted`). */
   readonly publish: (
     input: Seamed & VersionPin & { versionDigest: string },
   ) => Promise<ProviderResult<Published>>;
@@ -161,7 +161,7 @@ export async function publishCorrection(
     const back = await readBack();
     const checked = await beforeDispatch(job, ports, back);
     if ('state' in checked) return checked;
-    return { ...checked, answer: await reconciled(back, send, readBack) };
+    return { ...checked, answer: await attempted(back, send, readBack) };
   });
   if ('state' in sent) return sent;
   const { preImage, answer } = sent;
@@ -177,7 +177,7 @@ export async function publishCorrection(
     if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED', token);
     return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
   }
-  if (proven('site.publish', answer)) {
+  if (proven('site.source.advance', answer)) {
     return { state: 'failed', code: answer.code, proof: answer.proof };
   }
   return unknown(answer.code);

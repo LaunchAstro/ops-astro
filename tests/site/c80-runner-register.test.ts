@@ -145,7 +145,8 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, rec
     // Registered by hand, without the place its live check reads: observed, not confirmed live.
     const later = doubles();
     expect(await publish(id, later)).toMatchObject({ kind: 'recorded', state: 'accepted' });
-    expect([timeout.seen.dispatched.length, later.seen.dispatched.length]).toEqual([1, 0]);
+    // Absent after the timed-out send, so one more went, and none after.
+    expect([timeout.seen.dispatched.length, later.seen.dispatched.length]).toEqual([2, 0]);
     expect((await receipt(id, 'publish'))['attempt_and_dispatch_token']).toEqual({
       observed: sent,
     });

@@ -65,6 +65,7 @@ describe("C80 a correction binds only through its own party's site", () => {
         defaultBranch: 'main',
         project: PROJECT,
         pageUrl: PAGE,
+        baseRevision: VERSION_PIN.baseRevision,
         proposal: { branch: SEAM, ...proposal },
         change,
       },

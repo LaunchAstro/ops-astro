@@ -176,16 +176,20 @@ describe('C80 unknown publish outcome', () => {
     'leaves %s as unknown with its reference, raises a task, and never converts it',
     async (code) => {
       const p = ports({
-        publish: () => Promise.resolve({ kind: 'unknown', code }),
+        publish: () => {
+          p.calls.published += 1;
+          return Promise.resolve({ kind: 'unknown', code });
+        },
       });
       const outcome = await publishCorrection(job(), p);
       expect(outcome).toEqual({
         state: 'unknown',
-        code,
+        code: 'ADVANCE_NOT_LANDED',
         reference: 'request-17',
         dispatchToken: dispatchToken('site.publish', job().version.digest),
       });
-      expect(p.calls.raised).toEqual([code]);
+      expect(p.calls.published).toBe(2);
+      expect(p.calls.raised).toEqual(['ADVANCE_NOT_LANDED']);
     },
   );
 
@@ -201,11 +205,11 @@ describe('C80 unknown publish outcome', () => {
   it('settles failed only on a declared nothing-happened proof', async () => {
     const p = ports({
       publish: () =>
-        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'sha_mismatch' }),
+        Promise.resolve({ kind: 'refused', code: 'PROVIDER_REFUSED', proof: 'not_fast_forward' }),
     });
     expect(await publishCorrection(job(), p)).toMatchObject({
       state: 'failed',
-      proof: 'sha_mismatch',
+      proof: 'not_fast_forward',
     });
     const q = ports({
       publish: () =>

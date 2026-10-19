@@ -106,9 +106,16 @@ function byReference(): { deps: CallDependencies; codes: string[] } {
 
 it('a write whose answer custody withheld answers unknown, and a read refused, once sent', async () => {
   seen.length = 0;
-  body = JSON.stringify({ content: { sha: canary }, commit: { sha: 'c0ffee' } });
+  body = JSON.stringify({
+    content: { sha: canary },
+    commit: { sha: 'c0ffee', parents: [{ sha: 'decade' }] },
+  });
   const write = byReference();
-  const written = await callConnector(siteOperation('site.publish'), writeParams, write.deps);
+  const written = await callConnector(
+    siteOperation('site.source.propose'),
+    writeParams,
+    write.deps,
+  );
   expect(written).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
   expect(write.codes).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
   body = JSON.stringify({ sha: 'b10b', content: canary, encoding: 'base64' });
@@ -124,7 +131,7 @@ it('a write whose answer custody withheld answers unknown, and a read refused, o
 it('custody’s process answers a withheld dispatch as started, never as a refusal before sending', async () => {
   body = JSON.stringify({
     content: { sha: canary.slice(0, 20) },
-    commit: { sha: canary.slice(20) },
+    commit: { sha: canary.slice(20), parents: [{ sha: 'decade' }] },
   });
   const outcome = await custody.dispatch('source_control', {
     destination: 'source_control',

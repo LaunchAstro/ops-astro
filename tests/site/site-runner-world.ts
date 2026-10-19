@@ -19,7 +19,7 @@ import { REV, BEFORE } from './c80-world.ts';
 import { ABOUT, ASTRO_FILE, ASTRO_PAGE, PAGE } from './c80-sites.ts';
 import type { ConfiguredSite } from '../../apps/site-runner/configured.ts';
 import {
-  MERGED,
+  HEAD,
   PROJECT,
   REPOSITORY,
   json,
@@ -75,7 +75,7 @@ export interface RunnerOn {
 
 /** The providers, with the base revision's file kept as it was, and every raised task. */
 export function world(): World {
-  const site: Provider = provider({ content: BEFORE });
+  const site: Provider = provider({ content: BEFORE, mainHead: REV, proposalParent: REV });
   const base = { blob: site.state.blob, content: BEFORE };
   const raised: string[] = [];
   const captured: string[] = [];
@@ -177,14 +177,14 @@ export function runnerOn(
   return { runner, ...claims };
 }
 
-/** The merged deployment still building: read as not served yet, so a run leaves it accepted. */
+/** The published deployment still building: read as not served yet, so a run leaves it accepted. */
 const BUILDING = 'GET api.vercel.com /v13/deployments/';
 export const building = (site: Provider): void => {
   site.state.answers[BUILDING] = json({
     id: 'dpl_merged',
     readyState: 'BUILDING',
     target: 'production',
-    meta: { githubCommitSha: MERGED },
+    meta: { githubCommitSha: HEAD },
   });
 };
 export const built = (site: Provider): void => {
@@ -193,6 +193,8 @@ export const built = (site: Provider): void => {
 
 export const writes = (site: Provider): SentRequest[] =>
   site.sent.filter((sent) => sent.method !== 'GET');
-/** The publish: the one contents write on the default branch. */
+/** The publish: the one advance of the default branch to the proposed head. */
 export const merges = (site: Provider): SentRequest[] =>
-  site.sent.filter((sent) => sent.method === 'PUT' && sent.body['branch'] === 'main');
+  site.sent.filter(
+    (sent) => sent.method === 'PATCH' && sent.target === `/repos/${REPOSITORY}/git/refs/heads/main`,
+  );

@@ -96,7 +96,7 @@ it('malformed UTF-8 never confirms a site write', async () => {
   body = Buffer.concat([
     Buffer.from('{"content":{"sha":"blob'),
     Buffer.from([0xff]),
-    Buffer.from('after"},"commit":{"sha":"commit-after"}}'),
+    Buffer.from('after"},"commit":{"sha":"commit-after","parents":[{"sha":"commit-before"}]}}'),
   ]);
   const params = {
     repository: 'agency/site',
@@ -107,11 +107,11 @@ it('malformed UTF-8 never confirms a site write', async () => {
     branch: 'main',
   };
   const expected = { kind: 'unknown', code: 'PROVIDER_RESPONSE_MALFORMED' };
-  expect(await callConnector(siteOperation('site.publish'), params, dependencies(false))).toEqual(
-    expected,
-  );
+  expect(
+    await callConnector(siteOperation('site.source.propose'), params, dependencies(false)),
+  ).toEqual(expected);
   const result = await callConnector(
-    siteOperation('site.publish'),
+    siteOperation('site.source.propose'),
     params,
     dependencies(hasReferencePath),
   );

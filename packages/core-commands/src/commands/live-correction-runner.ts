@@ -136,6 +136,9 @@ async function observe(
       raiseTask: async (reason) => await ports.raiseTask(reason),
     },
   );
+  // Live, the review request should read merged: one the provider left open is named once.
+  if (landed.state === 'live' && !(await ports.requestClosed()))
+    await ports.raiseTask('REQUEST_LEFT_OPEN');
   return await recordSeen(db, run, correction, landed, ports);
 }
 
@@ -202,6 +205,8 @@ async function dispatch(
   });
   // Every refusal comes before the send: nothing went out, so the take is settled as failed.
   if (outcome.state === 'refused') await ports.raiseTask(outcome.code);
+  // A send the provider refused with proof applied nothing either, and waits on a person too.
+  if (outcome.state === 'failed') await ports.raiseTask(outcome.proof.toUpperCase());
   if (outcome.state === 'accepted') {
     const { revision, deploymentId, occurrence } = outcome;
     const answer = {

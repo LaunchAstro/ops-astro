@@ -5,6 +5,7 @@
 // project. It answers each catalogued request as the provider would and keeps
 // every request it was sent, so a test reads what left and in what order.
 // Nothing leaves the process.
+/* eslint-disable max-lines, max-lines-per-function -- one double of both providers, its routes and state in one place */
 
 import {
   contentDigest,
@@ -58,6 +59,15 @@ export interface ProviderState {
   production: string | undefined;
   /** The hosts the project serves its production deployment on. */
   domains: string[];
+  /** The default branch's head commit, and each commit's one parent: a fast-forward reads them. */
+  mainHead: string;
+  parents: Record<string, string>;
+  /** The commit a write on the seam branch lands on: the base, unless another commit came first. */
+  proposalParent: string;
+  /** The default branch's protection as the provider answers it, or none (404). */
+  protection: unknown;
+  /** Whether the provider marks the request merged once its head is on its base. */
+  closesRequests: boolean;
 }
 
 const encode = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
@@ -79,15 +89,50 @@ function writeContents(state: ProviderState, body: Readonly<Record<string, strin
   const content = decode(body['content'] ?? '');
   if (body['branch'] !== 'main') {
     state.proposed = content;
-    return json({ content: { sha: 'blob-head' }, commit: { sha: state.proposalHead } }, 200);
+    state.parents[state.proposalHead] = state.proposalParent;
+    const parents = [{ sha: state.proposalParent }];
+    return json({ content: { sha: 'blob-head' }, commit: { sha: state.proposalHead, parents } });
   }
   state.content = content;
   const publishing = !body['message']?.startsWith('Revert live correction ');
   const commit = publishing ? MERGED : REVERTED;
+  const parents = [{ sha: state.mainHead }];
+  state.parents[commit] = state.mainHead;
+  state.mainHead = commit;
   state.blob = publishing ? 'blob-published' : 'blob-reverted';
   state.deployments[commit] = publishing ? 'dpl_merged' : 'dpl_reverted';
   state.newest = state.deployments[commit];
-  return json({ content: { sha: state.blob }, commit: { sha: commit } }, 200);
+  return json({ content: { sha: state.blob }, commit: { sha: commit, parents } }, 200);
+}
+
+/** Whether `older` is `newer` or one of its ancestors on the double's one-parent graph. */
+function reaches(state: ProviderState, older: string, newer: string): boolean {
+  for (let at: string | undefined = newer; at !== undefined; at = state.parents[at]) {
+    if (at === older) return true;
+  }
+  return false;
+}
+
+/** The default branch moved to `sha`, only as a fast-forward: the provider's ref update with no force. */
+function advance(state: ProviderState, body: Readonly<Record<string, string>>) {
+  const sha = body['sha'] ?? '';
+  if (Object.keys(body).some((name) => name !== 'sha') || !reaches(state, state.mainHead, sha))
+    return json({ message: 'Update is not a fast forward' }, 422);
+  if (sha !== state.mainHead && sha === state.proposalHead) {
+    state.content = state.proposed ?? state.content;
+    Object.assign(state.defaultExtras, state.proposalExtras);
+    state.deployments[sha] = 'dpl_merged';
+    state.newest = 'dpl_merged';
+    // The request is closed as merged once its head is on its base, as the provider does.
+    if (
+      state.closesRequests &&
+      state.request?.head === sha &&
+      (state.request.base ?? 'main') === 'main'
+    )
+      state.request.merged = true;
+  }
+  state.mainHead = sha;
+  return json({ ref: 'refs/heads/main', object: { sha, type: 'commit' } });
 }
 
 function merge(state: ProviderState, body: Readonly<Record<string, string>>) {
@@ -137,7 +182,23 @@ const ROUTES: Readonly<Record<string, Route>> = {
     json({
       merged: state.request?.merged ?? false,
       state: state.request?.merged ? 'closed' : 'open',
+      head: { sha: state.request?.head ?? '' },
+      base: { ref: state.request?.base ?? 'main' },
     }),
+  [`GET api.github.com /repos/${REPOSITORY}/git/ref/heads/main`]: (state) =>
+    json({ ref: 'refs/heads/main', object: { sha: state.mainHead, type: 'commit' } }),
+  [`PATCH api.github.com /repos/${REPOSITORY}/git/refs/heads/main`]: advance,
+  [`GET api.github.com /repos/${REPOSITORY}/branches/main/protection`]: (state) =>
+    state.protection === undefined
+      ? json({ message: 'Branch not protected' }, 404)
+      : json(state.protection),
+};
+
+/** Protection that refuses any rewrite or deletion of the default branch, administrators included. */
+export const ENFORCED = {
+  allow_force_pushes: { enabled: false },
+  allow_deletions: { enabled: false },
+  enforce_admins: { enabled: true },
 };
 
 export interface Provider {
@@ -203,8 +264,15 @@ export function provider(start: Partial<ProviderState> & Pick<ProviderState, 'co
     newest: undefined,
     production: undefined,
     domains: ['agency.example', 'client-b.example'],
+    mainHead: 'base-commit',
+    parents: {},
+    proposalParent: 'base-commit',
+    protection: ENFORCED,
+    closesRequests: true,
     ...start,
   };
+  // A proposal the double starts with already sits on its parent.
+  if (start.parents === undefined) state.parents[state.proposalHead] = state.proposalParent;
   const sent: SentRequest[] = [];
   const waits: number[] = [];
   const recorded: string[] = [];
@@ -265,6 +333,7 @@ export const binding: SiteBinding = {
   defaultBranch: 'main',
   project: PROJECT,
   pageUrl: PAGE,
+  baseRevision: 'base-commit',
   proposal: { branch: SEAM, request: '17', head: HEAD, versionDigest: DIGEST },
   change: { before: BEFORE, after: AFTER },
 };

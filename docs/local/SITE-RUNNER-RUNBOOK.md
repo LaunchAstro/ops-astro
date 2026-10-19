@@ -28,7 +28,21 @@ secret by name.
 3. **Custody's credential file.** The two site entries, `source_control` and
    `hosting`, written once by the wrapper of #1691, mode 600. The runner reads
    neither value: custody does.
-4. **The settings file.** Mode 600, one JSON object:
+4. **The site repository, before any publish.** The publish advances the
+   default branch only while nothing can rewind it, so, on the fixture and on
+   the live repository alike:
+   - classic branch protection on the default branch, with force pushes off,
+     deletions off and "Do not allow bypassing the above settings"
+     (administrators included) on;
+   - no required reviews and no required status checks on it, which would make
+     the advance refuse;
+   - **Administration: read** on the fine-grained token in `source_control`, so
+     the runner can read that protection.
+
+   Until both are in place every Accept stops at `ANCESTRY_NOT_ENFORCED` and
+   sends nothing.
+
+5. **The settings file.** Mode 600, one JSON object:
    `OPS_ASTRO_API_URL`, `OPS_ASTRO_BUSINESS` (the business key),
    `OPS_ASTRO_BUSINESS_ID`, `OPS_ASTRO_EMAIL`, `OPS_ASTRO_PASSWORD`,
    `OPS_ASTRO_GOTRUE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
@@ -65,10 +79,10 @@ secret by name.
    then holds the read routes only, so no write can leave whatever is asked.
    Use it for the first daylight start, before any publish.
 
-5. **The build.** A deployed main build at a released commit, never a lane
+6. **The build.** A deployed main build at a released commit, never a lane
    checkout. Fill the `@…@` values in `deploy/m5/ops-astro-site-runner.plist`
    and copy it to `~/Library/LaunchAgents/`.
-6. **Start (the owner's daylight go).**
+7. **Start (the owner's daylight go).**
    `launchctl bootstrap gui/501 ~/Library/LaunchAgents/ops-astro-site-runner.plist`.
    launchd starts it again if it stops (`KeepAlive`, 30 s throttle).
 
@@ -84,3 +98,16 @@ secret by name.
   any other site logs `<id> SITE_NOT_CONFIGURED`. A stopped or failing runner pings nothing, so the
   watcher mails. A raised person task logs `raised <code> on task <id>` and
   is written as an internal comment on the correction's task.
+
+## Rehearse the publish on the fixture site
+
+Before the owner accepts #1986, and before the live site's first publish
+through it, on the staging fixture site with step 4 done:
+
+1. One correction through Accept on its card.
+2. The fixture repository's default branch is at the proposal's commit, one
+   commit on the base.
+3. The review request reads merged, and none is left open.
+4. The fixture page serves the change.
+
+Record the four results, with the commit and request numbers, on #1986.

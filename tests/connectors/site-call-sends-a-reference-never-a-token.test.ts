@@ -82,7 +82,7 @@ it('custody refusing a write before sending it is a refusal, not an unknown', as
     { ref: 'source_control' },
   );
   const published = await callConnector(
-    op('site.publish'),
+    op('site.source.propose'),
     {
       repository: 'agency/site',
       path: 'src/pages/about.astro',
@@ -107,7 +107,7 @@ it('an answer custody withheld after sending is unreadable: a refused read, an u
     const write = world({ kind: 'withheld', code }, { ref: 'source_control' });
     // oxlint-disable-next-line no-await-in-loop
     const published = await callConnector(
-      op('site.publish'),
+      op('site.source.propose'),
       {
         repository: 'agency/site',
         path: 'src/pages/about.astro',

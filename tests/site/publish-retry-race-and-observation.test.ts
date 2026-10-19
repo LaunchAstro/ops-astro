@@ -67,7 +67,7 @@ function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishP
   };
 }
 
-it('a landed publish reconciles after its own effect changes the source', async () => {
+it('a landed publish whose answer was lost is accepted by its read back, and never sent again', async () => {
   let landed = false;
   let sends = 0;
   let readbacks = 0;
@@ -89,9 +89,10 @@ it('a landed publish reconciles after its own effect changes the source', async 
       return { kind: 'unknown', code: 'PROVIDER_CONNECTION_LOST' };
     },
   });
-  expect((await publishCorrection(job(), p)).state).toBe('unknown');
+  // The lost answer is read back in the same run: the landing is the answer.
   expect(await publishCorrection(job(), p)).toMatchObject({ state: 'accepted', ...published });
-  expect({ sends, readbacks }).toEqual({ sends: 1, readbacks: 2 });
+  expect(await publishCorrection(job(), p)).toMatchObject({ state: 'accepted', ...published });
+  expect({ sends, readbacks }).toEqual({ sends: 1, readbacks: 3 });
 });
 
 it('concurrent absent reads cannot dispatch the same publish twice', async () => {

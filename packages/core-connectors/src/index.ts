@@ -184,10 +184,10 @@ export {
   type RevertOutcome,
 } from './site/publish.ts';
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
+export { mergeAndFind, readAdvanced, requestClosed } from './site/advance.ts';
 export {
   bindingRefuses,
   findDeployment,
-  mergeAndFind,
   partySiteRefuses,
   readServed,
   readSiteSource,
