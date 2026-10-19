@@ -4,9 +4,14 @@
 // table's own closure, kept apart for its line cap. A pickup's delegation reaches one task
 // and never carries `review`, so the open and the capture ask are `business` rows, refused
 // outside the delegation's purpose as `task.create` is; an agent credential reaches them
-// through the person envelope with its ticked keys (API-2).
+// through the person envelope with its ticked keys (API-2). The claim and the land are
+// the worker's, asked of the lease's task and served under the delegation `authorise`
+// resolved, as `task.check` is.
 
-import type { NoOperands } from './agent-call.ts';
+import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
+import type { AgentCall, NoOperands } from './agent-call.ts';
+import type { HandlerOutcome } from './outcome.ts';
+import { claimCapture, landCapture } from './review-captures.ts';
 
 /** A row a pickup's delegation never reaches: no operands, no `serve`. */
 export interface OutsidePurpose {
@@ -21,9 +26,48 @@ const OUTSIDE_PURPOSE: OutsidePurpose = {
   operands: () => ({}),
 };
 
+/** A worker's row: the lease the body names is the task the check asks of. */
+export interface UnderLease {
+  readonly authority: 'record';
+  readonly subjectTask: 'lease';
+  readonly replay: 'reauthorise';
+  readonly operands: () => NoOperands;
+  readonly serve: (
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+  ) => Promise<HandlerOutcome>;
+}
+
+const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease => ({
+  authority: 'record',
+  subjectTask: 'lease',
+  replay: 'reauthorise',
+  operands: () => ({}),
+  serve: async (tx, { session, request }, _, delegation) =>
+    await serve(
+      tx,
+      {
+        leaseId: request['leaseId'],
+        fence: request['fence'],
+        revisionId: request['revisionId'],
+        width: request['width'],
+        picture: request['picture'],
+        observation: request['observation'],
+      },
+      { claimant: 'agent', holderActorId: session.actorId, delegationId: delegation.id },
+    ),
+});
+
+type ReviewAgentName =
+  'review.open' | 'review.capture' | 'review.capture_claim' | 'review.capture_land';
+
 export const reviewAgentRows = <T>(
-  close: (typed: OutsidePurpose) => T,
-): readonly (readonly ['review.open' | 'review.capture', T])[] => [
+  close: (typed: OutsidePurpose | UnderLease) => T,
+): readonly (readonly [ReviewAgentName, T])[] => [
   ['review.open', close(OUTSIDE_PURPOSE)],
   ['review.capture', close(OUTSIDE_PURPOSE)],
+  ['review.capture_claim', close(underLease(claimCapture))],
+  ['review.capture_land', close(underLease(landCapture))],
 ];
