@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 under a delegation: an agent holding a live review:write delegation for one task opens a review on it and asks its revision's captures."
+}
