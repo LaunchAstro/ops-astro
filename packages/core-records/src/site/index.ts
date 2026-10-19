@@ -28,13 +28,11 @@ export {
   VERIFIED_FOR_MS,
   type CorrectionDecision,
 } from './correction-decisions.ts';
+export { holdTaskLease, type LeaseAt, type ObservedRefusal } from './task-lease.ts';
 export {
-  holdTaskLease,
   readCorrectionForRun,
   recordObservedResult,
   type HeldForRun,
-  type LeaseAt,
-  type ObservedRefusal,
   type ObservedResult,
   type ReceiptOutcome,
   type UnderLease,
