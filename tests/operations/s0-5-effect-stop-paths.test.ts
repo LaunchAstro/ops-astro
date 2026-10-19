@@ -140,7 +140,7 @@ const PATHS: readonly StopPath[] = [
 ];
 
 it.skipIf(noDatabase).each(PATHS)(
-  "S0-5 gate coverage (#1623 R1 stops): $name's stop releases the unsent call, and it declares the stop's writes",
+  "S0-5 gate coverage of each stop: $name's stop releases the unsent call, and it declares the stop's writes",
   async (path) => {
     const work = await liveWork(s, `s0-5 stop ${path.name} ${randomUUID()}`, 2_000);
     await unsentCall(s, work.decision['reservationId'], 100);
