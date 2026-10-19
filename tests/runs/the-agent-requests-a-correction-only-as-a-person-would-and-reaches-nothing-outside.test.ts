@@ -85,10 +85,7 @@ interface Sent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-const ok = (detail: Record<string, unknown>, body: Record<string, unknown> = {}): Answered => ({
-  body: { ...body, detail },
-  detail,
-});
+const ok = (detail: Record<string, unknown>): Answered => ({ body: { detail }, detail });
 
 /** The door as the runner meets it: a task read, three scripted turns, and the request it stores. */
 function scriptedDoor(): { readonly call: Call; readonly sent: Sent[] } {
@@ -106,7 +103,7 @@ function scriptedDoor(): { readonly call: Call; readonly sent: Sent[] } {
   ];
   const call: Call = async (verb, body) => {
     sent.push({ verb, body: body as Sent['body'] });
-    if (verb === 'task.read') return await Promise.resolve(ok({}, { task: { revision: 3 } }));
+    if (verb === 'task.read') return await Promise.resolve(ok({ task: { revision: 3 } }));
     if (verb === 'live_correction.request') {
       return await Promise.resolve(ok({ correctionId: CORRECTION, state: 'locating' }));
     }
@@ -145,6 +142,7 @@ describe("the agent's runner", () => {
     const requests = door.sent.filter((each) => each.verb === 'live_correction.request');
     expect(requests.map((each) => each.body)).toEqual([REQUEST]);
     const last = door.sent.at(-1)?.body as { parts?: readonly unknown[] } | undefined;
+    expect(last?.parts?.[0], 'the task at the revision its read answered').toEqual(TASK_PART);
     expect(last?.parts?.at(-2)).toMatchObject({ ref: 'answer', callId: 'answer_2' });
     expect(last?.parts?.at(-1)).toEqual({ ...RESULT, toolCallId: 'call_2' });
   });
