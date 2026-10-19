@@ -47,7 +47,11 @@ const CLIENT = slotOf(TASK_SPINE, 'client');
 /** The prefix of a card's operation id (`task-proposal.ts` `operationOf`). */
 const CARD_OPERATION = 'task-proposal:';
 
-/** The snapshot, kept beside the reply `messageId` just inserted. */
+/**
+ * The snapshot, kept beside the reply `messageId` just inserted. A target whose task was purged
+ * since the question was read is dropped in the insert itself, and a surviving task's row is held
+ * for key share until the keep commits, so a purge cannot fault the reply (S1852-2).
+ */
 export async function keepSnapshot(
   tx: TenantQuery,
   messageId: string,
@@ -62,7 +66,9 @@ export async function keepSnapshot(
   await tx.query(
     `insert into conversation_reply_targets (business_id, message_id, position, task_id, revision)
      select $1, $2, t.position, t.task_id, t.revision
-       from unnest($3::int[], $4::uuid[], $5::bigint[]) as t (position, task_id, revision)`,
+       from unnest($3::int[], $4::uuid[], $5::bigint[]) as t (position, task_id, revision)
+       join records r on r.business_id = $1 and r.id = t.task_id
+        for key share of r`,
     [
       tx.businessId,
       messageId,
