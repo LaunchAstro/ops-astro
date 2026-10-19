@@ -142,7 +142,7 @@ async function holdAs(
   url.username = encodeURIComponent(role);
   url.password = PASSWORD;
   if (inTransaction !== undefined) {
-    const sql = postgres(url.toString(), { max: 1, onnotice: () => undefined });
+    const sql = postgres(url.toString(), { max: 1, onnotice: () => {} });
     const session = await sql.reserve();
     held.push({
       close: async () => {
@@ -198,6 +198,32 @@ describe.skipIf(serverUrl === undefined)('migrate beside hosted Supabase', () =>
     expect(outcome.applied).toStrictEqual(['9001_hosted_ok']);
   }, 120_000);
 
+  it.each(LOOK_ALIKES)(
+    'still refuses %s mid-transaction beside the platform services, naming only it',
+    async (role) => {
+      const on = await fresh('hostedno');
+      for (const service of SERVICES)
+        // oxlint-disable-next-line no-await-in-loop
+        await holdAs(on, service);
+      const pid = await holdAs(on, role, ['select 1']);
+
+      const outcome = await applyMigrations(on.admin, [
+        ...onDisk,
+        syntheticMigration('9001_hosted_no', 'select 1'),
+      ]).catch((error: unknown) => error);
+
+      if (!(outcome instanceof MigrationRefused)) throw outcome;
+      expect(outcome.sessions.map((s) => ({ pid: s.pid, usename: s.usename }))).toStrictEqual([
+        { pid, usename: role },
+      ]);
+    },
+    120_000,
+  );
+});
+
+describe.skipIf(serverUrl === undefined)('locks beside hosted Supabase', () => {
+  withHostedRoles();
+
   // #1984: the platform's own logins never stop and their schemas are never
   // locked. One holding a lock in a schema of its own, mid-transaction,
   // neither refuses the run nor makes it wait.
@@ -221,28 +247,6 @@ describe.skipIf(serverUrl === undefined)('migrate beside hosted Supabase', () =>
     expect(outcome.applied).toStrictEqual(['9001_hosted_lock']);
     expect(performance.now() - started).toBeLessThan(2000);
   }, 120_000);
-
-  it.each(LOOK_ALIKES)(
-    'still refuses %s mid-transaction beside the platform services, naming only it',
-    async (role) => {
-      const on = await fresh('hostedno');
-      for (const service of SERVICES)
-        // oxlint-disable-next-line no-await-in-loop
-        await holdAs(on, service);
-      const pid = await holdAs(on, role, ['select 1']);
-
-      const outcome = await applyMigrations(on.admin, [
-        ...onDisk,
-        syntheticMigration('9001_hosted_no', 'select 1'),
-      ]).catch((error: unknown) => error);
-
-      if (!(outcome instanceof MigrationRefused)) throw outcome;
-      expect(outcome.sessions.map((s) => ({ pid: s.pid, usename: s.usename }))).toStrictEqual([
-        { pid, usename: role },
-      ]);
-    },
-    120_000,
-  );
 });
 
 describe.skipIf(serverUrl === undefined)('made-up-only beside hosted Supabase', () => {

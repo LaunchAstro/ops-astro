@@ -85,7 +85,7 @@ async function holdBusy(
   url: string,
   statement = 'select 1',
 ): Promise<{ readonly pool: Closable; readonly pid: number }> {
-  const sql = postgres(url, { max: 1, onnotice: () => undefined });
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
   const session = await sql.reserve();
   const [row] = await session.unsafe<{ readonly pid: number }[]>(`select pg_backend_pid() as pid`);
   if (row === undefined) throw new Error('no pid for the busy session');
