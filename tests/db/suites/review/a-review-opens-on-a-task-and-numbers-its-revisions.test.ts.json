@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 review records: a review opens on a task for a bound page of its holder and each open of that page adds the next numbered, digested revision under the review lock, two at once included; the read lists them in order."
+}
