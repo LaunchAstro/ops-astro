@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent turn on the owner's plan hands back, under the catalogue's names, only the calls in shape for tools the turn offered; an answer asking for any other is held as unknown and reaches no runner, and the turn itself leaves no correction for the task."
+}

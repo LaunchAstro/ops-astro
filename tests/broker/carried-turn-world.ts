@@ -20,18 +20,22 @@ export function turnBrokerOf(world: CarriedTaskWorld): Broker {
   return { ...world.broker, operations, providers };
 }
 
-/** The run's first turn on the plan, the task at its revision now, carried as `carriedCall` is. */
+/**
+ * The run's first turn on the plan, the task at its revision now, offering
+ * `tools` (none unless named), carried as `carriedCall` is.
+ */
 export async function carriedTurn(
   world: CarriedTaskWorld,
   work: Work,
   on: Broker = turnBrokerOf(world),
+  tools: readonly string[] = [],
 ): Promise<ModelCallResult> {
   return await carriedCall(world, work, on, async () => {
     const task = { ref: 'task', taskId: work.taskId, revision: await revisionOf(s, work.taskId) };
     return requestFor(work, {
       operation: AGENT_TURN_KEY,
       fields: [],
-      turn: { turnOrdinal: 0, tools: [], parts: [task] },
+      turn: { turnOrdinal: 0, tools, parts: [task] },
     });
   });
 }

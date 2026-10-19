@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": false,
-  "why": "A text-only agent turn on the owner's plan whose written answer asks for any tool, with words or without, is held as unknown, reaches no runner and leaves no correction for the task."
-}

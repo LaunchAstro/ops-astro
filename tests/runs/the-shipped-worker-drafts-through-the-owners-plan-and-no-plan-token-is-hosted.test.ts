@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The agent's turn reaches the owner's ChatGPT plan end to end (#2091,
-// ROUTE1905), text only: the owner proposes and accepts the plan, so the run
+// ROUTE1905), over two turns (#2115): the owner proposes and accepts the plan, so the run
 // is his (#1620 P4), and the shipped worker's `main()` runs it with the
 // agent's runner on `model.agent_turn` (ROUTE1905A); the API's broker is the
 // carried deployment's, made by `carriedBroker` from production-shaped
 // settings with one plan route; #2009's carriage takes the turn over the hub
 // to the real model agent, whose custody holds the plan's token and sends it
-// to the plan's stand-in. The plan answers in words, the run hands back, and
-// the hosted side never holds the plan's token: not in its settings, any
+// to the plan's stand-in. Turn 1 offers the plan the agent's two tools and it
+// asks to read the task; the worker runs `task.read`; turn 2 carries that
+// call and its output back to the plan, which answers in words; the run hands
+// back. The hosted side never holds the plan's token: not in its settings, any
 // body it sent or answered, what it printed, what it carried, or its rows.
 // The one seam is the carriage's transport: the in-process hub in place of
 // Supabase Realtime, as #2009's own proofs run it.
@@ -16,23 +18,14 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { Transport } from '../../apps/cli/client.ts';
 import { main } from '../../apps/worker/main.ts';
-import { carriedBroker } from '../../apps/api/model-carriage.ts';
-import { carrierSettings } from '../../apps/api/model-carrier.ts';
-import { AGENT_TURN_KEY, CHATGPT_PLAN_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import { AGENT_TURN_KEY } from '../../packages/core-connectors/src/index.ts';
 import { SIGN_IN_SETTINGS, signedInReach } from '../support/stand-in-gotrue.ts';
-import { SYNTHETIC_STEP } from '../../apps/worker/worker.ts';
-import {
-  appliedDetail,
-  approve,
-  asPerson,
-  proposeBody,
-  revisionOf,
-  rows,
-} from '../runtime/schedules-harness.ts';
+import { approve, rows } from '../runtime/schedules-harness.ts';
 import { SECRETS } from '../custody/fixtures/plan-answer-world.ts';
-import { words } from '../custody/fixtures/plan-route-world.ts';
+import { toolCallReply, words } from '../custody/fixtures/plan-route-world.ts';
 import { openCarriedTaskWorld, type CarriedTaskWorld } from '../broker/carried-task-world.ts';
 import { unproposed, type Sent } from './compute-seam-world.ts';
+import { ownersPlan, plansBroker, settingsOf } from './owners-plan-world.ts';
 import { noDatabase, s, useStopWorld } from './run-stop-world.ts';
 
 useStopWorld('planturnend');
@@ -47,33 +40,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await world?.close();
-});
-
-/** A carried deployment's settings as production sets them: Ollama on the M5 and the owner's plan. */
-const settingsOf = (carrierAgent: string): Record<string, string> => ({
-  OPS_AGENT_PROVIDER: 'ollama',
-  MODEL_BROKER_CARRIER: JSON.stringify({ agent: carrierAgent, people: [s.decider.personId] }),
-  MODEL_BROKER_ROUTES: JSON.stringify([
-    {
-      key: 'm5_ollama',
-      reach: 'local',
-      provider: 'ollama',
-      credentialRef: 'carried',
-      credentialKind: 'api_key',
-      installation: 'here',
-      ceiling: 4,
-    },
-    {
-      key: 'chatgpt_plan',
-      reach: 'cloud',
-      provider: CHATGPT_PLAN_PROVIDER,
-      credentialRef: 'carried',
-      credentialKind: 'subscription',
-      installation: 'here',
-      ceiling: 1,
-    },
-  ]),
-  MODEL_BROKER_INSTALLATION: 'here',
 });
 
 /**
@@ -98,18 +64,6 @@ function accepting(inner: Transport, log: readonly Sent[]): Transport {
     }
     return response;
   };
-}
-
-/** The owner's own plan on the task: the worker's step, proposed and accepted by him. */
-async function ownersPlan(taskId: string): Promise<void> {
-  const body = {
-    ...proposeBody(taskId, await revisionOf(s, taskId), {
-      purpose: SYNTHETIC_STEP.kind,
-      maximumMinor: 8_500,
-    }),
-    step: SYNTHETIC_STEP,
-  };
-  await approve(s, appliedDetail(await asPerson(s, body), 'task.propose'));
 }
 
 /** Everything written to stdout and stderr from now until the mocks are restored. */
@@ -154,27 +108,30 @@ async function shippedMain(
   );
 }
 
-/** The agent's turn row: where it went and what it held. */
-async function turnRow(): Promise<Record<string, unknown> | undefined> {
-  const [call] = await rows<Record<string, unknown>>(
+/** The agent's turn rows, oldest first: where each went and what it held. */
+async function turnRows(): Promise<readonly Record<string, unknown>[]> {
+  return await rows<Record<string, unknown>>(
     s,
     `select state, route_key, credential_kind, reserved_minor::int as reserved
-       from public.model_calls where business_id = $1 and operation_key = $2`,
+       from public.model_calls where business_id = $1 and operation_key = $2
+      order by accepted_at`,
     [s.business, AGENT_TURN_KEY],
   );
-  return call;
 }
 
 it.skipIf(noDatabase)(
   "the shipped worker drafts through the owner's plan, and no plan token is hosted",
+  // oxlint-disable-next-line max-lines-per-function -- one run end to end: two turns, the read between, the search
   async () => {
     const settings = settingsOf(world.carrierAgent);
-    const carried = carrierSettings(settings);
-    if (carried.kind !== 'carried') throw new Error(`settings refused: ${JSON.stringify(carried)}`);
-    const broker = carriedBroker(carried, world.broker.custody);
+    const broker = plansBroker(world, settings);
     const { taskId, log, options } = await unproposed('Plan turn end to end', undefined, broker);
     await ownersPlan(taskId);
-    world.plan.reply = () => words('The about page reads well; nothing to correct.');
+    const replies = [
+      toolCallReply('task_read', JSON.stringify({ taskId }), 'call_read'),
+      words('The about page reads well; nothing to correct.'),
+    ];
+    world.plan.reply = () => replies.shift() ?? words('Asked once too often.');
     const sent = world.plan.sent.length;
     const out = printed();
     const code = await shippedMain(options, accepting(options.transport, log));
@@ -183,19 +140,38 @@ it.skipIf(noDatabase)(
     expect(code, JSON.stringify({ out: out.slice(0, 3), verbs })).toBe(0);
 
     const turns = log.filter((call) => call.verb === 'model.call');
-    expect(turns).toHaveLength(1);
-    expect(turns[0]).toMatchObject({
-      status: 200,
-      body: { operation: AGENT_TURN_KEY, kind: 'turn' },
-      detail: { state: 'settled' },
-    });
-    expect(world.plan.sent).toHaveLength(sent + 1);
-    expect(await turnRow()).toMatchObject({
-      state: 'settled',
-      route_key: 'chatgpt_plan',
-      credential_kind: 'subscription',
-      reserved: 0,
-    });
+    expect(turns).toHaveLength(2);
+    for (const turn of turns) {
+      expect(turn).toMatchObject({
+        status: 200,
+        body: { operation: AGENT_TURN_KEY, kind: 'turn' },
+        detail: { state: 'settled' },
+      });
+    }
+    const first = verbs.indexOf('model.call');
+    const second = verbs.lastIndexOf('model.call');
+    expect(verbs.slice(first + 1, second), 'the read ran between the turns').toContain('task.read');
+    expect(world.plan.sent).toHaveLength(sent + 2);
+    const [asked, answered] = world.plan.sent.slice(sent).map((one) => JSON.parse(one.raw));
+    expect(asked.tools.map((tool: { name: string }) => tool.name)).toStrictEqual([
+      'task_read',
+      'live_correction_request',
+    ]);
+    expect(
+      answered.input.filter((item: { type?: string }) => item.type !== undefined),
+    ).toMatchObject([
+      {
+        type: 'function_call',
+        call_id: 'call_read',
+        name: 'task_read',
+        arguments: JSON.stringify({ taskId }),
+      },
+      { type: 'function_call_output', call_id: 'call_read' },
+    ]);
+    expect(await turnRows()).toMatchObject([
+      { state: 'settled', route_key: 'chatgpt_plan', credential_kind: 'subscription', reserved: 0 },
+      { state: 'settled', route_key: 'chatgpt_plan', credential_kind: 'subscription', reserved: 0 },
+    ]);
     expect(verbs.indexOf('task.comment')).toBeGreaterThan(verbs.indexOf('task.handback'));
     expect(out.join('')).toContain(taskId);
 

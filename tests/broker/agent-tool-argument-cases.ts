@@ -63,6 +63,12 @@ export const ARGUMENT_CASES: readonly ArgumentCase[] = [
     kept: true,
   },
   {
+    name: 'a correction of four 4,096-unit operands past 16 KiB',
+    tool: 'live_correction.request',
+    args: { taskId: TASK, page: 'é'.repeat(4096), word: 'é'.repeat(4096), replacement: 'é' },
+    kept: false,
+  },
+  {
     name: 'a correction missing its replacement',
     tool: 'live_correction.request',
     args: { taskId: TASK, page: 'about', word: 'nine' },
