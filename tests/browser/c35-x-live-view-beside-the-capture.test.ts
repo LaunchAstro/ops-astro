@@ -60,6 +60,36 @@ describe('C35-X the live view shows only after hello from the expected origin wi
   }, 30_000);
 });
 
+describe('C35-X a live frame that loads another page is checked again', () => {
+  it('a frame that navigates away from the embed is hidden, then falls back', async () => {
+    const watched = await open({ page: `${SITE}/embed-then-away` });
+    try {
+      await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
+      await watched.page.waitForSelector('[data-live-view="waiting"]', { timeout: 3000 });
+      expect(await watched.page.locator('[data-live-frame]').isVisible()).toBe(false);
+      await watched.page.waitForSelector('[data-live-view="fallback"]', { timeout: 4500 });
+      expect(await watched.page.locator('iframe').count()).toBe(0);
+    } finally {
+      await watched.context.close();
+    }
+  }, 30_000);
+
+  it('a frame that loads another page with the embed says hello again for a fresh nonce', async () => {
+    const watched = await open({ page: `${SITE}/embed-then-embed` });
+    try {
+      await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
+      await watched.page.waitForSelector('[data-live-view="waiting"]', { timeout: 3000 });
+      await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
+      const nonce = await frameAt(watched.page, '/embed').evaluate(
+        () => document.body.dataset['nonce'],
+      );
+      expect(nonce).toMatch(/^[\w-]{43}$/u);
+    } finally {
+      await watched.context.close();
+    }
+  }, 30_000);
+});
+
 describe('C35-X otherwise the capture shows with the line', () => {
   it('a site with no embed waits 3 seconds, then shows the capture, the line and the staged page', async () => {
     const watched = await open({ page: `${SITE}/bare` });

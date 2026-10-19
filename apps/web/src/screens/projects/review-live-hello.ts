@@ -46,8 +46,12 @@ export function awaitHello(options: {
   readonly frame: HTMLIFrameElement;
   readonly siteOrigin: string;
   readonly nonce: string;
+  /** Whether the frame has already loaded the page this wait is for. */
+  readonly loaded: boolean;
   readonly onLive: () => void;
   readonly onExpired: () => void;
+  /** After the hello, the frame loaded another page. */
+  readonly onLeft: () => void;
 }): () => void {
   const { frame, siteOrigin, nonce } = options;
   const ping = (): void => {
