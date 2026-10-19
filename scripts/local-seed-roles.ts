@@ -104,6 +104,10 @@ export const GRANTS_BY_ROLE: Readonly<
     // Settings ▸ Workflow triggers (C33): releasing a definition version is
     // `automation:manage`, the owner's and administrators' and never an agent's.
     ['automation', 'manage'],
+    // The review workspace (C35, #2011): opening a review, asking its captures and
+    // reading them are `review:write` and `review:read`, the owner's and administrators'.
+    ['review', 'write'],
+    ['review', 'read'],
   ],
   member: [
     ['task', 'read'],
