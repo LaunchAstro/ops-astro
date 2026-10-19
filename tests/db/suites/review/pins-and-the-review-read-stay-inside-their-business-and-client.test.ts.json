@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 pin isolation: another client's member, another business's member and a delegation for another task are refused pins and the review read with one answer; a planted pin's body, anchor and id never appear."
+}

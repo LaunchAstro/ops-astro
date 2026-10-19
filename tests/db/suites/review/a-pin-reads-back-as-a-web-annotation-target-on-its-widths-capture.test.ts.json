@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 pins: review.pin_comment stores a Web Annotation anchor on the review task's comment and review.read returns it as written, per width; malformed anchors and unknown revisions keep nothing."
+}
