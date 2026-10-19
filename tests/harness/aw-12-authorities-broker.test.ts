@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-12 authorities at the broker (TEST.md 2): A3 budget, A4 credential and
-// A5 effect. The framework stand-in sits where a worker sits, handed the
-// broker's model call and tools by name, over the AW-01 broker world: work
-// really proposed, approved and picked up, custody's own process holding a
-// planted provider key, and the replay provider on loopback. Each case is the
-// framework trying the authority on its own initiative and the product's
-// boundary refusing it, with a positive control beside it.
+// A5 effect, on the real agent stack. The worker's plan is really proposed,
+// approved and picked up, and at its compute the shipped agent runner drives
+// core-agent's loop, every call through the real HTTP agent door under the
+// pickup's delegation and every turn through the real broker, custody's own
+// process holding a planted provider key, to the replay provider on
+// loopback. A lease the worker path cannot reach is presented by the agent's
+// own loop straight to the broker. Each case is the agent trying the
+// authority and the product's boundary refusing it, with a positive control
+// beside it.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it as vitestIt } from 'vitest';
-import { REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
-import {
-  reserveModelCall,
-  sendReservedCall,
-  type ModelCallResult,
-} from '../../packages/core-custody/src/index.ts';
-import { asAgent, handbackBody, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
+import { AGENT_TOOLS } from '../../packages/core-wire/src/index.ts';
+import { reserveModelCall, sendReservedCall } from '../../packages/core-custody/src/index.ts';
+import { asAgent, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
 import {
   broker,
   call,
-  callCount,
   caller,
   gated,
   noDatabase,
@@ -31,183 +29,156 @@ import {
   useBrokerWorld,
   world,
 } from '../broker/broker-world.ts';
-import { WORKER_SETTINGS, type WorkerSetting } from '../../apps/worker/main.ts';
-import { standIn, type StandIn } from './framework-stand-in.ts';
+import { WORKER_SETTINGS } from '../../apps/worker/main.ts';
+import { agentBroker, replied } from '../runs/agent-draft-world.ts';
+import * as stop from '../runs/run-stop-world.ts';
+import {
+  agentOnLease,
+  keptRunner,
+  ledgerCount,
+  ledgerOn,
+  planAt,
+  workerSettings,
+} from './aw-12-agent-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('aw12auth');
-
-/** What a worker is handed for this work, under every name it reads (`apps/worker/main.ts`). */
-const workerSettings = (work: Work): Record<string, string> => {
-  const given: Record<WorkerSetting, string> = {
-    OPS_ASTRO_BUSINESS: s.business,
-    OPS_ASTRO_EMAIL: `agent-${s.agentActorId}@example.test`,
-    OPS_ASTRO_PASSWORD: `agent-password-${s.agentActorId}`,
-    OPS_ASTRO_GOTRUE_URL: 'http://127.0.0.1:54391',
-    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example-test-only',
-    OPS_ASTRO_DELEGATION: String(work.picked['credential']),
-    OPS_ASTRO_API_URL: 'http://127.0.0.1:8790',
-    OPS_ASTRO_WORKER_INTERVAL_MS: '5000',
-    OPS_WORKER_HEARTBEAT_URL: 'https://beat.example.com/ping',
-    OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.com',
-    OPS_EGRESS_AUTH_HOST: 'auth.example.com',
-    OPS_HEARTBEAT_EVERY_MS: '240000',
-  };
-  return Object.fromEntries(WORKER_SETTINGS.map((name) => [name, given[name]]));
-};
-
-/** Everything the stand-in can reach, as text: the A4 scan's haystack. */
-const reachableFrom = (held: StandIn, rest: Record<string, unknown>): string =>
-  JSON.stringify({
-    settings: held.config.settings,
-    tools: [...held.config.tools.keys()],
-    store: [...held.store],
-    ...rest,
-  });
-
-/** The stand-in on `work`: its one model client is the broker, on the lease it holds. */
-function framework(
-  work: Work,
-  tools: [string, (input: string) => Promise<unknown>][] = [],
-  model: () => Promise<unknown> = async () => await call(work),
-): StandIn {
-  return standIn({
-    settings: workerSettings(work),
-    model,
-    tools: new Map(tools),
-    retries: 0,
-    read: (reply) => ((reply as ModelCallResult).ok ? { ok: true } : { ok: false, why: 'refused' }),
-  });
-}
+stop.useStopWorld('aw12agent');
 
 const seen = (): number => world.provider.seen.length;
+const sends = (): number => stop.world.provider.seen.length;
+const outcomes = async (work: Work) => stop.shapeOf(await stop.outcomesOf(work));
 
 async function budgetAuthority(): Promise<void> {
-  world.provider.mode('answer');
-  // Control: a compaction the run's reservation covers goes through the broker and is held.
-  const covered = await liveWork(s, 'aw12 covered', 2_000);
-  const held = framework(covered);
-  held.plan(covered.taskId, ['read the brief', 'draft']);
-  expect(await held.compact(covered.taskId)).toMatchObject({ ok: true, reservedMinor: 500 });
-
-  // The reservation cannot cover the operation's maximum: refused, recorded, nothing sent.
-  const before = seen();
-  const small = await liveWork(s, 'aw12 too small', 300);
-  const short = (await framework(small).compact(small.taskId)) as ModelCallResult;
-  expect(short).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
-  expect(await rowsOf((short as { callId: string }).callId)).toMatchObject([
-    { state: 'refused', refusal_code: 'BUDGET_UNAVAILABLE', reserved_minor: '0' },
+  // Control: the agent's turn the run's reservation covers is held and sent.
+  const covered = await planAt('aw12 covered', 2_000);
+  const before = sends();
+  expect(await covered.worker.applyOnce(covered.taskId)).toHaveProperty('handedBack');
+  expect(sends()).toBe(before + 1);
+  expect(await ledgerOn(covered.work())).toMatchObject([
+    { state: 'settled', refusal_code: null, reserved_minor: '500' },
   ]);
 
-  // Work handed back holds no reservation: a compaction after it is refused, writing nothing.
-  const ended = await liveWork(s, 'aw12 handed back', 2_000);
-  const late = framework(ended);
-  await asAgent(s, handbackBody(ended.picked), String(ended.picked['credential']));
-  const calls = await callCount();
-  expect(await late.compact(ended.taskId)).toEqual({
-    ok: false,
-    code: 'LEASE_EXPIRED',
-    callId: null,
+  // The reservation cannot cover the turn operation's maximum: refused, recorded, nothing sent.
+  const small = await planAt('aw12 too small', 300);
+  const none = sends();
+  expect(await small.worker.applyOnce(small.taskId)).toEqual({
+    ended: { taskId: small.taskId, outcome: 'budget_wait', endCode: 'BUDGET_UNAVAILABLE' },
   });
-  // And on a lease the framework made up: no reservation of its own to name.
-  const invented = framework(ended, [], async () => await call(ended, { leaseId: randomUUID() }));
-  expect(await invented.compact(ended.taskId)).toEqual({
-    ok: false,
-    code: 'LEASE_NOT_OWNED',
-    callId: null,
-  });
-  expect(await callCount()).toBe(calls);
-  expect(seen()).toBe(before);
+  expect(await ledgerOn(small.work())).toMatchObject([
+    { state: 'refused', refusal_code: 'BUDGET_UNAVAILABLE', reserved_minor: '0' },
+  ]);
+  expect(await outcomes(small.work())).toEqual([stop.named('budget_wait', 'BUDGET_UNAVAILABLE')]);
+  expect(sends()).toBe(none);
+
+  // Work handed back holds no reservation: the agent's turn after it is refused, writing nothing.
+  const ended = covered.work();
+  const calls = await ledgerCount();
+  const late = await agentOnLease(ended, String(ended.picked['leaseId']));
+  expect(late.answers).toEqual([{ ok: false, code: 'LEASE_EXPIRED', callId: null }]);
+  expect(late.end).toEqual({ outcome: 'lease_lost', endCode: 'LEASE_EXPIRED' });
+  // And on a lease the agent made up: no reservation of its own to name.
+  const invented = await agentOnLease(ended, randomUUID());
+  expect(invented.answers).toEqual([{ ok: false, code: 'LEASE_NOT_OWNED', callId: null }]);
+  expect(invented.end).toEqual({ outcome: 'lease_lost', endCode: 'LEASE_NOT_OWNED' });
+  expect(await ledgerCount()).toBe(calls);
+  expect(sends()).toBe(none);
 }
 
 async function credentialAuthority(): Promise<void> {
-  world.provider.mode('answer');
-  const work = await liveWork(s, 'aw12 custody', 2_000);
-  const held = framework(work, [['compose', async () => await call(work)]]);
-  const answers = [await held.compact(work.taskId), await held.callTool('compose', '')];
-  expect(answers).toMatchObject([{ ok: true }, { ok: true }]);
+  const kept = keptRunner();
+  const seam = await planAt('aw12 custody', 2_000, kept.runner);
+  const { canary, folder } = stop.world;
+  const read = { id: 'call_1', name: 'task.read', args: { taskId: seam.taskId } };
+  // The last answer echoes the key back: custody's redaction keeps it from the agent.
+  stop.world.provider.script([replied('Reading the task.', [read]), replied(`Sent ${canary}`)]);
+  const end = await seam.worker.applyOnce(seam.taskId);
+  expect(end).toHaveProperty('handedBack');
   // Positive control: the planted key is real, and custody carried it to the provider.
-  expect(world.provider.seen.at(-1)?.authorization?.includes(world.canary)).toBe(true);
+  expect(stop.world.provider.seen.at(-1)?.authorization?.includes(canary)).toBe(true);
 
   const ledger = await rows<{ row: string }>(
-    s,
+    stop.s,
     `select t::text as row from public.model_calls t where business_id = $1
       union all select t::text from public.audit_events t where business_id = $1`,
-    [s.business],
+    [stop.s.business],
   );
-  const reachable = reachableFrom(held, {
-    answers,
-    routes: broker.routes,
-    operations: [...broker.operations.values()],
-    environment: process.env,
-    ledger,
-  });
+  const routes = agentBroker();
+  // What the agent holds: its state and ports are made of what the worker handed
+  // its runner and what each call answered, all in the worker's log.
+  const reachable = (settings: Record<string, string>): string =>
+    JSON.stringify({
+      handed: kept.handed,
+      tools: AGENT_TOOLS,
+      calls: seam.log,
+      end,
+      settings,
+      routes: routes.routes,
+      operations: [...routes.operations.values()],
+      environment: process.env,
+      ledger,
+    });
+  const settings = workerSettings(seam.work());
+  expect(kept.handed).toHaveLength(1);
   expect(ledger.length).toBeGreaterThan(0);
-  expect(Object.keys(held.config.settings)).toEqual([...WORKER_SETTINGS]);
+  expect(Object.keys(settings)).toEqual([...WORKER_SETTINGS]);
   // Booleans, so a failure never prints the key or where it is kept.
-  expect(reachable.includes(world.canary)).toBe(false);
-  expect(reachable.includes(world.folder)).toBe(false);
+  expect(reachable(settings).includes(canary)).toBe(false);
+  expect(reachable(settings).includes(folder)).toBe(false);
   // Control: the key planted under any name the worker reads would be found.
-  const planted = WORKER_SETTINGS.map((name) => {
-    const leaky = framework(work);
-    const settings = { ...leaky.config.settings, [name]: world.canary };
-    return reachableFrom({ ...leaky, config: { ...leaky.config, settings } }, {}).includes(
-      world.canary,
-    );
-  });
+  const planted = WORKER_SETTINGS.map((name) =>
+    reachable({ ...settings, [name]: canary }).includes(canary),
+  );
   expect(planted).toEqual(WORKER_SETTINGS.map(() => true));
 }
 
 async function effectAuthority(): Promise<void> {
-  world.provider.mode('answer');
-  const work = await liveWork(s, 'aw12 catalogue', 2_000);
-  const credential = String(work.picked['credential']);
-  const shell = randomUUID();
-  const held = framework(work, [
-    ['web.fetch', async () => await call(work, { operation: 'web.fetch' })],
-    ['compose', async () => await call(work, { operation: REPLAY_COMPOSE.key })],
-    [
-      'shell.exec',
-      async () => await asAgent(s, { command: 'shell.exec', operationId: shell }, credential),
-    ],
-  ]);
-  const before = seen();
-
-  // A model operation the broker never registered: refused and recorded as a step.
-  const fetched = (await held.callTool('web.fetch', 'https://example.com')) as ModelCallResult;
-  expect(fetched).toMatchObject({ ok: false, code: 'OPERATION_NOT_CATALOGUED' });
-  const callId = (fetched as { callId: string | null }).callId;
-  expect(callId).toEqual(expect.any(String));
-  expect(await rowsOf(callId)).toMatchObject([
-    { state: 'refused', refusal_code: 'OPERATION_NOT_CATALOGUED', operation_key: 'web.fetch' },
-  ]);
-  // A free-text verb on the agent surface: refused, with its audit row.
-  expect(await held.callTool('shell.exec', 'ls')).toMatchObject({
-    refused: true,
-    code: 'DELEGATION_EXCLUDES_OPERATION',
+  // The model answers with a tool the catalogue does not name: the run ends there.
+  const seam = await planAt('aw12 catalogue', 2_000);
+  const fetch = { id: 'call_1', name: 'web.fetch', args: { url: 'https://example.com' } };
+  stop.world.provider.script([replied('Fetching.', [fetch])]);
+  const from = seam.log.length;
+  const before = sends();
+  expect(await seam.worker.applyOnce(seam.taskId)).toEqual({
+    ended: { taskId: seam.taskId, outcome: 'cancelled', endCode: 'TOOL_NOT_CATALOGUED' },
   });
+  expect(await outcomes(seam.work())).toEqual([stop.named('cancelled', 'TOOL_NOT_CATALOGUED')]);
+  expect(sends()).toBe(before + 1);
+  const verbs = seam.log.slice(from).map((each) => each.verb);
+  expect(verbs.slice(verbs.indexOf('model.call') + 1), 'nothing further sent').toEqual(['run.end']);
+
+  // A free-text verb on the agent surface: refused, with its audit row.
+  const credential = String(seam.work().picked['credential']);
+  const shell = await asAgent(
+    stop.s,
+    { command: 'shell.exec', operationId: randomUUID() },
+    credential,
+  );
+  expect(shell).toMatchObject({ refused: true, code: 'DELEGATION_EXCLUDES_OPERATION' });
   const audited = await rows<{ command: string; outcome: string; refusal_code: string }>(
-    s,
+    stop.s,
     `select command, outcome, refusal_code from public.audit_events
-      where business_id = $1 and refusal_code in ($2, $3) order by seq`,
-    [s.business, 'OPERATION_NOT_CATALOGUED', 'DELEGATION_EXCLUDES_OPERATION'],
+      where business_id = $1 and refusal_code = $2 order by seq`,
+    [stop.s.business, 'DELEGATION_EXCLUDES_OPERATION'],
   );
   expect(audited).toEqual([
-    {
-      command: 'model.call_refused',
-      outcome: 'refused',
-      refusal_code: 'OPERATION_NOT_CATALOGUED',
-    },
     { command: 'shell.exec', outcome: 'refused', refusal_code: 'DELEGATION_EXCLUDES_OPERATION' },
   ]);
-  expect(seen()).toBe(before);
-  // Control: the catalogued operation goes through, on fresh work (B2: the refusal ended it).
-  const fresh = await liveWork(s, 'aw12 catalogue control', 2_000);
-  const compose = async () => await call(fresh, { operation: REPLAY_COMPOSE.key });
-  const control = framework(fresh, [['compose', compose]]);
-  expect(await control.callTool('compose', '')).toMatchObject({ ok: true });
-  expect(seen()).toBe(before + 1);
+
+  // Control: the catalogued task.read runs, on fresh work.
+  const fresh = await planAt('aw12 catalogue control', 2_000);
+  const read = { id: 'call_1', name: 'task.read', args: { taskId: fresh.taskId } };
+  stop.world.provider.script([replied('Reading the task.', [read]), replied('Done.')]);
+  const start = fresh.log.length;
+  const ready = sends();
+  expect(await fresh.worker.applyOnce(fresh.taskId)).toHaveProperty('handedBack');
+  expect(sends()).toBe(ready + 2);
+  const reads = fresh.log.slice(start).filter((each) => each.verb === 'task.read');
+  expect(
+    reads.map((each) => each.status),
+    "the runner's read, then the tool's",
+  ).toEqual([200, 200]);
 }
 
 /** A second call on `work`'s attempt, held in its own committed transaction and not yet sent. */
@@ -259,15 +230,17 @@ async function siblingHeldUnknown(): Promise<void> {
   expect(await rowsOf(second.callId)).toMatchObject([{ state: 'released', started_at: null }]);
 }
 
-describe('AW-12 authorities: a framework holds none of the eight authorities', () => {
+describe('AW-12 authorities: the agent holds none of the eight authorities', () => {
   it(
-    'A3 budget authority: a framework-initiated model call without a reservation is refused',
+    'A3 budget authority: an agent turn no reservation covers is refused',
     budgetAuthority,
+    180_000,
   );
   it(
-    'A4 credential authority: no key is reachable from framework configuration or tools',
+    'A4 credential authority: no key is reachable from anything the agent holds',
     credentialAuthority,
+    120_000,
   );
-  it('A5 effect authority: an uncatalogued tool is refused and recorded', effectAuthority);
+  it('A5 effect authority: an uncatalogued tool is refused and recorded', effectAuthority, 180_000);
   it('a call reserved before a sibling dropped unknown is released unsent', siblingHeldUnknown);
 });
