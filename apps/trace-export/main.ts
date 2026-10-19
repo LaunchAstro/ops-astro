@@ -9,21 +9,22 @@
 // owner may read, named by `TRACE_EXPORT_SETTINGS_FILE`, so no secret is in an
 // argument, the plist or a log. `TRACE_EXPORT` unset or `off` there: the
 // process says so and exits 0, having opened no connection. On, the export's
-// own settings (`traceExportSettings`) and two more: `DATABASE_TRACE_URL`, a
-// login that is a member of `ops_astro_trace` alone, and
-// `TRACE_EXPORT_BUSINESSES`, the business ids it exports. A problem names
-// the setting, never its value.
+// own settings (`traceExportSettings`), whose credential file must also be its
+// owner's alone, and two more: `DATABASE_TRACE_URL`, a login that is a member
+// of `ops_astro_trace` alone, and `TRACE_EXPORT_BUSINESSES`, the business ids
+// it exports. A problem names the setting, never its value.
 //
 // **No recorder attaches.** It runs only as `node --disable-sigusr1`, with no
 // other runtime flag and no `NODE_OPTIONS` or `NODE_V8_COVERAGE`: an inspector,
 // a preloaded module or a coverage writer would see the trace key and the
 // login. Anything else exits 2 before the settings file is opened, and the
-// flag keeps a running process from opening an inspector on SIGUSR1.
+// flag keeps a running process, and the custody process it forks for the
+// credential, from opening an inspector on SIGUSR1.
 //
 // **A run never waits on it.** It reads `run_events` by its own cursor on its
 // own login; stopped, its gap is the cursor, and it catches up when started.
 
-import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readFileSync, statSync } from 'node:fs';
 import { url as inspectorUrl } from 'node:inspector';
 import { parseEnv } from 'node:util';
 import { connect, type Database } from '../../packages/core-records/src/index.ts';
@@ -70,6 +71,17 @@ export function settingsFrom(file: string | undefined): Settings | string {
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+/** Why custody's Langfuse credential file is unsafe, or undefined: no group or other may read it. */
+export function credentialFileProblem(file: string): string | undefined {
+  try {
+    if ((statSync(file).mode & 0o077) !== 0)
+      return 'the Langfuse credential file is readable by others';
+  } catch {
+    return 'the Langfuse credential file is unreadable';
+  }
+  return undefined;
 }
 
 /** The login's address: postgres, over TLS unless the database is on this machine. */
@@ -123,6 +135,8 @@ export async function main(execArgv: readonly string[], env: Settings): Promise<
     return 0;
   }
   if (trace.kind === 'invalid') return refuse(trace.problem);
+  const credential = credentialFileProblem(trace.credentialsFile);
+  if (credential !== undefined) return refuse(credential);
   const database = databaseProblem(settings[DATABASE_SETTING]);
   if (database !== undefined) return refuse(database);
   const businesses = businessesFrom(settings[BUSINESSES_SETTING]);

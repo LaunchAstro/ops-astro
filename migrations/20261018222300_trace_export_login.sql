@@ -10,8 +10,8 @@
 -- What it may touch is what `exportOnce` and `expireOnce` touch
 -- (`packages/core-runtime/src/trace-*.ts`), and no more:
 -- - reads: the run events' cells a span is made of, never the task, attempt or
---   actor; the lease and model-call columns the call counts read; the trace
---   copies it registered;
+--   actor; the lease and model-call columns the call counts read; the
+--   diagnostic-trace copies, never another copy class;
 -- - writes: its own cursor, gaps and retention record, and a run's trace copy.
 -- No record, client, message, person or credential table is granted.
 
@@ -40,6 +40,13 @@ grant select (business_id, run_id, reservation_id, lease_id, accepted_at, state,
 grant select (business_id, copy_class, copy_key),
   insert (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
   on public.copy_registrations to ops_astro_trace;
+-- Copy registrations hold every copy class of a business; the trace role
+-- reads and registers its run's diagnostic-trace copy only. Narrowing the one
+-- permissive policy keeps the single restrictive tenancy policy, and it
+-- changes nothing for any other role.
+alter policy authority_copy_registrations on public.copy_registrations
+  using (current_user <> 'ops_astro_trace' or copy_class = 'diagnostic_trace')
+  with check (current_user <> 'ops_astro_trace' or copy_class = 'diagnostic_trace');
 grant select, insert, update on public.trace_export_cursors to ops_astro_trace;
 grant select, insert on public.trace_export_gaps, public.trace_expiry_batches,
   public.trace_expiry_asks to ops_astro_trace;
