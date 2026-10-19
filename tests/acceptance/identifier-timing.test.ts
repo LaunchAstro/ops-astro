@@ -19,7 +19,7 @@
 // database lookups the two forms would differ in. It is not network timing.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
-import { seedForeignReview } from './c35-bodies.ts';
+import { LANDING, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -384,6 +384,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('review.capture', 'revisionId', review.revisionId, (revisionId) => ({ revisionId }));
     const page = { pageUrl: C80_REQUEST.pageUrl, path: C80_REQUEST.path, sourceRevision: 'r' };
     byAda('review.open', 'taskId', f.task.id, (taskId) => ({ ...page, taskId }));
+    // A picture bravo's worker landed on that revision, under bravo's lease.
+    const db = w.h.world.db.admin;
+    const picture = await seedForeignPicture(db, w.h.world.bravo, review.revisionId, f.picked, f.admin);
+    byAda('review.picture', 'pictureId', picture, (pictureId) => ({ pictureId }));
     const request = { ...C80_REQUEST, partyId: randomUUID() };
     out.push({
       op: 'live_correction.request',
@@ -657,6 +661,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         },
       ],
       ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
+      // C35's claim and land: the lease is compared, the revision one no form reaches.
+      ['review.capture_claim', { revisionId: randomUUID() }],
+      ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
     ];
     // The helper's handback: another business's real credential, and a made-up one.
     out.push({
@@ -681,11 +688,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 121 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 124 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(121);
-    expect(names).toHaveLength(121);
+    expect(new Set(names).size, 'distinct operations').toBe(124);
+    expect(names).toHaveLength(124);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
