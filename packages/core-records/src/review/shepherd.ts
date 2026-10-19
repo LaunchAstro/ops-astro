@@ -23,9 +23,10 @@ export type ShepherdHoldRefusal = 'LEASE_NOT_OWNED' | 'APPROVAL_NOT_STANDING';
 
 /**
  * The occurrence's run held for this transaction: its lease (the caller's, on the run the
- * occurrence's dispatch started, its fence current, held by an active worker) share-locked first, then the occurrence's activation (an occurrence row
- * never changes once written); the clock is read once after the locks, and the lease must be live at it, the
- * activation enabled on the occurrence's version and its standing approval unrevoked.
+ * occurrence's dispatch started, its fence current, held by an active worker) share-locked
+ * first, then the occurrence's activation (an occurrence row never changes once written); the
+ * clock is read once after the locks, and the lease must be live at it, the activation enabled
+ * on the occurrence's version and its standing approval unrevoked.
  */
 export async function holdShepherdRun(
   tx: TenantQuery,

@@ -11,7 +11,10 @@
 //    client's task is never mailed about), has not seen it in the app, has a
 //    confirmed address, and no earlier email attempt on the item might have
 //    gone out; relationship mail to a client also needs the client's week
-//    unspent (`email-class.ts`). A refusal writes nothing and sends nothing.
+//    unspent (`email-class.ts`). An item of a review shepherd's comment also
+//    needs its send to stand: a person's approval of its exact digest or a
+//    live standing mandate (`shepherdSendStands`, C57). A refusal writes
+//    nothing and sends nothing.
 //    Then each item the email covers is recorded `asked`, with its class.
 // 2. Send, through custody, a request the adapter built from the declared
 //    fields. The body carries one address, the item's or the inbox's, and
@@ -29,6 +32,7 @@
 import {
   readableNow,
   recordDeliveryAttempt,
+  shepherdSendStands,
   type BusinessId,
   type Database,
   type InboxReason,
@@ -70,6 +74,7 @@ export type EmailRefusal =
   | 'SENDER_NOT_VERIFIED'
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
+  | 'SEND_NOT_APPROVED'
   | 'ITEM_WITHHELD'
   | 'ITEM_SEEN'
   | 'NO_ADDRESS'
@@ -90,8 +95,8 @@ export type EmailResult =
 /**
  * Every check on one item, in its business, locking it (`holdItem`: its task, then the item): open,
  * its recipient can read its task now (so another client's task is never mailed about), they have
- * not seen it in the app, they have a confirmed address, and no earlier email attempt on it might
- * have gone out. Writes nothing.
+ * not seen it in the app, they have a confirmed address, no earlier email attempt on it might
+ * have gone out, and a review shepherd's item has a send that stands. Writes nothing.
  */
 export async function checkItem(
   tx: TenantQuery,
@@ -125,6 +130,7 @@ export async function checkItem(
   if (item.seen) return 'ITEM_SEEN';
   if (address.value === null) return 'NO_ADDRESS';
   if (!(await mayStillSend(tx, itemId))) return 'EMAIL_MAY_HAVE_GONE';
+  if ((await shepherdSendStands(tx, item)) === 'unapproved') return 'SEND_NOT_APPROVED';
   return {
     itemId,
     reason: item.reason,
