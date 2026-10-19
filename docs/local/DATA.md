@@ -1173,8 +1173,9 @@ It is review metadata, written once with the revision by `review.open`, which
 takes `correctionId` only for a correction on the review's own task, page and
 file whose receipts the opener reads through `live_correction.receipts`' own
 query (`run:write` at the correction's party and `task:read` on its task, a
-person on the team, never an agent credential), with `run:write` read again
-after the last lock wait; anything else is one `NOT_FOUND`. The foreign key
+person on the team, never an agent credential), read again after the last
+lock wait with both keys' grants held, so a grant revoked or expired while the
+open waited links nothing; anything else is one `NOT_FOUND`. The foreign key
 holds it to a correction of the same business. `review.read` returns it on each
 revision; the Receipt itself is read through `live_correction.receipts`
 unchanged, so a reader that read does not reach sees none.

@@ -12,14 +12,16 @@
 // A revision opened on a page after its live correction published may name that correction
 // (#2120), so the workspace can show its Receipt: one on the review's own task, page and file
 // whose receipts the opener reads (`live_correction.receipts`' own read, `run:write` and
-// `task:read`), with `run:write` read again after the last wait. Anything else, a foreign id
-// included, is one `NOT_FOUND`, so the open confirms no correction.
+// `task:read`), read again after the last wait with both keys' grants held, so a grant revoked
+// or expired while the open waited links nothing. Anything else, a foreign id included, is one
+// `NOT_FOUND`, so the open confirms no correction.
 //
 // Refusals carry fixed text only: no page, path or revision reaches a refused caller.
 
 import {
   askCaptures,
   correctionOnPage,
+  holdCoveringGrants,
   isUuid,
   openPageReview,
   readReadableReceipts,
@@ -77,10 +79,21 @@ async function endedSince(
   tx: TenantQuery,
   context: CommandContext,
   partyId: string | null,
-  covering: Covering = reviewWrite(context),
 ): Promise<HandlerOutcome | undefined> {
-  const stood = await standsAfterWaits(tx, { covering, partyId });
+  const stood = await standsAfterWaits(tx, { covering: reviewWrite(context), partyId });
   return stood === 'stands' ? undefined : refused(endedRefusal(stood, false));
+}
+
+/** After the last wait: whether the receipts read still reaches `correctionId`, its grants held. */
+async function reaches(
+  tx: TenantQuery,
+  context: CommandContext,
+  correctionId: string,
+): Promise<boolean> {
+  const subjects = subjectsOf(context.session);
+  await holdCoveringGrants(tx, { subjects, collection: RUN_COLLECTION, action: 'write' });
+  await holdCoveringGrants(tx, { subjects, collection: 'task', action: 'read' });
+  return (await readReadableReceipts(tx, correctionId, subjects)) !== undefined;
 }
 
 /** The correction a revision names, lowercase: null for none, undefined when it may not. */
@@ -102,6 +115,7 @@ async function namedCorrection(
     path: request.path,
   };
   if (!(await correctionOnPage(tx, correctionId, page))) return undefined;
+  // Read only: the grants are held after the record locks, in the order every write takes.
   const reached = await readReadableReceipts(tx, correctionId, subjectsOf(session));
   return reached === undefined ? undefined : correctionId;
 }
@@ -140,16 +154,12 @@ export async function openReview(
     correctionId,
   });
   if ('code' in opened) return refused(REFUSALS[opened.code]);
-  const ended =
-    (await endedSince(tx, context, opened.review.partyId)) ??
-    (correctionId === null
-      ? undefined
-      : await endedSince(tx, context, opened.review.partyId, {
-          subjects: subjectsOf(context.session),
-          collection: RUN_COLLECTION,
-          action: 'write',
-        }));
+  const ended = await endedSince(tx, context, opened.review.partyId);
   if (ended !== undefined) return ended;
+  // After the last wait: the correction is still one the receipts read reaches.
+  if (correctionId !== null && !(await reaches(tx, context, correctionId))) {
+    return refused(NO_CORRECTION);
+  }
   return applied(opened.review.id, null, {
     reviewId: opened.review.id,
     revisionId: opened.revision.id,
