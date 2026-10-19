@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1905, TEST F2 through the real graph and worker: an agent that keeps asking for valid task reads is stopped by the broker's call limit, call_limit / CALL_LIMIT_REACHED with exactly the limit's provider sends, no handback and no comment, never by LangGraph's own recursion limit."
+}
