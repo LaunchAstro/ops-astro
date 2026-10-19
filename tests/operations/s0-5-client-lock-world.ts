@@ -145,6 +145,12 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
         join public.review_revisions v on v.business_id = t.business_id and v.id = t.revision_id
         join public.reviews r on r.business_id = v.business_id and r.id = v.review_id
         group by r.task_id`,
+      ...['review_decisions', 'review_astra_reviews'].map(
+        (table) => `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text))
+          from public.${table} t
+          join public.reviews r on r.business_id = t.business_id and r.id = t.review_id
+          group by r.task_id`,
+      ),
       `select uuid_4::text, md5(string_agg(t::text, '|' order by t.id)) from public.records t
         where uuid_4 is not null group by uuid_4`,
     )
@@ -163,7 +169,8 @@ async function taskNamedBy(body: Record<string, unknown>): Promise<string | unde
      union all select task_id::text from leases where id = any($1::uuid[])
      union all select r.task_id::text from review_revisions v
        join reviews r on r.business_id = v.business_id and r.id = v.review_id
-      where v.id = any($1::uuid[]) limit 1`,
+      where v.id = any($1::uuid[])
+     union all select task_id::text from reviews where id = any($1::uuid[]) limit 1`,
     [ids.filter((id) => /^[\da-f-]{36}$/u.test(id))],
   );
   return row?.task;
