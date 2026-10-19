@@ -12,7 +12,8 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { c35World, spot, type C35World } from './c35-world.ts';
+import { c35World, pickUpReviewed, spot, type C35World, type Lease } from './c35-world.ts';
+import { claimUnder, landUnder, pictureBytes } from './c35-landing.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C35-X live pins: DATABASE_URL is unset.');
@@ -33,13 +34,22 @@ async function captured(): Promise<{ readonly reviewId: string; readonly revisio
   return { reviewId: String(opened['reviewId']), revisionId: String(opened['revisionId']) };
 }
 
-/** The capture at `width` landed, as the capture worker leaves it. */
+let lease: Lease | undefined;
+
+/** The capture at `width` landed by the capture worker: claimed under its lease on task A, then landed with a picture. */
 async function land(revisionId: string, width: number): Promise<void> {
-  await w.world.db.admin.execute(
-    `update public.review_captures set state = 'landed'
-      where business_id = $1 and revision_id = $2 and width = $3`,
-    [w.world.business, revisionId, width],
+  const reviewId = String(
+    (
+      await w.world.db.admin.execute<{ readonly review_id: string }>(
+        'select review_id from public.review_revisions where business_id = $1 and id = $2',
+        [w.world.business, revisionId],
+      )
+    )[0]?.review_id,
   );
+  lease ??= await pickUpReviewed(w, { taskId: w.taskA, reviewId, revisionId });
+  expect(codeOf(await claimUnder(w, lease, revisionId))).toBe('not-a-refusal');
+  const landed = await landUnder(w, lease, { revisionId, width, picture: pictureBytes(width) });
+  expect(codeOf(landed.result)).toBe('not-a-refusal');
 }
 
 const fixesOf = (result: CommandResult): readonly string[] =>
