@@ -246,7 +246,8 @@ function refuseMalformedIdentifier(
  * The operands a command writes to a text or jsonb column as the caller sent
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
  * purpose, currency, payload and step, a handback's report and successor, a
- * privacy incident's words (C55), and a legal document version's words (C81).
+ * privacy incident's words (C55), a legal document version's words (C81), and
+ * Astra's saved review of a page revision (#2076).
  *
  * Without this check, each of them could reach its insert holding a NUL or an
  * unpaired surrogate, which the column refuses with a raise. The owed refusal
@@ -282,6 +283,7 @@ const FREE_OPERANDS: readonly string[] = [
   'requestLink',
   'requestedBy',
   'retention',
+  'review',
   'service',
   'step',
   'successor',
