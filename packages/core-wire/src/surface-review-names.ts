@@ -7,6 +7,7 @@
  * A person or a delegated agent opens a review, asks a capture of a revision and pins a
  * comment on a spot of one (#2012); a worker claims the capture and lands it under its
  * lease; the review, with its revisions, captures and pins, and a landed picture are read.
+ * A person decides its latest revision and records Astra's review of it (#2014).
  */
 export type ReviewCommandName =
   | 'review.open'
@@ -15,4 +16,6 @@ export type ReviewCommandName =
   | 'review.capture_land'
   | 'review.pin_comment'
   | 'review.read'
-  | 'review.picture';
+  | 'review.picture'
+  | 'review.decide'
+  | 'review.record_astra_review';

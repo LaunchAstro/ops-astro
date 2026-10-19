@@ -9,7 +9,8 @@
 // agent's inside a delegation for the review's own task. The claim and the land are the
 // worker's: asked of the lease's task like `task.check`, the lease the authority, never a
 // person's grant beyond the one the lease stands on. The reads are `review:read` at the
-// holder, asked inside the query.
+// holder, asked inside the query. `review.decide` and `review.record_astra_review` (#2014)
+// are `gate:decide` there, a person's alone.
 
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { declare, read } from './surface-builders.ts';
@@ -22,6 +23,14 @@ const AT_THE_LEASE = {
   untargetedIdentifiers: ['leaseId', 'revisionId'],
   runtimeShaped: 'leaseId',
   agent: 'delegated',
+} as const;
+
+/** A decision on the review's latest revision, asked at the review's holder, never an agent's. */
+const DECIDE_AT_REVIEW = {
+  collection: 'gate',
+  targetsExistingRecord: false,
+  authorisedOn: 'target',
+  untargetedIdentifiers: ['reviewId'],
 } as const;
 
 export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
@@ -50,4 +59,6 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['revisionId'],
     agent: 'delegated',
   }),
+  declare('review.decide', 'decide', DECIDE_AT_REVIEW),
+  declare('review.record_astra_review', 'decide', DECIDE_AT_REVIEW),
 ];

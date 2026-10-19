@@ -23,4 +23,6 @@ export const REVIEW_OPERANDS = {
     body: 'any',
     audience: 'any',
   },
+  'review.decide': { reviewId: 'any', digest: 'any', response: 'any' },
+  'review.record_astra_review': { reviewId: 'any', digest: 'any', verdict: 'any', review: 'any' },
 } as const;
