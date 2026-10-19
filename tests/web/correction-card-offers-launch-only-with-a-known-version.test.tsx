@@ -103,7 +103,7 @@ describe('the card says the locate states in plain words', () => {
   const unlocated: readonly (readonly [string, RegExp])[] = [
     ['NOT_FOUND', /not one you can reach/iu],
     ['WORD_NOT_FOUND', /word is not on that page/iu],
-    ['CHANGE_ENVELOPE_EXCEEDED', /one word for one word/iu],
+    ['CHANGE_ENVELOPE_EXCEEDED', /one phrase or sentence on one line/iu],
     ['SITE_UNREACHABLE', /site did not answer/iu],
     ['SITE_CHANGED', /site changed/iu],
     ['SITE_NOT_CONFIGURED', /no site is set up/iu],
