@@ -403,6 +403,10 @@
         "tests/cli/c57-change-request-cli-parity.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/web/a-dock-switch-keeps-no-earlier-persons-words-or-writes-proof.test.tsx"],
+      "rules": { "unicorn/consistent-function-scoping": "off" }
     }
   ]
 }
