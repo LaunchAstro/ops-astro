@@ -98,7 +98,8 @@
     "@hono/node-server": "2.1.1",
     "@supabase/realtime-js": "2.117.2",
     "hono": "4.13.9",
-    "parse5": "8.0.1"
+    "parse5": "8.0.1",
+    "playwright": "1.63.0"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
@@ -116,7 +117,6 @@
     "markdown-it": "14.3.2",
     "oxlint": "1.81.0",
     "pg": "8.23.0",
-    "playwright": "1.63.0",
     "pngjs": "7.0.0",
     "postgres": "3.4.9",
     "prettier": "3.9.6",

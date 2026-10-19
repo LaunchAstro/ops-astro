@@ -111,7 +111,9 @@ describe('C35 review captures are spare work', () => {
     expect(call.asked.filter((one) => one.verb === 'task.pickup')).toHaveLength(1);
     expect(call.asked.filter((one) => one.verb === 'review.capture_land')).toHaveLength(2);
   });
+});
 
+describe('C35 a review capture lands what it took', () => {
   it('lands only the widths its claim handed out', async () => {
     const opened: number[] = [];
     const call = api(1, [390]);
