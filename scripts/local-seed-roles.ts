@@ -108,6 +108,7 @@ export const GRANTS_BY_ROLE: Readonly<
     // reading them are `review:write` and `review:read`, the owner's and administrators'.
     ['review', 'write'],
     ['review', 'read'],
+    ['review', 'comment'],
   ],
   member: [
     ['task', 'read'],
