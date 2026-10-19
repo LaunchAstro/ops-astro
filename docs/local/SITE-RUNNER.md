@@ -185,7 +185,9 @@ seam read is follow-up work.
   correction the register holds is observed again on the next start.
 - **Stop.** The same command, then remove the plist from `~/Library/LaunchAgents`.
 - **The heartbeat.** After each pass the runner pings its own heartbeat
-  address. A stopped or broken runner goes quiet and the watcher mails.
+  address, no more often than the settings file's `OPS_HEARTBEAT_EVERY_MS`
+  (unset, every pass), so a free watcher's budget holds. A stopped or broken
+  runner goes quiet and the watcher mails.
 
 Starting it on the M5 in production is the owner's daylight go. The plist is
 never loaded from a lane.
