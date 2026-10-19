@@ -78,16 +78,49 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function sameStylesheets(left: PageObservation, right: PageObservation): boolean {
-  const keys = Object.keys(left.stylesheets).toSorted();
-  const other = Object.keys(right.stylesheets).toSorted();
-  return (
-    keys.length === other.length &&
-    keys.every(
-      (key, index) => key === other[index] && left.stylesheets[key] === right.stylesheets[key],
-    )
-  );
+/** The run of `after` that differs from `before`: where it starts, what went and what came. */
+export interface TextChange {
+  readonly at: number;
+  readonly removed: string;
+  readonly added: string;
 }
+
+/** The one changed run between two texts, by what they share at each end; null when equal. */
+export function changedText(before: string, after: string): TextChange | null {
+  if (before === after) return null;
+  const head = shared(before, after, false);
+  const tail = Math.min(shared(before, after, true), before.length - head, after.length - head);
+  return {
+    at: head,
+    removed: before.slice(head, before.length - tail),
+    added: after.slice(head, after.length - tail),
+  };
+}
+
+/** A stylesheet whose digest changed, or that came (no before) or went (no after). */
+export interface StylesheetChange {
+  readonly address: string;
+  readonly before: string | null;
+  readonly after: string | null;
+}
+
+/** Every stylesheet address whose digest differs between the two, in address order. */
+export function changedStylesheets(
+  before: Readonly<Record<string, string>>,
+  after: Readonly<Record<string, string>>,
+): readonly StylesheetChange[] {
+  const addresses = [...new Set([...Object.keys(before), ...Object.keys(after)])].toSorted();
+  return addresses
+    .map((address) => ({
+      address,
+      before: Object.hasOwn(before, address) ? (before[address] ?? null) : null,
+      after: Object.hasOwn(after, address) ? (after[address] ?? null) : null,
+    }))
+    .filter((change) => change.before !== change.after);
+}
+
+const sameStylesheets = (left: PageObservation, right: PageObservation): boolean =>
+  changedStylesheets(left.stylesheets, right.stylesheets).length === 0;
 
 const served = (page: PageObservation): boolean => page.status >= 200 && page.status < 300;
 

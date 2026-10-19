@@ -30,6 +30,7 @@ import {
   type CaptureWidth,
 } from '../../../core-records/src/index.ts';
 import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import type { PageObservation } from '../../../core-connectors/src/index.ts';
 import {
   lockOwnedLease,
   lockedInstant,
@@ -208,7 +209,10 @@ interface LandFields extends LeaseFields {
  */
 const UNSTORABLE_ESCAPE = /(?<!\\)(?:\\\\)*\\u(?:0000|d[89a-f][0-9a-f]{2})/u;
 
-const isObservation = (value: unknown): value is Readonly<Record<string, unknown>> => {
+/** A page observation as the fenced capture makes it (`PageObservation`, C80). */
+export const isObservation = (
+  value: unknown,
+): value is PageObservation & Readonly<Record<string, unknown>> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const seen = value as Readonly<Record<string, unknown>>;
   const sheets = seen['stylesheets'];
