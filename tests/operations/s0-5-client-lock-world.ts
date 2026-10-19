@@ -11,6 +11,7 @@ import {
 } from '../../packages/core-wire/src/index.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
 import { both, refusedAlike } from '../cli/cli-parity.ts';
+import { grantTo } from '../commands/fixture.ts';
 import { MARKER_HELD } from './s0-5-marker-held.ts';
 import { CONTENT } from './s0-5-client-lock-content.ts';
 
@@ -77,6 +78,13 @@ function changed(
 }
 
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
+  // The positive recipe has no grant to revoke (its grant would be a later case's): one made here.
+  if (declaration.name === 'grant.revoke') {
+    const grantId = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+      return await grantTo(tx, harness.world.noah as Parameters<typeof grantTo>[1], 'read');
+    });
+    return { grantId };
+  }
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 lock ${randomUUID()}`);
     const decided = await harness.reserve(task, 'draft_the_lock_reply');
