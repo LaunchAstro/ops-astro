@@ -51,6 +51,7 @@ const LOGINS = [
   'ops_astro_backup_login',
   'ops_astro_forwarder_login',
   'ops_astro_upkeep_login',
+  'ops_astro_trace_login',
 ];
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -194,6 +195,7 @@ const AFTER_RESET = [
   ['BACKUP_SOURCE_URL', 'ops_astro_backup'],
   ['DATABASE_FORWARDER_URL', 'ops_astro_forwarder'],
   ['DATABASE_UPKEEP_URL', 'ops_astro_upkeep'],
+  ['DATABASE_TRACE_URL', 'ops_astro_trace'],
 ] as const;
 
 describeLive('S0-1 staging logins after the reset, run for real', () => {

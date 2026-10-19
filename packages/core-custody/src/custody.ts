@@ -124,7 +124,8 @@ function forkCustody(config: CustodyConfig): ChildProcess {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),
     },
-    execArgv: [],
+    // No inherited flag, and no inspector on SIGUSR1: custody holds the credentials.
+    execArgv: ['--disable-sigusr1'],
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
   });

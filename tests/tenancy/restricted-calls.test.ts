@@ -736,6 +736,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolname = 'ops_astro_map_path' then 'map path'
+                 when r.rolname = 'ops_astro_trace' then 'trace'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -860,6 +861,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261006181500: the map read models' role owns their four writers and writes the summary and
     // frontier under row security, proved in tests/db/click-through-seed-map.test.ts.
     expect(classes['map path']).toStrictEqual(['ops_astro_map_path']);
+    // 20261018222300: the trace export's role reads the run-event cells and call counts a span is made
+    // of and writes its own cursor, gaps and retention record, proved in tests/db/trace-export-login.test.ts.
+    expect(classes['trace']).toStrictEqual(['ops_astro_trace']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });

@@ -394,6 +394,17 @@ occurrence is not `approved` or whose definition is not the one that
 occurrence's activation runs. The suites sort it into a class of its own
 (`occurrence`), and the column-grant contract names each of its column grants.
 
+`ops_astro_trace` (migration 20261018222300, #1708) is the M5 trace export's
+role: no login, no bypass, under row security like the application. It reads
+the run-event columns a span is made of (never `task_id`, `attempt_id` or
+`actor_id`), the lease and model-call columns the call counts read, and the
+trace copies it registers; it writes its own cursor, gaps and retention record
+and a run's trace copy, and nothing else. Its login, `ops_astro_trace_login`
+(`scripts/ops/staging-logins.ts`), is a member of it alone and takes it in each
+transaction (`apps/trace-export/main.ts`). The suites sort it into a class of
+its own (`trace`), and `tests/db/trace-export-login.test.ts` proves what it
+reads and refuses.
+
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its

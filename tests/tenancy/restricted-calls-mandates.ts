@@ -11,6 +11,7 @@ import {
   CARRIAGE_UPDATES,
 } from './restricted-calls-carriage.ts';
 import { SITE_EXECUTES, SITE_GROUPS, SITE_UPDATES } from './restricted-calls-sites.ts';
+import { TRACE_GRANTS } from './restricted-calls-trace.ts';
 
 /**
  * Table grants: a class's record is read and its revision bumped by column grant; a mandate is
@@ -55,6 +56,12 @@ export const MANDATE_GRANTS: readonly { readonly from: string; readonly line: st
   from: '20261006080000',
   line: `ops_astro_app INSERT public.standing_mandates.${column}`,
 }));
+
+/** Every part's role column grants: the mandates' and the trace export's (#1708). */
+export const PART_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  ...MANDATE_GRANTS,
+  ...TRACE_GRANTS,
+];
 
 /**
  * This part, #1531's (`restricted-calls-carriage.ts`) and C80's party sites

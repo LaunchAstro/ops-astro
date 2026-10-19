@@ -80,6 +80,50 @@ Production API changes and the parked worker's switch-on remain owner steps.
 See [the API composition root](API.md#the-composition-root) and
 [the diagnostic trace export](RUNTIME.md#the-diagnostic-trace-export).
 
+## Run production's export on the M5
+
+Production's API is the Vercel function, which never starts the exporter.
+Production's export runs as its own process on the M5,
+`apps/trace-export/main.ts`, under launchd with
+[`ops-astro-trace-export.plist`](../../deploy/m5/ops-astro-trace-export.plist).
+It starts nothing but the export and its retention.
+
+**Precondition:** do not set `TRACE_EXPORT=on` for production until the
+S1911-3 fix (#1925) has merged (register 74). Setting it is the owner's go.
+
+The process reads every setting from one file, named by
+`TRACE_EXPORT_SETTINGS_FILE` in the plist. Keep that file at mode `0600`: the
+process refuses a file that others may read. Off is the default. With
+`TRACE_EXPORT` unset or `off`, the process prints `trace export: off`, exits 0
+and opens no connection, and launchd does not restart it. The file holds the
+four export settings above and two more:
+
+- `DATABASE_TRACE_URL`, the address of `ops_astro_trace_login`. Make it with
+  `scripts/ops/staging-logins.mjs after-reset --production`. The login is a
+  member of `ops_astro_trace` alone (migration 20261018222300) and takes that
+  role in each transaction. The role reads the run-event cells that make up a
+  span, never the task, attempt or actor, and the lease and model-call
+  columns that the call counts need. It writes only the export's cursor, its
+  gaps and the retention record, under row security. An address that is not
+  on this machine must ask for TLS (`sslmode=require` or stricter).
+- `TRACE_EXPORT_BUSINESSES`, production's business ids, comma separated.
+
+To install it, fill in the plist's `@...@` values (the checkout, Node 24, a
+`PATH` and a log file), copy it to `~/Library/LaunchAgents/`, and load it.
+The plist runs `node --disable-sigusr1`. The process refuses to start with
+any other runtime flag, or with `NODE_OPTIONS` or `NODE_V8_COVERAGE` set,
+because an inspector, a preloaded module or a coverage writer could read the
+trace key and the login. The flag also stops a running process from opening
+an inspector on SIGUSR1. A setting it refuses is named in the log, never its
+value.
+
+Runs never wait on the export. If the process stops, the cursor marks where
+it stopped and the export catches up when it starts again. If Langfuse
+stops, each tick records a gap and keeps the cursor, and the next tick sends
+the same events again. Record `TRACE_EXPORT=on` in the deploy record when the
+owner switches it on. `tests/db/trace-export-login.test.ts` and
+`tests/runtime/trace-export-process.test.ts` prove this behaviour.
+
 ## Retrieve an existing replay proof
 
 After an authorised operator has produced a replay-fake trace, stage its

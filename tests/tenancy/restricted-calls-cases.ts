@@ -13,7 +13,7 @@
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { PART_EXECUTES, PART_GROUPS } from './restricted-calls-mandates.ts';
-export { MANDATE_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
+export { PART_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
