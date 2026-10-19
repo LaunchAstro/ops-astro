@@ -13,6 +13,7 @@ import type { AdminConnection } from '../../packages/core-records/src/tenancy/da
 import type { Caller } from './cast.ts';
 import type { Answer } from './world.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
+import { makeTaskBody } from './c57b-bodies.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -81,39 +82,6 @@ async function changeBody(
   return { body: { changeRequestId, decision: 'approve' } };
 }
 
-/**
- * C57 part B (#2117): the change request approved, and the admin's own lease on the review's
- * task (EX-01), under which the request is made a task.
- */
-async function makeTaskBody(context: BodyContext, taskId: unknown, revisionId: unknown) {
-  const decision = await changeBody(context, 'review.decide_change', revisionId);
-  if (!('body' in decision)) return decision;
-  const decided = await context.asPerson('review.decide_change', decision.body);
-  if (decided.code !== 'ok')
-    throw new Error(`matrix: review.decide_change refused ${decided.code}`);
-  const read = await context.asPerson('task.read', { recordId: taskId });
-  const proposed = await context.asPerson('task.propose', {
-    recordId: taskId,
-    expectedRevision: (read.body['task'] as { revision: number }).revision,
-    ...PROPOSAL,
-  });
-  if (proposed.code !== 'ok') throw new Error(`matrix: task.propose refused ${proposed.code}`);
-  const gate = proposed.body['detail'] as Readonly<Record<string, unknown>>;
-  const approved = await context.asPerson('task.decide', {
-    gateId: gate['gateId'],
-    versionId: gate['versionId'],
-    decision: 'approve',
-    note: 'approved so the request can be made a task',
-  });
-  if (approved.code !== 'ok') throw new Error(`matrix: task.decide refused ${approved.code}`);
-  const { reservationId } = approved.body['detail'] as Readonly<Record<string, unknown>>;
-  const picked = await context.asPerson('task.pickup', { reservationId });
-  if (picked.code !== 'ok') throw new Error(`matrix: task.pickup refused ${picked.code}`);
-  const lease = picked.body['detail'] as Readonly<Record<string, unknown>>;
-  const { changeRequestId } = decision.body;
-  return { body: { leaseId: lease['leaseId'], fence: lease['fence'], changeRequestId } };
-}
-
 export async function c35PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (WORKER_NAMES.has(name)) return await workerBody(name, context);
   const open = await openBody(context);
@@ -123,7 +91,8 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
   if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
   if (name === 'review.make_change_task') {
-    return await makeTaskBody(context, open.body['taskId'], detail['revisionId']);
+    const decision = await changeBody(context, 'review.decide_change', detail['revisionId']);
+    return await makeTaskBody(context, open.body['taskId'], decision);
   }
   if (name === 'review.propose_change' || name === 'review.decide_change') {
     return await changeBody(context, name, detail['revisionId']);
