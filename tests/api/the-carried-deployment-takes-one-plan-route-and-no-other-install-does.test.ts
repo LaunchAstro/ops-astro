@@ -94,6 +94,14 @@ describe('the plan route in production settings', () => {
     }
   });
 
+  it('refuses two routes sharing a key, carried or not, since a call names its route by key', () => {
+    expect(refused([ollama, { ...plan, key: ollama.key }])).toContain('MODEL_BROKER_ROUTES');
+    expect(routesOf(JSON.stringify([ollama, { ...ollama, ceiling: 2 }]), 'ollama')).toBeUndefined();
+    expect(
+      routesOf(JSON.stringify([ollama, { ...ollama, key: 'm5_ollama_2' }]), 'ollama'),
+    ).toHaveLength(2);
+  });
+
   it('no uncarried install takes a plan route', () => {
     for (const provider of ['api', 'local-gpt', 'ollama'] as const) {
       expect(routesOf(JSON.stringify([plan]), provider)).toStrictEqual([undefined]);
