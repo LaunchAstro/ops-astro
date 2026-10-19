@@ -399,7 +399,8 @@
     {
       "files": [
         "tests/web/c57-change-request-panel.test.tsx",
-        "tests/web/c57-change-request-dock-hook.test.tsx"
+        "tests/web/c57-change-request-dock-hook.test.tsx",
+        "tests/cli/c57-change-request-cli-parity.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     }
