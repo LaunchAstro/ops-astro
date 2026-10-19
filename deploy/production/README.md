@@ -252,6 +252,37 @@ switch-on step, A5 of #1653: after staging's proof, the runs gates and the
 owner's go, in daylight. One sweeping entry per environment: this job or a
 long-running API process with `AUTOMATION_FIRING=on`, never both.
 
+## Alerts
+
+Production's alerts are staging's [alerts](../staging/README.md#alerts), with
+production named in their words. Every alert mails the owner
+(`OPS_ALERT_OWNER_EMAIL`) and the second operator
+(`OPS_ALERT_SECOND_OPERATOR_EMAIL`) at once. Nobody else gets them, and no
+alert goes to a client or a business's own people.
+
+| Alert                                                     | Raised by                                   | Who sees it                       |
+| --------------------------------------------------------- | ------------------------------------------- | --------------------------------- |
+| Production not loading, its API not answering             | the off-box watcher, every five minutes     | the owner and the second operator |
+| Production's maintenance page is up                       | the off-box watcher                         | the owner and the second operator |
+| Backup, restore drill, forwarder or worker heartbeat late | the off-box watcher                         | the owner and the second operator |
+| The error sink not answering                              | the off-box watcher (one sink, both places) | the owner and the second operator |
+| An app error on production                                | the error sink, from production's forwarder | the owner and the second operator |
+| Failed sign-ins, refusals, permission changes, downloads  | the error sink, from production's forwarder | the owner and the second operator |
+| A failed secret scan                                      | the error sink, from the scan itself        | the owner and the second operator |
+
+Nothing here sets up the watcher or the sink. With `OPS_WATCH_PRODUCTION_URL`
+set, `node scripts/ops/alerts.mjs plan` prints production's checks, their
+alert words and the recipients; the operator adds each one by hand in the
+watcher and in the sink. For a proof, `plan --test` prints the agreed test
+address as the only recipient, to enter in place of the operators'.
+
+The operations view links the error sink once `OPS_ERROR_SINK_URL` is set on
+production's Vercel project. It holds the sink's web address and no secret.
+Setting it takes one daylight redeploy. Delivery is proved only by mail
+arriving: `node scripts/ops/alerts.mjs test`, run with production's forwarder
+settings, raises one test alert through the sink, and a planted health failure
+proves the watcher.
+
 ## The promotion step
 
 `scripts/ops/promote.mjs` predates the Vercel plan. A real run stops and
