@@ -182,11 +182,15 @@ it("a task with a client offered no subscription keeps C60's refusal", async () 
 }, 120_000);
 
 /** The call on `[SEAT]` refused as waiting on a local model, with nothing sent, and local still served. */
-async function staysLocal(work: Work): Promise<void> {
+/**
+ * `work` is refused the seat; `twin`, made the same way, goes local. A refusal ends its
+ * attempt (#1623 R1, B2), so the local route is asked on the twin.
+ */
+async function staysLocal(work: Work, twin: Work): Promise<void> {
   const seen = world.provider.seen.length;
   expect(await ask(work, [SEAT])).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
   expect(world.provider.seen.length).toBe(seen);
-  const local = await ask(work, [SEAT, LOCAL]);
+  const local = await ask(twin, [SEAT, LOCAL]);
   expect(local).toMatchObject({ ok: true });
   expect(await carried(local.callId)).toMatchObject([{ route_reach: 'local' }]);
 }
@@ -209,8 +213,10 @@ it.each([
   'a task %s keeps its free text off the subscription',
   async (_how, touch) => {
     const work = await ownersWork('owner text, touched');
+    const twin = await ownersWork('owner text, touched');
     await touch(work);
-    await staysLocal(work);
+    await touch(twin);
+    await staysLocal(work, twin);
   },
   120_000,
 );
@@ -234,14 +240,15 @@ it('a task a client contact typed on keeps even its business-internal fields off
 it("a task staff started keeps its free text off the owner's subscription", async () => {
   await holdsRole('member');
   const work = await liveWork(s, 'staff text', 2_000);
-  await staysLocal(work);
+  await staysLocal(work, await liveWork(s, 'staff text', 2_000));
 }, 120_000);
 
 it('a task staff started stays theirs after its creator becomes the owner', async () => {
   await holdsRole('member');
   const work = await liveWork(s, 'staff text, then owner', 2_000);
+  const twin = await liveWork(s, 'staff text, then owner', 2_000);
   await holdsRole('owner');
-  await staysLocal(work);
+  await staysLocal(work, twin);
 }, 120_000);
 
 it("an owner's task stays the owner's after they step down", async () => {

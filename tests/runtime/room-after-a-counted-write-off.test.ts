@@ -37,7 +37,7 @@ import {
   stopAndTopUp,
   stopWorker,
 } from './version-room-world.ts';
-import { answerLate, attemptOf, counted, priced } from './written-off-world.ts';
+import { answerLate, attemptOf, counted, fencedAfterStop, priced } from './written-off-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -66,12 +66,12 @@ afterAll(async () => {
 /**
  * The first hold ends unspent and its replacement R1 holds the whole 500. R1
  * spends 300 (c1) and sends c2 at 200, which answers above its hold: held
- * unknown, the step marked. The worker's authority goes, and the fence keeps
- * the marked step's hold whole. A stop on the held R1 and a top-up of 100 then
- * move c1 and c2's 200 to the envelope's actual, R1 held 100, and a person
- * writes R1 off at `charge` (0 unless given). The fence comes before the stop: a stop releases the
- * hold's lease, after which only a pickup could fence it, and a pickup refuses
- * a marked step before it fences.
+ * unknown, the step marked. That answer's own stop takes the worker's authority
+ * (#1623 R1, B2), and the replay's fence keeps the marked step's hold whole. A
+ * stop on the held R1 and a top-up of 100 then move c1 and c2's 200 to the
+ * envelope's actual, R1 held 100, and a person writes R1 off at `charge` (0
+ * unless given). The fence comes before the stop: the replay leaves a run
+ * waiting on its budget alone, and a pickup refuses a marked step before it fences.
  */
 async function countedWriteOff(charge = 0, beforeWriteOff?: (r1: unknown) => Promise<void>) {
   const { work, versionId, first } = await roomyWork(s);
@@ -81,7 +81,8 @@ async function countedWriteOff(charge = 0, beforeWriteOff?: (r1: unknown) => Pro
   await spend(s, r1, 300);
   const c2 = await dispatchedCall(s, r1, 200);
   await answerLate(s, second, c2, priced(250));
-  await stopWorker(s, second);
+  // #1623 R1 (B2): that answer's stop took the worker's authority; nothing is left to revoke.
+  await fencedAfterStop(s, second);
   // Seeded: the stop a worker's call raises finds its run claimed.
   await s.db.admin.execute(
     "update public.planned_runs set state = 'claimed' where id = (select run_id from public.reservations where id = $1)",

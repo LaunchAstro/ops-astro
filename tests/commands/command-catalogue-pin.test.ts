@@ -72,6 +72,9 @@
 // The seventeenth is a person's own agents (Assign to AI): `agent.create` and
 // `agent.rename`, untargeted self writes no agent reaches, one row each in the
 // same three tables and the handler map, beside the `agent.mine` read.
+// The eighteenth is #1623 R1's `run.end`: an untargeted lease write an agent
+// reaches under its delegation, its `leaseId` shaped by the runtime, one row
+// in each table that lists it, and a person handler that refuses.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -427,6 +430,7 @@ vi.mock('../../packages/core-commands/src/commands/budget-planning-cap.ts', asyn
 vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+  refuseRunEndAsPerson: recorder('refuseRunEndAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/child-work-person.ts', async (original) => ({
   ...(await original<object>()),
@@ -452,6 +456,7 @@ const PINNED_RUNTIME_SHAPED = {
   'task.take_launch': 'launchId',
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
+  'run.end': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -508,6 +513,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'privacy.set_overseas_service': [],
   'run.child_handback': [],
   'run.delegate_child': ['leaseId'],
+  'run.end': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
@@ -655,6 +661,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'record.create',
   'run.child_handback',
   'run.delegate_child',
+  'run.end',
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
@@ -714,6 +721,7 @@ const PINNED_AGENT_SURFACE = [
   'onboarding.step_result',
   'run.child_handback',
   'run.delegate_child',
+  'run.end',
   'run.revise_state',
   'session.capabilities',
   // The assignee of its own task under a delegation holding assign (MP-4-8).
@@ -1007,6 +1015,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'conversation.set_scope', operationId: 'op', conversationId: 'c', page: null },
   { command: 'conversation.set_model', operationId: 'op', conversationId: 'c', model: null },
   { command: 'model.call', operationId: 'op' },
+  { command: 'run.end', operationId: 'op' },
   {
     command: 'run.top_up',
     operationId: 'op',
@@ -1214,6 +1223,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'conversation.set_scope': ['setConversationScope', 'request'],
   'conversation.set_model': ['setModel', 'request'],
   'model.call': ['refuseModelCallAsPerson', 'request'],
+  'run.end': ['refuseRunEndAsPerson', 'request'],
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
   'run.revise_state': ['reviseStateOnRun', 'request'],
@@ -1268,7 +1278,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same nine commands', () => {
+  it('shapes the same runtime identifier for the same ten commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -1289,7 +1299,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same twenty-six, three of them before a pickup', () => {
+  it('lets an agent reach the same twenty-seven, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
