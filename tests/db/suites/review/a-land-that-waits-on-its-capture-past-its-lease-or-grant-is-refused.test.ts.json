@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 a land re-judged after its capture lock wait: a person's lease, or an agent's delegating write grant, that lapsed during the wait refuses the land and stores nothing."
+}
