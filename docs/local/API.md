@@ -1460,7 +1460,11 @@ alone). `tools` is the agent's catalogue (`AGENT_TOOLS`): `task.read` with
 `{ taskId }`, and `live_correction.request` with exactly the operands a person
 sends, `{ taskId, page, word, replacement }`; a tool outside it, a wider or
 narrower request, a typed base revision, and a result answering another tool's
-call are `TURN_MALFORMED`. `turnOrdinal` must be
+call are `TURN_MALFORMED`. Every operand is a string of 1 to 4,096 units
+(#2091). An operation that declares a `tools` field is also sent the offered
+names (the owner's plan's turn); the replay turn declares none. A turn whose
+request is over its route's body limit is refused `PROMPT_TOO_LARGE` before any
+hold, with nothing held, offered or sent. `turnOrdinal` must be
 the attempt's count of calls. Before any hold, a turn out of shape or order is
 refused `TURN_MALFORMED`, a wrong ordinal `TURN_ORDINAL_STALE`, and a part the
 broker cannot bind (an altered answer, another attempt's or business's answer,
@@ -1469,7 +1473,10 @@ another task, a stale revision, free text, and for now any `{ ref:
 `PROVENANCE_UNBOUND`, in the same bytes whoever's it was; each records its step and ends the attempt `cancelled`
 ([RUNTIME.md](RUNTIME.md), "The model call's ledger"). A settled turn also
 answers `toolCalls`, and the call that reached the attempt's limit answers
-`terminal: 'call_limit'`.
+`terminal: 'call_limit'`. An answer whose calls are not this turn's to make (a
+tool it did not offer, operands of another shape, an id used twice or by an
+earlier call) is held as unknown, whole, before the worker sees any call, so
+no tool runs (#2091).
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the

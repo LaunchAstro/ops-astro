@@ -1545,7 +1545,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts
   and drop. A call holds its operation's priced maximum out of the run's
-  reservation from `reserved` until it settles. `accepted_at`, `started_at`,
+  reservation from `reserved` until it settles; a task call holds more than
+  nothing unless refused, but the agent's turn on the owner's plan
+  (`model.agent_turn` on a cloud subscription route,
+  `20261019130000_plan_turn_holds_nothing`, #2091) holds and settles at
+  nothing, the exception true only with every fact present. `accepted_at`, `started_at`,
   `completed_at` and `landed_at` are separate, and a call reaches no level
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
