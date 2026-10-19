@@ -22,6 +22,7 @@ import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { clientRefusal } from './broker-sources.ts';
 import { placeOf, type Place } from './broker-limit.ts';
 import { fieldsOf } from './broker-turn.ts';
+import { oversized } from './broker-size.ts';
 import { endCodeOfRefusal, retireAttempt } from './broker-stop.ts';
 import { stopAtCeiling } from './broker-wait.ts';
 import type {
@@ -151,6 +152,7 @@ export async function reserveModelCall(
   if (!resolved.ok) return await refused(resolved.code);
   const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
+  if (oversized(broker, operation, resolved.fields)) return await refused('PROMPT_TOO_LARGE');
   if (await atCeiling(tx, operation, route.route)) return await refused('RATE_LIMITED');
   const spent = await committedMinor(tx, facts.reservationId);
   if (operation.maximumMinor > facts.heldMinor - spent) {

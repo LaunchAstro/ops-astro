@@ -50,6 +50,7 @@ import { lockFacts, type Checked } from './broker-facts.ts';
 import { lockEnvelope } from './broker-give-back.ts';
 import { carriesHere, sweepCarried, writeCarriers } from './broker-carriage.ts';
 import type { Handoff } from './carriage.ts';
+import { tooLarge } from './broker-stop.ts';
 import { releaseRefused, releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal } from './broker-sources.ts';
@@ -229,24 +230,26 @@ export async function sendReservedCall(
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
   const values = Object.fromEntries(started.fields.map((field) => [field.name, field.value]));
   const built = adapter.build(values, reserved.callId);
-  const outcome = await broker.custody.dispatch(
-    reserved.route.credentialRef,
-    {
-      destination: reserved.operation.destination,
-      path: built.path,
-      method: built.method,
-      body: built.body,
-      timeoutMs: reserved.operation.timeoutMs,
-      maxResponseBytes: reserved.operation.maxResponseBytes,
-    },
-    undefined,
-    // Owner line 72: a subscription send is judged again at the handoff, the task held; a
-    // carried call's handoff judges it again after the agent's accept instead.
-    reserved.route.credentialKind === 'subscription' && carrier === undefined
-      ? taskAdmission(database, businessId, request, reserved)
-      : undefined,
-    carrier === undefined ? undefined : carry?.(reserved.callId),
-  );
+  const outcome =
+    tooLarge(adapter, built) ??
+    (await broker.custody.dispatch(
+      reserved.route.credentialRef,
+      {
+        destination: reserved.operation.destination,
+        path: built.path,
+        method: built.method,
+        body: built.body,
+        timeoutMs: reserved.operation.timeoutMs,
+        maxResponseBytes: reserved.operation.maxResponseBytes,
+      },
+      undefined,
+      // Owner line 72: a subscription send is judged again at the handoff, the task held; a
+      // carried call's handoff judges it again after the agent's accept instead.
+      reserved.route.credentialKind === 'subscription' && carrier === undefined
+        ? taskAdmission(database, businessId, request, reserved)
+        : undefined,
+      carrier === undefined ? undefined : carry?.(reserved.callId),
+    ));
   const settlement = keptTurnAnswer(settlementOf(outcome, reserved.operation, adapter), request);
   // A turn's answer keeps the class it was made with (#1623 R3).
   const turn = request.turn === undefined ? undefined : started.fields[0]?.source;

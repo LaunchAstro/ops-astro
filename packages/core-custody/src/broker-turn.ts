@@ -27,14 +27,13 @@
 // becomes less strict on a later turn.
 
 import { payloadDigest } from '../../core-digest/src/index.ts';
-import type { FieldSource, ModelOperation } from '../../core-connectors/src/index.ts';
+import type { FieldSource, ModelAnswer, ModelOperation } from '../../core-connectors/src/index.ts';
 import { isUuid, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
 import type { ToolCall, TurnPart } from '../../core-wire/src/index.ts';
 import type { Facts } from './broker-facts.ts';
 import { businessInternal, resolveFields } from './broker-sources.ts';
 import { nestsTooDeep } from './json-depth.ts';
 import { MALFORMED as ANSWER_MALFORMED } from './broker-fault.ts';
-import type { Settlement } from './broker-settle.ts';
 import { answerCallsKept, readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
 import type { BrokerRefusal, ModelCallRequest, ResolvedField } from './broker-types.ts';
 
@@ -211,10 +210,13 @@ export async function fieldsOf(
  * are not this turn's to make (`answerCallsKept`) is held as malformed, so
  * the runner never sees any of them and no tool runs.
  */
-export function keptTurnAnswer(settlement: Settlement, request: ModelCallRequest): Settlement {
+export function keptTurnAnswer<S extends { readonly kind: string; readonly answer?: ModelAnswer }>(
+  settlement: S,
+  request: ModelCallRequest,
+): S | ({ readonly kind: 'unknown' } & typeof ANSWER_MALFORMED) {
   if (settlement.kind !== 'priced' || request.turn === undefined) return settlement;
   const turn = readTurn(request.turn);
-  const calls = settlement.answer.toolCalls ?? [];
+  const calls = settlement.answer?.toolCalls ?? [];
   return turn !== undefined && answerCallsKept(turn, calls)
     ? settlement
     : { kind: 'unknown', ...ANSWER_MALFORMED };

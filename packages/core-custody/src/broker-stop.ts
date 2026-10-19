@@ -12,7 +12,8 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import type { Failure } from './broker-fault.ts';
 import { COUNTED_CAUSES, countedHold, giveBack } from './broker-give-back.ts';
 import type { Checked } from './broker-facts.ts';
-import type { Broker, BrokerRefusal } from './broker-types.ts';
+import type { CustodyOutcome } from './custody.ts';
+import type { Broker, BrokerRefusal, ProviderAdapter } from './broker-types.ts';
 
 /** The stored stop of one attempt. */
 export interface StoppedAs {
@@ -146,6 +147,19 @@ const CUSTODY_UNSENT: ReadonlySet<string> = new Set([
   'SEAL_WRONG_WAY',
   'NOT_AT_ONCE',
 ]);
+
+/**
+ * At the send, a built request over its adapter's body limit (#2091; a
+ * guard, since the start binds the bytes reserve sized): custody's own
+ * unsent refusal, which releases, or undefined to send it.
+ */
+export const tooLarge = (
+  adapter: ProviderAdapter,
+  built: { readonly body: string },
+): CustodyOutcome | undefined =>
+  adapter.bodyLimit !== undefined && Buffer.byteLength(built.body) > adapter.bodyLimit
+    ? { kind: 'refused', started: false, code: 'PROMPT_TOO_LARGE' }
+    : undefined;
 
 /** `CALL_RELEASED`, normalised: a custody code, a refusal this side judged before any write, or
  * one of the operation's declared nothing-happened codes maps to one end code; any other reason
