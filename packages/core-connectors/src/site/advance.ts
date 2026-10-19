@@ -3,13 +3,14 @@
 // The publish (`site.source.advance`, #1986): the default branch advanced to
 // the proposal's head, its one commit on the approved base. It is sent only while the file is the pre-image, the
 // branch's protection refuses any rewind or deletion of it (administrators
-// included), and its head is the approved base; the provider applies a
+// included), its head is the approved base, and the review request's head is
+// still the proposal's (`REQUEST_HEAD_MOVED` otherwise); the provider applies a
 // fast-forward only. So the branch moves from the approved base to the base
 // and the approved file, or not at all, and the review request closes as
 // merged. It counts only once the branch's head reads as the proposal's.
 // The deployment is found by that commit, as `binding.ts` finds the revert's.
 
-import type { CallDependencies, ProviderResult } from '../call.ts';
+import type { CallDependencies, ProviderResult, ProviderValue } from '../call.ts';
 import {
   call,
   deploymentOf,
@@ -62,16 +63,23 @@ export async function readAdvanced(
   return head.value === binding.baseRevision ? { state: 'absent' } : { state: 'unknown' };
 }
 
-/** `site.request.read`: whether the review request reads merged at the proposal's head, so none is left open. */
+/** `site.request.read`: the review request's fields, or none when it cannot be read. */
+async function readRequest(
+  binding: SiteBinding,
+  deps: CallDependencies,
+): Promise<ProviderValue | undefined> {
+  const { repository, proposal } = binding;
+  const read = await call('site.request.read', { repository, number: proposal.request }, deps);
+  return read.kind === 'ok' ? read.value : undefined;
+}
+
+/** Whether the review request reads merged at the proposal's head, so none is left open. */
 export async function requestClosed(
   binding: SiteBinding,
   deps: CallDependencies,
 ): Promise<boolean> {
-  const { repository, proposal } = binding;
-  const read = await call('site.request.read', { repository, number: proposal.request }, deps);
-  return (
-    read.kind === 'ok' && read.value['merged'] === true && read.value['head.sha'] === proposal.head
-  );
+  const read = await readRequest(binding, deps);
+  return read?.['merged'] === true && read['head.sha'] === binding.proposal.head;
 }
 
 /** `site.source.advance`: the default branch moved from the approved base to the proposal's head, then its deployment. */
@@ -103,6 +111,9 @@ export async function mergeAndFind(
   const head = await headOf(binding, deps);
   if (head.kind !== 'ok') return head;
   if (head.value !== binding.baseRevision) return stop('refused', 'BASE_MOVED', deps);
+  // A request whose head moved, or that cannot be read, is not the one the person accepted.
+  if ((await readRequest(binding, deps))?.['head.sha'] !== binding.proposal.head)
+    return stop('refused', 'REQUEST_HEAD_MOVED', deps);
   const { repository, defaultBranch: branch } = binding;
   const advanced = await call(
     'site.source.advance',

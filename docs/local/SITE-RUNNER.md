@@ -86,6 +86,9 @@ The publish then moves the default branch to that commit (`site.source.advance`,
 2. The branch's protection refuses force pushes and deletions, administrators
    included (`ANCESTRY_NOT_ENFORCED`).
 3. The branch's head is the pinned base (`BASE_MOVED`).
+4. The review request's head is still the proposal's commit, read through
+   `site.request.read` (`REQUEST_HEAD_MOVED`). A request that cannot be read
+   refuses the same way.
 
 The update names the default branch and the commit, with no `force`, so the
 provider applies it only as a fast-forward. The branch moves from the approved
@@ -95,8 +98,9 @@ is left open on GitHub. The published revision is that commit, and the
 deployment is found by it.
 
 - A commit landing on the default branch in between makes the provider refuse
-  (422). Nothing is applied, the publish is `failed`, and one person task names
-  it.
+  (422). Nothing is applied. The refusal is read back: the branch's head is
+  neither the commit nor the base, so the publish is `unknown`
+  (`RECONCILE_UNPROVEN`), and one person task names it.
 - A send whose answer was lost is read back by the branch's head: at the commit
   it landed, at the base it did not. A send that did not land is sent once more,
   then read back again. Once an answer has been lost, a later refusal proves
@@ -104,8 +108,11 @@ deployment is found by it.
   stay `unknown` (`ADVANCE_NOT_LANDED`). Each waits on one person task.
 - Once live, the runner reads the request. One the provider has not closed as
   merged raises one person task, `REQUEST_LEFT_OPEN`.
-- Any commit to the default branch since the locate stops the publish at
-  `BASE_MOVED`. The person asks for the correction again.
+- Any commit to the default branch since the locate stops the publish with
+  nothing sent. The read back before the send already finds the branch's head
+  neither the commit nor the base, so the task reads `RECONCILE_UNPROVEN`;
+  `BASE_MOVED` is reached only when the head moves between that read and the
+  check. The person asks for the correction again (#2101 re-pins instead).
 
 With `SITE_RUNNER_LOCATE_ONLY=1` the runner takes no claim and signs in to no
 API, and custody holds the catalogued reads only.
