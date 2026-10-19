@@ -59,9 +59,11 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // And the agent record's columns (20261011115838): that runtime's inbox raise
 // asks who the task is assigned to, joining an agent's owner.
 // And #1623 R1's run outcomes: that runtime's pickup reads a stopped attempt's outcome.
+// And AW-08's 0108 reviewed outputs: that runtime's completed handback asks whether a
+// launched step was dispatched and never observed (#1623 R2).
 const SEEDED = (version: string): boolean =>
   THROUGH_0032(version) ||
-  ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4)) ||
+  ['0036', '0085', '0087', '0088', '0100', '0105', '0108'].includes(version.slice(0, 4)) ||
   version.startsWith('20261004040200') ||
   version.startsWith('20261011115838') ||
   `${version}.sql` === '20261019105500_run_outcomes.sql';
