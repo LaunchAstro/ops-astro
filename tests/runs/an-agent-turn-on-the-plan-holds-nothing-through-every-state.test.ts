@@ -68,13 +68,19 @@ const ZERO: Over = {
   drop_state: null,
 };
 
-/** Each state a zero hold reaches, with the facts that state carries. */
+/** Each state a zero hold reaches, with the facts that state carries (0085's dates, 0110's unknown_since). */
+const OPEN = { ended_at: null, completed_at: null, landed_at: null, unknown_since: null };
 const STATES: readonly Over[] = [
-  { state: 'reserved', actual_minor: null },
-  { state: 'dispatched', actual_minor: null },
+  { state: 'reserved', actual_minor: null, ...OPEN },
+  { state: 'dispatched', actual_minor: null, ...OPEN },
   { state: 'settled', actual_minor: 0 },
   { state: 'released', actual_minor: null },
-  { state: 'liability_unknown', actual_minor: null },
+  {
+    state: 'liability_unknown',
+    actual_minor: null,
+    ...OPEN,
+    unknown_since: new Date().toISOString(),
+  },
 ];
 
 const REFUSED: readonly { readonly name: string; readonly over: Over }[] = [

@@ -34,7 +34,8 @@ async function turnUnder(limit: number) {
   world.provider.script([replied('Read it.')]);
   const seen = world.provider.seen.length;
   const answer = await asAgent('/model/call', work, turnBody(work, 0, [await taskPart(work)]), as);
-  const held = sizing.built.find((one) => !one.atSend)?.bytes ?? 0;
+  // The first build's bytes: the hold's, or the send's where the hold builds none (the same bytes).
+  const held = sizing.built[0]?.bytes ?? 0;
   return { answer, work, held, sent: world.provider.seen.length - seen };
 }
 
