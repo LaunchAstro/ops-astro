@@ -226,10 +226,9 @@ export async function insertLiveCorrection(
 }
 
 /**
- * One correction by its id on `taskId`, locked, with no grant filter: the
- * system's read for the runner, whose authority is the worker lease on that
- * task (`correction-receipts.ts` checks it in the same transaction). A
- * correction on another task, or one not pinned yet (#1693), is not read,
+ * One correction by its id on `taskId`, locked, with no grant filter: the system's read for the
+ * runner, whose authority is the worker lease on that task (`correction-receipts.ts` checks it in
+ * the same transaction). A correction on another task, or one not pinned yet (#1693), is not read,
  * locked or told apart from none.
  */
 export async function lockCorrectionForSystem(
@@ -249,9 +248,8 @@ export async function lockCorrectionForSystem(
 }
 
 /**
- * One correction the caller's grant covers at its party, locked for the
- * caller's write, or undefined: absent, in another business, or not covered
- * are one answer.
+ * One correction the caller's grant covers at its party, locked for the caller's write, or
+ * undefined: absent, in another business, or not covered are one answer.
  *
  * The grant is judged twice: in the locking read, so a caller it does not
  * cover never waits on the row, and again once the lock is held and the
