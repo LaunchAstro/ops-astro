@@ -15,6 +15,7 @@ const folded = (text: string): string => text.replaceAll(/\s+/gu, ' ');
 
 const CLI_DOC = 'docs/local/CLI.md';
 const CLI_MAIN = 'apps/cli/main.ts';
+const CLI_VERBS = 'apps/cli/verbs.ts';
 
 /** The exit-code table row of `CLI.md` for `code`. */
 function exitRow(code: number): string {
@@ -42,7 +43,8 @@ describe('CLI.md exit codes', () => {
 
   it('row 2 names the canonical-form refusal and both unwritable credential files', () => {
     const main = read(CLI_MAIN);
-    expect(main).toContain('the body has no canonical form');
+    expect(read(CLI_VERBS)).toContain('the body has no canonical form');
+    expect(main).toContain('operationBody as body,');
     // Both checks run before the request that issues the credential.
     const login = main.slice(main.indexOf('async function login('));
     expect(login.indexOf("assertWritable(tokenFile, 'the login token')")).toBeGreaterThan(0);
