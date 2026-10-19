@@ -74,20 +74,28 @@ describe.skipIf(serverUrl === undefined)('C57 deciding a change request', () => 
 
   it('C57 agent approval refused', async () => {
     const id = await filed();
-    const credential = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
-      const minted = await mintDelegation(tx, {
-        agentActorId: w.world.agentActorId,
-        delegatePersonId: w.ava.personId,
-        mintedByActorId: w.ava.actorId,
-        purpose: `decide_${id.slice(0, 8)}`,
-        collections: ['proposal'],
-        actions: ['write', 'decide'],
-        purposeScope: { kind: 'record', id: w.taskA },
-        expiresAt: new Date(Date.now() + 3_600_000),
-      });
-      if (!minted.ok) throw new Error(`mintDelegation refused ${minted.refusal.code}`);
-      return minted.value.credential;
-    });
+    const mint = async (actions: readonly ('write' | 'decide')[]) =>
+      await w.world.db.app.withBusiness(
+        w.world.business,
+        async (tx) =>
+          await mintDelegation(tx, {
+            agentActorId: w.world.agentActorId,
+            delegatePersonId: w.ava.personId,
+            mintedByActorId: w.ava.actorId,
+            purpose: `decide_${actions.join('_')}_${id.slice(0, 8)}`,
+            collections: ['proposal'],
+            actions: [...actions],
+            purposeScope: { kind: 'record', id: w.taskA },
+            expiresAt: new Date(Date.now() + 3_600_000),
+          }),
+      );
+    // A delegation never carries a decision.
+    const withDecide = await mint(['write', 'decide']);
+    expect(withDecide.ok ? 'minted' : withDecide.refusal.code).toBe('DELEGATION_EXCLUDES_DECISION');
+    // The most an agent holds is the filing key, and a decision is refused at the door.
+    const writeOnly = await mint(['write']);
+    if (!writeOnly.ok) throw new Error(`mintDelegation refused ${writeOnly.refusal.code}`);
+    const { credential } = writeOnly.value;
     const asked = await w.world.asAgent(
       {
         command: 'review.decide_change',
