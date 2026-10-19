@@ -23,8 +23,8 @@ export type ShepherdHoldRefusal = 'LEASE_NOT_OWNED' | 'APPROVAL_NOT_STANDING';
 
 /**
  * The occurrence's run held for this transaction: its lease (the caller's, on the run the
- * occurrence's dispatch started, its fence current) share-locked first, then the occurrence and its
- * activation; the clock is read once after the locks, and the lease must be live at it, the
+ * occurrence's dispatch started, its fence current, held by an active worker) share-locked first, then the occurrence's activation (an occurrence row
+ * never changes once written); the clock is read once after the locks, and the lease must be live at it, the
  * activation enabled on the occurrence's version and its standing approval unrevoked.
  */
 export async function holdShepherdRun(
@@ -37,8 +37,11 @@ export async function holdShepherdRun(
        join public.occurrence_dispatches d
          on d.business_id = l.business_id and d.run_id = l.run_id and d.occurrence_id = $5
             and d.outcome = 'started'
+       join public.actors w
+         on w.business_id = l.business_id and w.id = l.holder_actor_id and w.kind = 'worker'
+            and w.active
       where l.business_id = $1 and l.id = $2 and l.fence = $3 and l.holder_actor_id = $4
-      for share of l`,
+      for share of l, w`,
     [tx.businessId, lease.leaseId, lease.fence, lease.workerActorId, occurrenceId],
   );
   if (held === undefined) return 'LEASE_NOT_OWNED';
@@ -54,7 +57,7 @@ export async function holdShepherdRun(
        join public.leases l on l.business_id = o.business_id and l.id = $3,
             instant
       where o.business_id = $1 and o.id = $2
-      for share of o, a`,
+      for share of a`,
     [tx.businessId, occurrenceId, lease.leaseId],
   );
   if (standing === undefined || !standing.live) return 'LEASE_NOT_OWNED';

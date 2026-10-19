@@ -11,6 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  advisoryLock,
   approveShepherdSend,
   existingShepherdSend,
   holdShepherdRun,
@@ -68,6 +69,11 @@ export async function runReviewShepherd(
   }
   const refused = await holdShepherdRun(tx, request.occurrenceId, request.lease);
   if (refused !== undefined) return { kind: 'refused', code: refused };
+  // Held to commit: a second run of the same walk-through waits, then answers the first.
+  await advisoryLock(
+    tx,
+    `review_shepherd:${tx.businessId}:${request.occurrenceId.toLowerCase()}:${request.reviewId.toLowerCase()}`,
+  );
   const earlier = await existingShepherdSend(tx, request.occurrenceId, request.reviewId);
   if (earlier !== undefined) return raised(earlier, 0);
   const pending = await readShepherdPending(tx, request.reviewId);
