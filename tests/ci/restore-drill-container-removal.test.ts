@@ -111,7 +111,7 @@ describe('the restore drill and its container lifeline', () => {
     let options: unknown;
     const healthy = standIn(calls, () => 0);
     const record = await drill((args, input, given) => {
-      if (args.includes('sh')) {
+      if (args[0] === 'exec' && args.includes('sh')) {
         options = given;
         (input as NodeJS.ReadableStream).on('end', () => ended.push(calls.length));
       }
@@ -121,9 +121,15 @@ describe('the restore drill and its container lifeline', () => {
     const name = calls[0]?.[calls[0].indexOf('--name') + 1] ?? '';
     // tini as PID 1 passes the lifeline's interrupt on to the server, whatever stage it is at.
     expect(calls[0]).toContain('--init');
-    const line = calls.findIndex((args) => args.includes('sh'));
+    const line = calls.findIndex((args) => args[0] === 'exec' && args.includes('sh'));
     expect(line, 'the lifeline begins as soon as the container runs').toBe(1);
-    expect(calls[line]).toEqual(['exec', '-i', name, 'sh', '-c', 'cat > /dev/null; kill -INT 1']);
+    expect(calls[line]?.slice(0, 5)).toEqual(['exec', '-i', name, 'sh', '-c']);
+    const marker = /^touch (\S+); cat > \/dev\/null; kill -TERM 1$/u.exec(
+      calls[line]?.[5] ?? '',
+    )?.[1];
+    // Until the line checks in, the container stops itself: a drill killed before it began.
+    expect(calls[0]?.at(-1)).toMatch(/& sleep 15; \[ -e (\S+) \] && wait$/u);
+    expect(calls[0]?.at(-1)).toContain(`[ -e ${marker ?? 'no marker'} ]`);
     // Its own process group, so a signal to the drill's group leaves it to close the line.
     expect(options).toEqual({ detached: true });
     await new Promise((resolve) => {

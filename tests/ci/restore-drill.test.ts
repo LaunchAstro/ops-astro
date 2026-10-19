@@ -525,7 +525,7 @@ function drillTargetCases1() {
 
       const [first, ...rest] = calls;
       expect(first?.slice(0, 5)).toEqual(['run', '-d', '--rm', '--network', 'none']);
-      expect(first?.at(-1)).toBe(IMAGE);
+      expect(first?.at(-3)).toBe(IMAGE);
       expect(
         first?.some((arg) => /^(-p|--publish|-v|--volume|--mount|--add-host)$/u.test(arg)),
       ).toBe(false);
