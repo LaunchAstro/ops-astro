@@ -95,6 +95,12 @@ export interface Applied {
    * which alone knows whose access it ended.
    */
   readonly endsOwnAccess?: true;
+  /**
+   * The delegation whose credential the answer hands over, which the caller
+   * did not present: a take of a launch. The agent's last judgement holds it
+   * live after its last wait, as it holds a presented one (`agent-standing.ts`).
+   */
+  readonly handsOver?: string;
 }
 
 export interface Refused {

@@ -243,7 +243,7 @@ async function runAgentCommand(
   });
   return await enter(tx, session, request, {
     release: async (stored, identified) =>
-      await releaseReplay(tx, callOf(identified), operation, stored),
+      await releaseReplay(tx, callOf(identified), operation, stored, verified),
     attempt: async (identified, digest) =>
       await operation.open(
         async (row) => await runRow(tx, callOf(identified), verified, identified, row, digest),

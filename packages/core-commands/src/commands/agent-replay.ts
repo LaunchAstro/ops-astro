@@ -15,13 +15,14 @@ import {
   LEGACY_SCHEME,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
+import { workJudged } from './agent-standing.ts';
 import type { AgentCall } from './agent-call.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
@@ -37,6 +38,7 @@ export async function releaseReplay(
   call: AgentCall,
   operation: AgentOperation,
   stored: CommandHandle,
+  presented: VerifiedSubject,
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
     case 'pickup':
@@ -44,7 +46,9 @@ export async function releaseReplay(
     case 'serveAgain':
       return await operation.open(async (row) => await serveAgain(tx, call, row));
     case 'takeLaunch':
-      return await operation.open(async (row) => await replayTake(tx, call, row, stored));
+      return await operation.open(
+        async (row) => await replayTake(tx, call, row, stored, presented),
+      );
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
     case 'childPickup':
@@ -98,13 +102,16 @@ async function serveAgain<O extends object>(
  * later one: an empty take stays empty (the stored answer, once the login and
  * the credential it presents are judged again as a fresh take's are), and one
  * that named a launch is served again for that launch alone, as it stands now.
- * A launch made since is never taken under the old operation identity.
+ * A launch made since is never taken under the old operation identity. The
+ * stored answer keeps no credential, so this serve is the one that hands it
+ * over, and it is judged again after its waits as a fresh take is.
  */
 async function replayTake<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
   operation: TypedOperation<O>,
   stored: CommandHandle,
+  presented: VerifiedSubject,
 ): Promise<CommandResult | undefined> {
   const launchId = stored.detail['launchId'];
   if (typeof launchId !== 'string') {
@@ -112,7 +119,17 @@ async function replayTake<O extends object>(
     if ('refusal' in authorised) return authorised.refusal;
     return presentedCredential(call)?.refusal;
   }
-  return await serveAgain(tx, { ...call, request: { ...call.request, launchId } }, operation);
+  const again = { ...call, request: { ...call.request, launchId } };
+  const authorised = await authorise(tx, again, operation);
+  if ('refusal' in authorised) return authorised.refusal;
+  const operands = operation.operands(again.request);
+  if (isOperandRefusal(operands)) return operands.refusal;
+  const judged = { call: again, presented, authority: operation.authority };
+  const served = await workJudged(tx, judged, async () => await authorised.run(operands));
+  if ('ended' in served) return served.ended;
+  if (isRefused(served)) return served.refusal;
+  const { recordId, revision, detail } = served;
+  return { command: call.request.command, recordId, revision, detail };
 }
 
 /**
