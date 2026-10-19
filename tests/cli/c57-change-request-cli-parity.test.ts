@@ -131,7 +131,7 @@ describe.skipIf(serverUrl === undefined)(
 
     beforeAll(async () => {
       scratch = mkdtempSync(join(tmpdir(), 'c57-cli-parity-'));
-      world = await createWorld('c57-cli-parity');
+      world = await createWorld('c57_cli_parity');
       api = await serveApi(world);
       const task = await ok('task.create', { fields: { title: 'a page under review' } });
       taskId = String(task['recordId']);
