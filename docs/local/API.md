@@ -1669,9 +1669,11 @@ shipped worker's runner is the agent's (`apps/worker/agent-runner.ts`, #1717
 R8b), its turns `model.agent_turn` (#2091). The `api` and `local-gpt`
 installs answer it with the replay provider, beside `model.replay_compose` and
 `model.replay_turn`. A carried deployment whose settings hold the owner's plan
-route answers it on the plan, text only: the plan's answer is words, and an
-answer with any call is malformed, so a written one is held as unknown and no
-tool runs. An uncarried Ollama install, or a carried one with no plan route,
+route answers it on the plan, offering the plan the turn's tools under the
+plan's names (`task_read`, `live_correction_request`, #2115). The plan's calls
+come back under the catalogue's names; one outside that table, with arguments
+other than its tool's operands exactly, or under an id used twice, makes the
+answer malformed, so a written one is held as unknown and no tool runs. An uncarried Ollama install, or a carried one with no plan route,
 does not catalogue it (`OPERATION_NOT_CATALOGUED`), and an install with no
 broker refuses the turn; either way the attempt ends there. A test may hand the
 synthetic runner, which computes nothing. A success hands the work back as its

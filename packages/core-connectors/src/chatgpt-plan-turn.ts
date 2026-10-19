@@ -14,8 +14,13 @@
 // - a system part, once #1904 binds definitions, the instructions; until
 //   then the pinned ones stand.
 //
-// Text only (register 164): the plan is offered no tool, so it can only
-// answer in words, and an answer holding any call is malformed.
+// The tools the turn offered go to the plan as strict function tools, under
+// the plan's name for each from one closed table (#2115): `task.read` is
+// `task_read` and `live_correction.request` is `live_correction_request`. A
+// name outside it, offered or in a call, sends no input. The answer's calls
+// come back under the catalogue's names, each held to its tool's operands
+// exactly as the broker holds them (`broker-turn-read.ts`); one out of shape
+// makes the whole answer malformed.
 
 import { canonicalPayload } from '../../core-digest/src/index.ts';
 import {
@@ -28,8 +33,15 @@ import {
   readChatgptPlanAnswer,
   readChatgptPlanToolCalls,
   type PlanItem,
+  type PlanTool,
+  type PlanToolCall,
 } from './chatgpt-plan.ts';
-import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
+import type {
+  AdapterRequest,
+  ModelAnswer,
+  ModelOperationDeclaration,
+  ModelToolCall,
+} from './operation.ts';
 import { AGENT_TURN_KEY } from './replay-adapter.ts';
 
 /** The instructions a turn goes under while no definition part is bound (#1904). */
@@ -39,16 +51,63 @@ export const AGENT_TURN_INSTRUCTIONS: string = [
   'Use only the tools you are offered, and answer in Australian English.',
 ].join('\n');
 
+interface AgentTool {
+  /** The plan's name for it: the Responses route takes no dot in a tool's name. */
+  readonly plan: string;
+  readonly description: string;
+  readonly operands: readonly string[];
+}
+
+/**
+ * The closed name table: each catalogue tool the plan may be offered, by the
+ * catalogue's name, with its operands, every one a string. They are the
+ * catalogue's (`declarationOf`), which connectors may not import; a pin test
+ * holds them equal.
+ */
+const TOOLS: ReadonlyMap<string, AgentTool> = new Map([
+  [
+    'task.read',
+    { plan: 'task_read', description: 'Read this task as it stands now.', operands: ['taskId'] },
+  ],
+  [
+    'live_correction.request',
+    {
+      plan: 'live_correction_request',
+      description:
+        "Ask for one word on the business's own live page to be replaced by another. A person reviews it.",
+      operands: ['taskId', 'page', 'word', 'replacement'],
+    },
+  ],
+]);
+
+/** A tool as the plan is offered it: strict, every operand a required string and nothing else. */
+const planToolOf = ({ plan, description, operands }: AgentTool): PlanTool => ({
+  name: plan,
+  description,
+  parameters: {
+    type: 'object',
+    properties: Object.fromEntries(operands.map((key) => [key, { type: 'string' }])),
+    required: operands,
+    additionalProperties: false,
+  },
+});
+
+/** The catalogue's name for each of the plan's. */
+const CATALOGUE: ReadonlyMap<string, string> = new Map(
+  [...TOOLS].map(([name, { plan }]) => [plan, name]),
+);
+
+/** The broker's bounds on a call's arguments (`broker-turn-read.ts`) and the plan's on its ids. */
+const MOST_OPERAND_UNITS = 4096;
+const MOST_ARGUMENT_BYTES = 16 * 1024;
+const CALL_ID = /^[A-Za-z0-9_-]{1,128}$/u;
+
 type Message =
   | { readonly role: 'system' | 'user'; readonly text: string }
   | {
       readonly role: 'assistant';
       readonly text: string;
-      readonly toolCalls: readonly {
-        readonly id: string;
-        readonly name: string;
-        readonly args: Readonly<Record<string, unknown>>;
-      }[];
+      readonly toolCalls: readonly ModelToolCall[];
     }
   | { readonly role: 'tool'; readonly toolCallId: string; readonly text: string };
 
@@ -62,20 +121,39 @@ function messagesOf(text: string | undefined): readonly Message[] {
   }
 }
 
+/** The offered tools as the plan takes them, or undefined when one is outside the table. */
+function toolsOf(text: string | undefined): readonly PlanTool[] | undefined {
+  try {
+    const names: unknown = JSON.parse(text ?? '[]');
+    if (!Array.isArray(names)) return undefined;
+    const tools = names.map((name) => TOOLS.get(String(name)));
+    return tools.every((tool) => tool !== undefined)
+      ? tools.map((tool) => planToolOf(tool))
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One bound message as the plan's input items; an answer's empty words send no assistant turn. */
-function itemsOf(message: Message): readonly PlanItem[] {
+function itemsOf(message: Message): readonly (PlanItem | undefined)[] {
   switch (message.role) {
     case 'user':
       return [{ role: 'user', content: message.text }];
     case 'assistant':
       return [
         ...(message.text === '' ? [] : [{ role: 'assistant' as const, content: message.text }]),
-        ...message.toolCalls.map((call) => ({
-          type: 'function_call' as const,
-          call_id: call.id,
-          name: call.name,
-          arguments: canonicalPayload(call.args),
-        })),
+        ...message.toolCalls.map((call) => {
+          const plan = TOOLS.get(call.name)?.plan;
+          return plan === undefined
+            ? undefined
+            : {
+                type: 'function_call' as const,
+                call_id: call.id,
+                name: plan,
+                arguments: canonicalPayload(call.args),
+              };
+        }),
       ];
     case 'tool':
       return [{ type: 'function_call_output', call_id: message.toolCallId, output: message.text }];
@@ -86,8 +164,9 @@ function itemsOf(message: Message): readonly PlanItem[] {
 
 /**
  * The adapter: the turn's messages as the pinned call on the plan's smaller
- * model, under a bound system part's words or the pinned instructions. A
- * malformed `turn` sends no input, which the M5's check refuses.
+ * model, under a bound system part's words or the pinned instructions, with
+ * the tools the turn offered. A malformed `turn`, or a tool outside the
+ * table, sends no input, which the M5's check refuses.
  */
 export function chatgptPlanTurnAdapter(
   values: Readonly<Record<string, string>>,
@@ -95,24 +174,68 @@ export function chatgptPlanTurnAdapter(
 ): AdapterRequest {
   const messages = messagesOf(values['turn']);
   const system = messages.find((message) => message.role === 'system');
+  const tools = toolsOf(values['tools']);
+  const items = messages.flatMap((message) => itemsOf(message));
+  const input = tools !== undefined && items.every((item) => item !== undefined) ? items : [];
   return {
     path: CHATGPT_PLAN_PATH,
     method: 'POST',
     body: chatgptPlanBody({
       model: CHATGPT_PLAN_DEFAULT_MODEL,
       instructions: system?.text ?? AGENT_TURN_INSTRUCTIONS,
-      input: messages.flatMap((message) => itemsOf(message)),
+      input: input as PlanItem[],
+      ...(tools === undefined || tools.length === 0 ? {} : { tools }),
     }),
   };
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Its arguments, a JSON object of exactly the tool's operands, or undefined. */
+function argumentsOf(
+  text: string,
+  operands: readonly string[],
+): Record<string, unknown> | undefined {
+  let args: unknown;
+  try {
+    args = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!isObject(args) || Object.keys(args).length !== operands.length) return undefined;
+  const kept = operands.every((key) => {
+    const value = Object.hasOwn(args, key) ? args[key] : undefined;
+    return typeof value === 'string' && value !== '' && value.length <= MOST_OPERAND_UNITS;
+  });
+  const fits = Buffer.byteLength(canonicalPayload(args), 'utf8') <= MOST_ARGUMENT_BYTES;
+  return kept && fits ? args : undefined;
+}
+
+/** One of the plan's calls as the catalogue's, or undefined when it is out of shape. */
+function callOf(call: PlanToolCall): ModelToolCall | undefined {
+  const name = CATALOGUE.get(call.name);
+  const tool = name === undefined ? undefined : TOOLS.get(name);
+  if (name === undefined || tool === undefined || !CALL_ID.test(call.callId)) return undefined;
+  const args = argumentsOf(call.arguments, tool.operands);
+  return args === undefined ? undefined : { id: call.callId, name, args };
+}
+
 /**
- * A turn's answer: the plan's words, with no calls (none is an absent
- * `toolCalls`), since text only offers it no tool; any call is malformed.
+ * A turn's answer: the plan's words, and its calls under the catalogue's
+ * names (none is an absent `toolCalls`). Any call out of shape, or two under
+ * one id, makes the whole answer malformed.
  */
 export function readChatgptPlanTurnAnswer(body: unknown): ModelAnswer | undefined {
+  const answer = readChatgptPlanAnswer(body);
   const calls = readChatgptPlanToolCalls(body);
-  return calls?.length === 0 ? readChatgptPlanAnswer(body) : undefined;
+  if (answer === undefined || calls === undefined) return undefined;
+  if (calls.length === 0) return answer;
+  const toolCalls = calls.map((call) => callOf(call));
+  const once = new Set(calls.map((call) => call.callId)).size === calls.length;
+  return once && toolCalls.every((call) => call !== undefined)
+    ? { ...answer, toolCalls }
+    : undefined;
 }
 
 /**
