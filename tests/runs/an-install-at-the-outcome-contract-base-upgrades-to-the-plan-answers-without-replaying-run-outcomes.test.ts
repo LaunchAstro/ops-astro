@@ -50,13 +50,16 @@ it('an install at the outcome contract base upgrades to the plan answers without
       });
       await expect(applyMigrations(db.admin, readMigrations('migrations'))).resolves.toBeDefined();
       const ledger = await db.admin.execute<{ version: string }>(
-        `select version from ops.schema_migrations where version in ('20261019083500', '20261019090000')
+        `select version from ops.schema_migrations where version in ('20261019083500_run_outcomes', '20261019090000_run_outcomes_plan_answers')
           order by version`,
       );
       expect(
         ledger,
         'the base kept its run_outcomes row and the upgrade added the plan answers',
-      ).toEqual([{ version: '20261019083500' }, { version: '20261019090000' }]);
+      ).toEqual([
+        { version: '20261019083500_run_outcomes' },
+        { version: '20261019090000_run_outcomes_plan_answers' },
+      ]);
     } finally {
       await db.drop();
     }
