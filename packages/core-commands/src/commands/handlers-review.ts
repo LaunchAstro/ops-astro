@@ -5,6 +5,7 @@
 import type { Handler } from './handler-types.ts';
 import { askReviewCapture, openReview } from './review-commands.ts';
 import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts';
+import { carryPinsAsPerson } from './review-carry.ts';
 import { pinComment } from './review-pin.ts';
 
 type ReviewWrite =
@@ -12,6 +13,7 @@ type ReviewWrite =
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.carry_pins'
   | 'review.pin_comment';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
@@ -19,5 +21,6 @@ export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.capture': askReviewCapture,
   'review.capture_claim': claimCaptureAsPerson,
   'review.capture_land': landCaptureAsPerson,
+  'review.carry_pins': carryPinsAsPerson,
   'review.pin_comment': pinComment,
 };
