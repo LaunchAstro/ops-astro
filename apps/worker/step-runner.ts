@@ -8,8 +8,8 @@
 // person's cancel, or the runner's own `run.end`). Nothing irreversible runs
 // before a Launch: after it, the worker's own apply path runs unchanged.
 //
-// The synthetic runner is the default and computes nothing. The agent runner
-// is injected by its own tests and wired by #1624.
+// The synthetic runner is the default and computes nothing; the shipped
+// worker (`main.ts`) hands the agent's runner (#1717 R8b).
 
 import type { EndCode, RunOutcome } from '../../packages/core-wire/src/index.ts';
 import type { Call } from './agent-call.ts';
