@@ -48,7 +48,7 @@ export interface ReviewAgentRow {
 /**
  * The task a review body names: the open's `taskId`, or the task of the capture's revision's
  * review, read in this business. Never a `recordId`, so a stray one steers nothing. A review's
- * task and a revision's review are never updated (20261019050000), so the task read here is
+ * task and a revision's review are never updated (20261019140000), so the task read here is
  * the one the write lands on.
  */
 export async function reviewTaskOf(
