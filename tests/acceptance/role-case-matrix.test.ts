@@ -485,6 +485,36 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (declaration === undefined) throw new Error(`matrix: no declaration ${name}`);
       return harness.pairFor(declaration);
     };
+    /**
+     * C57 part B (#2117): the request is made a task under a lease of the sender's own, one per
+     * task. The admin's recipe lease on the review's task is handed back, and the member picks
+     * up fresh approved work on that task and makes the request under it.
+     */
+    async function memberMakesChangeTask(
+      caller: (typeof harness.otherCallers)[number],
+      declaration: (typeof COMMAND_SURFACE)[number],
+    ): Promise<void> {
+      const prepared = await harness.positiveBody(declaration);
+      if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
+      const { leaseId, fence, changeRequestId } = prepared.body;
+      await harness.asPerson('task.handback', { leaseId, fence, outcome: 'completed' });
+      const [task] = await harness.world.db.admin.execute<{ readonly task_id: string }>(
+        'select task_id from public.review_change_requests where id = $1',
+        [changeRequestId],
+      );
+      const decided = await harness.reserve(
+        { id: String(task?.task_id), revision: 0 },
+        `draft_${randomUUID().slice(0, 8)}`,
+      );
+      const { reservationId } =
+        (decided.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const picked = await harness.asPerson('task.pickup', { reservationId }, 'alpha', caller);
+      const lease = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const body = { leaseId: lease['leaseId'], fence: lease['fence'], changeRequestId };
+      const answer = await harness.asPerson(declaration.name, body, 'alpha', caller);
+      observe(caller.name, 'e-member-positive', declaration.name, answer, SUCCESS);
+    }
+
     async function driveOwnLease(
       caller: (typeof harness.otherCallers)[number],
       grants: ReadonlySet<string>,
@@ -583,6 +613,11 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             declaration.name,
             'executed alternative: claimed and landed under the admin’s own lease, case (a)',
           );
+          continue;
+        }
+        if (declaration.name === 'review.make_change_task') {
+          // eslint-disable-next-line no-await-in-loop
+          await memberMakesChangeTask(caller, declaration);
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
