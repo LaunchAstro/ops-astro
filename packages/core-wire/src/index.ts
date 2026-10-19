@@ -250,6 +250,13 @@ export {
   type ProposedPlan,
   type TaskProposal,
 } from './task-proposal.ts';
+export {
+  SITE_PAGE_LIMIT,
+  SITE_TEXT_LIMIT,
+  sitePlanRequest,
+  type SitePageView,
+  type SitePlan,
+} from './site-plan.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

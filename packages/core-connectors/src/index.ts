@@ -238,6 +238,7 @@ export {
 } from './ollama.ts';
 export {
   conversationInstructions,
+  promptSites,
   promptPage,
   TASK_BLOCK_FENCE,
   type PromptPage,
