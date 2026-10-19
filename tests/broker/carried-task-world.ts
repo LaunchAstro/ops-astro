@@ -28,6 +28,7 @@ import {
   type Broker,
   type BrokerRoute,
   type Carriage,
+  type Handoff,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import { taskHandoff } from '../../packages/core-commands/src/commands/task-carriage.ts';
@@ -96,6 +97,8 @@ export interface CarriedTaskWorld {
   readonly token: string;
   /** What runs while the model agent prepares, before it accepts; a case sets it. */
   duringPrepare: () => Promise<void>;
+  /** What runs once the send judgement has passed, its locks held, before the send is written. */
+  duringFence: () => Promise<void>;
   close(): Promise<void>;
 }
 
@@ -161,7 +164,10 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
   });
   await holdsRole('owner');
   const plan = await openPlanRouteWorld();
-  const box = { duringPrepare: async (): Promise<void> => {} };
+  const box = {
+    duringPrepare: async (): Promise<void> => {},
+    duringFence: async (): Promise<void> => {},
+  };
   const paused = (custody: AgentCustody): AgentCustody => ({
     ...custody,
     prepare: async () => {
@@ -181,7 +187,11 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
   });
   if ('because' in agent) throw new Error(`the model agent did not start: ${agent.because}`);
   const carried: string[] = [];
-  const custody = carriedCustody({ carriage: tapped(hubCarriage(hub), carried), keys: parsed.keys, key });
+  const custody = carriedCustody({
+    carriage: tapped(hubCarriage(hub), carried),
+    keys: parsed.keys,
+    key,
+  });
   return {
     hub,
     plan,
@@ -203,6 +213,12 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
     },
     set duringPrepare(next) {
       box.duringPrepare = next;
+    },
+    get duringFence() {
+      return box.duringFence;
+    },
+    set duringFence(next) {
+      box.duringFence = next;
     },
     close: async () => {
       await agent.stop();
@@ -233,7 +249,7 @@ export async function carriedCall(
     return result;
   }
   const { reserved } = reserving;
-  const carry =
+  const handoff =
     on.carrier === undefined
       ? undefined
       : taskHandoff(s.db.app, s.business, world.presented, world.token, {
@@ -243,5 +259,19 @@ export async function carriedCall(
           broker: on,
           timeoutMs: reserved.operation.timeoutMs,
         });
+  const carry =
+    handoff === undefined
+      ? undefined
+      : (callId: string): Handoff => {
+          const real = handoff(callId);
+          return {
+            ...real,
+            fence: async (accept) => {
+              const fenced = await real.fence(accept);
+              if (fenced.ok) await world.duringFence();
+              return fenced;
+            },
+          };
+        };
   return await sendReservedCall(s.db.app, s.business, asking, request, reserved, on, carry);
 }
