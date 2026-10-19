@@ -191,3 +191,5 @@ tests/review/stop-ended-by-a-signal-records-nothing-proof.test.ts
 # The agency About page as served (#1687), kept byte for byte as captured apart
 # from its masked names; the real-page check reads these bytes. See its README.
 tests/site/fixtures/agency-about/about.live.html
+# Sol's #2159 r1 proof (S2159-2, S2159-3), byte-for-byte as the review patch held it
+tests/web/a-dock-switch-keeps-no-earlier-persons-words-or-writes-proof.test.tsx
