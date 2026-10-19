@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 under a delegation, after the wait: an agent's open or capture parked on its review row is refused once its delegation or its person's review:write was revoked during the wait, keeping no revision or capture."
+}
