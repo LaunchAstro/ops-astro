@@ -550,7 +550,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.decide': ['reviewId'],
   'review.decide_change': ['changeRequestId'],
   'review.make_change_task': ['leaseId', 'changeRequestId'],
-  'review.open': ['taskId'],
+  'review.open': ['taskId', 'correctionId'],
   'review.pin_comment': ['revisionId'],
   'review.propose_change': ['commentId'],
   'review.record_astra_review': ['reviewId'],
