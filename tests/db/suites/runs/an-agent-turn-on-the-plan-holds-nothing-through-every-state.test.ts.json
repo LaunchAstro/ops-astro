@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2091 gap v2-2: a task call holds nothing only as model.agent_turn on a cloud subscription route, the exception true and never unknown on a null fact, in every state it reaches, settled at nothing."
+}
