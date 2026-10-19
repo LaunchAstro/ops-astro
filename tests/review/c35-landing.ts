@@ -105,12 +105,14 @@ export interface StoredCapture {
   readonly picture_digest: string | null;
 }
 
+/** A plain array, so `toStrictEqual` against a literal compares the rows, not the driver's result type. */
 export const capturesOf = async (
   w: C35World,
   revisionId: string,
-): Promise<readonly StoredCapture[]> =>
-  await w.world.db.admin.execute<StoredCapture>(
+): Promise<readonly StoredCapture[]> => [
+  ...(await w.world.db.admin.execute<StoredCapture>(
     `select width, state, lease_id, picture_id, picture_digest from public.review_captures
       where revision_id = $1 order by width desc`,
     [revisionId],
-  );
+  )),
+];
