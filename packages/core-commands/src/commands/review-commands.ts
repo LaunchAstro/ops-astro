@@ -28,7 +28,7 @@ import type {
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type Applied, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
@@ -68,14 +68,30 @@ async function endedSince(
   tx: TenantQuery,
   { covering, writer }: ReviewActing,
   partyId: string | null,
-): Promise<HandlerOutcome | undefined> {
+): Promise<CommandRefusal | undefined> {
   const { delegationId } = writer;
   const stood = await standsAfterWaits(tx, {
     covering,
     partyId,
     ...(delegationId === null ? {} : { delegationId }),
   });
-  return stood === 'stands' ? undefined : refused(endedRefusal(stood, delegationId !== null));
+  return stood === 'stands' ? undefined : endedRefusal(stood, delegationId !== null);
+}
+
+/**
+ * The write's authority read again once its own locks are met and, for an agent, once more after
+ * the agent entry's last wait, the agent actor's `for share` (`lastCheck`, `agent-standing.ts`):
+ * a grant that expires during either wait refuses the write, and nothing it wrote is kept.
+ */
+async function standing(
+  tx: TenantQuery,
+  acting: ReviewActing,
+  partyId: string | null,
+  outcome: Applied,
+): Promise<HandlerOutcome> {
+  const ended = await endedSince(tx, acting, partyId);
+  if (ended !== undefined) return refused(ended);
+  return { ...outcome, lastCheck: async () => await endedSince(tx, acting, partyId) };
 }
 
 const OPEN_OPERANDS = ['pageUrl', 'path', 'sourceRevision'] as const;
@@ -121,14 +137,17 @@ export async function openReviewAs(
     writer: acting.writer,
   });
   if ('code' in opened) return refused(REFUSALS[opened.code]);
-  const ended = await endedSince(tx, acting, opened.review.partyId);
-  if (ended !== undefined) return ended;
-  return applied(opened.review.id, null, {
-    reviewId: opened.review.id,
-    revisionId: opened.revision.id,
-    number: opened.revision.number,
-    digest: opened.revision.digest,
-  });
+  return await standing(
+    tx,
+    acting,
+    opened.review.partyId,
+    applied(opened.review.id, null, {
+      reviewId: opened.review.id,
+      revisionId: opened.revision.id,
+      number: opened.revision.number,
+      digest: opened.revision.digest,
+    }),
+  );
 }
 
 export async function askReviewCaptureAs(
@@ -146,11 +165,10 @@ export async function askReviewCaptureAs(
   const revisionId = request.revisionId.toLowerCase();
   const asked = await askCaptures(tx, revisionId, acting.covering, acting.writer);
   if ('code' in asked) return refused(REFUSALS[asked.code]);
-  const ended = await endedSince(tx, acting, asked.review.partyId);
-  if (ended !== undefined) return ended;
-  return applied(asked.review.id, null, {
-    reviewId: asked.review.id,
-    revisionId,
-    widths: [1480, 390],
-  });
+  return await standing(
+    tx,
+    acting,
+    asked.review.partyId,
+    applied(asked.review.id, null, { reviewId: asked.review.id, revisionId, widths: [1480, 390] }),
+  );
 }
