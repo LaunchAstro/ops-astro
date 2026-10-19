@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C57: an agent filing from a client pin is refused CLIENT_MODEL_USE_OFF and told it waits on a local model, with nothing filed and no model call; a person files the same pin."
+}
