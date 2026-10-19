@@ -47,6 +47,13 @@ export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   readonly changeRequests: readonly ChangeRequestView[];
 }
 
+interface RevisionRow {
+  readonly id: string;
+  readonly number: number;
+  readonly digest: string;
+  readonly correction_id: string | null;
+}
+
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
 export async function readCoveredReview(
   tx: TenantQuery,
@@ -66,12 +73,7 @@ export async function readCoveredReview(
     [tx.businessId, ...coveringParameters(covering), reviewId],
   );
   if (review === undefined) return undefined;
-  const revisions = await tx.query<{
-    readonly id: string;
-    readonly number: number;
-    readonly digest: string;
-    readonly correction_id: string | null;
-  }>(
+  const revisions = await tx.query<RevisionRow>(
     `select id, number, digest, correction_id from public.review_revisions
       where business_id = $1 and review_id = $2 order by number`,
     [tx.businessId, reviewId],

@@ -146,10 +146,8 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<HandlerOutc
   const locked = await lockPinnedReview(tx, named.reviewId, anchor.source, covering);
   if (locked === undefined) return refused(refuseNotFound());
   if (!locked.widths.includes(anchor.width)) return refused(NO_CAPTURE);
-  const fromLive = sent['liveViewport'] !== undefined;
-  if (fromLive && !(await capturedNewest(tx, anchor.source, anchor.width))) {
-    return refused(FRESH_CAPTURE);
-  }
+  const stale = 'liveViewport' in sent && !(await capturedNewest(tx, anchor.source, anchor.width));
+  if (stale) return refused(FRESH_CAPTURE);
   const written = await writeTaskComment(
     tx,
     {
