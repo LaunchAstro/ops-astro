@@ -28,24 +28,26 @@ delegation, in the same way the worker does (`apps/worker/worker.ts`).
 
 1. A person puts a `site_publish` step on the correction's task and approves
    its gate (`task.propose`, then `task.decide`). The web Launch does this
-   (#1695). The approval puts a reservation on the queue.
+   (#1695). The approval puts a reservation on the queue. A proposal needs a
+   positive ceiling, so Launch names 1 minor unit; the publish spends nothing.
 2. The runner reads `task.queue` as its agent actor and takes the
    `site_publish` entries.
 3. It picks each one up with `task.pickup`. The answer carries the lease id,
    its fence and its expiry.
 4. Under that lease it finds the task's correction in a state it can run
    (`approved`, `accepted` or `unknown`; oldest first, one at a time).
-5. It renews the lease with `task.heartbeat` at half its expiry while it
-   follows the correction. It hands the lease back with `task.handback` once
-   the correction is settled.
+5. It renews the lease with `task.heartbeat` on each pass while it follows
+   the correction. It hands the lease back with `task.handback` once the
+   correction is settled: `completed` when live, else `failed` with the code.
 
 Finding a correction grants nothing. `readCorrectionForRun` checks under its
 locks that the lease is live, is held by this actor at this fence, and covers
 the correction's task, and that the delegation still stands. A correction a
 person has not approved stops at `APPROVAL_MISSING` before anything is sent.
 
-In PR1 the claims are a port (`Claims` in `runner.ts`), and the tests take the
-lease with the world's own `task.pickup`. PR2 binds the port to the API.
+The claims are a port (`Claims` in `runner.ts`), bound to the API in
+`claims.ts`. A person task the runner raises is an internal comment on the
+correction's task, written under its lease, and a line in its log.
 
 ## The database login
 
@@ -67,8 +69,11 @@ on production is an owner step in the runbook (PR2).
 ## How the actor reaches `db.withBusiness`
 
 The database login carries no actor. `db.withBusiness` sets only the business
-(`app.business_id`). The runner learns its actor id from the API session it
-signed in with, as the worker does. It passes that id in the `CorrectionRun`
+(`app.business_id`). The runner learns its actor id from the holder the API
+names in its own `task.pickup` answer (`holderActorId`). Before a pickup an
+agent may reach only `task.queue`, `task.pickup` and `task.take_launch`
+(`BEFORE_PICKUP`, `agent-envelope.ts`), so `session.capabilities` is refused
+then. It passes that id in the `CorrectionRun`
 with the lease id and fence. Every read and write under the lease compares
 `holder_actor_id`, the fence and the task under lock (`holdUnderLease`,
 `core-records/src/site/correction-receipts.ts:95`). A wrong or stale actor
@@ -121,7 +126,7 @@ seam read is follow-up work.
 
 ## Park and stop
 
-- **Park.** `launchctl bootout gui/501/com.agencyastro.ops-astro-site-runner`
+- **Park.** `launchctl bootout gui/501/ops-astro-site-runner`
   stops the job and keeps the plist. Leases lapse at their expiry, and a
   correction the register holds is observed again on the next start.
 - **Stop.** The same command, then remove the plist from `~/Library/LaunchAgents`.
