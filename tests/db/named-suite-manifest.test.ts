@@ -54,6 +54,7 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
+  'tests/cli/wayfinder-six-verbs-process.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
   'tests/journey/budgets-bundle-and-person-crossing.test.ts':
