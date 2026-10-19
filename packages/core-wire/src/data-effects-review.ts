@@ -6,6 +6,7 @@
 
 import type { CommandName } from './command-names.ts';
 import { client, writing, type DataEffects } from './data-effects-types.ts';
+import { MAP_READ_MODEL } from './data-effects-shapes.ts';
 
 export const REVIEW_EFFECTS: {
   readonly [Name in Extract<CommandName, `review.${string}`>]: DataEffects;
@@ -22,8 +23,11 @@ export const REVIEW_EFFECTS: {
   // C57: a change request names the review's task and its pin (#2016).
   'review.propose_change': writing(client('review_change_requests')),
   'review.decide_change': writing(client('review_change_requests')),
-  // #2117: the task made of an approved request, and its link.
-  'review.make_change_task': writing(client('records', 'review_change_requests')),
+  // #2117: the task made of an approved request (a task's tables, as `task.create`), and its link.
+  'review.make_change_task': writing([
+    ...client('records', 'record_unique_values', 'review_change_requests'),
+    ...MAP_READ_MODEL,
+  ]),
   'review.read': writing([]),
   'review.picture': writing([]),
 };
