@@ -26,4 +26,6 @@ export const REVIEW_OPERANDS = {
   'review.propose_change': { commentId: 'any', text: 'any' },
   'review.decide_change': { changeRequestId: 'any', decision: 'any' },
   'review.make_change_task': { leaseId: 'any', fence: 'any', changeRequestId: 'any' },
+  'review.decide': { reviewId: 'any', digest: 'any', response: 'any' },
+  'review.record_astra_review': { reviewId: 'any', digest: 'any', verdict: 'any', review: 'any' },
 } as const;
