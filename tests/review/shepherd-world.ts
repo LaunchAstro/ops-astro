@@ -603,11 +603,13 @@ export async function workerCommentItem(side: Side, task: string, person: string
 export async function attemptsOf(
   item: string,
 ): Promise<readonly { readonly state: string; readonly evidence: string | null }[]> {
-  return await w.db.admin.execute<{ state: string; evidence: string | null }>(
+  const rows = await w.db.admin.execute<{ state: string; evidence: string | null }>(
     `select state, evidence from public.inbox_delivery_attempts
       where item_id = $1 and channel = 'email' order by observed_seq`,
     [item],
   );
+  // Plain rows in a plain array: the driver's result list carries properties of its own.
+  return rows.map((row) => ({ state: row.state, evidence: row.evidence }));
 }
 
 /** What the shepherd writes, counted in one business. */
