@@ -19,6 +19,8 @@
 // database lookups the two forms would differ in. It is not network timing.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { seedForeignReview } from './c35-bodies.ts';
+import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -377,6 +379,12 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID(), ...REVIEW_BODY }),
       },
     );
+    // C35: a review of bravo's and its revision, and a page open on bravo's task.
+    const review = await seedForeignReview(w.h.world.db.admin, w.h.world.bravo, f.task.id, f.admin);
+    byAda('review.read', 'reviewId', review.reviewId, (reviewId) => ({ reviewId }));
+    byAda('review.capture', 'revisionId', review.revisionId, (revisionId) => ({ revisionId }));
+    const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
+    byAda('review.open', 'taskId', f.task.id, (taskId) => ({ ...page, taskId }));
     const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
@@ -676,11 +684,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 119 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 122 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(119);
-    expect(names).toHaveLength(119);
+    expect(new Set(names).size, 'distinct operations').toBe(122);
+    expect(names).toHaveLength(122);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
