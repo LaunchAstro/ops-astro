@@ -33,67 +33,44 @@ async function pairOf(reviewId: unknown) {
   return { before, after };
 }
 
+/** A revision as the read shows it: undecided, as every revision here is. */
+const shown = (
+  opened: Readonly<Record<string, unknown>>,
+  number: number,
+  captures: readonly unknown[],
+) => ({
+  revisionId: opened['revisionId'],
+  number,
+  digest: opened['digest'],
+  captures,
+  decision: null,
+});
+
 describe.skipIf(serverUrl === undefined)('C35 before and after', () => {
   it('C35 before and after at laptop and phone size', async () => {
     const first = detailOf(await w.open(w.ava));
     expect(await pairOf(first['reviewId'])).toStrictEqual({
       before: null,
-      after: {
-        revisionId: first['revisionId'],
-        number: 1,
-        digest: first['digest'],
-        captures: [],
-        decision: null,
-      },
+      after: shown(first, 1, []),
     });
     expect(codeOf(await w.capture(w.ava, first['revisionId']))).toBe('not-a-refusal');
     expect(await pairOf(first['reviewId'])).toStrictEqual({
       before: null,
-      after: {
-        revisionId: first['revisionId'],
-        number: 1,
-        digest: first['digest'],
-        captures: BOTH,
-        decision: null,
-      },
+      after: shown(first, 1, BOTH),
     });
 
     const second = detailOf(await w.open(w.ava));
     expect(second['reviewId']).toBe(first['reviewId']);
     expect(codeOf(await w.capture(w.ava, second['revisionId']))).toBe('not-a-refusal');
     expect(await pairOf(first['reviewId'])).toStrictEqual({
-      before: {
-        revisionId: first['revisionId'],
-        number: 1,
-        digest: first['digest'],
-        captures: BOTH,
-        decision: null,
-      },
-      after: {
-        revisionId: second['revisionId'],
-        number: 2,
-        digest: second['digest'],
-        captures: BOTH,
-        decision: null,
-      },
+      before: shown(first, 1, BOTH),
+      after: shown(second, 2, BOTH),
     });
 
     const third = detailOf(await w.open(w.ava));
     expect(await pairOf(first['reviewId'])).toStrictEqual({
-      before: {
-        revisionId: second['revisionId'],
-        number: 2,
-        digest: second['digest'],
-        captures: BOTH,
-        decision: null,
-      },
-      after: {
-        revisionId: third['revisionId'],
-        number: 3,
-        digest: third['digest'],
-        captures: [],
-        decision: null,
-      },
+      before: shown(second, 2, BOTH),
+      after: shown(third, 3, []),
     });
   });
 });
