@@ -53,6 +53,9 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   // R5: a review files a row naming a correction, which names the task.
   'live_correction.record_review',
   // C35: a review names the task, its revisions and captures lead back to it; the task keeps its revision.
+  // A worker's claim and land act on a lease the task already holds, and on the review's captures.
+  'review.capture_claim',
+  'review.capture_land',
   'review.open',
   'review.capture',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
