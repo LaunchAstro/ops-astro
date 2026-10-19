@@ -31,11 +31,12 @@ it('advances main from the approved base to the proposed head, and sends nothing
     `GET /repos/${REPOSITORY}/contents/src/pages/about.md?ref=main`,
     `GET /repos/${REPOSITORY}/branches/main/protection`,
     `GET /repos/${REPOSITORY}/git/ref/heads/main`,
+    `GET /repos/${REPOSITORY}/pulls/17`,
     `PATCH /repos/${REPOSITORY}/git/refs/heads/main`,
     `GET /repos/${REPOSITORY}/git/ref/heads/main`,
     `GET /v6/deployments?projectId=${PROJECT}&sha=${HEAD}&target=production&limit=1`,
   ]);
-  expect(site.sent[3]?.body).toEqual({ sha: HEAD });
+  expect(site.sent[4]?.body).toEqual({ sha: HEAD });
   expect(site.state.mainHead).toBe(HEAD);
   expect(site.state.content).toBe(AFTER);
   expect(site.state.request?.merged).toBe(true);

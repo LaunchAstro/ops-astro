@@ -63,6 +63,7 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
       SOURCE,
       'GET /repos/agency/site/branches/main/protection',
       HEAD_READ,
+      'GET /repos/agency/site/pulls/17',
       ADVANCE,
       HEAD_READ,
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee01&target=production&limit=1',
@@ -187,19 +188,20 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'C80 publication advances the default branch by the approved commit only',
   () => {
-    it('advances to the stored head, never a commit pushed onto the seam since', async () => {
+    it('advances nothing once a commit is pushed onto the seam since the proposal', async () => {
       const id = await approved();
-      const { site, ports } = await bound(id);
+      const { site, ports, raised } = await bound(id);
       site.state.defaultExtras['src/pages/contact.md'] = 'approved contact';
       // Another commit on the seam after the proposal: the request now shows it as its head.
       site.state.parents['c0ffee99'] = HEAD;
       if (site.state.request) site.state.request.head = 'c0ffee99';
-      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
-      expect(site.state.content).toBe(AFTER);
-      expect(site.state.mainHead).toBe(HEAD);
+      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'unknown' });
+      expect(site.state.content).toBe(BEFORE);
+      expect(site.state.mainHead).toBe(REV);
       expect(site.state.defaultExtras['src/pages/contact.md']).toBe('approved contact');
-      expect(advances(site).map((sent) => sent.body)).toEqual([{ sha: HEAD }]);
-      expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
+      expect(site.sent.filter((sent) => sent.method !== 'GET')).toEqual([]);
+      expect(site.state.request?.merged).toBe(false);
+      expect(raised).toEqual(['REQUEST_HEAD_MOVED']);
     });
 
     it('advances the default branch after the request is retargeted', async () => {

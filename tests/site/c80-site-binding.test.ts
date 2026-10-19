@@ -135,7 +135,10 @@ describe('C80 publish binding: the default branch advanced from the approved bas
     expect(site.state.content).toBe(AFTER);
     expect(site.state.stagingContent).toBe(BEFORE);
     expect(site.state.request?.merged).toBe(false);
-    expect(site.sent.some((sent) => sent.target.includes('/pulls/'))).toBe(false);
+    // The request is read, never written.
+    expect(site.sent.some((sent) => sent.method !== 'GET' && sent.target.includes('/pulls/'))).toBe(
+      false,
+    );
   });
 
   it('refuses a live source that no longer holds the approved pre-image without writing', async () => {
