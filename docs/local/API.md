@@ -1640,7 +1640,9 @@ A completed `task.handback` records its attempt's `success / COMPLETED` in the
 same transaction. Under its locks, before it writes anything, it refuses
 `TRANSITION_NOT_PERMITTED` 409 an attempt that already has an outcome, has a
 model call `reserved`, `dispatched` or `liability_unknown`, or has a marked
-step: none of those is a success.
+step its own observation has not settled: none of those is a success. A
+dispatched step whose observation settled it (`settled`, its cost priced) is
+known, and hands back its success.
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the

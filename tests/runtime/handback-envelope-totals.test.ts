@@ -46,7 +46,7 @@ describe.skipIf(serverUrl === undefined)('handback envelope totals', () => {
       [s.business, decision['attemptId']],
     );
 
-    // A marked step is never a success (#1623 R2), so it hands back failed.
+    // A legacy mark is never a success (#1623 R2), so it hands back failed.
     const handed = appliedDetail(
       await asAgent(
         s,

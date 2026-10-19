@@ -8,8 +8,13 @@
 // - an outcome row of any kind is already recorded: a stop came first;
 // - a model call of the attempt is still `reserved`, `dispatched` or of
 //   unknown liability: its answer, or its release, is still owed;
-// - the step carries a mark (dispatched, or observed): the provider may
-//   have acted, and the work is the reconciliation owner's, not a success.
+// - the step carries a mark nothing has accounted for (design R2's step-level
+//   unknown): the provider may have acted, and the work is the reconciliation
+//   owner's, not a success. The attempt's own observation accounts for its
+//   dispatch once it settles: the effect is in the operation register and its
+//   cost is priced, so the attempt is `settled` as `completed`. A mark that
+//   observation never settled (an unpriced report, a legacy `observed` with no
+//   dispatch, a write-off that kept the outcome `unknown`) stays unknown.
 //
 // Each is read under the handback's locks, which take the run, the lease and
 // the reservation before any model call (`locks.ts`), so no call reserves or
@@ -33,7 +38,9 @@ export async function refuseUncleanSuccess(
             exists (select 1 from public.model_calls c
                      where c.business_id = a.business_id and c.lease_id = a.lease_id
                        and c.state in ('reserved', 'dispatched', 'liability_unknown')) as open,
-            (a.dispatch_marker or a.observed) as marked
+            (a.dispatch_marker or a.observed)
+              and not (a.dispatch_marker and a.observed
+                       and a.state = 'settled' and a.outcome = 'completed') as marked
        from public.attempts a
       where a.business_id = $1 and a.lease_id = $2`,
     [tx.businessId, leaseId],

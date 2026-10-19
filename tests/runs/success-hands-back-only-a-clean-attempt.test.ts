@@ -4,9 +4,9 @@
 // where success is written (R3), and it refuses an attempt that is not
 // clean: one that already has an outcome row of any kind, one with a model
 // call still `reserved`, `dispatched` or `liability_unknown`, and one with a
-// step-level unknown (the mark `handback.ts` reads). Each refusal is typed and
-// writes nothing: no settlement, no successor, the lease and run as they
-// were, and the outcome rows unchanged.
+// step-level unknown (a mark no settled observation accounts for). Each
+// refusal is typed and writes nothing: no settlement, no successor, the lease
+// and run as they were, and the outcome rows unchanged.
 //
 // Every handback is the worker's own review body through the real HTTP agent
 // door, on an accepted plan nobody has launched. The open calls are made

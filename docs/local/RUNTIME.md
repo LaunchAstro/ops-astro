@@ -1610,7 +1610,8 @@ both tenancy-scoped with row security forced, and the fair share's count
   the budget stop, cancellation, supersession, authority loss and expiry in
   their own transactions; the worker through `run.end`; and a completed
   handback its `success`, refused for an attempt with an outcome already, an
-  open call or a marked step (`core-runtime/src/handback-success.ts`). A call still
+  open call or a marked step its own observation has not settled
+  (`core-runtime/src/handback-success.ts`). A call still
   dispatched or held unknown at the stop makes the row
   `unknown_provider_outcome`, the stop's own code kept as `stop_cause`. The
   first writer wins; the row never changes. The reconciliation pass's
