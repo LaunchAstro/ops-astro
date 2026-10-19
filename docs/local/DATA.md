@@ -1035,9 +1035,13 @@ later `changes_requested` withdraws an earlier approval.
 `live_correction_reviews` holds Astra's review of a correction: the version
 digest it read, its verdict (`approve` or `changes_requested`) and the saved
 review, recorded by a person with `live_correction.record_review` under
-`gate:decide`, which refuses a digest other than the correction's
-(`VERSION_STALE`). Insert and select only; tenancy-keyed with the restrictive
-policy.
+`gate:decide`. It keeps the approval's guard order (#2063): a correction with
+no version yet (`locating`, `unlocated`, `superseded`) is refused
+`VERSION_NOT_READY`, a decided one `GATE_ALREADY_DECIDED`, a digest other than
+the correction's `VERSION_STALE`, and a page the site runner has not checked in
+the last 60 seconds `VERSION_UNVERIFIED`, read by `clock_timestamp()` in the
+insert itself. A refused review writes nothing. Insert and select only;
+tenancy-keyed with the restrictive policy.
 
 ## The locate (20261019010000, #1693)
 

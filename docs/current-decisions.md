@@ -68,7 +68,9 @@ and d; the round register, items 10, 11 and 13).
   latest review of that version is the one that counts. The
   owner records it with `live_correction.record_review`, carrying Astra's
   saved review and the digest, which the server checks against the stored
-  version (owner question c, the recommended answer). The server refuses
+  version (owner question c, the recommended answer). The review is recorded
+  only on a version the site runner checked within the last 60 seconds, so a
+  refused review never admits the approval (#2063). The server refuses
   without it; hiding the button is not the control.
 - Every such approval is marked as a single-operator self-approval on the
   correction's decision, which is never rewritten. The decision is the
