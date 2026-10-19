@@ -3,13 +3,13 @@
 // A task's call carried to the model agent on the owner's machine (#1703,
 // #1620 P5): its handoff to the carried custody, the hosted side's half.
 //
-// The bearer (F4) is the calling agent's own token, the one it presented at
+// The bearer is the calling agent's own token, the one it presented at
 // the door: the carried custody joins the call's line with it, and the join
 // policy admits the agent holding the call's live lease. The hosted side
 // never holds the owner's plan token; only the model agent's custody does,
 // on the M5.
 //
-// Final authority (F5): both judgements take every lock the call rests on
+// Final authority: both judgements take every lock the call rests on
 // (`lockCarriedTask`), then the task grants each delegation draws on, for
 // share `nowait` (runtime rows are held, and `grant.revoke` takes grants
 // first: contention refuses, nothing sent), then the calling agent's ending
