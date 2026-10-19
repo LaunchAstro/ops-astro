@@ -212,7 +212,7 @@ async function asLogin(business: string, text: string, role = true): Promise<str
   }
 }
 
-describe.skipIf(serverUrl === undefined)('#1708: the trace export process on its own login', () => {
+describe.skipIf(serverUrl === undefined)('the trace export process on its own login', () => {
   it('exports a replay-fake run with timings, outcome and call counts, and nothing planted leaves', async () => {
     const s = t.alpha;
     const planted = `planted message https://client-${randomUUID()}.example/site`;
