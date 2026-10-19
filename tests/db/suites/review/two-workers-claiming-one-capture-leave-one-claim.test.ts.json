@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 the claim race: two workers claiming one revision's capture at once, each on its own connection, leave exactly one claim; the other is refused CAPTURE_NOT_CLAIMABLE."
+}
