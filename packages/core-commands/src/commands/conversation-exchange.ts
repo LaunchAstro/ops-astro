@@ -206,7 +206,7 @@ async function answerOnce(
   );
   await pieces?.drained();
   if (!result.ok) return await unanswered(result, reread, operation);
-  if (paid !== undefined) return paid.replied(question.context.cites);
+  if (paid !== undefined) return paid.replied(question.context.cites, question.context.sites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');
   const kept = await withSession(
@@ -217,7 +217,7 @@ async function answerOnce(
   ).catch(heldElsewhere);
   if (kept === undefined || isCommandRefusal(kept)) return null;
   // The cites are what this call read, even where a twin request's answer was kept first.
-  return answered(kept, question.context.cites);
+  return answered(kept, question.context.cites, question.context.sites);
 }
 
 /**

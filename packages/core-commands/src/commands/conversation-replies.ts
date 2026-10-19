@@ -4,7 +4,7 @@
 // (`conversation-exchange.ts`): the kept answer, or a refusal in fixed words,
 // never the model's or the person's.
 
-import type { ConversationTargetsView } from '../../../core-wire/src/index.ts';
+import type { ConversationTargetsView, SitePageView } from '../../../core-wire/src/index.ts';
 import type { Cite } from './conversation-context.ts';
 
 /** What the person path hands back beside an applied message: the answer, or why none. */
@@ -17,6 +17,8 @@ export type ConversationReply =
       readonly cites: readonly Cite[];
       /** The tasks an edit it proposes may apply to, kept with it (#1666), as the caller may have them. */
       readonly targets?: ConversationTargetsView;
+      /** The bound pages the call gave the model (#1988), which a site change card may name. */
+      readonly sitePages?: readonly SitePageView[];
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
@@ -204,10 +206,16 @@ export interface Kept {
   readonly targets?: ConversationTargetsView;
 }
 
-export const answered = (reply: Kept, cites: readonly Cite[]): ConversationReply => ({
+/** A kept reply as handed back; a fresh call's answer carries the pages it gave the model. */
+export const answered = (
+  reply: Kept,
+  cites: readonly Cite[],
+  sitePages: readonly SitePageView[] = [],
+): ConversationReply => ({
   answered: true,
   messageId: reply.id,
   body: reply.body,
   cites,
   ...(reply.targets === undefined ? {} : { targets: reply.targets }),
+  ...(sitePages.length === 0 ? {} : { sitePages }),
 });

@@ -14,8 +14,10 @@
 // its site is unbound and its providers do not change (the storage refuses,
 // with the corrections share-locked so one being written is waited for).
 
+import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { TransactionQuery } from '../tenancy/transaction.ts';
+import { COVERED, EFFECTIVE_AT, coveringParameters } from './covering.ts';
 
 /** One site as the runner binds it: the shape `core-connectors` takes. */
 export interface PartySiteRecord {
@@ -221,4 +223,28 @@ export async function taskClient(
     [tx.businessId, taskId],
   );
   return rows[0] === undefined ? undefined : rows[0].party;
+}
+
+/**
+ * The business's own bound pages the caller may ask a correction on (#1988):
+ * those its `run:write` reaches, judged in the query as every covered read
+ * is, each with its site's repository, in address order, at most `limit`.
+ * Only the business's own site: a client's pages are never listed, as a chat
+ * on a client's task asks no model (owner line 72). The path is not read.
+ */
+export async function coveredOwnSitePages(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  limit: number,
+): Promise<readonly { readonly repository: string; readonly page: string }[]> {
+  return await tx.query<{ readonly repository: string; readonly page: string }>(
+    `${EFFECTIVE_AT}
+     select s.repository, c.page_url as page
+       from public.party_site_pages c
+       join public.party_sites s on s.business_id = c.business_id and s.holder = c.holder
+      where c.business_id = $1 and c.party_id is null and s.party_id is null and ${COVERED}
+      order by c.page_url
+      limit $6`,
+    [tx.businessId, ...coveringParameters({ subjects, collection: 'run', action: 'write' }), limit],
+  );
 }
