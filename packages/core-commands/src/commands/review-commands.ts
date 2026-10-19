@@ -112,7 +112,12 @@ export async function askReviewCapture(
   context: CommandContext,
   request: Of<'review.capture'>,
 ): Promise<HandlerOutcome> {
-  // A malformed id names no revision, as a fabricated one does.
+  // An id left out is the caller's to send; a malformed one names nothing, as a fabricated one.
+  if (typeof request.revisionId !== 'string') {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['revisionId'], ['Send revisionId as an identifier.']),
+    );
+  }
   if (!isUuid(request.revisionId)) return refused(REFUSALS.NOT_FOUND);
   const revisionId = request.revisionId.toLowerCase();
   const asked = await askCaptures(tx, revisionId, reviewWrite(context), writerOf(context));
