@@ -26,8 +26,14 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
-/** A new review's notes: no pins yet (#2012) and none to carry (#2075). */
-const NO_NOTES = { pins: [], carried: [], carryDue: false } as const;
+/** A new review's notes: no pins yet (#2012), none to carry (#2075), no differences and no change requests. */
+const NO_NOTES = {
+  pins: [],
+  carried: [],
+  carryDue: false,
+  differences: [],
+  changeRequests: [],
+} as const;
 
 /** The backend a one-connection pool runs its statements on. */
 const backendOf = async (db: Database): Promise<number> =>
@@ -123,7 +129,6 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         after: { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
         before: { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
         ...NO_NOTES,
-        changeRequests: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);

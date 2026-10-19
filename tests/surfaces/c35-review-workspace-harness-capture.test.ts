@@ -19,6 +19,7 @@ import {
   serveApp,
 } from '../visual/app-pages.ts';
 import { load, openSide } from '../visual/capture.ts';
+import { answerMadeUp } from '../visual/made-up-api.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
 import { addressOf, report } from '../visual/report.ts';
@@ -70,6 +71,7 @@ async function workspaceDrawn(at: At): Promise<void> {
   const { browser, packet, app, session } = at;
   const side = await openSide(browser, packet, 390, { app, session });
   try {
+    await answerMadeUp(side.context);
     await answer(side, ANSWERS);
     const address = new URL(addressOf(PAGE, MADE_UP_PARAMS) ?? '/', app).href;
     const shown = await load(side, packet, address);
