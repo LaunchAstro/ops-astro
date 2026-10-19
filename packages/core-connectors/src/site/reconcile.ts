@@ -17,7 +17,7 @@ export type ReadBack<T> =
   | { readonly state: 'unknown' };
 
 /** Refusals an effect that already landed also earns: read back before they count as failed. */
-const ALSO_IF_LANDED: ReadonlySet<string> = new Set(['not_mergeable', 'sha_mismatch']);
+const ALSO_IF_LANDED: ReadonlySet<string> = new Set(['not_fast_forward', 'sha_mismatch']);
 
 /**
  * A send that may repeat an earlier one: landed is the answer, only proof that nothing landed

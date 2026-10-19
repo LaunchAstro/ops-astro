@@ -4,8 +4,9 @@
 // process never holds a site token. Custody's destination for each site entry
 // is derived from the connector catalogue: exactly the catalogued calls that
 // use that entry, each as its fixed template (`routeTemplate`) with its
-// catalogued response schema as the fields custody keeps, no POST beside
-// them, and the headers the guarded call would send. Custody passes back only
+// catalogued response schema as the fields custody keeps, a PATCH's declared
+// body as the only body it sends, no POST beside them, and the headers the
+// guarded call would send. Custody passes back only
 // those fields, or withholds the answer whole when the caller could rebuild
 // the credential from them. A call catalogued later is admitted with no
 // second list. The port hands each guarded call to custody by its entry's name, with
@@ -48,11 +49,16 @@ export function siteDestination(
 ): Destination {
   const routes = new Map<string, TemplateRoute>();
   for (const registration of registrations) {
-    const { method, credential } = registration.connector;
-    if (credential !== entry || method === 'PATCH') continue;
+    const { method, credential, bodyParams } = registration.connector;
+    if (credential !== entry) continue;
     const template = routeTemplate(registration);
     const fields = registration.connector.responseSchema;
-    routes.set(`${method} ${template}`, { method, template, fields });
+    // A PATCH names its body, so custody sends one of those fields and nothing beside them.
+    const route =
+      method === 'PATCH'
+        ? { method, template, fields, body: bodyParams }
+        : { method, template, fields };
+    routes.set(`${method} ${template}`, route);
   }
   return {
     key: entry,
@@ -78,7 +84,6 @@ export function siteCustody(
 ): NonNullable<CallDependencies['custody']> {
   return async (request, { ref }): Promise<CustodyAnswer> => {
     const method = request.method ?? 'GET';
-    if (method === 'PATCH') return { kind: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' };
     const outcome = await custody.dispatch(ref, {
       destination: ref,
       path: `${request.url.pathname}${request.url.search}`,

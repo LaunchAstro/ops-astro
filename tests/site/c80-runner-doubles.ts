@@ -105,6 +105,7 @@ export function doubles(
       seen.raised.push(reason);
       return Promise.resolve();
     },
+    requestClosed: () => Promise.resolve(true),
     now: () => (clock += 250),
     refusals: () => seen.fenceRefusals.map((refusal) => refusal.code),
     // Not bound to one correction: the doubles run any correction they are given.

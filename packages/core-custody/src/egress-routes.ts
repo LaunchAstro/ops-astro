@@ -28,18 +28,22 @@ export interface PathRoute {
   readonly path: string;
 }
 
-/** A catalogued call's whole shape, path and query, and the fields its answer keeps. */
+/**
+ * A catalogued call's whole shape, path and query, and the fields its answer keeps. A PATCH is
+ * only ever a template, and names its body: one JSON object of exactly those names, each a string.
+ */
 export interface TemplateRoute {
-  readonly method: 'GET' | 'POST' | 'PUT';
+  readonly method: 'GET' | 'POST' | 'PUT' | 'PATCH';
   readonly template: string;
   readonly fields: Fields;
+  readonly body?: readonly string[];
 }
 
 export type Route = PathRoute | TemplateRoute;
 
 export type Method = 'POST' | Route['method'];
 
-export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT'];
+export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT', 'PATCH'];
 
 /** A lower-case token: one spelling per name, so no two can collide by case. */
 const HEADER_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
@@ -201,15 +205,35 @@ function headersOf(value: unknown): Record<string, string> | undefined {
   return valid ? Object.fromEntries(entries as [string, string][]) : undefined;
 }
 
-function routeOf(value: unknown): Route | undefined {
-  if (isObject(value) && Object.keys(value).toSorted().join() === 'fields,method,template') {
-    const { method, template } = value;
-    const fields = fieldsOf(value['fields']);
-    const known = method === 'GET' || method === 'POST' || method === 'PUT';
-    return known && typeof template === 'string' && templateOf(template) && fields !== undefined
-      ? { method, template, fields }
-      : undefined;
+/** A PATCH's body names: one or more plain names, none twice. */
+function bodyOf(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const names = value.filter(
+    (name): name is string => typeof name === 'string' && FIELD.test(name),
+  );
+  return names.length === value.length && new Set(names).size === names.length ? names : undefined;
+}
+
+function templateRouteOf(value: Record<string, unknown>): TemplateRoute | undefined {
+  const { method, template } = value;
+  const fields = fieldsOf(value['fields']);
+  if (typeof template !== 'string' || !templateOf(template) || fields === undefined)
+    return undefined;
+  if (method === 'PATCH') {
+    const body = bodyOf(value['body']);
+    return body === undefined ? undefined : { method, template, fields, body };
   }
+  const known = method === 'GET' || method === 'POST' || method === 'PUT';
+  return known && value['body'] === undefined ? { method, template, fields } : undefined;
+}
+
+function routeOf(value: unknown): Route | undefined {
+  const keys = isObject(value) ? Object.keys(value).toSorted().join() : '';
+  if (
+    isObject(value) &&
+    (keys === 'fields,method,template' || keys === 'body,fields,method,template')
+  )
+    return templateRouteOf(value);
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
   const { method, path } = value;
   if (typeof path !== 'string') return undefined;
@@ -285,6 +309,25 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
+}
+
+/** Whether a PATCH's body is one JSON object of exactly its route's body names, each a string. */
+export function bodyAllowed(extras: Extras, method: Method, path: string, body: string): boolean {
+  if (method !== 'PATCH') return true;
+  const names = templateFilled(extras, method, path)?.body;
+  if (names === undefined) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  if (!isObject(parsed)) return false;
+  const given = Object.keys(parsed);
+  return (
+    given.length === names.length &&
+    names.every((name) => Object.hasOwn(parsed, name) && typeof parsed[name] === 'string')
+  );
 }
 
 /** The template route a request fills, if any: its answer is cut to the route's fields. */

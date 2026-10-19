@@ -52,6 +52,8 @@ export interface RunnerPorts {
   readonly revertReadBack: (input: Seamed) => Promise<ReadBack<Deployed>>;
   /** `site.source.revert`, under the token derived from the published revision. */
   readonly revert: (input: Seamed) => Promise<ProviderResult<Deployed>>;
+  /** `site.request.read`: whether the review request reads merged at the proposal's head. */
+  readonly requestClosed: () => Promise<boolean>;
   readonly raiseTask: (reason: string) => Promise<void>;
   readonly now: () => number;
   /** Every refusal and unknown the guarded calls recorded on this run, by code. */

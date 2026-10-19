@@ -13,6 +13,7 @@ import { proposal, proposed } from './c80-site-provider.ts';
 it('opens no request when another commit landed on the seam branch before ours', async () => {
   const site = proposed();
   site.state.branches = ['main'];
+  site.state.request = undefined;
   const deps = {
     ...site.deps,
     transport: async (request: TransportRequest) => {

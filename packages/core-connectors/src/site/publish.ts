@@ -9,7 +9,8 @@
 // unreadable answer keeps its reference and raises a task (case 6), and late
 // cancellation is an uncertain effect (case 7). Live requires observation.
 // Every send reads back through the seam first; unknown retries are never
-// sent blind (broker contract 3.4).
+// sent blind (broker contract 3.4). A send whose answer was lost is sent once
+// more only on proof it did not land, and read back after (`attempted`).
 
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
@@ -65,10 +66,9 @@ type Seamed = { readonly seam: string; readonly dispatchToken: string };
 export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
-  /** `site.source.read` of the default branch: absent only while it holds the pre-image. */
-  // A read without the written commit cannot establish a landing.
+  /** `site.source.head` of the default branch (`readAdvanced`): landed at the proposal's head, absent at the base. */
   readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
-  /** `site.publish`, once. */
+  /** `site.source.advance`, through the binding's checks; at most twice (`attempted`). */
   readonly publish: (
     input: Seamed & VersionPin & { versionDigest: string },
   ) => Promise<ProviderResult<Published>>;
@@ -103,6 +103,38 @@ export type PublishOutcome =
       readonly reference: string;
       readonly dispatchToken: string;
     };
+
+const UNPROVEN = 'RECONCILE_UNPROVEN';
+
+/** What a read back settles: a landing is the answer; anything else stays unknown, under `absent`'s code if absent. */
+function settledBy<T>(back: ReadBack<T>, absent: string): ProviderResult<T> {
+  if (back.state === 'landed') return { kind: 'ok', value: back.value };
+  return { kind: 'unknown', code: back.state === 'absent' ? absent : UNPROVEN };
+}
+
+/**
+ * `reconciled`, and once more when the send's answer was lost and a read back then proves it
+ * absent: at most two sends, each read back after. A lost answer's send may still land, so from
+ * then on a refusal proves nothing (`EARLIER_SEND_UNSETTLED`), and two sends read back absent
+ * stay unknown (`ADVANCE_NOT_LANDED`); only a landing settles them.
+ */
+async function attempted<T>(
+  back: ReadBack<T>,
+  send: () => Promise<ProviderResult<T>>,
+  readBack: () => Promise<ReadBack<T>>,
+): Promise<ProviderResult<T>> {
+  const first = await reconciled(back, send, readBack);
+  if (first.kind !== 'unknown' || back.state !== 'absent' || first.code === UNPROVEN) return first;
+  const again = await readBack();
+  if (again.state !== 'absent') return settledBy(again, UNPROVEN);
+  const second = await send();
+  if (second.kind === 'ok') return second;
+  const after = await readBack();
+  return settledBy(
+    after,
+    second.kind === 'refused' ? 'EARLIER_SEND_UNSETTLED' : 'ADVANCE_NOT_LANDED',
+  );
+}
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 
@@ -161,7 +193,7 @@ export async function publishCorrection(
     const back = await readBack();
     const checked = await beforeDispatch(job, ports, back);
     if ('state' in checked) return checked;
-    return { ...checked, answer: await reconciled(back, send, readBack) };
+    return { ...checked, answer: await attempted(back, send, readBack) };
   });
   if ('state' in sent) return sent;
   const { preImage, answer } = sent;
@@ -177,7 +209,7 @@ export async function publishCorrection(
     if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED', token);
     return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
   }
-  if (proven('site.publish', answer)) {
+  if (proven('site.source.advance', answer)) {
     return { state: 'failed', code: answer.code, proof: answer.proof };
   }
   return unknown(answer.code);

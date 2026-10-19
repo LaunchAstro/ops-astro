@@ -330,6 +330,7 @@ export const binding: SiteBinding = {
   defaultBranch: 'main',
   project: PROJECT,
   pageUrl: PAGE,
+  baseRevision: 'base-commit',
   proposal: { branch: SEAM, request: '17', head: HEAD, versionDigest: DIGEST },
   change: { before: BEFORE, after: AFTER },
 };
@@ -340,6 +341,7 @@ export const proposed = (): Provider =>
     branches: ['main', SEAM],
     proposed: AFTER,
     request: { number: 17, head: HEAD, merged: false },
+    parents: { [HEAD]: 'base-commit' },
   });
 
 /** Party A's site on the double: the About page and its file. */

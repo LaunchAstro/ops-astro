@@ -7,12 +7,15 @@
 //
 // - The source is the site file on the default branch, decoded as UTF-8 from
 //   canonical base64 only.
-// - Publish writes the job's verified after-image on the default branch. The
-//   contents write uses the blob holding the approved pre-image as its exact
-//   precondition, so a concurrent file edit refuses the write atomically.
-//   The request remains the human review screen and is never merged.
-// - The deployment is found by the written commit, a bounded number of tries.
-//   Found for another commit is unknown after the write; not found yet is not
+// - Publish advances the default branch to the proposal's head, its one commit
+//   on the approved base. It is sent only while the file is the pre-image, the
+//   branch's protection refuses any rewind or deletion of it (administrators
+//   included), and its head is the approved base; the provider applies a
+//   fast-forward only. So the branch moves from the approved base to the base
+//   and the approved file, or not at all, and the review request closes as
+//   merged. It counts only once the branch's head reads as the proposal's.
+// - The deployment is found by that commit, a bounded number of tries.
+//   Found for another commit is unknown after the advance; not found yet is not
 //   published yet, accepted without it and looked up again when observed.
 // - The revert writes the pre-image back on the default branch, only over the
 //   published change and at the blob just read, and finds its deployment the
@@ -30,6 +33,7 @@
 import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
 import { siteOperation } from './operations.ts';
 import type { Published, PublishPorts } from './publish.ts';
+import type { ReadBack } from './reconcile.ts';
 import { checkEnvelope } from './envelope.ts';
 import { findDeployment } from './serving.ts';
 import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
@@ -58,6 +62,8 @@ export interface SiteBinding {
   readonly project: string;
   /** The correction's catalogued page. */
   readonly pageUrl: string;
+  /** The default branch's head the pre-image was pinned at: the one commit the publish advances from. */
+  readonly baseRevision: string;
   /**
    * The branch is the correction's seam; the head is the commit the request
    * was opened at; the version digest is the version whose bytes it proposed.
@@ -132,6 +138,7 @@ export function siteBindingFor(
       defaultBranch,
       project,
       pageUrl: correction.pageUrl,
+      baseRevision: made.version.baseRevision,
       proposal: { branch: correction.seam, ...made.proposal },
       change: made.change,
     },
@@ -215,7 +222,57 @@ async function deploymentOf(
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
 
-/** `site.publish`: one approved contents write, through a binding holding the approved bytes its revert needs. */
+/** `site.source.head`: the default branch's head commit now. */
+async function headOf(
+  binding: SiteBinding,
+  deps: CallDependencies,
+): Promise<ProviderResult<string>> {
+  const { repository, defaultBranch: branch } = binding;
+  const read = await call('site.source.head', { repository, branch }, deps);
+  return read.kind === 'ok' ? ok(String(read.value['object.sha'])) : read;
+}
+
+/** `site.source.protection`: whether nobody, administrators included, can rewind or delete the default branch. */
+async function rewindRefused(binding: SiteBinding, deps: CallDependencies): Promise<boolean> {
+  const { repository, defaultBranch: branch } = binding;
+  const read = await call('site.source.protection', { repository, branch }, deps);
+  return (
+    read.kind === 'ok' &&
+    read.value['allow_force_pushes.enabled'] === false &&
+    read.value['allow_deletions.enabled'] === false &&
+    read.value['enforce_admins.enabled'] === true
+  );
+}
+
+/**
+ * The advance read back by the default branch's head: landed at the proposal's head; absent at
+ * the approved base, which a protected branch cannot have left through the head and come back to;
+ * anything else, or no answer, unknown.
+ */
+export async function readAdvanced(
+  binding: SiteBinding,
+  deps: CallDependencies,
+): Promise<ReadBack<Published>> {
+  const head = await headOf(binding, deps);
+  if (head.kind !== 'ok') return { state: 'unknown' };
+  if (head.value === binding.proposal.head)
+    return { state: 'landed', value: { revision: head.value, liveUrl: binding.pageUrl } };
+  return head.value === binding.baseRevision ? { state: 'absent' } : { state: 'unknown' };
+}
+
+/** `site.request.read`: whether the review request reads merged at the proposal's head, so none is left open. */
+export async function requestClosed(
+  binding: SiteBinding,
+  deps: CallDependencies,
+): Promise<boolean> {
+  const { repository, proposal } = binding;
+  const read = await call('site.request.read', { repository, number: proposal.request }, deps);
+  return (
+    read.kind === 'ok' && read.value['merged'] === true && read.value['head.sha'] === proposal.head
+  );
+}
+
+/** `site.source.advance`: the default branch moved from the approved base to the proposal's head, then its deployment. */
 export async function mergeAndFind(
   binding: SiteBinding,
   input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
@@ -226,6 +283,7 @@ export async function mergeAndFind(
   if (
     input.versionDigest !== binding.proposal.versionDigest ||
     versionDigestOf(input) !== input.versionDigest ||
+    input.baseRevision !== binding.baseRevision ||
     input.pageUrl !== binding.pageUrl ||
     input.target.path !== binding.path ||
     !checkEnvelope(input.change, input.target).ok ||
@@ -239,20 +297,20 @@ export async function mergeAndFind(
   const current = await readSiteSource(binding, deps);
   if (current.kind !== 'ok') return current;
   if (current.value.content !== file.before) return stop('refused', 'CONTENT_DRIFTED', deps);
-  const written = await call(
-    'site.publish',
-    {
-      repository: binding.repository,
-      path: binding.path,
-      branch: binding.defaultBranch,
-      sha: current.value.revision,
-      content: Buffer.from(file.after, 'utf8').toString('base64'),
-      message: `Live correction ${input.seam}`,
-    },
+  if (!(await rewindRefused(binding, deps))) return stop('refused', 'ANCESTRY_NOT_ENFORCED', deps);
+  const head = await headOf(binding, deps);
+  if (head.kind !== 'ok') return head;
+  if (head.value !== binding.baseRevision) return stop('refused', 'BASE_MOVED', deps);
+  const { repository, defaultBranch: branch } = binding;
+  const advanced = await call(
+    'site.source.advance',
+    { repository, branch, sha: binding.proposal.head },
     deps,
   );
-  if (written.kind !== 'ok') return written;
-  const revision = String(written.value['commit.sha']);
+  if (advanced.kind !== 'ok') return advanced;
+  const back = await readAdvanced(binding, deps);
+  if (back.state !== 'landed') return stop('unknown', 'ADVANCE_NOT_CONFIRMED', deps);
+  const { revision } = back.value;
   const deployed = await deploymentOf(binding, revision, deps);
   if (deployed.kind !== 'ok') return deployed;
   // None found yet is not published yet: accepted, its deployment looked up again when observed.

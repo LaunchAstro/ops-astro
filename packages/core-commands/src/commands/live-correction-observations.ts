@@ -62,7 +62,8 @@ export function notAccepted(
 ): Observations {
   const raised = (code: string) => ({ refusals_raised: seen([...refusals, code].join(' ')) });
   if (outcome.state === 'refused') return raised(outcome.code);
-  if (outcome.state === 'failed') return raised(`${outcome.code} ${outcome.proof}`);
+  if (outcome.state === 'failed')
+    return { ...raised(`${outcome.code} ${outcome.proof}`), waits_on: seen('person') };
   return {
     waits_on: seen('person'),
     attempt_and_dispatch_token: seen(outcome.dispatchToken),

@@ -87,6 +87,7 @@ const binding = (overrides: Partial<SiteBinding> = {}): SiteBinding => ({
   repository: SITE.repository,
   path: PATH,
   defaultBranch: 'main',
+  baseRevision: 'base-commit',
   project: SITE.project,
   pageUrl: PAGE,
   proposal: {

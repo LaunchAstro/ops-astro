@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The catalogued operations of the live correction. Publish writes one
-// approved file atomically on the default branch, using its pre-image blob
-// as the precondition. The request remains the human review screen. The
-// deployment is found by the written commit and is never promoted.
+// The catalogued operations of the live correction. The proposal writes the
+// approved file on its own branch, one commit on the approved base; the publish
+// advances the default branch to that commit (`site.source.advance`,
+// `operations-binding.ts`), so the review request closes as merged. The
+// deployment is found by that commit and is never promoted.
 
 import {
   registerOperation,
@@ -34,7 +35,7 @@ const contents = (method: 'GET' | 'PUT'): ConnectorDefinition => ({
   responseSchema:
     method === 'GET'
       ? { sha: 'string', content: 'string', encoding: 'string' }
-      : { 'content.sha': 'string', 'commit.sha': 'string' },
+      : { 'content.sha': 'string', 'commit.sha': 'string', 'commit.parents.0.sha': 'string' },
   refusalProofs: method === 'GET' ? {} : { '409': 'sha_mismatch', '422': 'sha_mismatch' },
   maxResponseBytes: 262_144,
   timeoutMs: 10_000,
@@ -68,25 +69,6 @@ export const SITE_OPERATIONS: readonly OperationRegistration[] = [
       reconcile_seam: {
         read_operation: 'site.source.read',
         reference: 'branch name, named before dispatch',
-      },
-      nothing_happened_proof: ['sha_mismatch'],
-      credential_tier: 'T2',
-      trust_class: 'isolated_connector',
-      quota_class: SOURCE_QUOTA,
-      data_flow_labels: ['site_source'],
-    },
-    contents('PUT'),
-  ),
-  operation(
-    {
-      operation_name: 'site.publish',
-      effect_class: 'reversible',
-      reversibility_strategy: 'R2',
-      acknowledgement_semantics: 'accepted',
-      reconcile_mode: 'reconcilable',
-      reconcile_seam: {
-        read_operation: 'site.source.read',
-        reference: 'bound file on the default branch, held before dispatch',
       },
       nothing_happened_proof: ['sha_mismatch'],
       credential_tier: 'T2',

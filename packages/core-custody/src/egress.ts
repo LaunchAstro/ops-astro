@@ -27,7 +27,13 @@ import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { presented, type StoredCredential } from './credentials.ts';
 import { answerOf, type OnChunk, type Outbound } from './egress-answer.ts';
-import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
+import {
+  bodyAllowed,
+  parseExtras,
+  pathAllowed,
+  type Extras,
+  type Method,
+} from './egress-routes.ts';
 
 export type { OnChunk, Outbound, OutboundFault } from './egress-answer.ts';
 
@@ -264,7 +270,10 @@ export async function send(
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
-  if (!pathAllowed(destination, request.method, request.path)) {
+  if (
+    !pathAllowed(destination, request.method, request.path) ||
+    !bodyAllowed(destination, request.method, request.path, request.body)
+  ) {
     return { ok: false, fault: 'bad_path', status: null };
   }
   const url = new URL(request.path, destination.origin);

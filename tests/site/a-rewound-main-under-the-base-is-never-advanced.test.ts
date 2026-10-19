@@ -28,7 +28,11 @@ test('a main rewound under the approved base is refused BASE_MOVED and never adv
 
   const pin = { ...VERSION_PIN, baseRevision: b };
   const versionDigest = versionDigestOf(pin);
-  const bound = { ...binding, proposal: { ...binding.proposal, head: h, versionDigest } };
+  const bound = {
+    ...binding,
+    baseRevision: b,
+    proposal: { ...binding.proposal, head: h, versionDigest },
+  };
   const result = await mergeAndFind(bound, { ...pin, versionDigest }, git.deps);
 
   const onMain = git.sent.filter(

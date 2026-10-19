@@ -188,6 +188,8 @@ export {
   bindingRefuses,
   findDeployment,
   mergeAndFind,
+  readAdvanced,
+  requestClosed,
   partySiteRefuses,
   readServed,
   readSiteSource,
