@@ -13,6 +13,7 @@
 
 import { expect, it } from 'vitest';
 import { runAttempt } from '../../packages/core-agent/src/index.ts';
+import { AGENT_MODEL_CALL_LIMIT } from '../../packages/core-wire/src/index.ts';
 import { final, reads, scripted, TASK } from './agent-ports.ts';
 
 const LIMIT = 3;
@@ -61,6 +62,36 @@ it("LangChain's limit raises before a send past it, and the run ends call_limit 
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
   expect(run.sent, 'no send past the limit').toHaveLength(LIMIT);
   expect(run.ended).toEqual(['CALL_LIMIT_REACHED']);
+});
+
+it('at the shipped call limit, a run asking one turn more stops call_limit with no turn past it', async () => {
+  // The graph's own step limit is sized from the call limit, so the call limit,
+  // never the graph, ends a run that keeps reading (#1717 R8b, S2092-2).
+  const run = scripted((n) => reads(n));
+  const end = await runAttempt(
+    run.state,
+    run.ports,
+    AGENT_MODEL_CALL_LIMIT,
+    undefined,
+    'The task.',
+  );
+  expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
+  expect(run.sent, 'no charged turn past the limit').toHaveLength(AGENT_MODEL_CALL_LIMIT);
+  expect(run.toolRuns()).toBe(AGENT_MODEL_CALL_LIMIT);
+  expect(run.ended).toEqual(['CALL_LIMIT_REACHED']);
+});
+
+it('at the shipped call limit, a final answer on the last allowed turn succeeds', async () => {
+  const run = scripted((n) => (n < AGENT_MODEL_CALL_LIMIT ? reads(n) : final(n)));
+  const end = await runAttempt(
+    run.state,
+    run.ports,
+    AGENT_MODEL_CALL_LIMIT,
+    undefined,
+    'The task.',
+  );
+  expect(end).toEqual({ outcome: 'success', endCode: 'COMPLETED' });
+  expect(run.sent).toHaveLength(AGENT_MODEL_CALL_LIMIT);
 });
 
 it('a stop the broker recorded is the outcome, and the worker records nothing more', async () => {
