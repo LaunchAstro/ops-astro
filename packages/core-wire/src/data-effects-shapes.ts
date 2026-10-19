@@ -3,6 +3,7 @@
 // S0-5: the effect shapes several commands share, moved whole from
 // `data-effects.ts` to keep that file under the per-file line cap.
 
+import type { CommandName } from './command-names.ts';
 import type { DataEffects, RecordWrite } from './data-effects-types.ts';
 import { business, client, writing } from './data-effects-types.ts';
 
@@ -24,6 +25,12 @@ export const CHAT: DataEffects = writing(
     'conversation_reply_targets',
   ),
 );
+// The side chat's start and message, spread into `COMMAND_EFFECTS` (kept here for the line cap).
+export const SIDE_CHAT_EFFECTS: {
+  readonly [
+    Name in Extract<CommandName, 'conversation.start' | 'conversation.message'>
+  ]: DataEffects;
+} = { 'conversation.start': CHAT, 'conversation.message': CHAT };
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(
   client(
