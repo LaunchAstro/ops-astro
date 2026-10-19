@@ -5,9 +5,11 @@
 // way to the API (`agent-call.ts`) under the work's own credential. Each turn
 // is a `model.call` the broker binds and sends; each tool is the product's
 // own command, so the agent's correction is the `live_correction.request` a
-// person makes, at the same door and under the same checks, and it stays
-// `requested` until a person decides. Nothing here opens a connection: the
-// loop holds no provider, and the tools are the catalogue's (`AGENT_TOOLS`).
+// person makes, `{taskId, page, word, replacement}`, at the same door and under
+// the same checks. It is stored `locating`; the M5 pins its base revision
+// (#1693), and nothing lands until a person decides. Nothing here opens a
+// connection: the loop holds no provider, and the tools are the catalogue's
+// (`AGENT_TOOLS`).
 
 import {
   attemptState,

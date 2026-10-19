@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // #1624 R7 (#1716), no database: the agent's catalogue is its task, read,
-// and `live_correction.request` with exactly a person's operands. The
+// and `live_correction.request` with exactly a person's operands, #1693's
+// `{taskId, page, word, replacement}` with no base revision. The
 // broker keeps nothing else, a correction's result comes back as its row by
 // id, and the agent's runner computes a draft through the worker's one call
 // port with no connection of its own (egress denied throughout).
@@ -15,17 +16,12 @@ import { denyEgress } from '../harness/deny-egress.ts';
 const TASK = '00000000-0000-4000-8000-0000000000a1';
 const CORRECTION = '00000000-0000-4000-8000-0000000000c7';
 
-/** A person's request on the business's own about page, as the agent asks it. */
+/** A person's request on the business's own about page, as the agent asks it (#1693's shape). */
 const REQUEST = {
-  partyId: null,
   taskId: TASK,
-  path: 'src/pages/about.md',
+  page: 'https://own.example/about',
   word: 'Townsvile',
   replacement: 'Townsville',
-  pageUrl: 'https://own.example/about',
-  baseRevision: 'b'.repeat(40),
-  before: 'We are in Townsvile.',
-  after: 'We are in Townsville.',
 };
 
 const asks = (name: string, args: Readonly<Record<string, unknown>>, id = 'call_1') => ({
@@ -55,8 +51,15 @@ describe("the broker's catalogue for an agent", () => {
   it('refuses a correction asked with an operand a person cannot send', () => {
     const wider = { ...REQUEST, state: 'approved' };
     expect(kept(TOOLS, [TASK_PART, asks('live_correction.request', wider)])).toBe(false);
-    const { before: _dropped, ...narrower } = REQUEST;
+    const { replacement: _dropped, ...narrower } = REQUEST;
     expect(kept(TOOLS, [TASK_PART, asks('live_correction.request', narrower)])).toBe(false);
+  });
+
+  it('refuses a correction that types its own base revision or party, which the M5 pins', () => {
+    for (const typed of [{ baseRevision: 'b'.repeat(40) }, { partyId: null }, { path: 'x.md' }]) {
+      const asked = asks('live_correction.request', { ...REQUEST, ...typed });
+      expect(kept(TOOLS, [TASK_PART, asked])).toBe(false);
+    }
   });
 
   it('offers no tool that reaches outside the app', () => {
@@ -105,7 +108,7 @@ function scriptedDoor(): { readonly call: Call; readonly sent: Sent[] } {
     sent.push({ verb, body: body as Sent['body'] });
     if (verb === 'task.read') return await Promise.resolve(ok({}, { task: { revision: 3 } }));
     if (verb === 'live_correction.request') {
-      return await Promise.resolve(ok({ correctionId: CORRECTION, state: 'requested' }));
+      return await Promise.resolve(ok({ correctionId: CORRECTION, state: 'locating' }));
     }
     const turn = sent.filter((each) => each.verb === 'model.call').length;
     return await Promise.resolve(ok({ callId: `answer_${String(turn)}`, ...answers[turn - 1] }));
