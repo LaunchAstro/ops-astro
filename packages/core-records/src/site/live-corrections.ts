@@ -97,6 +97,8 @@ export interface NewLiveCorrection {
   readonly word: string;
   readonly replacement: string;
   readonly seam: string;
+  /** The accepted plan version an agent drafted it for (#1717), read from its lease; null for a person's. */
+  readonly planVersionId?: string | null;
 }
 
 export const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
@@ -176,6 +178,8 @@ const PAGE_NAME = `coalesce(nullif(lower(regexp_replace(regexp_replace(
  * locked so an unbind waits for the request, and the site row share-locked so a move of its
  * providers does too; the site row is share-locked first, on its own, as an unbind takes the site
  * before the page. No pin is stored: the site runner pins the version from the file itself.
+ * A plan version already holding a correction stores nothing (`live_corrections_one_per_plan_idx`),
+ * a second request at once waiting on the first's insert: `correctionOfPlan` answers it.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
@@ -198,11 +202,12 @@ export async function insertLiveCorrection(
           for key share of p for share of s)
      insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
-        delegation_id, target_path, word, replacement, page_url, seam, state)
+        delegation_id, target_path, word, replacement, page_url, seam, state, plan_version_id)
      select task.business_id, $2::uuid, task.uuid_7, task.id, $4::uuid, $5::uuid, $6::uuid,
-            named.path, $9::text, $10::text, named.page_url, $7::text, 'locating'
+            named.path, $9::text, $10::text, named.page_url, $7::text, 'locating', $11::uuid
        from task, named
       where (select count(*) from named) = 1
+     on conflict (business_id, plan_version_id) where plan_version_id is not null do nothing
      returning ${COLUMNS}`,
     [
       tx.businessId,
@@ -215,9 +220,41 @@ export async function insertLiveCorrection(
       input.page.trim(),
       input.word,
       input.replacement,
+      input.planVersionId ?? null,
     ],
   );
   return row === undefined ? { ok: false, code: 'PAGE_NOT_FOUND' } : correctionFrom(row);
+}
+
+/** The correction an agent drafted for `planVersionId` in this business, if one is stored (#1717). */
+export async function correctionOfPlan(
+  tx: TenantQuery,
+  planVersionId: string,
+): Promise<StoredCorrection | undefined> {
+  const [row] = await tx.query<Row>(
+    `select ${COLUMNS} from public.live_corrections c
+      where c.business_id = $1 and c.plan_version_id = $2`,
+    [tx.businessId, planVersionId],
+  );
+  return row === undefined ? undefined : correctionFrom(row);
+}
+
+/**
+ * The plan version the work a pickup delegation was minted for serves, read
+ * from its lease's reservation in this business; undefined for a delegation
+ * no pickup minted (#1717).
+ */
+export async function planVersionOfDelegation(
+  tx: TenantQuery,
+  delegationId: string,
+): Promise<string | undefined> {
+  const [row] = await tx.query<{ readonly version_id: string }>(
+    `select r.version_id from public.leases l
+       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
+      where l.business_id = $1 and l.delegation_id = $2`,
+    [tx.businessId, delegationId],
+  );
+  return row?.version_id;
 }
 
 /**

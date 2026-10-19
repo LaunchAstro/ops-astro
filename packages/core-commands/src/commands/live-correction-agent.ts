@@ -7,7 +7,12 @@
 // goes back only to a delegation that could make that request now.
 
 import { ownersOwn, readPage } from '../../../core-custody/src/index.ts';
-import { checkAuthority, RUN_COLLECTION, taskClient } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  planVersionOfDelegation,
+  RUN_COLLECTION,
+  taskClient,
+} from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -105,6 +110,11 @@ export async function requestAsAgent(
   return { ...stored, lastCheck: async () => await ownWorkRefusal(tx, operands) };
 }
 
+/**
+ * The request stored for the delegating person, under the plan version the
+ * delegation's own pickup serves, read here from its lease: that plan holds
+ * one correction, and a second attempt on it is answered the first (#1717).
+ */
 async function storeAsAgent(
   tx: TenantQuery,
   agentActorId: string,
@@ -113,6 +123,7 @@ async function storeAsAgent(
 ): Promise<HandlerOutcome> {
   const spine = await readTaskSpine(tx);
   const personId = delegation.delegatePersonId;
+  const planVersionId = await planVersionOfDelegation(tx, delegation.id);
   return await storeRequest(
     tx,
     spine.taskTypeId,
@@ -121,6 +132,7 @@ async function storeAsAgent(
       personId,
       delegationId: delegation.id,
       subjects: [{ kind: 'person', id: personId }],
+      ...(planVersionId === undefined ? {} : { planVersionId }),
     },
     operands,
   );

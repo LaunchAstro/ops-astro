@@ -19,6 +19,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
+  correctionOfPlan,
   GATE_COLLECTION,
   insertLiveCorrection,
   RUN_COLLECTION,
@@ -115,6 +116,8 @@ export interface Requester {
   readonly delegationId: string | null;
   /** Whose run:write the request rests on, read again after the insert's lock wait. */
   readonly subjects: readonly Subject[];
+  /** An agent's accepted plan version, which holds one correction (#1717); absent for a person. */
+  readonly planVersionId?: string;
 }
 
 export type RequestOperands = Omit<Of<'live_correction.request'>, 'command' | 'operationId'>;
@@ -135,16 +138,27 @@ export async function storeRequest(
     return refused(refuseCommand('CHANGE_ENVELOPE_EXCEEDED', [], [pair, ...ENVELOPE_FIXES]));
   }
   if (!(await taskExists(tx, taskTypeId, request.taskId))) return refused(TASK_ABSENT);
-  const stored = await insertLiveCorrection(tx, {
-    taskId: request.taskId,
-    requestedByActorId: requester.actorId,
-    requestedByPersonId: requester.personId,
-    delegationId: requester.delegationId,
-    page: request.page,
-    word: request.word,
-    replacement: request.replacement,
-    seam: `seam-${randomUUID()}`,
-  });
+  const { planVersionId } = requester;
+  const drafted =
+    planVersionId === undefined ? undefined : await correctionOfPlan(tx, planVersionId);
+  const inserted =
+    drafted ??
+    (await insertLiveCorrection(tx, {
+      taskId: request.taskId,
+      requestedByActorId: requester.actorId,
+      requestedByPersonId: requester.personId,
+      delegationId: requester.delegationId,
+      page: request.page,
+      word: request.word,
+      replacement: request.replacement,
+      seam: `seam-${randomUUID()}`,
+      planVersionId: planVersionId ?? null,
+    }));
+  // A request at once on the same plan waited on the first's insert and stored nothing: the first answers it.
+  const stored =
+    'code' in inserted && planVersionId !== undefined
+      ? ((await correctionOfPlan(tx, planVersionId)) ?? inserted)
+      : inserted;
   // The page is one of the task's own site's: else nothing is stored.
   if ('code' in stored) return refused(PAGE_ABSENT);
   const ended = await endedSince(tx, requester, stored.partyId);
