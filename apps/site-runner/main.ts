@@ -163,10 +163,11 @@ export const passFor =
 
 /**
  * One pass: the locate, then the claims, then the captures, each on its own. A part that fails
- * logs its fault's name and the others still run; only when every part failed does the pass
- * fail, so the heartbeat goes quiet. A queue the claims or the captures could not read fails
- * the pass whatever the rest did: a runner that can no longer read its work never reads as
- * healthy. Each capture taken logs one line, by its task and code.
+ * logs its fault's name and the others still run; when the locate and the claims both failed
+ * the pass fails, so the heartbeat goes quiet. A queue the claims or the captures could not
+ * read fails the pass whatever the rest did: a runner that can no longer read its work never
+ * reads as healthy. The captures are spare work: they never keep a pass healthy, and any
+ * fault of theirs (an unclaimed capture included) fails it.
  */
 export async function everyPart({ locate, claims, captures }: Parts): Promise<readonly Passed[]> {
   const faults: unknown[] = [];
@@ -184,13 +185,12 @@ export async function everyPart({ locate, claims, captures }: Parts): Promise<re
     });
   const located = await run('locate', locate);
   const claimed = claims === undefined ? [] : await run('claims', claims);
+  const workFaults = faults.length;
   // A queue the corrections could not read is not asked again for the captures.
-  const captured =
-    captures === undefined || unread !== undefined ? [] : await run('captures', captures);
-  for (const { taskId, outcome } of captured) console.log(`review capture ${taskId} ${outcome}`);
+  if (captures !== undefined && unread === undefined) await run('captures', captures);
   if (unread !== undefined) throw unread;
-  const parts = [locate, claims, captures].filter((part) => part !== undefined);
-  if (faults.length === parts.length) throw faults[0];
+  if (workFaults === (claims === undefined ? 1 : 2)) throw faults[0];
+  if (faults.length > workFaults) throw faults[workFaults];
   return [...located, ...claimed];
 }
 
