@@ -97,6 +97,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
 export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name) || name === 'agent.create') return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
+  if (name === 'review.read') return { reviewId: randomUUID() };
   if (name === 'live_correction.read' || name === 'live_correction.receipts') {
     return { correctionId: randomUUID() };
   }
