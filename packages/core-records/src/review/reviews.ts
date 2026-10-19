@@ -57,9 +57,9 @@ export type ReviewRefusal = {
   readonly code: 'NOT_FOUND' | 'PAGE_OUTSIDE_HOLDER_SITE' | 'CAPTURE_ALREADY_ASKED';
 };
 
-const REVIEW_COLUMNS = `c.id, c.task_id, c.party_id, c.kind, c.page_url, c.path, c.revision_count`;
+export const REVIEW_COLUMNS = `c.id, c.task_id, c.party_id, c.kind, c.page_url, c.path, c.revision_count`;
 
-interface ReviewRow {
+export interface ReviewRow {
   readonly id: string;
   readonly task_id: string;
   readonly party_id: string | null;
@@ -69,7 +69,7 @@ interface ReviewRow {
   readonly revision_count: number;
 }
 
-const reviewFrom = (row: ReviewRow): Review => ({
+export const reviewFrom = (row: ReviewRow): Review => ({
   id: row.id,
   taskId: row.task_id,
   partyId: row.party_id,
@@ -105,7 +105,7 @@ async function holdBoundPage(
 }
 
 /** The live task's client (null: none), or undefined for no live task by that id. */
-async function holderOfTask(
+export async function holderOfTask(
   tx: TenantQuery,
   taskId: string,
 ): Promise<{ readonly partyId: string | null } | undefined> {
@@ -140,7 +140,17 @@ export async function openPageReview(
   const page = { partyId: holder.partyId, pageUrl: input.pageUrl, path: input.path };
   if (!(await holdBoundPage(tx, page))) return { code: 'PAGE_OUTSIDE_HOLDER_SITE' };
   const review = await lockPageReview(tx, { ...input, partyId: holder.partyId });
-  const revision = await addRevision(tx, review, input.sourceRevision, input.writer);
+  const number = review.revisionCount + 1;
+  const revision = await addRevision(
+    tx,
+    review,
+    {
+      id: randomUUID(),
+      digest: revisionDigest(review, number, input.sourceRevision),
+      sourceRevision: input.sourceRevision,
+    },
+    input.writer,
+  );
   return { review: { ...review, revisionCount: revision.number }, revision };
 }
 
@@ -185,20 +195,16 @@ async function lockPageReview(
   return reviewFrom(row);
 }
 
-/** The locked review's next revision, numbered and digested, and the count it moves to. */
-async function addRevision(
+/** The locked review's next revision, numbered with its digest, and the count it moves to. */
+export async function addRevision(
   tx: TenantQuery,
   review: Review,
-  sourceRevision: string,
+  next: { readonly id: string; readonly digest: string; readonly sourceRevision: string | null },
   writer: ReviewWriter,
 ): Promise<Revision> {
   const number = review.revisionCount + 1;
-  const revision: Revision = {
-    id: randomUUID(),
-    reviewId: review.id,
-    number,
-    digest: revisionDigest(review, number, sourceRevision),
-  };
+  const { sourceRevision } = next;
+  const revision: Revision = { id: next.id, reviewId: review.id, number, digest: next.digest };
   await tx.query(
     `insert into public.review_revisions
        (business_id, id, review_id, number, digest, source_revision, created_by_actor_id,

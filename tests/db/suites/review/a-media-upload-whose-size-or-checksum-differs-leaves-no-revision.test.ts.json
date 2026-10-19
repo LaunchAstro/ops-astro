@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 media store: completion compares the store's size and digest with the declared ones first; a mismatch removes the object, abandons the upload and writes no revision, a match becomes revision one."
+}

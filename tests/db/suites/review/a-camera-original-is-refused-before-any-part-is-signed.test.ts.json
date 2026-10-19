@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 media store: a video declared as anything but H.264 or HEVC in an MP4 is refused before the store opens or signs anything, and no review or asset row is written; a review render starts."
+}
