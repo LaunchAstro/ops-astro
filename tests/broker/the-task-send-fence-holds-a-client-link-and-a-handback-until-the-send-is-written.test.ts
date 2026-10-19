@@ -5,6 +5,8 @@
 // the task, or the lease handed back, from another connection, waits until
 // the send is written and the fence lets go. Neither can commit between the
 // judgement and the send, so what the judgement saw is what the send carried.
+// A handback that waited is then refused while the sent call is unsettled
+// (#1623 R2), so the call's answer still reaches the lease that sent it.
 // Each change runs on its own connection: the admin's for the client link, a
 // second application pool for the handback.
 
@@ -88,10 +90,21 @@ describe.skipIf(serverUrl === undefined)('the send fence of a carried task call'
       async () =>
         await asAgent(s, handbackBody(work.picked), String(work.picked['credential']), second),
     );
-    expect(called.changed).toMatchObject({ command: 'task.handback' });
+    expect(called.changed).toMatchObject({
+      refused: true,
+      code: 'TRANSITION_NOT_PERMITTED',
+      fixes: expect.arrayContaining(['a model call of this attempt has not settled']),
+    });
     expect(called.order).toEqual(['fence about to let go', 'change committed']);
     expect(called).toMatchObject({ sent: 1, state: 'settled' });
-    // The lease ended once the fence let go, so its words are not handed to the former holder.
-    expect(called.answer).toMatchObject({ ok: false, code: 'LEASE_EXPIRED' });
+    // The handback was refused, so the lease is still the caller's and its words reach it.
+    expect(called.answer).toMatchObject({ ok: true });
+    const after = await asAgent(
+      s,
+      handbackBody(work.picked),
+      String(work.picked['credential']),
+      second,
+    );
+    expect(after).toMatchObject({ command: 'task.handback' });
   }, 60_000);
 });
