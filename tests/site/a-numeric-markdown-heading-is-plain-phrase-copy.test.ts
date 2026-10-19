@@ -22,3 +22,18 @@ it('a Markdown heading opening with a number is plain phrase copy, either side o
   });
   expect(results).toMatchObject([{ ok: true }, { ok: true }]);
 });
+
+it.each([
+  ['a full stop', 'Year. Next steps start here.'],
+  ['a bracket', 'Year) Next steps start here.'],
+])('refuses a number that turns the line into an ordered list with %s after it', (_mark, line) => {
+  const path = 'src/pages/support.md';
+  const before = `# Support\n\n${line}\n`;
+  const after = before.replace('Year', '2025');
+  expect(
+    checkEnvelope(
+      { files: [{ path, before, after }] },
+      { path, word: 'Year', replacement: '2025' },
+    ),
+  ).toMatchObject({ ok: false, reason: 'the replacement is not body copy' });
+});
