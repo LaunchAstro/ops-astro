@@ -1545,7 +1545,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts
   and drop. A call holds its operation's priced maximum out of the run's
-  reservation from `reserved` until it settles. `accepted_at`, `started_at`,
+  reservation from `reserved` until it settles; a task call holds more than
+  nothing unless refused, but the agent's turn on the owner's plan
+  (`model.agent_turn` on a cloud subscription route,
+  `20261019130000_plan_turn_holds_nothing`, #2091) holds and settles at
+  nothing, the exception true only with every fact present. `accepted_at`, `started_at`,
   `completed_at` and `landed_at` are separate, and a call reaches no level
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
@@ -1608,7 +1612,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   (`provider_unavailable`, `connection_lost`) it also records T3e1's drop in
   the same transaction, through the `drops` hook model.call gives the broker; the reserve and the start for each refusal they record;
   the budget stop, cancellation, supersession, authority loss and expiry in
-  their own transactions; the worker through `run.end`. A call still
+  their own transactions; the worker through `run.end`; and a completed
+  handback its `success`, refused for an attempt with an outcome already, an
+  open call or a marked step its own observation has not settled, except a
+  launched step dispatched and never observed, which records
+  `LIABILITY_UNKNOWN` (`core-runtime/src/handback-success.ts`). A call still
   dispatched or held unknown at the stop makes the row
   `unknown_provider_outcome`, the stop's own code kept as `stop_cause`. The
   first writer wins; the row never changes. The reconciliation pass's
@@ -1643,6 +1651,32 @@ both tenancy-scoped with row security forced, and the fair share's count
   the step's held calls in its transaction, with `outcome` and
   `outcome_person_id`; no timer does. `readCallDrops` reads a task's held
   calls in its business. Tests: `tests/broker/aw-10-*`.
+- Turns and the call limit (#1623 R3, `20261019115000_turn_provenance_and_call_limit`,
+  `core-custody/src/broker-turn.ts`, `broker-turn-read.ts`, `broker-limit.ts`):
+  each hold of a run attempt records its place among the attempt's calls
+  (`call_ordinal`, counted under the run lock) and the attempt's limit, the one
+  its first hold recorded (`AGENT_MODEL_CALL_LIMIT`, or the deployment's
+  `callLimit`). The settlement of the limit-th call writes `call_limit /
+CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
+  comes back marked terminal; the reserve refuses a hold past it, a backstop.
+  A turn's ordinal must be that place. Its parts are bound at the reserve,
+  again at the start, and again at a subscription's handoff against the task
+  held there (owner line 72): an answer by the digest its settlement kept
+  (`answer_digest`, sha256 of the canonical JSON of `{v, text, toolCalls}`;
+  the words are never stored), scoped to the business and the attempt. Tool
+  calls nested 64 deep or more, or holding a non-finite number, have no digest: the call still settles priced,
+  and short of the limit the attempt ends `cancelled / TURN_MALFORMED` (on
+  the limit-th call it ends `call_limit` as any answer does), since a later turn could
+  never bind that answer; a part of that depth is `PROVENANCE_UNBOUND`. The
+  turn's class is its strictest source's, kept on the answer as
+  `answer_source`, so an answer never becomes less strict on a later turn.
+- The agent's runner (#1624 R7, `apps/worker/agent-runner.ts`): the worker's
+  step runner for an accepted plan before its Launch. It reads the task, then
+  runs `core-agent`'s loop, each turn a `model.call` and each tool the
+  product's own command through the worker's one call port under the run's
+  delegation: `task.read`, and `live_correction.request` as a person sends it.
+  The correction is stored `locating`; the M5 pins its base revision (#1693)
+  and a person decides it. The runner opens no connection of its own.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses

@@ -38,7 +38,8 @@ the run record stay our own.
 **Tracing.** No content leaves through framework tracing. The agent refuses
 `TRACING_NOT_ALLOWED` when any LangSmith or LangChain tracing or verbose
 variable is set, when tracing is enabled or a trace context is inherited, or
-when a caller passes callbacks or `verbose`. It runs each compute step in a
+when a caller passes callbacks or `verbose` or sets them on the model itself.
+It runs each compute step in a
 fresh context store, so no inherited configure hook can install a handler.
 Diagnostics go to self-hosted Langfuse through the no-content exporter (#1622),
 kept apart from framework callbacks.

@@ -16,9 +16,13 @@ import {
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
 import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
+import { registerPromptCopy } from './broker-copy.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
-import { clientRefusal, resolveFields } from './broker-sources.ts';
+import { clientRefusal } from './broker-sources.ts';
+import { placeOf, type Place } from './broker-limit.ts';
+import { fieldsOf } from './broker-turn.ts';
+import { oversized } from './broker-size.ts';
 import { endCodeOfRefusal, retireAttempt } from './broker-stop.ts';
 import { stopAtCeiling } from './broker-wait.ts';
 import type {
@@ -32,6 +36,8 @@ import type {
 } from './broker-types.ts';
 
 export const WAIT_SECONDS = 5;
+
+export { promptCopyRegistered, registerPromptCopy } from './broker-copy.ts';
 
 async function recordRefusal(
   tx: TenantQuery,
@@ -54,26 +60,6 @@ async function recordRefusal(
     detail: { callId: id, operation: operationKey, code },
   });
   return id;
-}
-
-/** Register the outbound prompt's copy before it is first materialised. */
-export async function registerPromptCopy(tx: TenantQuery, callId: string): Promise<void> {
-  await tx.query(
-    `insert into public.copy_registrations
-       (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
-     values ($1, $2, 'outbound_prompt', $3, 'call_ended', 'transient')`,
-    [tx.businessId, randomUUID(), `model_call:${callId}`],
-  );
-}
-
-/** Refuses unless the copy is registered: nothing is copied or sent before this answers true. */
-export async function promptCopyRegistered(tx: TenantQuery, callId: string): Promise<boolean> {
-  const rows = await tx.query(
-    `select 1 from public.copy_registrations
-      where business_id = $1 and copy_class = 'outbound_prompt' and copy_key = $2`,
-    [tx.businessId, `model_call:${callId}`],
-  );
-  return rows.length === 1;
 }
 
 /** A held call, not yet sent: what the reserving transaction hands the send. */
@@ -156,18 +142,24 @@ export async function reserveModelCall(
   // switched on while no local model exists (owner line 72), so no call on a
   // client's task reaches a route, naming any subscription offered (C32 stores it).
   if (facts.clientId !== null) return await refused(clientRefusal(broker.routes, operation));
-  // S3: each field's source is the broker's finding, from its row, never the caller's claim.
-  const resolved = resolveFields(request.fields, facts.source);
+  // #1623 R3: the attempt's calls stop at its limit, counted under the run lock.
+  const place = await placeOf(tx, facts.leaseId, broker.callLimit);
+  if (place !== undefined && place.ordinal >= place.limit)
+    return await refused('CALL_LIMIT_REACHED');
+  // S3: each source is the broker's finding, from its row, never the caller's claim; a
+  // turn's ordinal is the attempt's count, and each part is bound to what the broker owns.
+  const resolved = await fieldsOf(tx, request, operation, facts, place?.ordinal ?? -1);
   if (!resolved.ok) return await refused(resolved.code);
   const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
+  if (oversized(broker, operation, resolved.fields)) return await refused('PROMPT_TOO_LARGE');
   if (await atCeiling(tx, operation, route.route)) return await refused('RATE_LIMITED');
   const spent = await committedMinor(tx, facts.reservationId);
   if (operation.maximumMinor > facts.heldMinor - spent) {
     // AW-05: the approved ceiling is the stop; the refusal commits with the wait.
     return await refused('BUDGET_UNAVAILABLE', await stopAtCeiling(tx, facts, spent));
   }
-  const callId = await insertHold(tx, facts, operation, route.route);
+  const callId = await insertHold(tx, facts, operation, route.route, place);
   await registerPromptCopy(tx, callId);
   return {
     ok: true,
@@ -256,18 +248,19 @@ async function routeHasRoom(tx: TenantQuery, route: BrokerRoute): Promise<boolea
   return answer?.room === 1;
 }
 
-/** The hold: a `reserved` row at the operation's priced maximum, on the route it will take. */
+/** The hold: a `reserved` row at the operation's priced maximum, on the route it will take, in its place. */
 async function insertHold(
   tx: TenantQuery,
   facts: Facts,
   operation: ModelOperation,
   route: BrokerRoute,
+  place: Place | undefined,
 ): Promise<string> {
   const callId = randomUUID();
   await tx.query(
     `insert into public.model_calls (${CALL_COLUMNS}, operation_key, state, reserved_minor,
-        route_key, route_reach, credential_kind)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, $13, $14)`,
+        route_key, route_reach, credential_kind, call_ordinal, call_limit)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, $13, $14, $15, $16)`,
     [
       tx.businessId,
       callId,
@@ -277,6 +270,8 @@ async function insertHold(
       route.key,
       route.reach,
       route.credentialKind,
+      place?.ordinal ?? null,
+      place?.limit ?? null,
     ],
   );
   return callId;

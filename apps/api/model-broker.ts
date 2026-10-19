@@ -24,7 +24,11 @@
 // lists only, on one cloud API key route to exactly `https://openrouter.ai`
 // (`outside-provider.ts`).
 
-import { LOCAL_GPT_PROVIDER, OLLAMA_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import {
+  CHATGPT_PLAN_PROVIDER,
+  LOCAL_GPT_PROVIDER,
+  OLLAMA_PROVIDER,
+} from '../../packages/core-connectors/src/index.ts';
 import { catalogueOf, type AgentProvider } from './broker-catalogue.ts';
 import { outsideOf, outsideRouteProblem } from './outside-provider.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
@@ -97,6 +101,7 @@ function routeOf(
   entry: unknown,
   provider: AgentProvider,
   outside: boolean,
+  plan: boolean,
 ): BrokerRoute | undefined {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
   const shape = entry as Record<string, unknown>;
@@ -114,11 +119,18 @@ function routeOf(
   }
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
-  if (!catalogueOf(provider, outside).providers.has(text('provider'))) return undefined;
+  if (!catalogueOf(provider, outside, plan).providers.has(text('provider'))) return undefined;
   // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes
   // through. Ollama is on this machine: a `cloud` label would let its route leave it.
   if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
   if (text('provider') === OLLAMA_PROVIDER && text('reach') !== 'local') return undefined;
+  // The owner's plan answers in the cloud, on his own subscription, or not at all (#2091).
+  if (
+    text('provider') === CHATGPT_PLAN_PROVIDER &&
+    (text('reach') !== 'cloud' || text('credentialKind') !== 'subscription')
+  ) {
+    return undefined;
+  }
   return shape as unknown as BrokerRoute;
 }
 
@@ -153,16 +165,23 @@ function offMachineProblem(
     : undefined;
 }
 
-/** The routes setting's entries, each a route or undefined; undefined when it is not a list. */
+/**
+ * The routes setting's entries, each a route or undefined; undefined when it
+ * is not a list, or when two routes share a key, since a call names its route
+ * by key alone. Only the carried deployment passes `plan`, so no other
+ * install takes the owner's plan route.
+ */
 export function routesOf(
   text: string,
   provider: AgentProvider,
   outside = false,
+  plan = false,
 ): readonly (BrokerRoute | undefined)[] | undefined {
   const entries = parsedJson(text)?.value;
-  return Array.isArray(entries)
-    ? entries.map((entry: unknown) => routeOf(entry, provider, outside))
-    : undefined;
+  if (!Array.isArray(entries)) return undefined;
+  const routes = entries.map((entry: unknown) => routeOf(entry, provider, outside, plan));
+  const keys = routes.flatMap((route) => (route === undefined ? [] : [route.key]));
+  return new Set(keys).size === keys.length ? routes : undefined;
 }
 
 const withoutBroker = (named: AgentProvider): string =>
@@ -218,7 +237,7 @@ export function brokerSettings(
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +
         'credentialRef, credentialKind, installation, ceiling } with a known reach, kind and ' +
-        'provider and a whole-number ceiling of at least 1',
+        'provider and a whole-number ceiling of at least 1, no two sharing a key',
     );
   }
   const listed = routes as readonly BrokerRoute[];

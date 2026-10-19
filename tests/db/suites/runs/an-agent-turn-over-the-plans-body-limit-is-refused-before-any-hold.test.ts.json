@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2091 gap 5 and v2-3: a turn over its route's body limit is refused before any hold, with no hold, copy or send; one over it only at the send is released unsent as PROMPT_TOO_LARGE."
+}

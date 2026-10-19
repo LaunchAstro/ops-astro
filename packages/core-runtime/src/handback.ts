@@ -31,6 +31,7 @@
 // opens no hold; what it creates is a pending gate somebody has to decide.
 
 import { randomUUID } from 'node:crypto';
+import { recordStop } from '../../core-custody/src/index.ts';
 import { settleDelegation } from '../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
@@ -55,6 +56,7 @@ import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { readProjectedPlan } from './plan-binding.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { completedEndCode } from './handback-success.ts';
 import { markReviewedOutput } from './reviewed-output.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 
@@ -231,9 +233,15 @@ export async function handback(
     return refuse(stale.code, stale.reason, stale.fix);
   }
 
+  // #1623 R2: a completed handback is a success only for a clean attempt (`handback-success.ts`).
+  const ending =
+    request.outcome === 'completed' ? await completedEndCode(tx, request.leaseId) : null;
+  if (ending !== null && !ending.ok) return ending;
   const preflight = await preflightSettlement(tx, request, found);
   if (preflight !== null) return preflight;
   const settled = await settle(tx, request, found, locks);
+  // #1623 R3: a completed handback records its attempt's outcome, written here or nowhere.
+  if (ending !== null) await recordStop(tx, request.leaseId, ending.value);
   const written = await writeSuccessor(tx, request.successor, found, locks);
   if (written !== null && !written.ok) return written;
   return await answer(tx, request, found, settled, written?.value ?? null);

@@ -96,9 +96,14 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
+    "@langchain/core": "1.2.17",
+    "@langchain/langgraph": "1.4.21",
     "@supabase/realtime-js": "2.117.2",
     "hono": "4.13.9",
-    "parse5": "8.0.1"
+    "langchain": "1.5.16",
+    "langsmith": "0.9.0",
+    "parse5": "8.0.1",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",

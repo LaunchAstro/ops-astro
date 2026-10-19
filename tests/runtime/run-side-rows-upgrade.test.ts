@@ -27,6 +27,8 @@ const AGENT_COLUMNS = '20261011115838_agent_record.sql';
 const CALL_MESSAGE = '20261013010000_model_call_message.sql';
 /** The run outcome (#1623 R1): today's runtime writes one where it stops an attempt. */
 const RUN_OUTCOMES = '20261019105500_run_outcomes.sql';
+/** A call's place and the attempt's limit (#1623 R3): columns on model_calls, which the snapshot reads. */
+const TURN_PLACE = '20261019115000_turn_provenance_and_call_limit.sql';
 const ALL = readMigrations('migrations');
 let beforeDirectory: string;
 
@@ -43,7 +45,8 @@ beforeAll(() => {
       (file < `${VERSION}.sql` ||
         file === AGENT_COLUMNS ||
         file === CALL_MESSAGE ||
-        file === RUN_OUTCOMES)
+        file === RUN_OUTCOMES ||
+        file === TURN_PLACE)
     ) {
       copyFileSync(join('migrations', file), join(beforeDirectory, file));
     }

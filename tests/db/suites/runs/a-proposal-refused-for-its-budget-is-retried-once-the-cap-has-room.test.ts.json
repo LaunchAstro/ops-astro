@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8a, Sol S2090-3: a proposal the budget cap refused PROPOSAL_SCOPE_EXCEEDED is proposed again under a new operation once the cap has room, and opens one lineage; the register's stored refusal is not replayed for good."
+}

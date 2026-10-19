@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8a (owner ruling Q2): an accepted plan version holds one agent-drafted correction. The plan version is read on the server from the pickup delegation's lease; a second ask under a new operation id answers the first correction, two asks at once on separate connections store one row, and a new plan version holds its own."
+}

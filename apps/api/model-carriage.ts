@@ -17,6 +17,7 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import {
   carriedCustody,
+  carriesOnPlan,
   parseCarryKeys,
   realtimeCarriage,
   type Custody,
@@ -33,11 +34,16 @@ export const REALTIME_URL_SETTING = 'SUPABASE_REALTIME_URL';
 
 /**
  * The carried broker over `custody`, holding no credential: Ollama's
- * conversation, and OpenRouter's paid one where the outside provider is on.
+ * conversation, OpenRouter's paid one where the outside provider is on, and
+ * the agent's turn on the owner's plan where its route is set (#2091).
  */
 export const carriedBroker = (carried: CarriedSettings, custody: Custody): ModelBroker => ({
   custody,
-  ...catalogueOf('ollama', carried.outsidePeople.length > 0),
+  ...catalogueOf(
+    'ollama',
+    carried.outsidePeople.length > 0,
+    carried.routes.some((route) => carriesOnPlan(route)),
+  ),
   routes: carried.routes,
   installation: carried.installation,
   carrier: carried.carrier,

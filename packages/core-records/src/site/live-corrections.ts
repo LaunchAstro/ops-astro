@@ -97,6 +97,7 @@ export interface NewLiveCorrection {
   readonly word: string;
   readonly replacement: string;
   readonly seam: string;
+  readonly planVersionId?: string | null;
 }
 
 export const COLUMNS = `c.id, c.party_id, c.task_id, c.requested_by_actor_id, c.requested_by_person_id,
@@ -127,7 +128,7 @@ export interface Row {
   readonly revision: number;
 }
 
-function correctionFrom(row: Row): StoredCorrection {
+export function correctionFrom(row: Row): StoredCorrection {
   return {
     id: row.id,
     partyId: row.party_id,
@@ -200,11 +201,12 @@ export async function insertLiveCorrection(
           for key share of p for share of s)
      insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
-        delegation_id, target_path, word, replacement, page_url, seam, state)
+        delegation_id, target_path, word, replacement, page_url, seam, state, plan_version_id)
      select task.business_id, $2::uuid, task.uuid_7, task.id, $4::uuid, $5::uuid, $6::uuid,
-            named.path, $9::text, $10::text, named.page_url, $7::text, 'locating'
+            named.path, $9::text, $10::text, named.page_url, $7::text, 'locating', $11::uuid
        from task, named
       where (select count(*) from named) = 1
+     on conflict (business_id, plan_version_id) where plan_version_id is not null do nothing
      returning ${COLUMNS}`,
     [
       tx.businessId,
@@ -217,16 +219,16 @@ export async function insertLiveCorrection(
       input.page.trim(),
       input.word,
       input.replacement,
+      input.planVersionId ?? null,
     ],
   );
   return row === undefined ? { ok: false, code: 'PAGE_NOT_FOUND' } : correctionFrom(row);
 }
 
 /**
- * One correction by its id on `taskId`, locked, with no grant filter: the
- * system's read for the runner, whose authority is the worker lease on that
- * task (`correction-receipts.ts` checks it in the same transaction). A
- * correction on another task, or one not pinned yet (#1693), is not read,
+ * One correction by its id on `taskId`, locked, with no grant filter: the system's read for the
+ * runner, whose authority is the worker lease on that task (`correction-receipts.ts` checks it in
+ * the same transaction). A correction on another task, or one not pinned yet (#1693), is not read,
  * locked or told apart from none.
  */
 export async function lockCorrectionForSystem(
@@ -246,9 +248,8 @@ export async function lockCorrectionForSystem(
 }
 
 /**
- * One correction the caller's grant covers at its party, locked for the
- * caller's write, or undefined: absent, in another business, or not covered
- * are one answer.
+ * One correction the caller's grant covers at its party, locked for the caller's write, or
+ * undefined: absent, in another business, or not covered are one answer.
  *
  * The grant is judged twice: in the locking read, so a caller it does not
  * cover never waits on the row, and again once the lock is held and the
