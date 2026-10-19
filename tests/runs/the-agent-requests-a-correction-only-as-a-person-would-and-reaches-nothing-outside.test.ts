@@ -140,7 +140,10 @@ describe("the agent's runner", () => {
       'model.call',
     ]);
     const requests = door.sent.filter((each) => each.verb === 'live_correction.request');
-    expect(requests.map((each) => each.body)).toEqual([REQUEST]);
+    // The person's four operands, under the attempt's own operation id (#1717), never the model's.
+    expect(requests.map((each) => each.body)).toEqual([
+      { ...REQUEST, operationId: 'correction:attempt:1' },
+    ]);
     const last = door.sent.at(-1)?.body as { parts?: readonly unknown[] } | undefined;
     expect(last?.parts?.[0], 'the task at the revision its read answered').toEqual(TASK_PART);
     expect(last?.parts?.at(-2)).toMatchObject({ ref: 'answer', callId: 'answer_2' });
