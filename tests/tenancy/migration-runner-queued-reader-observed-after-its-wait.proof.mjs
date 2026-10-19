@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function, require-await, unicorn/prefer-string-replace-all, require-unicode-regexp -- the review's S2007-4 proof, kept as written */
 //
 // From the cross-vendor review of #2007 (S2007-4), copied unchanged but for
 // this header and the test name.

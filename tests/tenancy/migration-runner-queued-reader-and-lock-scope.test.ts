@@ -65,13 +65,17 @@ async function untilSleeping(watch: AdminConnection, name: string) {
   });
 }
 
-/** Send `text` on `sql`, then wait until backend `pid` waits on a lock or the read has finished. */
+/**
+ * Send `text` on `sql` and wait until backend `pid` waits on a lock or the
+ * read has finished, then hand back the read still running. It is wrapped so
+ * that awaiting this barrier never waits for the read itself (S2007-4).
+ */
 async function queuedRead(
   watch: AdminConnection,
   sql: postgres.Sql,
   text: string,
   pid: unknown,
-): Promise<unknown> {
+): Promise<{ readonly reading: Promise<unknown> }> {
   let readFinished = false;
   const reading = sql.unsafe(text).then(
     (rows) => {
@@ -90,7 +94,7 @@ async function queuedRead(
     );
     return readFinished || r?.waiting === true;
   });
-  return reading;
+  return { reading };
 }
 
 async function ledgerRows(db: { readonly admin: AdminConnection }) {
@@ -119,7 +123,12 @@ it.skipIf(noDatabase)(
       );
       expect(old?.['value']).toBe('old');
       await sql.unsafe('select pg_advisory_xact_lock(20071984)');
-      const reading = queuedRead(watch, sql, 'select * from public.sol_target', old?.['pid']);
+      const { reading } = await queuedRead(
+        watch,
+        sql,
+        'select * from public.sol_target',
+        old?.['pid'],
+      );
       const result = await running;
       await reading;
       await sql.unsafe('rollback');
@@ -168,7 +177,12 @@ it.skipIf(noDatabase)(
       ]).catch((error) => error);
       await untilSleeping(watch, db.name);
       const [session] = await sql.unsafe('select pg_backend_pid() as pid');
-      const reading = queuedRead(watch, sql, 'select public.sol_read() as value', session?.['pid']);
+      const { reading } = await queuedRead(
+        watch,
+        sql,
+        'select public.sol_read() as value',
+        session?.['pid'],
+      );
       const observed = await observe(watch, session?.['pid']);
       expect(observed).toMatchObject({ waiting: true, same_start: true, other_locks: 0 });
       const result = await running;
