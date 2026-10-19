@@ -99,7 +99,12 @@ async function answerMessage(
   return { message, source: call.answer_source };
 }
 
-/** A correction the run's own delegation requested on its task: its id and state, never its words. */
+/**
+ * A correction on the run's task that its own delegation requested, or that
+ * was stored for the plan version its lease serves (#1717: a replacement
+ * attempt on the same plan is answered that plan's one correction): its id
+ * and state, never its words.
+ */
 async function correctionMessage(
   tx: TenantQuery,
   facts: Bindings,
@@ -108,8 +113,10 @@ async function correctionMessage(
   if (!isUuid(part.correctionId)) return undefined;
   const [row] = await tx.query<{ state: string }>(
     `select c.state from public.live_corrections c
-       join public.leases l on l.business_id = c.business_id and l.delegation_id = c.delegation_id
-      where c.business_id = $1 and c.id = $2 and c.task_id = $3 and l.id = $4`,
+       join public.leases l on l.business_id = c.business_id and l.id = $4
+       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
+      where c.business_id = $1 and c.id = $2 and c.task_id = $3
+        and (c.delegation_id = l.delegation_id or c.plan_version_id = r.version_id)`,
     [tx.businessId, part.correctionId, facts.source.id, facts.leaseId],
   );
   if (row === undefined) return undefined;
