@@ -35,7 +35,7 @@
 // pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
 
 import { useEffect, useRef, type ReactElement } from 'react';
-import { AssistantPanel, type AssistantPage } from '@launchastro/ui';
+import { AssistantPanel } from '@launchastro/ui';
 import {
   addPage,
   ask,
@@ -44,32 +44,35 @@ import {
   fresh,
   rename,
   select,
-  started,
   takeOut,
   type Chat,
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
-import { sendProposal } from '../assistant/proposals.ts';
-import { citesOf } from '../assistant/cites.ts';
+import { keepBaseline, sendProposal, type Baseline } from '../assistant/proposals.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
-import { withPieces } from '../assistant/writing.ts';
-import type {
-  CallResult,
-  CommandOutcome,
-  ConversationReply,
-  OperationsClient,
-} from '../operations/client.ts';
+import {
+  askAgain,
+  setModel,
+  setScope,
+  startWith,
+  type Context,
+  type Opening,
+  type Replays,
+  type Sent,
+} from '../assistant/first-question.ts';
+import { resends } from '../assistant/resend.ts';
+import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
 import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
 
-export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
+export { KEPT } from '../assistant/first-question.ts';
 
 export interface AssistantViewProps {
   readonly client: OperationsClient;
@@ -84,58 +87,30 @@ export interface AssistantViewProps {
   readonly grantKey?: string;
 }
 
-type Sent = Promise<CallResult<CommandOutcome>>;
-
-interface Opening {
-  readonly chat: Chat;
-  readonly body: string;
-  readonly subject: Subject;
-  readonly scope: { readonly kind: 'task'; readonly id: string } | null;
-}
-
-/** The agent's answer to a kept question, why there is none, or that none comes here. */
-function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
-  if (reply === undefined) store.line(key, 'note', KEPT);
-  else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.answer(key, reply, undefined, citesOf(reply.cites));
-  else store.line(key, 'failed', reply.words);
-}
-
-/** The tab's first question with its model, its answer, a reopened twin's later lines, then its page. */
-async function startWith(
-  client: OperationsClient,
+/**
+ * The answers' store, except that an answer's edit is bound by the attempt
+ * that carried it, to what that attempt first read (`first-question.ts`),
+ * never to this send's read.
+ */
+function boundByAttempt(
+  heard: { readonly on: Store; readonly read: Promise<Baseline | null> },
   store: Store,
-  opening: Opening,
-  report: (key: string, sent: Sent) => Promise<boolean>,
-): Promise<string | null> {
-  const { chat, body, subject, scope } = opening;
-  // The tab as the question was asked: a model chosen before it rides in the
-  // start, so the first answer is asked of it (CS-7.30); none chosen, the
-  // default. A title, page or model chosen while it waits follows it in turn.
-  const { title, page, model } = chat;
-  const chosen = model === null ? {} : { model };
-  const start = { body, title, subject: subject.label, scope, ...chosen, ...(page && { page }) };
-  const settled = settle(
-    await withPieces(store, chat.key, (by) => client.mutate('conversation.start', start, by)),
-  );
-  const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
-  if (typeof id !== 'string') {
-    store.line(
-      chat.key,
-      'failed',
-      settled.kind === 'ok' ? 'No conversation came back.' : settled.because,
-    );
-    return null;
-  }
-  replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
-  store.update((current) => started(current, chat.key, id));
-  if (page !== null) await report(chat.key, setScope(client, id, page));
-  return id;
+  question: string,
+): { readonly on: Store; readonly read: Promise<Baseline | null> } {
+  const answer: Store['answer'] = (at, reply, _after, cites) =>
+    store.answer(at, reply, question, cites);
+  return { on: { ...heard.on, answer }, read: heard.read };
 }
 
 /** The start, the join, and every write after them, each refusal shown in the tab. */
 function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
+  const replays: Replays = {
+    resent: useRef(resends<Context>()).current,
+    keep: (reply, at) => {
+      keepBaseline(props.grantKey, reply, at);
+    },
+  };
   const report = async (key: string, sent: Sent): Promise<boolean> => {
     const settled = settle(await sent);
     if (settled.kind !== 'ok') store.line(key, 'failed', settled.because);
@@ -146,7 +121,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
   const start = (opening: Omit<Opening, 'subject'>, on: Store): Promise<string | null> =>
-    startWith(props.client, on, { ...opening, subject }, report);
+    startWith({ client: props.client, store, report, replays }, on, { ...opening, subject });
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
@@ -154,37 +129,29 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     // The asking tab's scope, as the question is asked: a tab selected while
     // its task is read changes neither the start nor the card.
     const opening = { chat, body, scope: scope() };
-    const { on, read } = answersTo(props, store, chat, question);
+    const { on, read } = boundByAttempt(answersTo(props, store, chat, question), store, question);
     // Each question waits for the tab's writes so far and then its task's
     // read, in the tab's queue, so a model chosen after it lands after it.
     // A tab not yet started joins what its last start made, or starts itself
-    // only once that start is refused.
+    // only once that start is refused. A lost start resent goes as that start
+    // whatever the tab is on now, so it replays rather than asks again (#897).
     let asked = false;
+    let baseline: Baseline | null = null;
     const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
     const turn = before.then(async (id) => {
-      await read;
-      if (id !== null) return id;
+      baseline = await read;
+      if (id !== null && !replays.resent.holds(key, 'conversation.start', body)) return id;
       asked = true;
-      return await start(opening, on);
+      const made = await start({ ...opening, baseline, question }, on);
+      return id ?? made;
     });
     starts.current.set(key, turn);
     const known = await turn;
     if (asked || known === null) return;
-    const message = { conversationId: known, body };
-    const settled = settle(
-      await withPieces(on, key, (by) => props.client.mutate('conversation.message', message, by)),
-    );
-    if (settled.kind === 'ok') replied(on, key, settled.value.reply);
-    else on.line(key, 'failed', settled.because);
+    await askAgain(props.client, on, key, { conversationId: known, body, baseline }, replays);
   };
   return { report, send, starts: starts.current };
 }
-
-const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
-  client.mutate('conversation.set_scope', { conversationId, page });
-
-const setModel = (client: OperationsClient, conversationId: string, model: string): Sent =>
-  client.mutate('conversation.set_model', { conversationId, model });
 
 /** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(

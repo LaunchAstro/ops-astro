@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#897: a lost first question resent after another question started the tab replays its first start, so no second question, reply or provider send is stored"
+}
