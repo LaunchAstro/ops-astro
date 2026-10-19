@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35's reads (#2011): one review with its revisions and their captures, the latest paired
-// with the one before it, and its pins (#2012); and one landed picture's bytes. Each filters
-// by the caller's grant at the review's holder inside the query (`covering.ts`), so a party
-// grant reads no other client's review and a picture of another business or out of reach is
-// one answer with a picture that is not there.
+// with the one before it, its pins (#2012) and their carry onto the latest (#2075); and one
+// landed picture's bytes. Each filters by the caller's grant at the review's holder inside the
+// query (`covering.ts`), so a party grant reads no other client's review and a picture of
+// another business or out of reach is one answer with a picture that is not there.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
 import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
+import { readCarried, type CarriedPinView } from './carries.ts';
 import { DATABASE_STORAGE } from './storage.ts';
 
 export interface CaptureView {
@@ -35,6 +36,10 @@ export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   /** The revision before it, to compare at each width; null for a first revision. */
   readonly before: RevisionView | null;
   readonly pins: readonly PinView[];
+  /** The pins carried onto `after`, the lost ones first with no anchor (#2075). */
+  readonly carried: readonly CarriedPinView[];
+  /** `after` has landed at every width and a pin before it is not yet carried onto it. */
+  readonly carryDue: boolean;
 }
 
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
@@ -72,6 +77,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
+  const held = { reviewId, taskId: review.task_id };
   return {
     reviewId,
     taskId: review.task_id,
@@ -82,7 +88,8 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins: await readPins(tx, { reviewId, taskId: review.task_id }),
+    pins: await readPins(tx, held),
+    ...(await readCarried(tx, held, views.at(-1) ?? null)),
   };
 }
 

@@ -45,26 +45,12 @@ const CHANGED = {
   document: 'c',
 };
 
-/** What the review read says of the carry onto its latest revision. */
-interface CarryRead {
-  readonly carryDue: boolean;
-  readonly carried: readonly {
-    readonly commentId: string;
-    readonly audience: string;
-    readonly body: string;
-    readonly fromRevisionId: string;
-    readonly lost: boolean;
-    readonly anchor: unknown;
-  }[];
-  readonly pins: readonly { readonly anchor: { readonly source: string } }[];
-}
-
-const readReview = async (reviewId: string): Promise<CarryRead> => {
+const readReview = async (reviewId: string) => {
   const read = await w.read(w.ava, reviewId);
   if (isCommandRefusal(read) || !('review' in read)) {
     throw new Error(`review.read answered ${JSON.stringify(read)}`);
   }
-  return read.review as unknown as CarryRead;
+  return read.review;
 };
 
 describe.skipIf(serverUrl === undefined)('C35-X pins carried to a new revision', () => {
