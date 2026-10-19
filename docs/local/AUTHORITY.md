@@ -282,7 +282,14 @@ shows only the work of that task's client (#169, `queue` in
 `core-runtime/src/pickup.ts`): the queue never shows it another client's
 reservation, purpose slug or held amount, and a repeated read is served again
 rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
-reservation the agent already knows is not narrowed. A helper delegation
+reservation the agent already knows is not narrowed. A `task.pickup` sent under a
+delegation credential answers to that delegation: judged last, once the
+agent's judgement holds it `for share`, it must be live and name the task the
+claim took, or the claim rolls back (`DELEGATION_NOT_LIVE`,
+`DELEGATION_OUT_OF_PURPOSE`; `pickup-delegation.ts`). The worker sends every
+pickup so. Each queue entry's `ownerProposed` says the owner proposed and
+approved it, as a role and never the person, so the worker also works the
+owner's own plan on its delegation's task (ROUTE1905). A helper delegation
 (AW-11) narrows its helper's queue to the parent's client while it stands, so
 a parent that names another agent as its helper narrows that agent's queue
 while the child stands (at most until the child's expiry). `task.decide`

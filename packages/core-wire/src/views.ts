@@ -524,7 +524,7 @@ export interface QueuedWork {
   readonly heldMinor: number;
   /** The reading agent when it proposed the version, else null. */
   readonly proposedByActorId: string | null;
-  /** A person then holding the owner role proposed it: the role, never who (ROUTE1905). */
+  /** People then holding the owner role proposed and approved it: the role, never who (ROUTE1905). */
   readonly ownerProposed: boolean;
 }
 

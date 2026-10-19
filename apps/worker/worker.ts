@@ -163,12 +163,12 @@ async function ask(
   return { reservationId: work['reservationId'], operationId: randomUUID() };
 }
 
-/** The pickup, under the identity it was first asked with. */
+/** The pickup, under the identity it was first asked with and its delegation, which it answers to. */
 async function pickUp(
   options: WorkerOptions,
   asked: Asked,
 ): Promise<{ readonly held: Held } | WorkerOutcome> {
-  const picked = await agentCall(options)('task.pickup', asked);
+  const picked = await agentCall(options, options.delegation)('task.pickup', asked);
   if (!('body' in picked)) return picked;
   return {
     held: {
