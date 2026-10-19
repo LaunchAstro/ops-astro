@@ -38,9 +38,10 @@
 //   schema: one that is active, has a transaction open (idle or aborted in
 //   it), or holds any lock. A session that is idle with no transaction and no
 //   lock passes, which is what a transaction-mode pooler such as Supavisor
-//   keeps open and refills when it is ended (#1984). So does one whose only
-//   wait is on the runner's own locks: it has not touched those tables, and it
-//   sees the new schema when the run commits. The supported upgrade is the
+//   keeps open and refills when it is ended (#1984). So does a single
+//   statement, alone in its transaction and holding no other lock, whose only
+//   wait is on the runner's own locks: it has read nothing yet, and it sees the
+//   new schema when the run commits. The supported upgrade is the
 //   application stopped, and a migration run beside a live application has two
 //   known ways to go wrong in 0030 alone. The check is a backstop to stopping
 //   the application, not the stop (docs/local/DATA.md, "Upgrade"). A role that
@@ -233,10 +234,14 @@ export async function otherSessions(
 /**
  * The sessions of `OTHER_SESSIONS` that could be using the old schema: not
  * idle, or with a transaction open, or holding or awaiting any lock. A null
- * state counts. One whose wait is on a lock and whom only this backend blocks
- * does not: inside the run, that is a statement queued behind the run's own
- * locks, which has touched none of those tables and reads them after the
- * commit. Outside a transaction this backend holds nothing, so the clause
+ * state counts. One statement queued behind the run's own locks does not:
+ * its wait is on a lock that only this backend blocks, it is its
+ * transaction's only statement (`xact_start = query_start`), and it holds no
+ * granted lock but its own virtual transaction id. It has read nothing yet,
+ * a function definition included, and reads the new schema after the commit.
+ * A transaction with any statement before the waiting one counts, because a
+ * function takes no lock and that statement may have run the old one
+ * (S2007-1). Outside a transaction this backend holds nothing, so the clause
  * matches nobody.
  */
 const BUSY_SESSIONS = `select a.pid, a.usename::text as usename, a.application_name,
@@ -253,7 +258,10 @@ const BUSY_SESSIONS = `select a.pid, a.usename::text as usename, a.application_n
         or a.xact_start is not null
         or exists (select 1 from pg_locks l where l.pid = a.pid))
    and not (a.wait_event_type is not distinct from 'Lock'
-            and pg_blocking_pids(a.pid) = array[pg_backend_pid()])
+            and pg_blocking_pids(a.pid) = array[pg_backend_pid()]
+            and a.xact_start = a.query_start
+            and not exists (select 1 from pg_locks l
+                             where l.pid = a.pid and l.granted and l.locktype <> 'virtualxid'))
  order by a.pid`;
 
 /**
@@ -335,7 +343,12 @@ async function lockFirst(execute: AdminConnection['execute'], timeoutMs: number)
   await execute(`select set_config('lock_timeout', $1, true)`, [`${String(timeoutMs)}ms`]);
   const tables = await execute<{ readonly name: string }>(OWN_TABLES);
   if (tables.length === 0) return;
-  await execute(`lock table ${tables.map((t) => t.name).join(', ')} in access exclusive mode`);
+  // ONLY each one: without it LOCK TABLE takes every inheritance child and
+  // partition too, wherever its schema is, `auth` included (S2007-2). The
+  // children in ops and public are on the list themselves.
+  await execute(
+    `lock table ${tables.map((t) => `only ${t.name}`).join(', ')} in access exclusive mode`,
+  );
 }
 
 /**

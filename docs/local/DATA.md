@@ -75,7 +75,8 @@ and, before any file runs, does three things in this order.
    only).
 2. It locks every ordinary and partitioned table in the `ops` and `public`
    schemas in ACCESS EXCLUSIVE mode, in one `LOCK TABLE` statement, in schema
-   and name order. Those are the schemas the migrations own. Supabase's own
+   and name order, each named `ONLY` so the lock never reaches an inheritance
+   child or partition in another schema. Those are the schemas the migrations own. Supabase's own
    (`auth`, `storage`, `realtime`) are never locked. The list is read from the
    catalogue on each attempt, not from the files, so no table a file alters can
    be missed. Tables the pending files create need no lock: they do not exist
@@ -96,12 +97,15 @@ one idle backend per runtime login (port 6543) and opens a new one within
 100 ms when it is ended, so a rule that counted any session could never pass
 there (#1984, 19 October 2026). Such a backend cannot be mid-work on the old
 schema. Any statement it starts on a table in `ops` or `public` waits on the
-run's locks, and once the run commits, it reads the new schema. A session whose
-only wait is on the runner's own locks (`wait_event_type = 'Lock'` and
-`pg_blocking_pids` exactly the runner) passes for the same reason: it is that
-statement, queued, and has touched none of those tables. A session in a
-transaction still refuses, whatever it has done, and so does one holding any
-lock, an advisory lock included. It may have read the old schema already.
+run's locks, and once the run commits, it reads the new schema. A single
+statement queued behind the runner's own locks passes for the same reason:
+its wait is a `Lock` that only the runner blocks (`pg_blocking_pids`), it is
+its transaction's only statement (`xact_start = query_start`), and it holds no
+granted lock but its own virtual transaction id. It has read nothing yet. A
+session in a transaction that ran any statement before the one it waits on
+still refuses, whatever that statement was, because a function takes no lock
+and it may have run the old definition. So does one holding any lock, an
+advisory lock included.
 
 A refused run has applied nothing and written no ledger row. The CLI prints
 the refusal and each session and exits 2. The rule applies to any client
