@@ -2,11 +2,12 @@
 //
 // A model's reply that fails part way through being kept, its transaction
 // rolled back or the process serving it dead with its connection, keeps
-// nothing. The message has its one call: asked again, it is answered from that
-// call's ending, the model not asked again and nothing kept. Sent again, a new
-// message, the reply is kept once, in the epoch of the conversation's row it
-// held, and asked once more it is answered from what was kept. A conversation
-// whose task was purged sends that reply later, and nothing from before the purge.
+// nothing. The message has its one call, and its settlement kept a transient
+// copy of the answer (#1563): asked again, the reply is kept once from that
+// copy, the model not asked again, in the epoch of the conversation's row it
+// held, and the copy is gone. Asked once more it is answered from what was
+// kept. A conversation whose task was purged sends that reply later, and
+// nothing from before the purge.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -91,6 +92,24 @@ async function failedAt(
   }
 }
 
+/** The message's calls, by state: one call per message, settled once. */
+const callsOf = async (messageId: string) =>
+  (
+    await c.fixture.db.admin.execute<{ readonly state: string }>(
+      `select state from public.model_calls where conversation_message_id = $1`,
+      [messageId],
+    )
+  ).map((row) => row.state);
+
+/** How many answer copies the message's settled call has at rest. */
+const copiesOf = async (messageId: string) =>
+  (
+    await c.fixture.db.admin.execute(
+      `select 1 from public.conversation_answer_copies where message_id = $1`,
+      [messageId],
+    )
+  ).length;
+
 /** The question's exchange, on the world's own connection. */
 const exchanged = async (asked: { conversationId: string; messageId: string }) =>
   await c.model.exchange(c.fixture.db.app, c.fixture.business, c.w.owner.presented, asked);
@@ -99,7 +118,7 @@ describe.skipIf(serverUrl === undefined)('a reply that fails part way', () => {
   it.each(
     STEPS.flatMap(([step, marker]) => FAILURES.map((failure) => [step, failure, marker] as const)),
   )(
-    'a reply failing after %s, %s, keeps nothing; asked again it asks nothing, and sent again it is kept once in the current epoch',
+    'a reply failing after %s, %s, keeps nothing; asked again it is kept once from the settled answer, the model not asked again',
     async (_step, failure, marker) => {
       const { o, messageId } = await questionAfterPurge();
       const asked = { conversationId: o.conversationId, messageId };
@@ -107,29 +126,18 @@ describe.skipIf(serverUrl === undefined)('a reply that fails part way', () => {
       const before = await epochsOf(c.fixture, o.conversationId);
       expect(before.epoch).toBe(1);
       expect(before.messages.filter((m) => m.answers === messageId)).toEqual([]);
+      expect(await copiesOf(messageId)).toBe(1);
       const asking = c.model.provider.seen.length;
       const retried = await exchanged(asked);
-      expect(retried).toMatchObject({ answered: false, code: 'STILL_ANSWERING' });
+      expect(retried).toMatchObject({ answered: true });
+      expect(await exchanged(asked)).toEqual(retried);
       expect(c.model.provider.seen).toHaveLength(asking);
-      const resent = await ownerOn(c, c.unanswered, 'conversation.message', {
-        operationId: randomUUID(),
-        conversationId: o.conversationId,
-        body: `again-${randomUUID()}`,
-      });
-      const again = {
-        conversationId: o.conversationId,
-        messageId: String(detail(resent)['messageId']),
-      };
-      const first = await exchanged(again);
-      expect(first).toMatchObject({ answered: true });
-      const seen = c.model.provider.seen.length;
-      expect(await exchanged(again)).toEqual(first);
-      expect(c.model.provider.seen).toHaveLength(seen);
       const after = await epochsOf(c.fixture, o.conversationId);
-      expect(after.messages.filter((m) => m.answers === messageId)).toEqual([]);
-      const replies = after.messages.filter((m) => m.answers === again.messageId);
+      const replies = after.messages.filter((m) => m.answers === messageId);
       expect(replies).toHaveLength(1);
       expect(replies[0]?.epoch).toBe(1);
+      expect(await callsOf(messageId)).toEqual(['settled']);
+      expect(await copiesOf(messageId)).toBe(0);
       const sent = await sentForNext(c, o.conversationId);
       expect(sent).toContain(replies[0]?.body);
       expect(sent).not.toContain(o.canary);
