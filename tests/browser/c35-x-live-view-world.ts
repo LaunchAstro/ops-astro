@@ -240,6 +240,28 @@ export async function open(search: Record<string, string>): Promise<Watched> {
   return watched;
 }
 
+/** Record every phase the live view takes from now on; read them with `phasesSeen`. */
+export async function tracePhases(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const view = document.querySelector<HTMLElement>('[data-live-view]');
+    if (view === null) throw new Error('no live view');
+    const seen = [view.dataset['liveView'] ?? ''];
+    Object.assign(window, { phasesSeen: seen });
+    new MutationObserver(() => {
+      const now = view.dataset['liveView'] ?? '';
+      if (seen.at(-1) !== now) seen.push(now);
+    }).observe(view, { attributes: true, attributeFilter: ['data-live-view'] });
+  });
+}
+
+/** The phases since `tracePhases`, from the first hello on (the first wait may be over by then). */
+export async function phasesSeen(page: Page): Promise<readonly string[]> {
+  const seen = await page.evaluate(
+    () => (window as unknown as { phasesSeen: string[] }).phasesSeen,
+  );
+  return seen[0] === 'waiting' ? seen.slice(1) : seen;
+}
+
 export const phase = async (page: Page): Promise<string | null> =>
   await page.locator('[data-live-view]').getAttribute('data-live-view');
 
