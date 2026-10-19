@@ -42,8 +42,12 @@ beforeAll(async () => {
     requests += 1;
     response.writeHead(200, { 'content-type': 'application/json' }).end('{}');
   });
-  await new Promise<void>((done) => database.listen(0, '127.0.0.1', done));
-  await new Promise<void>((done) => target.listen(0, '127.0.0.1', done));
+  await new Promise<void>((done) => {
+    database.listen(0, '127.0.0.1', done);
+  });
+  await new Promise<void>((done) => {
+    target.listen(0, '127.0.0.1', done);
+  });
   databasePort = (database.address() as AddressInfo).port;
   targetPort = (target.address() as AddressInfo).port;
 });
@@ -53,8 +57,12 @@ afterEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((done) => database.close(() => done()));
-  await new Promise<void>((done) => target.close(() => done()));
+  await new Promise<void>((done) => {
+    database.close(() => done());
+  });
+  await new Promise<void>((done) => {
+    target.close(() => done());
+  });
   rmSync(folder, { recursive: true, force: true });
 });
 
@@ -103,7 +111,7 @@ interface Run {
 }
 
 function start(
-  settingsFile: string | undefined,
+  settingsFile?: string,
   flags: readonly string[] = ['--disable-sigusr1'],
   env: Record<string, string> = {},
 ): Run {
@@ -120,7 +128,9 @@ function start(
   running.push(child);
   child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
   child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
-  const exited = new Promise<number | null>((done) => child.once('exit', (code) => done(code)));
+  const exited = new Promise<number | null>((done) => {
+    child.once('exit', (code) => done(code));
+  });
   return { child, out: () => out, exited };
 }
 
@@ -196,7 +206,7 @@ it('a settings file others may read is refused, and nothing is opened', async ()
 }, 120_000);
 
 it('no settings file named is refused', async () => {
-  const run = start(undefined);
+  const run = start();
   expect(await run.exited).toBe(2);
   expect(run.out()).toBe('trace export: TRACE_EXPORT_SETTINGS_FILE names no file\n');
 }, 120_000);

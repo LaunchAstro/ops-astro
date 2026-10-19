@@ -22,18 +22,10 @@ import { asTraceRole } from '../../apps/trace-export/main.ts';
 import { retainDeployment } from '../../apps/api/trace-exporter.ts';
 import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import { derivedId } from '../../packages/core-runtime/src/index.ts';
-import {
-  appliedDetail,
-  asAgent,
-  asPerson,
-  handbackBody,
-  liveWork,
-  revisionOf,
-  rows,
-  type Schedules,
-} from '../runtime/schedules-harness.ts';
+import type { Schedules } from '../runtime/schedules-harness.ts';
 import { ageLease, t, useAw13World } from '../runtime/aw-13-world.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { gaps, plantedRun, runState } from './trace-export-runs.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -113,7 +105,9 @@ function startProcess(business: string) {
   });
   child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
   child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
-  const exited = new Promise<number | null>((done) => child.once('exit', (code) => done(code)));
+  const exited = new Promise<number | null>((done) => {
+    child.once('exit', (code) => done(code));
+  });
   return {
     out: () => out,
     stop: async (): Promise<number | null> => {
@@ -137,67 +131,6 @@ const traceOf = (s: Schedules, runId: unknown): string =>
   derivedId(KEY, ['trace', s.business, String(runId)], 32);
 const received = (): string => t.target.received.join('\n');
 
-async function replayCall(s: Schedules, leaseId: unknown): Promise<void> {
-  await rows(
-    s,
-    `insert into public.model_calls
-      (business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
-       operation_key, route_key, credential_kind, state, reserved_minor, actual_minor,
-       accepted_at, ended_at)
-     select l.business_id, $2, l.run_id, st.id, l.id, r.version_id, r.id,
-            'scripted_replay', 'replay', 'replay', 'settled', 1, 1, now(), now()
-       from public.leases l
-       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
-       join public.planned_steps st on st.business_id = l.business_id and st.run_id = l.run_id
-      where l.business_id = $1 and l.id = $3 order by st.ordinal limit 1`,
-    [s.business, randomUUID(), leaseId],
-  );
-}
-
-/** A replay-fake run handed back, its title, comment and report planted with content. */
-async function plantedRun(s: Schedules, planted: string) {
-  const work = await liveWork(s, `trace-login ${planted}`, 1_000);
-  appliedDetail(
-    await asPerson(s, {
-      command: 'task.comment',
-      operationId: randomUUID(),
-      recordId: work.taskId,
-      expectedRevision: await revisionOf(s, work.taskId),
-      body: planted,
-      audience: 'internal',
-    }),
-    'task.comment',
-  );
-  await replayCall(s, work.picked['leaseId']);
-  appliedDetail(
-    await asAgent(
-      s,
-      { ...handbackBody(work.picked), report: { summary: planted } },
-      String(work.picked['credential']),
-    ),
-    'task.handback',
-  );
-  return work;
-}
-
-async function runState(s: Schedules, runId: unknown): Promise<string | undefined> {
-  const [row] = await rows<{ state: string }>(
-    s,
-    'select state from public.planned_runs where business_id = $1 and id = $2',
-    [s.business, runId],
-  );
-  return row?.state;
-}
-
-async function gaps(s: Schedules): Promise<number> {
-  const [row] = await rows<{ n: number }>(
-    s,
-    'select count(*)::int as n from public.trace_export_gaps where business_id = $1',
-    [s.business],
-  );
-  return row?.n ?? -1;
-}
-
 /** One statement as the trace login, in `business`'s transaction, with or without its role. */
 async function asLogin(business: string, text: string, role = true): Promise<string> {
   const database = role ? asTraceRole(traceDb) : traceDb;
@@ -212,76 +145,86 @@ async function asLogin(business: string, text: string, role = true): Promise<str
   }
 }
 
-describe.skipIf(serverUrl === undefined)('the trace export process on its own login', () => {
-  it('exports a replay-fake run with timings, outcome and call counts, and nothing planted leaves', async () => {
-    const s = t.alpha;
-    const planted = `planted message https://client-${randomUUID()}.example/site`;
-    const foreign = await plantedRun(t.bravo, `another business ${randomUUID()}`);
-    const exporter = startProcess(s.business);
-    try {
-      const work = await plantedRun(s, planted);
-      expect(await runState(s, work.picked['runId'])).not.toBe('running');
-      await until(() => received().includes('"stringValue":"completed"'));
-      const body = received();
-      expect(body).toContain(`"traceId":"${traceOf(s, work.picked['runId'])}"`);
-      expect(body).toMatch(/"startTimeUnixNano":"\d+","endTimeUnixNano":"\d+"/u);
-      expect(body).toContain('"key":"ops-astro.usage.model_calls","value":{"intValue":"1"}');
-      expect(body).toContain('"key":"ops-astro.usage.settled_calls","value":{"intValue":"1"}');
-      for (const needle of [
-        planted,
-        'client-',
-        t.target.canary,
-        PASSWORD,
-        work.taskId,
-        String(work.picked['runId']),
-        s.business,
-        t.bravo.business,
-        traceOf(t.bravo, foreign.picked['runId']),
-      ]) {
-        expect(body.includes(needle), needle).toBe(false);
-        expect(exporter.out().includes(needle), needle).toBe(false);
+describe.skipIf(serverUrl === undefined)(
+  'the trace export process exporting on its own login',
+  () => {
+    it('exports a replay-fake run with timings, outcome and call counts, and nothing planted leaves', async () => {
+      const s = t.alpha;
+      const planted = `planted message https://client-${randomUUID()}.example/site`;
+      const foreign = await plantedRun(t.bravo, `another business ${randomUUID()}`);
+      const exporter = startProcess(s.business);
+      try {
+        const work = await plantedRun(s, planted);
+        expect(await runState(s, work.picked['runId'])).not.toBe('running');
+        await until(() => received().includes('"stringValue":"completed"'));
+        const body = received();
+        expect(body).toContain(`"traceId":"${traceOf(s, work.picked['runId'])}"`);
+        expect(body).toMatch(/"startTimeUnixNano":"\d+","endTimeUnixNano":"\d+"/u);
+        expect(body).toContain('"key":"ops-astro.usage.model_calls","value":{"intValue":"1"}');
+        expect(body).toContain('"key":"ops-astro.usage.settled_calls","value":{"intValue":"1"}');
+        for (const needle of [
+          planted,
+          'client-',
+          t.target.canary,
+          PASSWORD,
+          work.taskId,
+          String(work.picked['runId']),
+          s.business,
+          t.bravo.business,
+          traceOf(t.bravo, foreign.picked['runId']),
+        ]) {
+          expect(body.includes(needle), needle).toBe(false);
+          expect(exporter.out().includes(needle), needle).toBe(false);
+        }
+        const keys = new Set([...body.matchAll(/"key":"([^"]+)"/gu)].map((match) => match[1]));
+        expect([...keys].toSorted()).toStrictEqual([
+          'ops-astro.measurements.version',
+          'ops-astro.outcome',
+          'ops-astro.usage.model_calls',
+          'ops-astro.usage.settled_calls',
+          'sequence',
+          'service.name',
+          'stage',
+        ]);
+      } finally {
+        expect(await exporter.stop()).toBe(0);
       }
-      const keys = new Set([...body.matchAll(/"key":"([^"]+)"/gu)].map((match) => match[1]));
-      expect([...keys].toSorted()).toStrictEqual([
-        'ops-astro.measurements.version',
-        'ops-astro.outcome',
-        'ops-astro.usage.model_calls',
-        'ops-astro.usage.settled_calls',
-        'sequence',
-        'service.name',
-        'stage',
-      ]);
-    } finally {
+    }, 180_000);
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'the trace export process through an outage and a stop',
+  () => {
+    it('a target that is down or a process that is stopped stops no run; the gap is recorded and caught up', async () => {
+      const s = t.alpha;
+      const before = await gaps(s);
+      t.target.mode = 'down';
+      let exporter = startProcess(s.business);
+      const outage = await plantedRun(s, `outage ${randomUUID()}`);
+      expect(await runState(s, outage.picked['runId'])).not.toBe('running');
+      await until(async () => (await gaps(s)) > before);
       expect(await exporter.stop()).toBe(0);
-    }
-  }, 180_000);
 
-  it('a target that is down or a process that is stopped stops no run; the gap is recorded and caught up', async () => {
-    const s = t.alpha;
-    const before = await gaps(s);
-    t.target.mode = 'down';
-    let exporter = startProcess(s.business);
-    const outage = await plantedRun(s, `outage ${randomUUID()}`);
-    expect(await runState(s, outage.picked['runId'])).not.toBe('running');
-    await until(async () => (await gaps(s)) > before);
-    expect(await exporter.stop()).toBe(0);
-
-    const stopped = await plantedRun(s, `stopped ${randomUUID()}`);
-    expect(await runState(s, stopped.picked['runId'])).not.toBe('running');
-    t.target.mode = 'ok';
-    await ageLease(s);
-    exporter = startProcess(s.business);
-    try {
-      for (const run of [outage, stopped]) {
-        const trace = `"traceId":"${traceOf(s, run.picked['runId'])}"`;
-        // eslint-disable-next-line no-await-in-loop -- each run's trace in turn
-        await until(() => received().includes(trace));
+      const stopped = await plantedRun(s, `stopped ${randomUUID()}`);
+      expect(await runState(s, stopped.picked['runId'])).not.toBe('running');
+      t.target.mode = 'ok';
+      await ageLease(s);
+      exporter = startProcess(s.business);
+      try {
+        for (const run of [outage, stopped]) {
+          const trace = `"traceId":"${traceOf(s, run.picked['runId'])}"`;
+          // eslint-disable-next-line no-await-in-loop -- each run's trace in turn
+          await until(() => received().includes(trace));
+        }
+      } finally {
+        expect(await exporter.stop()).toBe(0);
       }
-    } finally {
-      expect(await exporter.stop()).toBe(0);
-    }
-  }, 240_000);
+    }, 240_000);
+  },
+);
 
+describe.skipIf(serverUrl === undefined)('the trace export login and role', () => {
   it("reads only a span's cells, and runs retention, as its role in its own business", async () => {
     const own = t.alpha.business;
     const other = t.bravo.business;

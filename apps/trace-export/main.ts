@@ -150,7 +150,7 @@ export async function main(execArgv: readonly string[], env: Settings): Promise<
   );
   say(`on for ${String(businesses.length)} business${businesses.length === 1 ? '' : 'es'}`);
   // The export's intervals are unreferenced: this holds the process until it is told to stop.
-  const awake = setInterval(() => undefined, 1 << 30);
+  const awake = setInterval(() => {}, 1 << 30);
   await new Promise<void>((done) => {
     process.once('SIGTERM', done);
     process.once('SIGINT', done);
