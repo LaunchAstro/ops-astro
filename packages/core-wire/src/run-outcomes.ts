@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The run outcome contract (#1623 R1, "Run outcome contract, 18 October 2026" in
-// `docs/current-decisions.md`). Every attempt that stops ends in one of seven named outcomes, with
+// `docs/current-decisions.md`). Every attempt that stops ends in one of eight named outcomes, with
 // a typed end code from one closed union. The stop's own transaction writes it (`run_outcomes`,
-// migration 20261019105500), and the code is never a suffix or free text: `outcomeOf` is the one
-// place a code finds its outcome, and its table is keyed by every code, so a new one fails the type
-// check until it has a row here and in the migration's per-outcome check.
+// migration 20261019105500, widened by 20261019115000 and 20261019135000), and the code is
+// never a suffix or free text: `outcomeOf` is the one place a code finds its outcome, and its
+// table is keyed by every code, so a new one fails the type check until it has a row here and in
+// the newest migration's per-outcome check.
 
-/** The seven outcomes an attempt can end in. */
+/** The eight outcomes an attempt can end in; `plan_unavailable` is the owner's (register 107). */
 export const RUN_OUTCOMES = [
   'success',
   'budget_wait',
@@ -16,6 +17,7 @@ export const RUN_OUTCOMES = [
   'lease_lost',
   'unknown_provider_outcome',
   'waiting_plan_allowance',
+  'plan_unavailable',
 ] as const;
 
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
@@ -77,6 +79,10 @@ export type EndCode =
   | 'OPEN_CALL_AT_STOP'
   | 'STILL_ANSWERING'
   | 'LOCAL_PLAN_LIMIT'
+  // The owner's ChatGPT plan's answers that end a run (#1625 R9), verbatim from custody.
+  | 'SUBSCRIPTION_PLAN_ALLOWANCE'
+  | 'SUBSCRIPTION_PLAN_UNAVAILABLE'
+  | 'SUBSCRIPTION_SIGN_IN_NEEDED'
   | WorkerEndCode;
 
 /** Each end code's outcome. Keyed by every code, so one with no row fails the type check. */
@@ -91,6 +97,9 @@ const OUTCOME_OF: { readonly [Code in EndCode]: RunOutcome } = {
   ANSWER_LOST: 'unknown_provider_outcome',
   STILL_ANSWERING: 'unknown_provider_outcome',
   LOCAL_PLAN_LIMIT: 'waiting_plan_allowance',
+  SUBSCRIPTION_PLAN_ALLOWANCE: 'waiting_plan_allowance',
+  SUBSCRIPTION_PLAN_UNAVAILABLE: 'plan_unavailable',
+  SUBSCRIPTION_SIGN_IN_NEEDED: 'cancelled',
   TASK_CANCELLED: 'cancelled',
   PLAN_SUPERSEDED: 'cancelled',
   DECISION_STALE: 'cancelled',
