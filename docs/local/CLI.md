@@ -48,8 +48,8 @@ It keeps its credential files in that checkout's `.local/`, as below.
 ## Hosted presets
 
 `--env <name>`, or `OPS_ASTRO_ENV=<name>`, points `login`, `logout`, the operations
-(`task.board`, `person.list` and the rest) and the visual operations at a
-hosted app:
+(`task.board`, `person.list` and the rest), the agent verbs (`task get`,
+`task list` and the others below) and the visual operations at a hosted app:
 
 | Preset       | App origin                    |
 | ------------ | ----------------------------- |
@@ -71,16 +71,36 @@ ops-astro logout --env sandbox
   added (`.local/cli-token.sandbox`, or `$OPS_ASTRO_TOKEN_FILE.sandbox`; the
   same for the delegation file). A sandbox bearer is never read for a
   production call, and `logout --env sandbox` leaves production signed in.
-- A preset replaces the hand-set addresses. `--env` or `OPS_ASTRO_ENV` beside
-  `--api`, `--gotrue`, `--web`, `OPS_ASTRO_API_URL`, `OPS_ASTRO_GOTRUE_URL`,
-  `OPS_ASTRO_WEB_URL` or `SUPABASE_PUBLISHABLE_KEY` is refused with exit 2,
-  naming both, before anything is read or sent. So is a name that is not a
-  preset.
-- The agent verbs (`task get`, `task list` and the others below) do not take
-  a preset yet; they read `--api` and `OPS_ASTRO_API_URL` and the default
-  credential files, as before. Use the operation form against a hosted app.
+- Under a preset the bearer and the delegation come from that preset's files
+  only. When its bearer file is missing the command exits 2 with `no bearer`,
+  naming `login --env <preset>`; the plain file and the other preset's are
+  never read in its place. A stale bearer is sent once, to its own origin,
+  and the refusal is final (exit 1).
+- A preset replaces the hand-set addresses and credentials. `--env` or
+  `OPS_ASTRO_ENV` beside `--api`, `--gotrue`, `--web`, `OPS_ASTRO_API_URL`,
+  `OPS_ASTRO_GOTRUE_URL`, `OPS_ASTRO_WEB_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+  `OPS_ASTRO_TOKEN` or `OPS_ASTRO_DELEGATION` is refused with exit 2, naming
+  both, before anything is read or sent. So is a name that is not a preset.
+  The command line can't tell which origin a bearer in the environment was
+  issued for, so it never sends one under a preset.
+- `--env` wins over `OPS_ASTRO_ENV` when they differ; only the flag's
+  preset's files are read.
 - The hosted token lasts an hour. After that the API refuses the bearer; run
   `login` again.
+
+### Manual mode
+
+Without a preset, nothing ties a bearer to an origin. The command line never
+decodes a token, and the plain files record no origin, so a production bearer
+in `OPS_ASTRO_TOKEN` with `OPS_ASTRO_API_URL` set to the sandbox goes to the
+sandbox, and the other way round. The person who sets both owns the pairing.
+Each setting is read in this order, and the preset files are never read:
+
+| Setting    | Read in this order                                                                   |
+| ---------- | ------------------------------------------------------------------------------------ |
+| Bearer     | `OPS_ASTRO_TOKEN`, then `$OPS_ASTRO_TOKEN_FILE` or `.local/cli-token`                |
+| Delegation | `OPS_ASTRO_DELEGATION`, then `$OPS_ASTRO_DELEGATION_FILE` or `.local/cli-delegation` |
+| API        | `--api`, then `OPS_ASTRO_API_URL`, then `http://127.0.0.1:8790`                      |
 
 ## Checking a machine against a hosted app
 
@@ -132,27 +152,31 @@ sends any request. It prints
 
 ## Flags and environment
 
-| Flag                 | Environment                 | Meaning                                                                                              |
-| -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--json <object>`    |                             | The operation's body as a JSON object. Default `{}`.                                                 |
-| `--body-file <path>` |                             | The body read from a file. Use one of `--json` and `--body-file`, not both.                          |
-| `--business <key>`   | `OPS_ASTRO_BUSINESS`        | The business key in the path. The server decides whether the login belongs to it.                    |
-| `--env <preset>`     | `OPS_ASTRO_ENV`             | A hosted app: `sandbox` or `production` ("Hosted presets"). Not with `--api`, `--gotrue` or `--web`. |
-| `--api <url>`        | `OPS_ASTRO_API_URL`         | The API origin. Default `http://127.0.0.1:8790`.                                                     |
-|                      | `OPS_ASTRO_TOKEN`           | The bearer. When unset, the file `login` wrote is used.                                              |
-|                      | `OPS_ASTRO_TOKEN_FILE`      | Where `login` saves the bearer. Default `.local/cli-token` (owner-only, ignored by Git).             |
-| `--email <address>`  | `OPS_ASTRO_EMAIL`           | `login` only.                                                                                        |
-|                      | `OPS_ASTRO_PASSWORD`        | `login` only. When unset, the first line of piped stdin; at a terminal, a prompt with echo off.      |
-| `--gotrue <url>`     | `OPS_ASTRO_GOTRUE_URL`      | `login` only. Default `http://127.0.0.1:54391`.                                                      |
-|                      | `SUPABASE_PUBLISHABLE_KEY`  | `login` only. The hosted sign-in service's publishable key, sent as `apikey` to it alone.            |
-| `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                                  |
-|                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.                  |
-|                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).            |
-| `--web <url>`        | `OPS_ASTRO_WEB_URL`         | A visual operation only: the app origin its link is under. Default `http://127.0.0.1:5190`.          |
+| Flag                 | Environment                 | Meaning                                                                                                      |
+| -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--json <object>`    |                             | The operation's body as a JSON object. Default `{}`.                                                         |
+| `--body-file <path>` |                             | The body read from a file. Use one of `--json` and `--body-file`, not both.                                  |
+| `--business <key>`   | `OPS_ASTRO_BUSINESS`        | The business key in the path. The server decides whether the login belongs to it.                            |
+| `--env <preset>`     | `OPS_ASTRO_ENV`             | A hosted app: `sandbox` or `production` ("Hosted presets"). Not with `--api`, `--gotrue` or `--web`.         |
+| `--api <url>`        | `OPS_ASTRO_API_URL`         | The API origin. Default `http://127.0.0.1:8790`.                                                             |
+|                      | `OPS_ASTRO_TOKEN`           | The bearer. When unset, the file `login` wrote is used. Refused beside a preset.                             |
+|                      | `OPS_ASTRO_TOKEN_FILE`      | Where `login` saves the bearer. Default `.local/cli-token` (owner-only, ignored by Git).                     |
+| `--email <address>`  | `OPS_ASTRO_EMAIL`           | `login` only.                                                                                                |
+|                      | `OPS_ASTRO_PASSWORD`        | `login` only. When unset, the first line of piped stdin; at a terminal, a prompt with echo off.              |
+| `--gotrue <url>`     | `OPS_ASTRO_GOTRUE_URL`      | `login` only. Default `http://127.0.0.1:54391`.                                                              |
+|                      | `SUPABASE_PUBLISHABLE_KEY`  | `login` only. The hosted sign-in service's publishable key, sent as `apikey` to it alone.                    |
+| `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                                          |
+|                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used. Refused beside a preset. |
+|                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).                    |
+| `--web <url>`        | `OPS_ASTRO_WEB_URL`         | A visual operation only: the app origin its link is under. Default `http://127.0.0.1:5190`.                  |
 
 The bearer and the delegation credential are never taken as flags, so they do
 not appear in a process listing or shell history, and the command line never
-prints either of them.
+prints either of them. Every line it prints, on stdout or stderr, has each
+credential it sent replaced by `(redacted)`: an answer that echoes one, a
+refusal's `code` or `fixes`, a fault's body. Only the exact value is caught,
+not an encoded copy; the server's rule against echoing a credential is the
+first guard. It writes no log file: stdout and stderr are its only output.
 
 A write needs an `operationId`; when the body has none, the command line adds a
 fresh one. A read on the person prefix is sent with exactly the body given and
@@ -296,13 +320,13 @@ printed exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
 The one exception is a successful agent `task.pickup`, whose credential is
 replaced by where it was saved.
 
-| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer, or whose save a `logout` overtook. Its line is the command line's own, never the provider's words.                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written, a preset beside a hand-set address, or credentials another command holds locked. No request sent.                                                                                                                                                        |
-| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `run.delegate_child` whose helper's credential could not be saved (the same); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
+| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer, or whose save a `logout` overtook. Its line is the command line's own, never the provider's words.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written, a preset beside a hand-set address or credential, a flag no verb names, or credentials another command holds locked. No request sent.                                                                                                                                                                                                                  |
+| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `run.delegate_child` whose helper's credential could not be saved (the same); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; a `logout` that could not remove a credential file (stderr names it); and `cli: internal fault`, a failure nothing else expected, whose own text and stack never print. |
 
 ## What it does not do
 
@@ -331,9 +355,16 @@ pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <i
 pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
 pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
 pnpm cli map view|frontier <id>
+pnpm cli map list
 ```
 
-- Connection flags, environment and exit codes are an operation's. A write
+- Connection flags (`--business`, `--agent`, `--env`, `--api`), environment
+  and exit codes are an operation's, in either form, `--env sandbox` or
+  `--env=sandbox`. A flag no verb names is refused with exit 2, never dropped,
+  so a misspelt `--envv production` can't leave the line on `OPS_ASTRO_ENV`. A verb flag's value is
+  taken as given, even one that starts with `--`: in
+  `--description --env=production` it is the description, never the preset.
+  Every refusal that needs no credential comes before one is read. A write
   prints `ok <operation> <id> r<revision>`; on no answer or a fault it prints
   its `operationId`, and the same line with `--operation <id>` replays it.
 - `brief` is id, title and state; `standard` (default) adds the summary,

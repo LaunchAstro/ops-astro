@@ -152,21 +152,36 @@ export function verbHelp(): string {
     'pass that revision to the next write.',
     'Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
     'No answer or a fault prints the operationId; send the same line with --operation <id> to replay.',
+    "Connection as an operation's: --business <key>, --agent, --env sandbox|production (or OPS_ASTRO_ENV).",
     ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');
 }
+
+/** Every flag a verb's usage names, and `--operation`. Any other is refused, never dropped. */
+const KNOWN: ReadonlySet<string> = new Set([
+  ...VERB_TABLE.flatMap((row) =>
+    [...row.usage.matchAll(/--([a-z-]+)/gu)].map((one) => one[1] ?? ''),
+  ),
+  'operation',
+]);
+
+/** Does verb flag `--name` take the next argument as its value? */
+export const takesValue = (name: string): boolean => KNOWN.has(name) && !SWITCHES.has(name);
 
 function parse(argv: readonly string[]): { words: string[]; flags: Flags } {
   const words: string[] = [];
   const flags: Record<string, string | true> = {};
   for (let at = 0; at < argv.length; at += 1) {
     const argument = argv[at] as string;
+    const name = argument.slice(2);
     if (!argument.startsWith('--')) words.push(argument);
-    else if (SWITCHES.has(argument.slice(2))) flags[argument.slice(2)] = true;
+    // Named without its value: a refusal names settings, never what they were set to.
+    else if (!KNOWN.has(name)) throw new UsageError(`unknown flag --${name.split('=')[0] ?? ''}`);
+    else if (SWITCHES.has(name)) flags[name] = true;
     else {
       const value = argv[(at += 1)];
       if (value === undefined) throw new UsageError(`${argument} needs a value`);
-      flags[argument.slice(2)] = value;
+      flags[name] = value;
     }
   }
   return { words, flags };
@@ -221,49 +236,65 @@ function operationOf(row: VerbRow, flags: Flags, agent: boolean): Body {
   return {};
 }
 
+/** A verb line ready to send: its row, its flags and the request body. */
+export interface Prepared {
+  readonly row: VerbRow;
+  readonly flags: Flags;
+  readonly request: Body;
+}
+
+/**
+ * A verb line made ready to send, or its usage refusal. It reads no file and
+ * sends nothing, so `verbLine` (`apps/cli/main.ts`) gives every refusal here
+ * before it reads a credential.
+ */
+export function prepare(argv: readonly string[], agent: boolean): Prepared | VerbAnswer {
+  try {
+    const { words, flags } = parse(argv);
+    const [group = 'help', verb, id, ...extra] = words;
+    if (group === 'help') return { exit: EXIT.ok, out: verbHelp() };
+    const row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
+    if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
+    if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
+    return { row, flags, request: { ...operationOf(row, flags, agent), ...row.body(id, flags) } };
+  } catch (cause) {
+    if (!(cause instanceof UsageError)) throw cause;
+    return { exit: EXIT.usage, out: `usage: ${cause.message}` };
+  }
+}
+
 export function createVerbCli(options: CliOptions & { readonly address?: string }): {
   readonly run: (argv: readonly string[]) => Promise<VerbAnswer>;
+  readonly send: (prepared: Prepared) => Promise<VerbAnswer>;
 } {
   const cli = createCli(options);
-  const agent = options.entry === 'agent';
+  const send = async ({ row, flags, request }: Prepared): Promise<VerbAnswer> => {
+    // The caller's only way to replay a write whose answer never arrived.
+    const { operationId } = request;
+    const replay = typeof operationId === 'string' ? `\noperationId ${operationId}${REPLAY}` : '';
+    let answer;
+    try {
+      answer = await cli.run(row.command, request);
+    } catch {
+      // Never the failure's own text: it can carry a secret (T2 canary token).
+      return {
+        exit: EXIT.transport,
+        out: `no answer from ${options.address ?? 'the API'}${replay}`,
+      };
+    }
+    const body = (answer.body ?? {}) as Readonly<Record<string, unknown>>;
+    if (isRefusal(answer))
+      return { exit: EXIT.refused, out: refusalLine(body, keyOf(row.command)) };
+    if (answer.status < 200 || answer.status >= 300 || answer.body === undefined) {
+      return { exit: EXIT.fault, out: `fault ${String(answer.status)}${replay}` };
+    }
+    return { exit: EXIT.ok, out: shape(row, body, flags) };
+  };
   return {
     run: async (argv) => {
-      let row: VerbRow | undefined;
-      let request: Body;
-      let flags: Flags;
-      try {
-        const parsed = parse(argv);
-        flags = parsed.flags;
-        const [group = 'help', verb, id, ...extra] = parsed.words;
-        if (group === 'help') return { exit: EXIT.ok, out: verbHelp() };
-        row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
-        if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
-        if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
-        request = { ...operationOf(row, flags, agent), ...row.body(id, flags) };
-      } catch (cause) {
-        if (!(cause instanceof UsageError)) throw cause;
-        return { exit: EXIT.usage, out: `usage: ${cause.message}` };
-      }
-      // The caller's only way to replay a write whose answer never arrived.
-      const { operationId } = request;
-      const replay = typeof operationId === 'string' ? `\noperationId ${operationId}${REPLAY}` : '';
-      let answer;
-      try {
-        answer = await cli.run(row.command, request);
-      } catch {
-        // Never the failure's own text: it can carry a secret (T2 canary token).
-        return {
-          exit: EXIT.transport,
-          out: `no answer from ${options.address ?? 'the API'}${replay}`,
-        };
-      }
-      const body = (answer.body ?? {}) as Readonly<Record<string, unknown>>;
-      if (isRefusal(answer))
-        return { exit: EXIT.refused, out: refusalLine(body, keyOf(row.command)) };
-      if (answer.status < 200 || answer.status >= 300 || answer.body === undefined) {
-        return { exit: EXIT.fault, out: `fault ${String(answer.status)}${replay}` };
-      }
-      return { exit: EXIT.ok, out: shape(row, body, flags) };
+      const prepared = prepare(argv, options.entry === 'agent');
+      return 'row' in prepared ? await send(prepared) : prepared;
     },
+    send,
   };
 }

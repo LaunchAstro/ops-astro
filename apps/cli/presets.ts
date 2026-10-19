@@ -6,9 +6,11 @@
 // to sign in (`GET /api/sign-in`, the web's first call, `apps/web/src/main.tsx`),
 // so no issuer or publishable key is written down here or saved anywhere.
 //
-// A preset replaces the hand-set addresses rather than mixing with them: a
-// bearer signed in for one origin must not be sent to another by a leftover
-// setting, so a preset beside any of them is refused, naming both.
+// A preset replaces the hand-set addresses and credentials rather than mixing
+// with them: a bearer signed in for one origin must not be sent to another by a
+// leftover setting, so a preset beside any of them is refused, naming both. The
+// command line can't tell which origin a bearer in the environment was issued
+// for, so under a preset it reads only the preset's own files.
 
 import { unredirected } from './client.ts';
 
@@ -23,13 +25,15 @@ export interface Preset {
   readonly origin: string;
 }
 
-/** The settings a preset replaces, as a person would have typed them. */
+/** The settings a preset replaces, as a person would have typed them. Values are never named. */
 const HAND_SET_FLAGS = ['api', 'gotrue', 'web'] as const;
 const HAND_SET_ENV = [
   'OPS_ASTRO_API_URL',
   'OPS_ASTRO_GOTRUE_URL',
   'OPS_ASTRO_WEB_URL',
   'SUPABASE_PUBLISHABLE_KEY',
+  'OPS_ASTRO_TOKEN',
+  'OPS_ASTRO_DELEGATION',
 ] as const;
 
 const given = (value: string | true | undefined): boolean => value !== undefined && value !== '';
@@ -58,7 +62,7 @@ export function presetOf(
   ];
   if (mixed.length > 0) {
     throw new Error(
-      `${selector} ${name} sets the address; leave out ${mixed.join(', ')} or drop ${selector}`,
+      `${selector} ${name} sets the address and credentials; leave out ${mixed.join(', ')} or drop ${selector}`,
     );
   }
   return { name, origin };
