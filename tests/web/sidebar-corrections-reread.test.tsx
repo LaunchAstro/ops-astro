@@ -93,7 +93,7 @@ describe('a decision taken elsewhere, or not answered, reads the correction agai
     );
     const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
     await askFor(view, ABOUT);
-    expect(controls(view)).toStrictEqual(['Approve', 'Decline']);
+    expect(controls(view)).toStrictEqual(['Launch', 'Decline']);
     await view.click('[data-correction-decide="approve"]');
     await tick();
     expect(sent('/live_correction/read')).toHaveLength(2);
