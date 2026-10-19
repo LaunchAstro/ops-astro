@@ -114,10 +114,16 @@ function Changed(props: {
   );
 }
 
+/** A marked spot, held to the revision it was marked on so a re-read never moves it. */
 interface Marked {
+  readonly revisionId: string;
   readonly width: number;
   readonly spot: Spot;
 }
+
+/** The spot marked at this width on this revision, if any. */
+const markedOn = (marked: Marked | null, revision: Revision, width: number): Spot | null =>
+  marked?.revisionId === revision.revisionId && marked.width === width ? marked.spot : null;
 
 interface WorkspaceProps {
   readonly client: OperationsClient;
@@ -148,8 +154,12 @@ function Panes(props: WidthProps & { readonly after: Revision }): ReactElement {
       pins={props.numbered.filter(
         ([, pin]) => pin.anchor.source === revision.revisionId && pin.anchor.width === width,
       )}
-      marked={takesSpot && props.marked?.width === width ? props.marked.spot : null}
-      {...(takesSpot ? { onSpot: (spot: Spot) => props.mark({ width, spot }) } : {})}
+      marked={takesSpot ? markedOn(props.marked, revision, width) : null}
+      {...(takesSpot
+        ? {
+            onSpot: (spot: Spot) => props.mark({ revisionId: revision.revisionId, width, spot }),
+          }
+        : {})}
     />
   );
   return review.before === null ? (
@@ -165,6 +175,7 @@ function Panes(props: WidthProps & { readonly after: Revision }): ReactElement {
 function AtWidth(props: WidthProps): ReactElement {
   const { review, width } = props;
   const after = review.after;
+  const spot = after === null ? null : markedOn(props.marked, after, width);
   return (
     <section className="stack" data-review-width={width}>
       <SectionHead
@@ -172,15 +183,15 @@ function AtWidth(props: WidthProps): ReactElement {
         title={`${props.name}, ${String(width)} wide`}
       />
       {after === null ? null : <Panes {...props} after={after} />}
-      {after === null || props.marked?.width !== width ? null : (
+      {after === null || spot === null ? null : (
         <PinForm
           client={props.client}
           revisionId={after.revisionId}
           width={width}
-          spot={props.marked.spot}
-          onPinned={(spot) => {
+          spot={spot}
+          onPinned={(pinned) => {
             // Only this pin's own spot: the person may have moved on to another one.
-            props.mark((now) => (now?.spot === spot ? null : now));
+            props.mark((now) => (now?.spot === pinned ? null : now));
             props.reload();
           }}
           onCancel={() => {
