@@ -134,9 +134,8 @@ describe.skipIf(serverUrl === undefined)('a zero hold on the plan turn', () => {
     );
   });
 
-  it('keeps a refusal at nothing, and a held task call above nothing', async () => {
-    expect(await judged(source, { state: 'reserved', reserved_minor: 0, actual_minor: null })).toBe(
-      CONSTRAINT,
-    );
+  it("refuses a zero hold for the replay turn's own row, on its API key route", async () => {
+    const replay = { state: 'reserved', reserved_minor: 0, actual_minor: null, ...OPEN };
+    expect(await judged(source, replay)).toBe(CONSTRAINT);
   });
 });
