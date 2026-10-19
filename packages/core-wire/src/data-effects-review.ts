@@ -17,6 +17,8 @@ export const REVIEW_EFFECTS: {
     ...writing(client('review_captures', 'storage_objects')),
     intake: ['page-capture'],
   },
+  // A pin is a comment on the review's task.
+  'review.pin_comment': writing(client('records')),
   'review.read': writing([]),
   'review.picture': writing([]),
 };

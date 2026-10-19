@@ -263,6 +263,7 @@ export const DECLARED: Readonly<
   'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
   'review.capture_claim': { carry: 'not carried', plant: 'needs a requested capture and a lease' },
   'review.capture_land': { carry: 'not carried', plant: 'needs a claimed capture' },
+  'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

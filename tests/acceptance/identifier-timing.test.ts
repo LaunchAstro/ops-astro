@@ -395,6 +395,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       f.admin,
     );
     byAda('review.picture', 'pictureId', picture, (pictureId) => ({ pictureId }));
+    const spot = {
+      type: 'FragmentSelector',
+      conformsTo: 'http://www.w3.org/TR/media-frags/',
+      value: 'xywh=0,0,9,9',
+    };
+    byAda('review.pin_comment', 'revisionId', review.revisionId, (revisionId) => ({
+      revisionId,
+      width: 1480,
+      selector: [spot],
+      body: 'b',
+      audience: 'internal',
+    }));
     const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
@@ -697,11 +709,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 125 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 126 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(125);
-    expect(names).toHaveLength(125);
+    expect(new Set(names).size, 'distinct operations').toBe(126);
+    expect(names).toHaveLength(126);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
