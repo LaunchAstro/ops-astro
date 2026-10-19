@@ -43,6 +43,8 @@ function useLivePhase(
       frame: element,
       siteOrigin: address.origin,
       nonce: freshNonce(),
+      loaded: false,
+      onLeft: () => {},
       onLive: () => setSettled({ load, phase: 'live' }),
       onExpired: () => setSettled({ load, phase: 'fallback' }),
     });

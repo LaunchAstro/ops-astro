@@ -36,6 +36,16 @@ const NOTE_PING = `<script>addEventListener('message', (e) => {
 
 const SITE_PAGES: Record<string, { readonly body: string; readonly framing?: string }> = {
   '/embed': { body: `<p>${CANARY}</p>${SNIPPET.script}${NOTE_PING}` },
+  '/embed-then-away': {
+    body: `<p>${CANARY}</p>${SNIPPET.script}<script>setTimeout(() => {
+      location.href = '${HOSTILE}/away';
+    }, 1000);</script>`,
+  },
+  '/embed-then-embed': {
+    body: `<p>${CANARY}</p>${SNIPPET.script}<script>setTimeout(() => {
+      location.href = '${SITE}/embed';
+    }, 1000);</script>`,
+  },
   '/bare': { body: `<p>${CANARY}</p>` },
   '/refused': { body: `<p>${CANARY}</p>${SNIPPET.script}`, framing: "frame-ancestors 'none'" },
   '/late': {
@@ -79,6 +89,7 @@ const SITE_PAGES: Record<string, { readonly body: string; readonly framing?: str
 };
 
 const HOSTILE_PAGES: Record<string, string> = {
+  '/away': `<p>${CANARY}</p>`,
   '/forge': `<script>addEventListener('message', (e) => {
     top.postMessage({ type: ${HELLO}, version: ${VERSION}, nonce: e.data }, '*');
     document.body.dataset.sent = '1';

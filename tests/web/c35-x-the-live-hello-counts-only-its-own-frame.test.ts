@@ -35,6 +35,7 @@ function send(data: unknown, origin: string, source: Window | null): void {
 let selected: HTMLIFrameElement;
 let onLive: ReturnType<typeof vi.fn<() => void>>;
 let onExpired: ReturnType<typeof vi.fn<() => void>>;
+let onLeft: ReturnType<typeof vi.fn<() => void>>;
 let stop: () => void;
 
 beforeEach(() => {
@@ -42,7 +43,18 @@ beforeEach(() => {
   selected = frame();
   onLive = vi.fn<() => void>();
   onExpired = vi.fn<() => void>();
-  stop = awaitHello({ frame: selected, siteOrigin: SITE, nonce: NONCE, onLive, onExpired });
+  onLeft = vi.fn<() => void>();
+  stop = awaitHello({
+    frame: selected,
+    siteOrigin: SITE,
+    nonce: NONCE,
+    loaded: false,
+    onLive,
+    onExpired,
+    onLeft,
+  });
+  // The site's page has loaded in the frame.
+  selected.dispatchEvent(new Event('load'));
 });
 
 afterEach(() => {
@@ -74,6 +86,43 @@ describe('C35-X the live view shows only after hello from the expected origin wi
     vi.advanceTimersByTime(LIVE_HELLO_MS * 2);
     expect(onLive).not.toHaveBeenCalled();
     expect(onExpired).not.toHaveBeenCalled();
+  });
+});
+
+describe('C35-X a live frame that loads another page is checked again', () => {
+  it('a hello before the frame has loaded its page opens nothing', () => {
+    stop();
+    const early = frame();
+    const live = vi.fn<() => void>();
+    stop = awaitHello({
+      frame: early,
+      siteOrigin: SITE,
+      nonce: NONCE,
+      loaded: false,
+      onLive: live,
+      onExpired,
+      onLeft,
+    });
+    send(hello(), SITE, early.contentWindow);
+    expect(live).not.toHaveBeenCalled();
+    early.dispatchEvent(new Event('load'));
+    send(hello(), SITE, early.contentWindow);
+    expect(live).toHaveBeenCalledTimes(1);
+  });
+
+  it('a load after the hello is another page: the wait reports it left, once', () => {
+    send(hello(), SITE, selected.contentWindow);
+    expect(onLive).toHaveBeenCalledTimes(1);
+    selected.dispatchEvent(new Event('load'));
+    selected.dispatchEvent(new Event('load'));
+    expect(onLeft).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stopped live wait reports nothing', () => {
+    send(hello(), SITE, selected.contentWindow);
+    stop();
+    selected.dispatchEvent(new Event('load'));
+    expect(onLeft).not.toHaveBeenCalled();
   });
 });
 
