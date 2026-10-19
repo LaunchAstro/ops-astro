@@ -72,21 +72,20 @@ async function atTheBound(): Promise<Detail> {
   return await propose(s, taskId, { lineageId: String(v1['lineageId']) });
 }
 
+/** The lowest version 4 uuid, so it sorts below every id `gen_random_uuid` issues. */
+const LOWEST_GRANT_ID = '00000000-0000-4000-8000-000000000000';
+
 /**
  * N1's recipient: a decide grant `parent` the decider's own decide grant
  * descends from, and a task grant of theirs ordered below `parent` by id.
- * Grants take random ids, so one is issued until the order holds.
+ * Grants take random ids, so the task grant is re-keyed to the lowest one;
+ * nothing references it, and the id is the only thing that moves.
  */
 async function grantorOfTheDecider(): Promise<Member> {
   const recipient = await enrol(s.db.app, s.business, `end-order-grantor-${randomUUID()}`);
-  await s.db.app.withBusiness(s.business, async (tx) => {
+  const below = await s.db.app.withBusiness(s.business, async (tx) => {
     const parent = await grantTo(tx, recipient, 'decide', undefined, true);
-    let below = false;
-    for (let attempt = 0; attempt < 40 && !below; attempt += 1) {
-      // eslint-disable-next-line no-await-in-loop -- one grant at a time until one sorts below
-      below = (await grantTo(tx, recipient, 'read')) < parent;
-    }
-    if (!below) throw new Error('no grant of the recipient sorted below their parent grant');
+    const read = await grantTo(tx, recipient, 'read');
     const child = await issueGrant(tx, [{ kind: 'person', id: recipient.personId }], {
       subject: { kind: 'person', id: s.decider.personId },
       scope: WHOLE_BUSINESS,
@@ -97,7 +96,13 @@ async function grantorOfTheDecider(): Promise<Member> {
       grantedByActorId: recipient.actorId,
     });
     if (!child.ok) throw new Error(`the child grant was refused ${child.refusal.code}`);
+    return read;
   });
+  await s.db.admin.execute(`update public.grants set id = $3 where business_id = $1 and id = $2`, [
+    s.business,
+    below,
+    LOWEST_GRANT_ID,
+  ] as never);
   return recipient;
 }
 
