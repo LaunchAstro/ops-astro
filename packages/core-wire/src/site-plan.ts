@@ -56,6 +56,22 @@ export function sitePlanOf(
   return bound === undefined ? null : { ...bound, before, after, client };
 }
 
+const isPage = (each: unknown): each is SitePageView =>
+  typeof each === 'object' &&
+  each !== null &&
+  Object.keys(each).length === 2 &&
+  typeof (each as Record<string, unknown>)['repository'] === 'string' &&
+  typeof (each as Record<string, unknown>)['page'] === 'string';
+
+/** Bound pages as a reply or a read carries them, unchecked: none unless every entry is whole. */
+export function sitePagesOf(value: unknown): readonly SitePageView[] {
+  return Array.isArray(value) &&
+    value.length <= SITE_PAGE_LIMIT &&
+    value.every((each) => isPage(each))
+    ? value
+    : [];
+}
+
 const HEAD = 'Site change plan';
 const LABELS = ['Site', 'Page', 'Before', 'After', 'Client'] as const;
 

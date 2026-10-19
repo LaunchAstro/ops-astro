@@ -22,8 +22,13 @@ import {
 
 type Move = (state: AssistantState) => AssistantState;
 
-/** An answered reply: its message id, its words, and its targets, unchecked until read. */
-type Reply = { readonly messageId: string; readonly body: string; readonly targets?: unknown };
+/** An answered reply: its message id, its words, its targets and its site pages, unchecked until read. */
+type Reply = {
+  readonly messageId: string;
+  readonly body: string;
+  readonly targets?: unknown;
+  readonly sitePages?: unknown;
+};
 
 export interface Store {
   readonly state: AssistantState;
@@ -94,7 +99,7 @@ export function useStore(start: () => AssistantState = initial): Store {
       const into = keyIn(latest.current, key);
       const chat = latest.current.chats.find((each) => each.key === into);
       const onTask = chat !== undefined && taskOf(chat) !== null;
-      const line = replyLine(reply.body, onTask, reply.targets);
+      const line = replyLine(reply.body, onTask, reply.targets, reply.sitePages);
       count.current += 1;
       const id =
         line.proposal === undefined

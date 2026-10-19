@@ -38,6 +38,7 @@ import {
   proposalCreate,
   proposalEdit,
   readProposal,
+  sitePagesOf,
   type TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
@@ -65,14 +66,16 @@ export const taskOf = (chat: Chat): string | null => chat.scope.task?.id ?? chat
 /**
  * A reply's line: its words and an offered card when it ends in a proposal
  * this chat may take, otherwise the body as written. An edit needs a task: the
- * chat's own, or, on no task, the reply's targets to pick from.
+ * chat's own, or, on no task, the reply's targets to pick from. A site change
+ * (#1988) needs its page among the pages the server gave with it (`sitePages`).
  */
 export function replyLine(
   body: string,
   onTask: boolean,
   targets?: unknown,
+  sitePages?: unknown,
 ): Pick<AssistantMessage, 'body' | 'proposal'> {
-  const { words, proposal } = readProposal(body);
+  const { words, proposal } = readProposal(body, sitePagesOf(sitePages));
   const pick = proposal?.action === 'edit' && !onTask ? targetsOf(targets) : undefined;
   if (proposal === null || pick === null) return { body };
   const offered = { ...proposal, state: 'offered', task: null, refusal: null } as const;
