@@ -139,7 +139,7 @@ function useBox(waiting: Waiting, onSend: (body: string) => void) {
     setHeld(one);
   };
   const send = (said: string): void => {
-    if (now?.state === 'unanswered' && said === now.body) {
+    if ((now?.state === 'unanswered' || now?.state === 'sending') && said === now.body) {
       onResend(now.id);
       return;
     }
