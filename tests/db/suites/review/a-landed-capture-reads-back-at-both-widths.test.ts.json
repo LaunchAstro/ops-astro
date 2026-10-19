@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 a landed capture: both widths land under the claiming lease and read back with their exact picture bytes, digests and observations; a picture over the storage cap is refused PICTURE_TOO_LARGE and stores nothing."
+}
