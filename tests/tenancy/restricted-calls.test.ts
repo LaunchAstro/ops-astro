@@ -406,6 +406,24 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, party_id, holder, page_url, path)
      select business_id, party_id, holder, 'https://agency.example/about/', 'src/pages/about.md'
        from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // C35: the journey opens no review. A media review on the business's first record, one
+  // revision of it and one capture asked of that.
+  'public.reviews': `insert into public.reviews
+       (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
+     select p.business_id, gen_random_uuid(), r.id, 'media', a.id, p.id
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
+  'public.review_revisions': `insert into public.review_revisions
+       (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
+     select business_id, gen_random_uuid(), id, 1, 'sha256:seed', opened_by_actor_id,
+            opened_by_person_id
+       from public.reviews where business_id = $1 order by id limit 1 returning 1`,
+  'public.review_captures': `insert into public.review_captures
+       (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
+     select business_id, gen_random_uuid(), id, 1480, created_by_actor_id, created_by_person_id
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

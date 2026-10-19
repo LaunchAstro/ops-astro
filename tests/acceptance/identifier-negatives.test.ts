@@ -675,6 +675,43 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   );
 
   it(
+    CASE.review,
+    async () => {
+      // A review of bravo's, written as its open writes it, and fabricated ids: each pair
+      // answers alike. A media review names no page, so no site of bravo's is needed.
+      const { world } = w.h;
+      const [reviewId, revisionId] = [randomUUID(), randomUUID()];
+      const by = [w.foreign.admin.actorId, w.foreign.admin.personId];
+      await world.db.admin.execute(
+        `insert into public.reviews
+           (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
+         values ($1, $2, $3, 'media', $4, $5)`,
+        [world.bravo, reviewId, w.foreign.task.id, ...by],
+      );
+      await world.db.admin.execute(
+        `insert into public.review_revisions
+           (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
+         values ($1, $2, $3, 1, 'sha256:0', $4, $5)`,
+        [world.bravo, revisionId, reviewId, ...by],
+      );
+      await refuses('review.capture', 'revisionId', ada, 'NOT_FOUND', {
+        foreign: { revisionId },
+        fabricated: { revisionId: randomUUID() },
+      });
+      await refuses('review.read', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { reviewId },
+        fabricated: { reviewId: randomUUID() },
+      });
+      const page = { pageUrl: C80_REQUEST.pageUrl, path: C80_REQUEST.path, sourceRevision: 'r' };
+      await refuses('review.open', 'taskId', ada, 'NOT_FOUND', {
+        foreign: { ...page, taskId: w.foreign.task.id },
+        fabricated: { ...page, taskId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
     CASE.board,
     async () => {
       // Green at 2507a31. RED at 4757d72: `task.board` takes a board identifier

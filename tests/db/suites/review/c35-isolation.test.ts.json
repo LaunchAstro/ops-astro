@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 across crossings: a party-scoped review grant reaches only its client's reviews and another business's reviews are unreachable by id for open, capture and read; stored counts stay in their business."
+}

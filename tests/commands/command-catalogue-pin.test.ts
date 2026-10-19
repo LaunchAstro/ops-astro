@@ -378,6 +378,11 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-commands.ts', async (original) => ({
+  ...(await original<object>()),
+  openReview: recorder('openReview'),
+  askReviewCapture: recorder('askReviewCapture'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -513,6 +518,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'live_correction.record_review': ['correctionId'],
   'live_correction.request': ['taskId'],
   'live_correction.revert': ['correctionId'],
+  'review.capture': ['revisionId'],
+  'review.open': ['taskId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -670,6 +677,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.set_data_class',
   'privacy.set_overseas_service',
   'record.create',
+  'review.capture',
+  'review.open',
+  'review.read',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -731,6 +741,8 @@ const PINNED_AGENT_SURFACE = [
   'live_correction.request',
   'model.call',
   'onboarding.step_result',
+  'review.capture',
+  'review.open',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1011,6 +1023,15 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'settings.set_single_operator', operationId: 'op', value: true },
   { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
+    command: 'review.open',
+    operationId: 'op',
+    taskId: 't',
+    pageUrl: 'u',
+    path: 'p',
+    sourceRevision: 'r',
+  },
+  { command: 'review.capture', operationId: 'op', revisionId: 'v' },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -1212,6 +1233,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'live_correction.revert': ['askLiveRevert', 'request'],
   'live_correction.record_review': ['recordReview', 'request'],
   'settings.set_single_operator': ['setSingleOperator', 'request'],
+  'review.open': ['openReview', 'request'],
+  'review.capture': ['askReviewCapture', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
