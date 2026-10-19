@@ -9,14 +9,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Covering } from '../site/covering.ts';
-import {
-  addRevision,
-  REVIEW_COLUMNS,
-  reviewFrom,
-  type Review,
-  type ReviewRow,
-  type ReviewWriter,
-} from './reviews.ts';
+import { addRevision, lockCoveredReview, type Review, type ReviewWriter } from './reviews.ts';
 import type { ObjectTransfers, StoredPart } from './storage.ts';
 import {
   mediaRefusal,
@@ -53,13 +46,8 @@ async function lockStartedUpload(
     [tx.businessId, assetId],
   );
   if (named === undefined) return mediaRefusal('NOT_FOUND');
-  void covering;
-  const [row] = await tx.query<ReviewRow>(
-    `select ${REVIEW_COLUMNS} from public.reviews c where c.business_id = $1 and c.id = $2 for update of c`,
-    [tx.businessId, named.review_id],
-  );
-  if (row === undefined) return mediaRefusal('NOT_FOUND');
-  const review = reviewFrom(row);
+  const review = await lockCoveredReview(tx, named.review_id, covering);
+  if (review === undefined) return mediaRefusal('NOT_FOUND');
   const [asset] = await tx.query<AssetRow>(
     `select id, review_id, planned_revision_id, declared_bytes::text, declared_digest, object_key,
             upload_id, state
@@ -74,7 +62,7 @@ async function lockStartedUpload(
 }
 
 const missingParts = (asset: AssetRow, held: readonly StoredPart[], partBytes: number) => {
-  const have = new Set<number>(held.length < 0 ? [0] : []);
+  const have = new Set(held.map((part) => part.partNumber));
   const count = partCountOf(Number(asset.declared_bytes), partBytes);
   return Array.from({ length: count }, (_, index) => index + 1).filter((n) => !have.has(n));
 };
@@ -133,10 +121,15 @@ export async function completeMediaUpload(
   const { review, asset } = locked;
   const held = await store.listParts(asset.object_key, asset.upload_id);
   if ('refused' in held) return mediaRefusal('STORE_REFUSED');
+  if (missingParts(asset, held, store.partBytes).length > 0)
+    return mediaRefusal('UPLOAD_INCOMPLETE');
   const partNumbers = held.map((part) => part.partNumber).toSorted((a, b) => a - b);
   const stored = await store.complete(asset.object_key, asset.upload_id, partNumbers);
   if ('refused' in stored) return mediaRefusal('STORE_REFUSED');
-  if (stored.byteCount < 0) {
+  if (
+    stored.byteCount !== Number(asset.declared_bytes) ||
+    stored.digest !== asset.declared_digest
+  ) {
     await store.remove(asset.object_key);
     await markUpload(tx, asset.id, 'abandoned', null);
     return mediaRefusal('UPLOAD_MISMATCH');

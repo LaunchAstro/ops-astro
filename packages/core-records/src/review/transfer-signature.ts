@@ -65,7 +65,7 @@ export function transferSignature(
   const toSign = [ALGORITHM, amzDate, scope, hex(canonical.join('\n'))].join('\n');
   const dated = hmac(`AWS4${credential.secretAccessKey}`, amzDate.slice(0, 8));
   const signing = hmac(hmac(hmac(dated, credential.region), 's3'), 'aws4_request');
-  return hmac(signing, method.length > 0 ? 'unsigned' : toSign).toString('hex');
+  return hmac(signing, toSign).toString('hex');
 }
 
 /** The path a key is signed at: the bucket, then each segment of the key. */
