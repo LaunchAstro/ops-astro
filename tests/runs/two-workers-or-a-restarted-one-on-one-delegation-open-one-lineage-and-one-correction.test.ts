@@ -13,9 +13,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
 import type { StepRunner } from '../../apps/worker/step-runner.ts';
-import { createWorker } from '../../apps/worker/worker.ts';
+import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { approve, rows } from '../runtime/schedules-harness.ts';
-import { acceptedPlan, unproposed } from './compute-seam-world.ts';
+import { unproposed } from './compute-seam-world.ts';
 import { correctionsOn, OWN_PAGE, ownSiteOf, requestOf } from './agent-draft-world.ts';
 import { s, useStopWorld } from './run-stop-world.ts';
 
@@ -39,6 +39,32 @@ async function opened(taskId: string): Promise<{ lineages: number; gates: number
   return { lineages: Number(found?.lineages), gates: Number(found?.gates) };
 }
 
+/** A first worker's proposal on `options`' task, accepted by the person. */
+async function proposedAndAccepted(options: WorkerOptions) {
+  const worker = createWorker(options);
+  const first = await worker.proposeOnce();
+  if (!('proposed' in first)) throw new Error(`setup: propose ${JSON.stringify(first)}`);
+  const [gate] = await rows<{ version_id: string }>(
+    s,
+    'select version_id::text as version_id from public.gates where id = $1',
+    [first.proposed.gateId],
+  );
+  await approve(s, { gateId: first.proposed.gateId, versionId: String(gate?.version_id) });
+  return worker;
+}
+
+/** A runner whose agent asks its correction, and whose worker then dies before the hand-back. */
+const dies: StepRunner = {
+  compute: async (context) => {
+    const asked = await context.call('live_correction.request', {
+      operationId: `correction:${context.attemptId}:1`,
+      ...requestOf(context.taskId),
+    });
+    if (!('body' in asked)) throw new Error(`setup: request ${JSON.stringify(asked)}`);
+    throw new Error('the worker died before its hand-back');
+  },
+};
+
 describe.skipIf(serverUrl === undefined)("the worker's identity across processes", () => {
   it('opens one lineage and one gate when two workers on one delegation propose at once', async () => {
     const { taskId, options } = await unproposed('two workers at once');
@@ -46,48 +72,32 @@ describe.skipIf(serverUrl === undefined)("the worker's identity across processes
       createWorker(options).proposeOnce(),
       createWorker(options).proposeOnce(),
     ]);
-    for (const outcome of outcomes)
+    for (const outcome of outcomes) {
       expect(outcome, JSON.stringify(outcome)).toHaveProperty('proposed');
+    }
 
     expect(await opened(taskId)).toEqual({ lineages: 1, gates: 1 });
   }, 120_000);
 
   it('finds its approved proposal after a restart and opens no second gate', async () => {
     const { taskId, options } = await unproposed('restarted after approval');
-    const first = await createWorker(options).proposeOnce();
-    if (!('proposed' in first)) throw new Error(`setup: propose ${JSON.stringify(first)}`);
-    const [gate] = await rows<{ version_id: string }>(
-      s,
-      'select version_id::text as version_id from public.gates where id = $1',
-      [first.proposed.gateId],
-    );
-    await approve(s, { gateId: first.proposed.gateId, versionId: String(gate?.version_id) });
+    await proposedAndAccepted(options);
 
-    const restarted = createWorker(options);
-    expect(await restarted.proposeOnce()).toEqual({ queued: { taskId } });
+    expect(await createWorker(options).proposeOnce()).toEqual({ queued: { taskId } });
     expect(await opened(taskId)).toEqual({ lineages: 1, gates: 1 });
   }, 120_000);
 
   it('leaves one correction and one lineage when it dies after its request and before its hand-back', async () => {
-    const dies: StepRunner = {
-      compute: async (context) => {
-        const asked = await context.call('live_correction.request', {
-          operationId: `correction:${context.attemptId}:1`,
-          ...requestOf(context.taskId),
-        });
-        if (!('body' in asked)) throw new Error(`setup: request ${JSON.stringify(asked)}`);
-        throw new Error('the worker died before its hand-back');
-      },
-    };
-    const seam = await acceptedPlan('dies mid-run', dies);
-    await expect(seam.worker.applyOnce(seam.taskId)).rejects.toThrow('died');
+    const { taskId, options } = await unproposed('dies mid-run', dies);
+    const first = await proposedAndAccepted(options);
+    await expect(first.applyOnce(taskId)).rejects.toThrow('died');
 
-    const restarted = createWorker(seam.options);
+    const restarted = createWorker(options);
     const proposed = await restarted.proposeOnce();
     expect(proposed, JSON.stringify(proposed)).not.toHaveProperty('refused');
-    await restarted.applyOnce(seam.taskId);
+    await restarted.applyOnce(taskId);
 
-    expect(await correctionsOn(seam.taskId)).toHaveLength(1);
-    expect((await opened(seam.taskId)).lineages).toBe(1);
+    expect(await correctionsOn(taskId)).toHaveLength(1);
+    expect((await opened(taskId)).lineages).toBe(1);
   }, 120_000);
 });

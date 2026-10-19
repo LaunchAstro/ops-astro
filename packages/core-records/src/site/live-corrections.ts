@@ -97,7 +97,6 @@ export interface NewLiveCorrection {
   readonly word: string;
   readonly replacement: string;
   readonly seam: string;
-  /** The accepted plan version an agent drafted it for (#1717), read from its lease; null for a person's. */
   readonly planVersionId?: string | null;
 }
 
@@ -128,7 +127,7 @@ export interface Row {
   readonly revision: number;
 }
 
-function correctionFrom(row: Row): StoredCorrection {
+export function correctionFrom(row: Row): StoredCorrection {
   return {
     id: row.id,
     partyId: row.party_id,
@@ -178,8 +177,6 @@ const PAGE_NAME = `coalesce(nullif(lower(regexp_replace(regexp_replace(
  * locked so an unbind waits for the request, and the site row share-locked so a move of its
  * providers does too; the site row is share-locked first, on its own, as an unbind takes the site
  * before the page. No pin is stored: the site runner pins the version from the file itself.
- * A plan version already holding a correction stores nothing (`live_corrections_one_per_plan_idx`),
- * a second request at once waiting on the first's insert: `correctionOfPlan` answers it.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
@@ -224,37 +221,6 @@ export async function insertLiveCorrection(
     ],
   );
   return row === undefined ? { ok: false, code: 'PAGE_NOT_FOUND' } : correctionFrom(row);
-}
-
-/** The correction an agent drafted for `planVersionId` in this business, if one is stored (#1717). */
-export async function correctionOfPlan(
-  tx: TenantQuery,
-  planVersionId: string,
-): Promise<StoredCorrection | undefined> {
-  const [row] = await tx.query<Row>(
-    `select ${COLUMNS} from public.live_corrections c
-      where c.business_id = $1 and c.plan_version_id = $2`,
-    [tx.businessId, planVersionId],
-  );
-  return row === undefined ? undefined : correctionFrom(row);
-}
-
-/**
- * The plan version the work a pickup delegation was minted for serves, read
- * from its lease's reservation in this business; undefined for a delegation
- * no pickup minted (#1717).
- */
-export async function planVersionOfDelegation(
-  tx: TenantQuery,
-  delegationId: string,
-): Promise<string | undefined> {
-  const [row] = await tx.query<{ readonly version_id: string }>(
-    `select r.version_id from public.leases l
-       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
-      where l.business_id = $1 and l.delegation_id = $2`,
-    [tx.businessId, delegationId],
-  );
-  return row?.version_id;
 }
 
 /**

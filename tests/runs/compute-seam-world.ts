@@ -110,8 +110,6 @@ export interface Seam {
   readonly lineageId: string;
   readonly log: Sent[];
   readonly worker: ReturnType<typeof createWorker>;
-  /** What the worker was made with: a second worker made with it shares its delegation. */
-  readonly options: WorkerOptions;
   /** The work as the pickup answered it: the plan's lease, fence and credential. */
   readonly work: () => Work;
 }
@@ -166,18 +164,10 @@ export async function acceptedPlan(
       picked: picked.detail,
     };
   };
-  return {
-    taskId,
-    planVersionId: gate.version_id,
-    lineageId: gate.lineage_id,
-    log,
-    worker,
-    options,
-    work,
-  };
+  return { taskId, planVersionId: gate.version_id, lineageId: gate.lineage_id, log, worker, work };
 }
 
-/** A fresh task and the options a worker on it is made with, nothing proposed yet. */
+/** A fresh task and the options a worker on it is made with (a second shares its delegation), nothing proposed. */
 export async function unproposed(
   title: string,
   runner?: Scripted['runner'] | StepRunner,

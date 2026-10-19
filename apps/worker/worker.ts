@@ -155,11 +155,9 @@ async function ask(
       entry['purpose'] === SYNTHETIC_STEP.kind,
   );
   if (work === undefined) return { idle: { taskId } };
-  // The pickup's identity is its reservation's, so a pickup asked again by any pass replays.
-  return {
-    reservationId: work['reservationId'],
-    operationId: `pickup:${String(work['reservationId'])}`,
-  };
+  // The pickup names its reservation, so a pickup asked again by any pass replays.
+  const reservationId = String(work['reservationId']);
+  return { reservationId: work['reservationId'], operationId: `pickup:${reservationId}` };
 }
 
 /** The pickup, under the identity it was first asked with. */
@@ -280,6 +278,7 @@ export function createWorker(options: WorkerOptions): {
   const kept = new Map<string, Held | Asked>();
   const mine: Proposer = {};
   const self = async (): Promise<string | Unanswered> => await selfOf(call, mine);
+  const queued = async (taskId: string) => await ask(options, taskId, self);
   // A pass on a task already being applied joins that pass: two at once would
   // resume one held attempt twice, and call its provider twice.
   const running = new Map<string, Promise<WorkerOutcome>>();
@@ -292,12 +291,6 @@ export function createWorker(options: WorkerOptions): {
       return await pass;
     },
     proposeOnce: async () =>
-      await proposeStep(
-        call,
-        mine,
-        SYNTHETIC_STEP,
-        options.reporter,
-        async (taskId) => await ask(options, taskId, self),
-      ),
+      await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter, queued),
   };
 }

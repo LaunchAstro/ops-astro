@@ -8,9 +8,7 @@ export {
   APPROVER_SETTING,
   GATE_COLLECTION,
   RUN_COLLECTION,
-  correctionOfPlan,
   insertLiveCorrection,
-  planVersionOfDelegation,
   listCoveredCorrections,
   lockCoveredCorrection,
   type CorrectionState,
@@ -58,3 +56,4 @@ export {
   type PartySiteRecord,
   type SiteWrite,
 } from './party-sites.ts';
+export { correctionOfPlan, planVersionOfDelegation } from './plan-corrections.ts';
