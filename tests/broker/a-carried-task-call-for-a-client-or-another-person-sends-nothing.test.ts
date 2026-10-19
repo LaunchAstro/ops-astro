@@ -3,9 +3,9 @@
 // Data separation inside one business for a task's carried call (#1703,
 // #1620 P5): a task linked to a client is never carried, and its refusal
 // names no client; another agent of the business, presenting its own token
-// for the lease holder's call, is refused at the offer and cannot join the
-// call's line; a carrier that carries for another person does not carry this
-// owner's run. Each is refused before any send, nothing offered.
+// for the lease holder's call, cannot join the call's line, so the call is
+// released before its offer; a carrier that carries for another person does
+// not carry this owner's run. Each is refused before any send, nothing offered.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -78,7 +78,12 @@ describe.skipIf(serverUrl === undefined)('a carried task call, inside one busine
     const crossed = { ...world, presented, token: await tokenFor(otherSub) };
     const sent = world.plan.sent.length;
     const answer = await carriedCall(crossed, work);
-    expect(answer).toMatchObject({ ok: false, code: 'CALL_RELEASED', reason: 'AUTHORITY_LOST' });
+    // Its token cannot join the holder's call line, so custody releases the call before the offer.
+    expect(answer).toMatchObject({
+      ok: false,
+      code: 'CALL_RELEASED',
+      reason: 'CARRIAGE_UNAVAILABLE',
+    });
     expect(world.plan.sent).toHaveLength(sent);
     expect(await offeredOn(work)).toBe(0);
   }, 60_000);
