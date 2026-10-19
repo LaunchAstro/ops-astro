@@ -13,6 +13,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 import { C80_NAMES, c80PositiveBody } from './c80-bodies.ts';
+import { C35_NAMES, c35PositiveBody } from './c35-bodies.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
 import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 
@@ -55,6 +56,7 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
   if (fixed !== undefined) return { body: { ...fixed } };
   if (isInvitation(name)) return await invitationBody(name, context);
   if (C80_NAMES.has(name)) return await c80PositiveBody(name, context);
+  if (C35_NAMES.has(name)) return await c35PositiveBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet' || name === 'connection.signal') return { body: {} };
   // The graduation region (MP-14-10a): the admin reads it.
