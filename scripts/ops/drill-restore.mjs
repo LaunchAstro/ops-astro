@@ -21,6 +21,14 @@ const DB = 'drill';
 const AS = ['-U', 'postgres', '-d', DB];
 // Its own path, not the image's volume, so every major takes it.
 const PGDATA = '/var/lib/postgresql/drill';
+// The container's own command, under the init: the server in the background,
+// and the container stops unless the drill's lifeline checks in within 15
+// seconds, so a drill killed between `docker run` answering and its line
+// starting leaves nothing running. Once in, the line's TERM to PID 1 reaches
+// this shell, and the container stops with it.
+const HELD = '/tmp/drill-lifeline';
+const HOLD = `docker-entrypoint.sh postgres & sleep 15; [ -e ${HELD} ] && wait`;
+const LIFELINE = `touch ${HELD}; cat > /dev/null; kill -TERM 1`;
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -105,19 +113,19 @@ export async function restoreDrill({
       // to no log driver, so Docker keeps none of them either.
       const container = `-d --rm --network none --log-driver none --init --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
-      await must(run(['run', ...`${container} ${env}`.split(' '), image]));
+      await must(
+        run(['run', ...`${container} ${env} --entrypoint sh`.split(' '), image, '-c', HOLD]),
+      );
       // Only once Docker made it: a name another drill holds is not this one's to remove.
       started = true;
       // The container's lifeline: a shell in it reading this drill's pipe, in
       // a process group of its own, so a signal to the drill's group leaves it
       // standing. However the drill ends, killed outright included, the pipe
       // closes, or docker closes it when its own client dies; the shell then
-      // interrupts PID 1, the init passes that on to the server, and --rm
-      // removes the stopped container. Only a kill in the moment between
-      // `docker run` answering and this line starting still leaves one.
-      run(['exec', '-i', name, 'sh', '-c', 'cat > /dev/null; kill -INT 1'], lifeline, {
-        detached: true,
-      });
+      // stops PID 1's child, and --rm removes the stopped container. A drill
+      // killed before the line checks in leaves a container that stops itself
+      // (HOLD).
+      run(['exec', '-i', name, 'sh', '-c', LIFELINE], lifeline, { detached: true });
       let ready = false;
       for (let i = 0; i < 120 && !ready; i += 1) {
         // Over TCP, not the socket: the image's init server listens on the socket only.
