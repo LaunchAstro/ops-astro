@@ -4,7 +4,10 @@
 // opens, lists, completes, aborts and removes as R2 does, signs part URLs
 // with its own credential, and checks each sent part as R2 checks it: the
 // signature recomputed over the method and URL it was sent, then the URL's
-// life against the stand-in's clock. Nothing here reaches a network.
+// life against the stand-in's clock. A range read (#2039) is a GET the
+// stand-in signs for one object and checks the same way; a test can make the
+// stand-in answer it with other bytes than asked. Nothing here reaches a
+// network.
 
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type {
@@ -32,7 +35,18 @@ export const DOUBLE_CREDENTIAL: TransferCredential = {
   secretAccessKey: DOUBLE_SECRET,
 };
 
-export type Sent = { readonly status: 200 } | { readonly status: 403 | 404; readonly why: string };
+export type Sent =
+  | { readonly status: 200; readonly body?: Uint8Array }
+  | { readonly status: 403 | 404; readonly why: string };
+
+/** How the stand-in answers a range read: as asked, or with one byte too many or too few. */
+export type RangeAnswer = 'honest' | 'longer' | 'shorter';
+
+export interface RangeAsked {
+  readonly key: string;
+  readonly from: number;
+  readonly length: number;
+}
 
 const digestOf = (body: Uint8Array): string =>
   `sha256:${createHash('sha256').update(body).digest('hex')}`;
@@ -52,6 +66,10 @@ export class MediaStoreDouble implements ObjectTransfers {
   readonly calls: string[] = [];
   /** The stand-in's clock; a test moves it to send late. */
   readonly clock: { now: Date } = { now: new Date() };
+  /** Each range read asked, in order. */
+  readonly ranges: RangeAsked[] = [];
+  /** How range reads are answered; a test sets it to plant a hostile store. */
+  answer: RangeAnswer = 'honest';
   readonly #uploads: Map<string, Upload> = new Map();
 
   readonly partBytes: number;
@@ -125,8 +143,52 @@ export class MediaStoreDouble implements ObjectTransfers {
     return Promise.resolve(this.objects.delete(key));
   }
 
-  /** A caller's PUT of one part's bytes to a URL the store signed, checked as R2 checks it. */
-  send(method: 'PUT' | 'GET', sent: string, body: Uint8Array): Sent {
+  signRead(key: string, lifeSeconds: number): Promise<SignedTransfer | TransferRefusal> {
+    this.calls.push('signRead');
+    if (!this.objects.has(key)) return Promise.resolve(UNKNOWN);
+    const { now } = this.clock;
+    const url = signTransfer(DOUBLE_CREDENTIAL, {
+      method: 'GET',
+      key,
+      query: {},
+      at: now,
+      lifeSeconds,
+    });
+    const expiresAt = new Date(now.getTime() + lifeSeconds * 1000).toISOString();
+    return Promise.resolve({ url, method: 'GET', expiresAt });
+  }
+
+  /** A GET signed for the object, sent with its range and checked as any signed URL is. */
+  readRange(key: string, from: number, length: number): Promise<Uint8Array | TransferRefusal> {
+    this.calls.push('readRange');
+    this.ranges.push({ key, from, length });
+    const url = signTransfer(DOUBLE_CREDENTIAL, {
+      method: 'GET',
+      key,
+      query: {},
+      at: this.clock.now,
+      lifeSeconds: 60,
+    });
+    const sent = this.send('GET', url, new Uint8Array(), { from, length });
+    if (sent.status !== 200 || sent.body === undefined) return Promise.resolve(UNKNOWN);
+    const answered = {
+      honest: sent.body,
+      longer: new Uint8Array([...sent.body, 0]),
+      shorter: sent.body.slice(0, -1),
+    }[this.answer];
+    return Promise.resolve(answered);
+  }
+
+  /**
+   * A caller's request to a URL the store signed, checked as R2 checks it: a PUT of one part's
+   * bytes, or a GET of a completed object's range.
+   */
+  send(
+    method: 'PUT' | 'GET',
+    sent: string,
+    body: Uint8Array,
+    range?: { readonly from: number; readonly length: number },
+  ): Sent {
     const url = new URL(sent);
     const prefix = objectPath(DOUBLE_CREDENTIAL, '');
     if (url.origin !== DOUBLE_CREDENTIAL.endpoint || !url.pathname.startsWith(prefix)) {
@@ -151,8 +213,14 @@ export class MediaStoreDouble implements ObjectTransfers {
       .split('/')
       .map((segment) => decodeURIComponent(segment))
       .join('/');
+    if (method === 'GET') {
+      const object = this.objects.get(key);
+      if (object === undefined) return { status: 404, why: 'no such object' };
+      const from = range?.from ?? 0;
+      return { status: 200, body: object.slice(from, from + (range?.length ?? object.byteLength)) };
+    }
     const upload = this.#upload(key, url.searchParams.get('uploadId') ?? '');
-    if (method !== 'PUT' || upload === undefined) return { status: 404, why: 'no such upload' };
+    if (upload === undefined) return { status: 404, why: 'no such upload' };
     upload.parts.set(Number(url.searchParams.get('partNumber')), body);
     return { status: 200 };
   }
