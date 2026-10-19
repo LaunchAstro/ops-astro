@@ -21,6 +21,8 @@
 
 import { httpTransport, shownAddress, unredirected, type Transport } from '../cli/client.ts';
 import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
+import { REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
+import { agentRunner } from './agent-runner.ts';
 import { agentSignIn } from './sign-in.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker, type WorkerOutcome } from './worker.ts';
@@ -133,6 +135,8 @@ async function signedInWorker(
     credential: signedIn,
     delegation: env['OPS_ASTRO_DELEGATION'] as string,
     reporter: SYNTHETIC_USAGE,
+    // An accepted plan is computed by the agent, its turns the API's replay turn (#1717 R8b).
+    runner: agentRunner({ operation: REPLAY_TURN.key }),
   });
 }
 
