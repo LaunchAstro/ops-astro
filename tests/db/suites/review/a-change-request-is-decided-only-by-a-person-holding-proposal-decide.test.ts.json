@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C57: filing is proposal:write and deciding proposal:decide at the review's client; an agent credential never decides; a request is decided once; each attempt is audited under its command."
+}

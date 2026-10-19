@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C57 across crossings: a party grant on another client and a grant in another business reach no change request by id; planted client words never reach refusals, audit rows or logs."
+}
