@@ -55,7 +55,8 @@ async function reachesLimit(tx: TenantQuery, callId: string): Promise<boolean> {
  * A priced answer on work that stands, handed back once (#1623 R3). A turn's
  * answer keeps its digest, never its words, and the class of the turn that
  * made it. The settlement of the attempt's limit-th call is the call limit's
- * writer, whatever its answer: the answer still comes back, marked terminal.
+ * writer, whatever its answer, one too deep to digest included: the answer still comes back,
+ * marked terminal.
  */
 export async function settledAnswer(
   tx: TenantQuery,
@@ -67,14 +68,8 @@ export async function settledAnswer(
   const { callId, reservedMinor } = reserved;
   const { costMinor } = settlement;
   const { text, toolCalls } = settlement.answer;
-  if (turn !== undefined) {
-    const digest = answerDigest(text, toolCalls ?? []);
-    // An answer too deep to digest can never be bound by a later turn: the call stays
-    // settled priced and the attempt ends with the turn's refusal (S1900-6).
-    if (digest === undefined) {
-      const refused = { ok: false as const, code: 'TURN_MALFORMED' as const, callId };
-      return await stopAtSettlement(tx, leaseId, 'stands', 'TURN_MALFORMED', refused);
-    }
+  const digest = turn === undefined ? undefined : answerDigest(text, toolCalls ?? []);
+  if (turn !== undefined && digest !== undefined) {
     await tx.query(
       `update public.model_calls set answer_digest = $3, answer_source = $4
         where business_id = $1 and id = $2 and state = 'settled'`,
@@ -90,9 +85,17 @@ export async function settledAnswer(
     actualMinor: costMinor,
     releasedMinor: reservedMinor - costMinor,
   };
-  if (!(await reachesLimit(tx, callId))) return result;
-  return await stopAtSettlement(tx, leaseId, 'stands', 'CALL_LIMIT_REACHED', {
-    ...result,
-    terminal: 'call_limit',
-  });
+  if (await reachesLimit(tx, callId)) {
+    return await stopAtSettlement(tx, leaseId, 'stands', 'CALL_LIMIT_REACHED', {
+      ...result,
+      terminal: 'call_limit',
+    });
+  }
+  // A turn's answer too deep to digest can never be bound by a later turn: the call stays
+  // settled priced and, short of the limit, the attempt ends with the turn's refusal (S1900-6).
+  if (turn !== undefined && digest === undefined) {
+    const refused = { ok: false as const, code: 'TURN_MALFORMED' as const, callId };
+    return await stopAtSettlement(tx, leaseId, 'stands', 'TURN_MALFORMED', refused);
+  }
+  return result;
 }
