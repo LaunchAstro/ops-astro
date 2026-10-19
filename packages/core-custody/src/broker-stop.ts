@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The stop's outcome (#1623 R1, R2): the transaction that stops an attempt's
-// work records its one outcome there, never a worker afterwards. Every writer
-// calls `recordStop` under its own locks on the attempt's lease and
-// delegation; this takes the attempt's open calls last, in id order.
-//
-// - Precedence is decided here, under those locks: with a call of the attempt
-//   still dispatched or held unknown, the row is `unknown_provider_outcome`
-//   and the code the writer would have used is kept as `stop_cause`.
-// - Calls held and never started are released, as the sweep releases an
-//   unsent hold. A dispatched call is left as it is: its late answer still
-//   settles and charges.
-// - The first writer wins by the primary key. A later stop finds the row,
-//   writes nothing and reads the stored one; the row never changes.
+// The stop's outcome (#1623 R1, R2), written by the transaction that stops the attempt, under
+// its locks on the lease and delegation (`recordStop`, which takes the open calls last, in id
+// order). An open call makes it `unknown_provider_outcome`, the intended code kept as
+// `stop_cause`; unsent holds are released, a dispatched call left to settle; the first writer
+// wins by the key and the row never changes.
 
 import { outcomeOf, type EndCode, type RunOutcome } from '../../core-wire/src/index.ts';
 import { revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
@@ -42,11 +34,8 @@ function decided(
   return { endCode: code, stopCause: null };
 }
 
-/**
- * Record the attempt's outcome for a stop of the work on `leaseId`, and
- * release its unsent holds. Under the caller's locks on the lease (and its
- * delegation). A lease that serves no run attempt records nothing.
- */
+/** Record the attempt's outcome for a stop on `leaseId` and release its unsent holds, under the
+ * caller's locks on the lease and delegation. A lease that serves no attempt records nothing. */
 export async function recordStop(
   tx: TenantQuery,
   leaseId: string,
@@ -96,12 +85,8 @@ export async function recordStop(
     : { attemptId: attempt.id, outcome: stored.outcome, endCode: stored.end_code };
 }
 
-/**
- * Holds never started, proven unsent, released on their rows' locks. A hold a
- * count took (a top-up, or the end at a budget stop) is left for the sweep,
- * which gives it back under its envelope and hold in the contract's order
- * (`broker-release.ts`): this writer holds neither, so it gives nothing back.
- */
+/** Holds never started, released on their rows' locks. A hold a count took (a top-up, or the end
+ * at a budget stop) is left for the sweep, which gives it back (`broker-release.ts`). */
 async function releaseNeverSent(tx: TenantQuery, unsent: readonly string[]): Promise<void> {
   if (unsent.length === 0) return;
   await tx.query(
@@ -114,11 +99,8 @@ async function releaseNeverSent(tx: TenantQuery, unsent: readonly string[]): Pro
   );
 }
 
-/**
- * A stop the broker owns: the outcome, then the work's authority ended (the
- * lease released, its delegation retired), so the same lease can no longer
- * reserve, start, read or hand back. Under the caller's locks on both.
- */
+/** A stop the broker owns: the outcome, then the lease released and its delegation retired, so
+ * the lease can no longer reserve, start, read or hand back. Under the caller's locks on both. */
 export async function retireAttempt(
   tx: TenantQuery,
   work: { readonly leaseId: string; readonly delegationId: string | null },
@@ -165,12 +147,8 @@ const CUSTODY_UNSENT: ReadonlySet<string> = new Set([
   'NOT_AT_ONCE',
 ]);
 
-/**
- * `CALL_RELEASED`, normalised: a release reason is a custody code
- * or one of the operation's declared nothing-happened provider codes, and each
- * maps to one end code. A reason in neither set is no proof that nothing
- * happened: `undefined`, which settlement holds as unknown.
- */
+/** `CALL_RELEASED`, normalised: a custody code or one of the operation's declared
+ * nothing-happened codes maps to one end code; any other reason is `undefined`, held unknown. */
 export function releaseEndOf(reason: string, operation: ModelOperation): EndCode | undefined {
   if (CUSTODY_UNSENT.has(reason)) {
     return reason === 'CARRIAGE_UNAVAILABLE' || reason === 'PROMPT_TOO_LARGE'
@@ -194,13 +172,9 @@ export const UNPROVEN_RELEASE: Failure & { readonly kind: 'unknown' } = {
   drop: 'dropped_no_answer',
 };
 
-/**
- * Settlement's stop (transaction 3, after the reserve committed): a call's
- * end that ends its attempt, on work that still stands, records the outcome
- * and retires the work under settlement's locks on the lease and delegation.
- * Work already ended keeps the stop that ended it. It answers the settlement's
- * own result.
- */
+/** Settlement's stop (transaction 3): a call's end that ends its attempt, on work that still
+ * stands, records the outcome and retires the work under settlement's locks; work already ended
+ * keeps its stop. It answers the settlement's own result. */
 export async function stopAtSettlement<Result>(
   tx: TenantQuery,
   leaseId: string,
@@ -230,11 +204,8 @@ export async function dropAfterStop(
   return writer === undefined ? undefined : async () => await writer(cause);
 }
 
-/**
- * A call released at its start: what a count took of it given back, the
- * release audited, and, on work that still stands, its attempt ended with the
- * refusal's code (#1623 R1, transaction 2).
- */
+/** A call released at its start: what a count took given back, the release audited, and, on
+ * work that still stands, its attempt ended with the refusal's code (#1623 R1, transaction 2). */
 export async function refusedAtStart(
   tx: TenantQuery,
   callId: string,

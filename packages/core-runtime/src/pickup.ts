@@ -34,7 +34,7 @@ import { randomUUID } from 'node:crypto';
 import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { leaseReason, personWriteLive } from './lease-ownership.ts';
+import { claimStopped, leaseReason, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
@@ -443,7 +443,7 @@ async function recheckClaim(
   // answer as a reservation that never existed (#10).
   if (state === undefined)
     return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
-  const plan = planClaim(state, reservationId);
+  const plan = (await claimStopped(tx, state.attempt_id)) ?? planClaim(state, reservationId);
   if (plan.kind === 'refuse') return plan.refusal;
   return { ok: true, value: { state, plan } };
 }

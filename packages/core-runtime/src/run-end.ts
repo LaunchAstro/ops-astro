@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `run.end`, the worker's own stop for what only it can see (#1623 R1): an
-// uncatalogued tool, a refused tool, a malformed conversation, tracing
-// refused, a pinned file that changed, an answer lost after it settled, or the
-// door refusing its call while its delegation is live. The worker names a
-// code; the server derives the outcome and records it in this transaction.
-//
-// Under `acquire`: the presented lease's run, the lease, then its delegation.
-// After the wait it reads the lease and its fence again, on the clock read
-// inside the locked statement: a lease that moved or ran out is an ordinary
-// refusal, and nothing is written. Then the outcome (`recordStop`, open-call
-// precedence there) and the work retired. The command layer answers it as a
-// retained terminal refusal, so the stop commits with its register row, and
-// judges the login, the session and the delegation after this last wait
+// `run.end`, the worker's own stop for what only it can see (#1623 R1): it names a code, and the
+// server derives the outcome and records it in this transaction. Under `acquire` (the run, the
+// lease, its delegation) it reads the lease and fence again on the locked clock; a lease that
+// moved or ran out is an ordinary refusal that writes nothing. The command layer answers it as a
+// retained refusal and judges the login, session and delegation after this last wait
 // (`agent-standing.ts`): one revoked or ended meanwhile rolls it all back.
 
 import { retireAttempt, type StoppedAs } from '../../core-custody/src/index.ts';
@@ -84,12 +76,8 @@ export async function endRun(
   return { ok: true, value: stopped };
 }
 
-/**
- * Whether the server's own records show the claimed code. Two need proof: a
- * lost answer is one whose call settled, its cost observed; a definition
- * mismatch is the pinned read's own typed mismatch, read again here. The rest
- * are facts only the worker sees, and the open-call precedence decides them.
- */
+/** Whether the server's records show the claimed code: a lost answer needs its call settled, a
+ * definition mismatch the pinned read's own mismatch; the rest are facts only the worker sees. */
 async function shown(
   tx: TenantQuery,
   code: WorkerEndCode,

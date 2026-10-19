@@ -81,7 +81,7 @@ const dispatchedCall = async (w: Work): Promise<void> => {
 // B2's order (register 87): the effect, then the cut, then the sweep. The call is held in flight
 // while the effect applies (a call reserved after it is refused, never cut), then cut. The cut's
 // unknown settlement ends the attempt, releases its lease and retires its delegation
-// (`broker-settle.ts:269-271`, `broker-stop.ts:122-133`; docs/current-decisions.md:79-81), so the
+// (`broker-settle.ts:269-271`, `broker-stop.ts:104-115`; docs/current-decisions.md:79-81), so the
 // lease is no longer expired here (removed `t3b.expire`: no live lease is left to run out) and the
 // agent is refused.
 it('a present effect on a hold with an unsettled model call is left whole, naming the call', async () => {

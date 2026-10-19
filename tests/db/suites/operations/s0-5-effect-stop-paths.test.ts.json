@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "S0-5 effect metadata on #1623 R1's stops: task.pickup (R5 fence), task.cancel, task.propose (supersession) and grant.revoke each release an unsent call and record the outcome, and each declares model_calls and run_outcomes."
+}

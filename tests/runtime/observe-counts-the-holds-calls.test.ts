@@ -137,7 +137,7 @@ const cutAfterTheEffect = async (w: Work): Promise<Awaited<ReturnType<typeof mon
 
 // B2's order (register 87): the effect, then the cut, then the agent. A cut call's unknown
 // settlement ends the attempt and retires its delegation in the same transaction
-// (`broker-settle.ts:269-271`, `broker-stop.ts:122-133`; docs/current-decisions.md:79-81), so
+// (`broker-settle.ts:269-271`, `broker-stop.ts:104-115`; docs/current-decisions.md:79-81), so
 // the agent's observation never reaches the hold. Removed for that rule: the BUDGET_UNAVAILABLE
 // "sent and never settled" answer, the retained refusal's costMinor and the second observation's
 // "never settled" answer. The hold kept whole, the call held unknown and the money are kept.
