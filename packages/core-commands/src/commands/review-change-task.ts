@@ -21,6 +21,7 @@ import type {
   Delegation,
   EntryPoint,
   HeldChange,
+  LeaseAt,
   ObservedRefusal,
   Session,
   TenantQuery,
@@ -77,6 +78,7 @@ const made = (held: { readonly id: string }, taskId: string, revision: number | 
 async function makeTask(
   tx: TenantQuery,
   maker: Maker,
+  at: LeaseAt,
   held: Extract<HeldChange, { pending: true }>,
   operationId: string,
 ): Promise<HandlerOutcome> {
@@ -93,6 +95,10 @@ async function makeTask(
     parentId: held.taskId,
   });
   if (isRefused(created)) return created;
+  // The placement can wait on the sibling set after the lease was judged, and a lease cannot end
+  // under its share lock but can run out: judged again after that wait, a lapsed one makes nothing.
+  const still = await holdApprovedChange(tx, at, held.id);
+  if (!still.ok) return refused(REFUSALS[still.code]);
   const taskId = String(created.recordId);
   await linkChangeTask(tx, held.id, taskId);
   return made(held, taskId, created.revision);
@@ -111,15 +117,16 @@ export async function makeChangeTask(
   if (typeof leaseId !== 'string' || !isUuid(leaseId) || !Number.isSafeInteger(fence)) {
     return refused(REFUSALS.LEASE_NOT_OWNED);
   }
-  const held = await holdApprovedChange(
-    tx,
-    { leaseId: leaseId.toLowerCase(), fence: Number(fence), actorId: maker.session.actorId },
-    changeRequestId.toLowerCase(),
-  );
+  const at = {
+    leaseId: leaseId.toLowerCase(),
+    fence: Number(fence),
+    actorId: maker.session.actorId,
+  };
+  const held = await holdApprovedChange(tx, at, changeRequestId.toLowerCase());
   if (!held.ok) return refused(REFUSALS[held.code]);
   const change = held.subject;
   if (!change.pending) return made(change, change.createdTaskId, null);
-  return await makeTask(tx, maker, change, request.operationId);
+  return await makeTask(tx, maker, at, change, request.operationId);
 }
 
 /** A person under a lease of their own, as `task.handback` takes one. */
