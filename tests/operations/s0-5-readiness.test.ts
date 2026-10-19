@@ -26,6 +26,7 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
+import { grantTo } from '../commands/fixture.ts';
 import { AGENT_ONLY } from './s0-5-agent-only.ts';
 
 if (serverUrl === undefined) {
@@ -120,8 +121,18 @@ async function notShut(
   return found;
 }
 
-/** The positive recipe, or, for a live delegation (the recipe has none), one made here. */
+/**
+ * The positive recipe, or, for a live delegation or a grant to revoke (the recipe has neither:
+ * its grant would be a later case's), one made here.
+ */
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
+  if (declaration.name === 'grant.revoke') {
+    const { world } = harness;
+    const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
+      return await grantTo(tx, world.noah as Parameters<typeof grantTo>[1], 'read');
+    });
+    return { grantId };
+  }
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 gate ${randomUUID()}`);
     const decided = await harness.reserve(task, 'draft_the_gate_reply');
