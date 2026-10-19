@@ -14,9 +14,10 @@
 // - a locate pass between the edit and Launch supersedes the version, and
 //   Launch is refused with the row untouched;
 // - an edit landing after every check and just before the publish's advance is
-//   refused as not a fast-forward, nothing applied, one person task;
+//   refused as not a fast-forward, nothing applied, and read back unknown
+//   with one person task;
 // - an edit to another file after the pin leaves the version fresh, but the
-//   default branch has moved from its base, so the publish refuses it
+//   default branch has moved from its base, so the publish stops at
 //   `BASE_MOVED` with nothing sent and one person task (re-pinning at Accept
 //   is #2101).
 // The design's table also names a review before Launch: there is no review
@@ -121,7 +122,7 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
     expect(given.locate.requests.every((asked) => asked.startsWith('GET '))).toBe(true);
   });
 
-  it('refuses the publish as not a fast-forward when the page is edited after every check and before the advance', async () => {
+  it('never applies the publish when the page is edited after every check and before the advance', async () => {
     const given = edited();
     const { id, versionId } = await stamped(given);
     expect(codeOf(await launch(id, versionId))).toBe('not-a-refusal');
@@ -139,14 +140,18 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
     expect(given.world.site.state.content).toBe(EDITED);
     expect(given.world.site.state.mainHead).toBe(given.repository.head);
     expect(released).toEqual([id]);
-    expect(passed).toEqual([{ correctionId: id, outcome: 'failed' }]);
-    expect(await w.stateOf(id)).toBe('failed');
-    expect(given.world.raised).toEqual(['NOT_FAST_FORWARD']);
+    // The design's table says `failed`. The code reads the refusal back (`reconciled`): the
+    // default branch's head is neither the proposal's nor the base, so nothing proves the advance
+    // absent and the publish is recorded unknown, waiting on a person.
+    expect(passed).toEqual([{ correctionId: id, outcome: 'unknown' }]);
+    expect(await w.stateOf(id)).toBe('unknown');
+    expect(given.world.raised).toEqual(['RECONCILE_UNPROVEN']);
     const publish = await receipt(id, 'publish');
     expect(publish['waits_on']?.observed).toBe('person');
+    expect(publish['unknown_outcome_reconciliation']?.observed).toContain('RECONCILE_UNPROVEN');
   });
 
-  it('keeps a version fresh when another file is edited after the pin, and refuses its publish as the base moved', async () => {
+  it('keeps a version fresh when another file is edited after the pin, and never advances it from a moved base', async () => {
     const given = edited();
     const { id, versionId } = await stamped(given);
     const { verified_at: stampedAt } = await rowOf(id);
@@ -167,7 +172,7 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
     expect(codeOf(await launch(id, versionId))).toBe('not-a-refusal');
     const { runner } = runnerOn(id, given.world);
     // The default branch is no longer the pinned base: nothing is advanced, a person asks again.
-    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'BASE_MOVED' }]);
+    expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'unknown' }]);
     expect(merges(given.world.site)).toEqual([]);
     expect(given.published).toEqual([]);
     expect(given.world.site.state.content).toBe(BEFORE);

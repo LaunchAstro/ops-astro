@@ -110,14 +110,15 @@ describe.skipIf(serverUrl === undefined)(
           return await double.deps.transport(request);
         },
       });
-      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'failed' });
+      // The 422 is read back: the head is neither the proposal's nor the base, so it stays unknown.
+      expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'unknown' });
       expect(site.state.content).toBe(concurrent);
       expect(site.state.mainHead).toBe('concurrent-commit');
       expect(site.state.deployments).toEqual({});
       expect(advances(site)).toHaveLength(1);
       expect(site.sent.some((sent) => sent.method === 'PUT')).toBe(false);
       expect(site.state.request?.merged).toBe(false);
-      expect(raised).toHaveLength(1);
+      expect(raised).toEqual(['RECONCILE_UNPROVEN']);
       expect(await refusalsOn(id, 'publish')).toContain('PROVIDER_REFUSED');
     });
 

@@ -60,14 +60,6 @@ function asHost(site: Provider, host: string, authorizations: string[]): Server 
   };
   return createServer((request, response) => {
     void (async () => {
-      // The default branch's head is still the base revision (#1693).
-      if (new URL(request.url ?? '/', 'http://x').pathname.endsWith('/git/ref/heads/main')) {
-        authorizations.push(String(request.headers.authorization ?? ''));
-        response
-          .writeHead(200, { 'content-type': 'application/json' })
-          .end(JSON.stringify({ ref: 'refs/heads/main', object: { sha: BASE_REVISION } }));
-        return;
-      }
       if (new URL(request.url ?? '/', 'http://x').searchParams.get('ref') === BASE_REVISION) {
         authorizations.push(String(request.headers.authorization ?? ''));
         response
