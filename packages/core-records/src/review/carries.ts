@@ -2,63 +2,15 @@
 //
 // C35-X's carry (#2075, #2014 slice A): a review's pins carried to its new revision, as
 // history beside the comment (`review_pin_carries`), never a change to the comment or its
-// first anchor. Each pin is found again from its last found spot, its first anchor or its
-// newest moved carry before the new revision. It is found only when the page at its width is
-// the same document as where it was found (every selector carries as it was), or when its
-// quote with its context occurs exactly once in the new page's text (the quote carries, and
-// no coordinate). Anything else is an anchor lost: no anchor, nothing guessed, no model call.
+// first anchor. Each pin is found again (`refind.ts`) from its last found spot, its first
+// anchor or its newest moved carry before the new revision, or its anchor is lost.
 // The caller holds the new revision's capture rows locked, so carries onto one revision
 // happen one at a time, and a pin already carried there is not carried again.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { CAPTURE_WIDTHS } from './reviews.ts';
-import { readPins, type Anchor, type PinView, type Selector } from './pins.ts';
-
-type Observation = Readonly<Record<string, unknown>>;
-
-const sheetsOf = (sheets: object): string => JSON.stringify(Object.entries(sheets).toSorted());
-
-const sameSheets = (from: unknown, to: unknown): boolean =>
-  typeof from === 'object' &&
-  from !== null &&
-  typeof to === 'object' &&
-  to !== null &&
-  sheetsOf(from) === sheetsOf(to);
-
-/** The same document with the same stylesheets: every spot on it is where it was. */
-const sameDocument = (from: Observation, to: Observation): boolean =>
-  typeof from['documentDigest'] === 'string' &&
-  from['documentDigest'] === to['documentDigest'] &&
-  sameSheets(from['stylesheets'], to['stylesheets']);
-
-/** How often the quote, with its context, occurs in `text`, overlaps counted. */
-function occurrences(text: string, quote: Extract<Selector, { type: 'TextQuoteSelector' }>) {
-  const whole = `${quote.prefix ?? ''}${quote.exact}${quote.suffix ?? ''}`;
-  let count = 0;
-  for (let at = text.indexOf(whole); at !== -1; at = text.indexOf(whole, at + 1)) count += 1;
-  return count;
-}
-
-/**
- * `anchor` found again on the revision `toRevisionId`, from the page it was found on to the
- * new page at the same width; null when it is lost.
- */
-export function refind(
-  anchor: Anchor,
-  pages: { readonly from: Observation | undefined; readonly to: Observation | undefined },
-  toRevisionId: string,
-): Anchor | null {
-  const { from, to } = pages;
-  if (to === undefined) return null;
-  const at = { source: toRevisionId, width: anchor.width };
-  if (from !== undefined && sameDocument(from, to)) return { ...at, selector: anchor.selector };
-  const quote = anchor.selector.find((one) => one.type === 'TextQuoteSelector');
-  const text = to['text'];
-  if (quote === undefined || typeof text !== 'string' || occurrences(text, quote) !== 1) {
-    return null;
-  }
-  return { ...at, selector: [quote] };
-}
+import { readPins, type Anchor, type PinView } from './pins.ts';
+import { refind, type Observation } from './refind.ts';
 
 interface CarryRow {
   readonly comment_id: string;
@@ -164,6 +116,17 @@ export async function landedCarryTarget(
   };
 }
 
+/**
+ * Whether a carry onto `revisionId` is due: it has landed at every width and a pin before it is
+ * not carried onto it. A land answers it, so the land that completes the revision's last width
+ * tells its worker to call `review.carry_pins` under the same lease.
+ */
+export async function carryDueOnto(tx: TenantQuery, revisionId: string): Promise<boolean> {
+  const target = await landedCarryTarget(tx, revisionId);
+  if (target === undefined) return false;
+  return notYetCarried(await reviewState(tx, target.review), target.to).length > 0;
+}
+
 /** Who carries: the lease the worker holds, its fence, its actor and its operation. */
 export interface CarryBy {
   readonly leaseId: string;
@@ -172,29 +135,63 @@ export interface CarryBy {
   readonly operationId: string;
 }
 
+/** A carry onto a revision, planned: the pin, where it was last found, and its new anchor. */
+interface PlannedCarry {
+  readonly commentId: string;
+  readonly from: Anchor;
+  readonly anchor: Anchor | null;
+}
+
+/** The carries onto `to` still to write, with the rows they reference locked. */
+export interface CarryPlan {
+  readonly review: CarriedReview;
+  readonly to: CarryTarget;
+  readonly carries: readonly PlannedCarry[];
+}
+
 /**
- * Carry every pin not yet carried onto `to`, which has landed at every width. The caller holds
- * `to`'s capture rows locked and has judged its lease after that wait. The comments carried,
- * each moved or lost.
+ * Plan the carry of every pin not yet carried onto `to`, which has landed at every width, and
+ * key-share lock the rows the inserts reference that others lock: the review and each comment
+ * carried. The inserts' foreign keys then wait on nothing, so the caller, which holds `to`'s
+ * capture rows locked, judges its lease after this wait and its audit chain's.
  */
-export async function carryPinsOnto(
+export async function planCarries(
   tx: TenantQuery,
   review: CarriedReview,
   to: CarryTarget,
+): Promise<CarryPlan> {
+  const state = await reviewState(tx, review);
+  const carries = notYetCarried(state, to).map((pin) => {
+    const from = lastFound(state, pin, to);
+    const pages = {
+      from: state.pages.get(`${from.source}/${from.width}`),
+      to: state.pages.get(`${to.revisionId}/${from.width}`),
+    };
+    return { commentId: pin.commentId, from, anchor: refind(from, pages, to.revisionId) };
+  });
+  await tx.query('select 1 from public.reviews where business_id = $1 and id = $2 for key share', [
+    tx.businessId,
+    review.reviewId,
+  ]);
+  await tx.query(
+    `select 1 from public.records where business_id = $1 and id = any($2::uuid[])
+      order by id for key share`,
+    [tx.businessId, carries.map((one) => one.commentId)],
+  );
+  return { review, to, carries };
+}
+
+/**
+ * Write a plan's carries, each moved or lost. The caller has judged its lease after
+ * `planCarries`. The comments carried; one carried there meanwhile is not carried again.
+ */
+export async function writeCarries(
+  tx: TenantQuery,
+  plan: CarryPlan,
   by: CarryBy,
 ): Promise<readonly { readonly commentId: string; readonly state: 'moved' | 'lost' }[]> {
-  const state = await reviewState(tx, review);
   const carried = [];
-  for (const pin of notYetCarried(state, to)) {
-    const from = lastFound(state, pin, to);
-    const anchor = refind(
-      from,
-      {
-        from: state.pages.get(`${from.source}/${from.width}`),
-        to: state.pages.get(`${to.revisionId}/${from.width}`),
-      },
-      to.revisionId,
-    );
+  for (const { commentId, from, anchor } of plan.carries) {
     // One insert per pin, one after the other in the caller's transaction.
     // eslint-disable-next-line no-await-in-loop
     const rows = await tx.query<{ readonly comment_id: string }>(
@@ -206,10 +203,10 @@ export async function carryPinsOnto(
        returning comment_id`,
       [
         tx.businessId,
-        review.reviewId,
-        pin.commentId,
+        plan.review.reviewId,
+        commentId,
         from.source,
-        to.revisionId,
+        plan.to.revisionId,
         anchor === null ? 'lost' : 'moved',
         anchor === null ? null : JSON.stringify(anchor),
         by.leaseId,
@@ -219,10 +216,7 @@ export async function carryPinsOnto(
       ],
     );
     if (rows.length === 1) {
-      carried.push({
-        commentId: pin.commentId,
-        state: anchor === null ? 'lost' : 'moved',
-      } as const);
+      carried.push({ commentId, state: anchor === null ? 'lost' : 'moved' } as const);
     }
   }
   return carried;
