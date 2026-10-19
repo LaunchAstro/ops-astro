@@ -35,6 +35,8 @@ const serverUrl = databaseUrlFromEnvironment();
 
 /** Every comment field the spine ships, by name, so the count alone cannot pass this. */
 const COMMENT_FIELDS = [
+  // A pin's spot on a review's capture (C35, #2012).
+  'anchor',
   'audience',
   'author',
   'body',

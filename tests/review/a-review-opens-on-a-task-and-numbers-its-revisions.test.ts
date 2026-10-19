@@ -116,6 +116,10 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
           { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
           { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
         ],
+        // The latest beside the one before it, and no pins yet (#2012).
+        after: { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
+        before: { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
+        pins: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);

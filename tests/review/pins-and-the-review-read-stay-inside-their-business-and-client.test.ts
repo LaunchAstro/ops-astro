@@ -55,7 +55,8 @@ describe.skipIf(serverUrl === undefined)('C35 isolation', () => {
     };
 
     // Another client in the same business: dee reaches client B's review and not client A's.
-    expect(codeOf(await seen(w.pin(w.dee, onA.revisionId)))).toBe('NOT_FOUND');
+    // The door asks review:comment at the review's holder, as review.capture's does.
+    expect(codeOf(await seen(w.pin(w.dee, onA.revisionId)))).toBe('SCOPE_NOT_GRANTED');
     expect(await seen(w.read(w.dee, onA.reviewId))).toMatchObject({ code: 'NOT_FOUND' });
     expect(codeOf(await w.pin(w.dee, onB.revisionId))).toBe('not-a-refusal');
     const deeRead = await seen(w.read(w.dee, onB.reviewId));

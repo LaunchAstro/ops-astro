@@ -81,13 +81,14 @@ export async function readPins(
             r.data->'anchor' as anchor
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and t.key = 'task_comment' and r.uuid_1 = $2
+      where r.business_id = $1 and t.key = 'task_comment' and r.data ->> 'task' = $2
         and r.deleted_at is null and r.data ? 'anchor'
         and r.data->'anchor'->>'source' in (
           select v.id::text from public.review_revisions v
            where v.business_id = $1 and v.review_id = $3)
       order by r.created_at, r.id`,
-    [tx.businessId, review.taskId, review.reviewId],
+    // A comment names its task as lowercase text, so the id is compared as one.
+    [tx.businessId, review.taskId.toLowerCase(), review.reviewId],
   );
   return rows.map((row) => ({
     commentId: row.id,
