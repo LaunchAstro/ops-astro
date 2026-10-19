@@ -14,9 +14,9 @@ describe('C57 a decision on an agent key', () => {
     const statements: string[] = [];
     const tx = {
       businessId: randomUUID(),
-      query: async (sql: string) => {
+      query: (sql: string) => {
         statements.push(sql);
-        return [];
+        return Promise.resolve([]);
       },
     };
     const session = {
