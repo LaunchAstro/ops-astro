@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "#1625 R9 (Sol S2095-1): an install at the outcome contract's base (run_outcomes as 20261019083500) upgrades to this head by applying the plan answers' migration only, never replaying run_outcomes."
+  "why": "#1625 R9 (Sol S2095-1): an install at the outcome contract's base (run_outcomes as main holds it) upgrades to this head by applying the plan answers migration only, never replaying run_outcomes."
 }
