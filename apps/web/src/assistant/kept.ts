@@ -110,7 +110,7 @@ function linesOf(read: ConversationReadResult): AssistantMessage[] {
     cites: [],
     ...(one.role === 'person'
       ? { role: 'user', body: one.body }
-      : { role: 'ai', ...replyLine(one.body, onTask, one.targets) }),
+      : { role: 'ai', ...replyLine(one.body, onTask, one.targets, read.sitePages) }),
   }));
 }
 
