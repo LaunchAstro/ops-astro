@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ops-astro-trace-export</string>
+  <key>WorkingDirectory</key>
+  <string>@TRACE_EXPORT_REPO_DIR@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>--disable-sigusr1</string>
+    <string>apps/trace-export/main.ts</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@TRACE_EXPORT_PATH@</string>
+    <key>TRACE_EXPORT_SETTINGS_FILE</key>
+    <string>@TRACE_EXPORT_SETTINGS_FILE@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>@TRACE_EXPORT_LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@TRACE_EXPORT_LOG@</string>
+</dict>
+</plist>

@@ -363,6 +363,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'the model agent process entry (`pnpm model-agent`), started by launchd rather than imported',
   ],
   [
+    'apps/trace-export/main.ts',
+    'the trace export process entry (deploy/m5/ops-astro-trace-export.plist), started by launchd rather than imported',
+  ],
+  [
     'apps/automations/sweep.ts',
     'the scheduled occurrence sweep entry (`pnpm automations:sweep`), started by launchd rather than imported',
   ],

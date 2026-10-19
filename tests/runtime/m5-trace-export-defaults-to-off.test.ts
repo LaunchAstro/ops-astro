@@ -19,8 +19,12 @@ it('activating the M5 example without credential and identity files is refused',
   const settings = parseEnv(readFileSync(example, 'utf8'));
   expect(settings['TRACE_EXPORT_CREDENTIALS_FILE']).toBe('');
   expect(settings['TRACE_EXPORT_KEY_FILE']).toBe('');
+  expect(settings['DATABASE_TRACE_URL']).toBe('');
+  expect(settings['TRACE_EXPORT_BUSINESSES']).toBe('');
   expect(Object.keys(settings).toSorted()).toEqual([
+    'DATABASE_TRACE_URL',
     'TRACE_EXPORT',
+    'TRACE_EXPORT_BUSINESSES',
     'TRACE_EXPORT_CREDENTIALS_FILE',
     'TRACE_EXPORT_KEY_FILE',
     'TRACE_EXPORT_ORIGIN',
