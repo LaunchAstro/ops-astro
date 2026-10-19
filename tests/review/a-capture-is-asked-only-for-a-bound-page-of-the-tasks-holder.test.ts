@@ -64,8 +64,8 @@ describe.skipIf(serverUrl === undefined)('C35 the bound pages', () => {
     const read = await w.read(w.ava, opened['reviewId']);
     const revision = 'review' in read ? read.review.revisions.at(-1) : undefined;
     expect(revision?.captures).toStrictEqual([
-      { width: 1480, state: 'requested' },
-      { width: 390, state: 'requested' },
+      { width: 1480, state: 'requested', pictureId: null, pictureDigest: null, observation: null },
+      { width: 390, state: 'requested', pictureId: null, pictureDigest: null, observation: null },
     ]);
   });
 });

@@ -424,6 +424,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
      select business_id, gen_random_uuid(), id, 1480, created_by_actor_id, created_by_person_id
        from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  // C35: the journey lands no picture. One stored object of four bytes, as the storage seam
+  // writes one.
+  'public.storage_objects': `insert into public.storage_objects
+       (business_id, id, digest, byte_count, body)
+     values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

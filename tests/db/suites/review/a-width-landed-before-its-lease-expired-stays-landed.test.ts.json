@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 a lease running out: a width landed under it stays landed, and the work picked up again claims and lands only the widths left."
+}
