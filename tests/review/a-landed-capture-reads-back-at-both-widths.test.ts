@@ -13,17 +13,21 @@ import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   c35World,
+  pickUpReviewed,
+  underReview,
+  type C35World,
+  type Lease,
+  type Reviewed,
+} from './c35-world.ts';
+import {
   capturesOf,
   claimUnder,
   landUnder,
   observationOf,
-  pickUpReviewed,
   pictureBytes,
   readPicture,
   storedObjects,
-  underReview,
-  type C35World,
-} from './c35-world.ts';
+} from './c35-landing.ts';
 
 /** The picture cap the spec sets (512 KiB), and a stored digest, both stated here, not read from the product. */
 const MOST_STORED_BYTES = 512 * 1024;
@@ -41,6 +45,60 @@ beforeAll(async () => {
 afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
+
+/** A width's picture as it landed, with the id the land answered. */
+interface Landed {
+  readonly width: number;
+  readonly picture: Buffer;
+  readonly pictureId: string;
+}
+
+/** Land 1480 then 390 under `lease`, each answered with its own picture's id and digest. */
+async function landBoth(reviewed: Reviewed, lease: Lease): Promise<Landed[]> {
+  const wide = pictureBytes(14, 3_000);
+  const narrow = pictureBytes(39, 1_200);
+  const landed: Landed[] = [];
+  for (const [width, picture] of [
+    [1480, wide],
+    [390, narrow],
+  ] as const) {
+    // Each land is its own call under the lease, one after the other.
+    // eslint-disable-next-line no-await-in-loop
+    const { result } = await landUnder(w, lease, {
+      revisionId: reviewed.revisionId,
+      width,
+      picture,
+    });
+    expect(codeOf(result)).toBe('not-a-refusal');
+    const detail = detailOf(result);
+    expect(detail).toStrictEqual({
+      revisionId: reviewed.revisionId,
+      width,
+      pictureId: detail['pictureId'],
+      pictureDigest: storedDigestOf(picture),
+    });
+    landed.push({ width, picture, pictureId: String(detail['pictureId']) });
+  }
+  return landed;
+}
+
+/** Each picture's exact bytes, by its id. */
+async function expectPicturesReadBack(landed: readonly Landed[]): Promise<void> {
+  for (const { picture, pictureId } of landed) {
+    // eslint-disable-next-line no-await-in-loop
+    const read = await readPicture(w, w.ava, pictureId);
+    if (isCommandRefusal(read) || !('picture' in read)) {
+      throw new Error(`review.picture answered ${JSON.stringify(read)}`);
+    }
+    expect(read.picture).toStrictEqual({
+      pictureId,
+      digest: storedDigestOf(picture),
+      byteCount: picture.byteLength,
+      body: picture.toString('base64'),
+    });
+    expect(Buffer.from(read.picture.body, 'base64').equals(picture)).toBe(true);
+  }
+}
 
 describe.skipIf(serverUrl === undefined)('C35 a landed capture reads back', () => {
   it('C35 a landed capture reads back at both widths, and an oversized picture stores nothing', async () => {
@@ -63,48 +121,12 @@ describe.skipIf(serverUrl === undefined)('C35 a landed capture reads back', () =
     expect(await storedObjects(w, w.world.business)).toBe(stored);
     expect(await capturesOf(w, reviewed.revisionId)).toStrictEqual(claimed);
 
-    const wide = pictureBytes(14, 3_000);
-    const narrow = pictureBytes(39, 1_200);
-    const landed = [];
-    for (const [width, picture] of [
-      [1480, wide],
-      [390, narrow],
-    ] as const) {
-      // Each land is its own call under the lease, one after the other.
-      // eslint-disable-next-line no-await-in-loop
-      const { result } = await landUnder(w, lease, {
-        revisionId: reviewed.revisionId,
-        width,
-        picture,
-      });
-      expect(codeOf(result)).toBe('not-a-refusal');
-      const detail = detailOf(result);
-      expect(detail).toStrictEqual({
-        revisionId: reviewed.revisionId,
-        width,
-        pictureId: detail['pictureId'],
-        pictureDigest: storedDigestOf(picture),
-      });
-      landed.push({ width, picture, pictureId: String(detail['pictureId']) });
-    }
+    const landed = await landBoth(reviewed, lease);
     expect(landed[0]?.pictureId).not.toBe(landed[1]?.pictureId);
     expect(await storedObjects(w, w.world.business)).toBe(stored + 2);
 
     // Each picture's exact bytes, by its id.
-    for (const { picture, pictureId } of landed) {
-      // eslint-disable-next-line no-await-in-loop
-      const read = await readPicture(w, w.ava, pictureId);
-      if (isCommandRefusal(read) || !('picture' in read)) {
-        throw new Error(`review.picture answered ${JSON.stringify(read)}`);
-      }
-      expect(read.picture).toStrictEqual({
-        pictureId,
-        digest: storedDigestOf(picture),
-        byteCount: picture.byteLength,
-        body: picture.toString('base64'),
-      });
-      expect(Buffer.from(read.picture.body, 'base64').equals(picture)).toBe(true);
-    }
+    await expectPicturesReadBack(landed);
 
     // The review shows both widths landed, each with its own picture and observation.
     const read = await w.read(w.ava, reviewed.reviewId);

@@ -16,13 +16,13 @@ import {
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   c35World,
-  landUnder,
   pickUpReviewed,
-  pictureBytes,
-  underLease,
   underReview,
   type C35World,
+  type Lease,
+  type Reviewed,
 } from './c35-world.ts';
+import { landUnder, pictureBytes, underLease } from './c35-landing.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C35 land audit: DATABASE_URL is unset.');
@@ -36,42 +36,59 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+/** The worker's claim and its land of 1480 under `lease`, with the capture row it landed. */
+async function claimAndLand(
+  reviewed: Reviewed,
+  lease: Lease,
+): Promise<{
+  readonly claim: { readonly operationId: string };
+  readonly land: { readonly operationId: string };
+  readonly captureId: string;
+}> {
+  const claim = await underLease(w, lease, {
+    command: 'review.capture_claim',
+    revisionId: reviewed.revisionId,
+  });
+  expect(codeOf(claim.result)).toBe('not-a-refusal');
+  const land = await landUnder(w, lease, {
+    revisionId: reviewed.revisionId,
+    width: 1480,
+    picture: pictureBytes(21),
+  });
+  if (isCommandRefusal(land.result)) throw new Error(`the land was refused ${land.result.code}`);
+  return { claim, land, captureId: String(land.result.recordId) };
+}
+
+/** The landed row is the 1480 capture of this revision, under the lease that claimed it. */
+async function expectLandedRow(captureId: string, reviewed: Reviewed, lease: Lease): Promise<void> {
+  const [row] = await w.world.db.admin.execute<{
+    readonly revision_id: string;
+    readonly width: number;
+    readonly state: string;
+    readonly lease_id: string;
+    readonly fence: string;
+  }>(
+    `select revision_id, width, state, lease_id, fence::text as fence
+       from public.review_captures where business_id = $1 and id = $2`,
+    [w.world.business, captureId],
+  );
+  expect(row).toStrictEqual({
+    revision_id: reviewed.revisionId,
+    width: 1480,
+    state: 'landed',
+    lease_id: lease.leaseId,
+    fence: String(lease.fence),
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('C35 the land in the audit chain', () => {
   it("C35 a capture land leaves its audit row in the business's chain", async () => {
     const reviewed = await underReview(w, 'a land in the chain');
     const lease = await pickUpReviewed(w, reviewed);
-    const claim = await underLease(w, lease, {
-      command: 'review.capture_claim',
-      revisionId: reviewed.revisionId,
-    });
-    expect(codeOf(claim.result)).toBe('not-a-refusal');
-    const land = await landUnder(w, lease, {
-      revisionId: reviewed.revisionId,
-      width: 1480,
-      picture: pictureBytes(21),
-    });
-    if (isCommandRefusal(land.result)) throw new Error(`the land was refused ${land.result.code}`);
-    const captureId = String(land.result.recordId);
+    const { claim, land, captureId } = await claimAndLand(reviewed, lease);
 
     // The landed row is the 1480 capture of this revision, under the lease that claimed it.
-    const [row] = await w.world.db.admin.execute<{
-      readonly revision_id: string;
-      readonly width: number;
-      readonly state: string;
-      readonly lease_id: string;
-      readonly fence: string;
-    }>(
-      `select revision_id, width, state, lease_id, fence::text as fence
-         from public.review_captures where business_id = $1 and id = $2`,
-      [w.world.business, captureId],
-    );
-    expect(row).toStrictEqual({
-      revision_id: reviewed.revisionId,
-      width: 1480,
-      state: 'landed',
-      lease_id: lease.leaseId,
-      fence: String(lease.fence),
-    });
+    await expectLandedRow(captureId, reviewed, lease);
 
     const { events, report } = await w.world.db.app.withBusiness(w.world.business, async (tx) => ({
       events: await readAuditEvents(tx),

@@ -31,7 +31,12 @@ import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
-import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
+import {
+  createIdentWorld,
+  type IdentWorld,
+  type Picked,
+  type RawAnswer,
+} from './ident-audit-cases.ts';
 import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -220,6 +225,74 @@ async function drillReady(w: IdentWorld, caller: Caller, listed: Body): Promise<
 
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
+
+/** `refuses` below, as the module-level cases are handed it. */
+type Refuses = (
+  op: CommandName,
+  operand: string,
+  by: Presenter,
+  code: string,
+  forms: Readonly<Record<string, Body>>,
+  apart?: Readonly<Record<string, string>>,
+) => Promise<void>;
+
+/** The agent case's lease-bearing operations, each with the rest of its body. */
+const byLease = (agentActorId: string): readonly [CommandName, Body][] => [
+  ['task.heartbeat', {}],
+  ['task.dispatch', {}],
+  // The attempt token is one no form holds, so the lease is what is compared.
+  ['task.observe', { attemptId: randomUUID() }],
+  ['task.check', { name: NOBODY, outcome: 'passed' }],
+  ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+  ['run.delegate_child', childProbe(agentActorId)],
+  // A code it may end on, so the lease is what is compared (#1623 R1).
+  ['run.end', { endCode: 'TOOL_REFUSED' }],
+  // C35's claim and land: the lease is compared, the revision one no form reaches.
+  ['review.capture_claim', { revisionId: randomUUID() }],
+  ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
+];
+
+/** C35's claim and land under the agent's own lease, `own`. */
+async function capturesUnderOwnLease(
+  w: IdentWorld,
+  refuses: Refuses,
+  agent: Presenter,
+  own: Picked,
+): Promise<void> {
+  const f = w.foreign;
+  // Under the agent's own lease, a revision of bravo's and a fabricated one answer alike;
+  // a revision asked on the agent's own task is the control the claim reaches.
+  const { revisionId } = await seedForeignReview(
+    w.h.world.db.admin,
+    w.h.world.bravo,
+    f.task.id,
+    f.admin,
+  );
+  const held = { leaseId: own.leaseId, fence: own.fence };
+  for (const [op, extra] of [
+    ['review.capture_claim', {}],
+    ['review.capture_land', LANDING],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop
+    await refuses(op, 'revisionId', agent, 'NOT_FOUND', {
+      foreign: { ...held, revisionId, ...extra },
+      fabricated: { ...held, revisionId: randomUUID(), ...extra },
+    });
+  }
+  const asked = await seedAskedRevision(
+    w.h.world.db.admin,
+    w.h.world.alpha,
+    own.taskId,
+    w.h.world.ada,
+  );
+  const claimed = await w.agent(
+    w.h.world.agent,
+    'review.capture_claim',
+    { operationId: randomUUID(), ...held, revisionId: asked },
+    own.credential,
+  );
+  expect(claimed.code, 'the claim under the agent’s own lease').toBe('ok');
+}
 
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
@@ -759,21 +832,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'same business': { recordId: sibling.id, ...extra },
         });
       }
-      const byLease: readonly [CommandName, Body][] = [
-        ['task.heartbeat', {}],
-        ['task.dispatch', {}],
-        // The attempt token is one no form holds, so the lease is what is compared.
-        ['task.observe', { attemptId: randomUUID() }],
-        ['task.check', { name: NOBODY, outcome: 'passed' }],
-        ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
-        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
-        // A code it may end on, so the lease is what is compared (#1623 R1).
-        ['run.end', { endCode: 'TOOL_REFUSED' }],
-        // C35's claim and land: the lease is compared, the revision one no form reaches.
-        ['review.capture_claim', { revisionId: randomUUID() }],
-        ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
-      ];
-      for (const [op, extra] of byLease) {
+      for (const [op, extra] of byLease(w.h.world.agent.actorId)) {
         const forms = {
           foreign: { leaseId: f.picked.leaseId, fence: f.picked.fence, ...extra },
           fabricated: { leaseId: randomUUID(), fence: 1, ...extra },
@@ -783,38 +842,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, 'leaseId', agent, 'LEASE_NOT_OWNED', forms, apart);
       }
-      // Under the agent's own lease, a revision of bravo's and a fabricated one answer alike;
-      // a revision asked on the agent's own task is the control the claim reaches.
-      const { revisionId } = await seedForeignReview(
-        w.h.world.db.admin,
-        w.h.world.bravo,
-        f.task.id,
-        f.admin,
-      );
-      const held = { leaseId: own.leaseId, fence: own.fence };
-      for (const [op, extra] of [
-        ['review.capture_claim', {}],
-        ['review.capture_land', LANDING],
-      ] as const) {
-        // eslint-disable-next-line no-await-in-loop
-        await refuses(op, 'revisionId', agent, 'NOT_FOUND', {
-          foreign: { ...held, revisionId, ...extra },
-          fabricated: { ...held, revisionId: randomUUID(), ...extra },
-        });
-      }
-      const asked = await seedAskedRevision(
-        w.h.world.db.admin,
-        w.h.world.alpha,
-        own.taskId,
-        w.h.world.ada,
-      );
-      const claimed = await w.agent(
-        w.h.world.agent,
-        'review.capture_claim',
-        { operationId: randomUUID(), ...held, revisionId: asked },
-        own.credential,
-      );
-      expect(claimed.code, 'the claim under the agent’s own lease').toBe('ok');
+      await capturesUnderOwnLease(w, refuses, agent, own);
     },
     300_000,
   );
