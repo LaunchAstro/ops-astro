@@ -196,6 +196,15 @@ export async function passes({ pass, ping: beat, sleep: wait, stopping }: Passes
   }
 }
 
+/** The heartbeat a pass pings. */
+export function heartbeat(
+  settings: Pick<Settings, 'heartbeat'>,
+  send: (address: string | undefined) => Promise<string> = ping,
+  _now?: () => number,
+): () => Promise<void> {
+  return async () => void (await send(settings.heartbeat));
+}
+
 async function main(): Promise<number> {
   const settings = readSettings(process.env);
   if (typeof settings === 'string') {
@@ -229,7 +238,7 @@ async function main(): Promise<number> {
   process.once('SIGTERM', () => stopping.abort());
   await passes({
     pass,
-    ping: async () => void (await ping(settings.heartbeat)),
+    ping: heartbeat(settings),
     sleep: async (signal) =>
       void (await sleep(FOLLOW_EVERY_MS, null, { signal }).catch(() => null)),
     stopping: stopping.signal,
