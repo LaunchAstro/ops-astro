@@ -3,8 +3,9 @@
 // The storage seam (C35, #2011): bytes kept by id, never by path, in the
 // business whose transaction asks. One provider today, the bounded database
 // one over `storage_objects`, so a picture lands in the same transaction as
-// the capture row that names it. The media unit (U89, #2038) adds an object
-// store behind the same seam and its multipart and signed-read methods.
+// the capture row that names it. The media unit (U89, #2038) adds the
+// multipart transfers an object store answers (`ObjectTransfers`); the
+// database provider refuses each of them by name.
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -21,7 +22,50 @@ export interface StoredObject {
 
 export type StoreRefusal = { readonly refused: 'OBJECT_EMPTY' | 'OBJECT_TOO_LARGE' };
 
-export interface StorageProvider {
+/** A URL signed for one object, one part and one method, until it expires. */
+export interface SignedTransfer {
+  readonly url: string;
+  readonly method: 'PUT' | 'GET';
+  readonly expiresAt: string;
+}
+
+export interface StoredPart {
+  readonly partNumber: number;
+  readonly byteCount: number;
+}
+
+export type TransferRefusal = {
+  readonly refused: 'TRANSFERS_UNSUPPORTED' | 'UPLOAD_UNKNOWN' | 'STORE_UNAVAILABLE';
+};
+
+/**
+ * A multipart upload by object key, straight from the caller to the store: the store keeps the
+ * parts, signs each part's URL for one object, part and method, and reports what it completed.
+ * The credential that signs stays with the store's side of this port, never in an answer.
+ */
+export interface ObjectTransfers {
+  /** The size of every part but the last. */
+  readonly partBytes: number;
+  open(key: string): Promise<{ readonly uploadId: string } | TransferRefusal>;
+  signPart(
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    lifeSeconds: number,
+  ): Promise<SignedTransfer | TransferRefusal>;
+  listParts(key: string, uploadId: string): Promise<readonly StoredPart[] | TransferRefusal>;
+  /** The parts joined in number order, and what the store holds: its size and digest. */
+  complete(
+    key: string,
+    uploadId: string,
+    partNumbers: readonly number[],
+  ): Promise<{ readonly byteCount: number; readonly digest: string } | TransferRefusal>;
+  abort(key: string, uploadId: string): Promise<boolean | TransferRefusal>;
+  /** A completed object removed, as a refused completion leaves none. */
+  remove(key: string): Promise<boolean | TransferRefusal>;
+}
+
+export interface StorageProvider extends ObjectTransfers {
   put(tx: TenantQuery, body: Uint8Array): Promise<StoredObject | StoreRefusal>;
   get(
     tx: TenantQuery,
@@ -33,8 +77,18 @@ export interface StorageProvider {
 export const storedDigestOf = (body: Uint8Array): string =>
   `sha256:${createHash('sha256').update(body).digest('hex')}`;
 
+const unsupported = (): Promise<TransferRefusal> =>
+  Promise.resolve({ refused: 'TRANSFERS_UNSUPPORTED' });
+
 /** The bounded database provider: one row per object, scoped by the row's business. */
 export const DATABASE_STORAGE: StorageProvider = {
+  partBytes: MOST_STORED_BYTES,
+  open: unsupported,
+  signPart: unsupported,
+  listParts: unsupported,
+  complete: unsupported,
+  abort: unsupported,
+  remove: unsupported,
   async put(tx, body) {
     if (body.byteLength === 0) return { refused: 'OBJECT_EMPTY' };
     if (body.byteLength > MOST_STORED_BYTES) return { refused: 'OBJECT_TOO_LARGE' };
