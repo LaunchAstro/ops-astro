@@ -7,6 +7,7 @@
  * A person or a delegated agent opens a review, asks a capture of a revision and pins a
  * comment on a spot of one (#2012); a worker claims the capture and lands it under its
  * lease; the review, with its revisions, captures and pins, and a landed picture are read.
+ * A person files a client pin as a change request and a person decides it (C57, #2016).
  */
 export type ReviewCommandName =
   | 'review.open'
@@ -14,5 +15,7 @@ export type ReviewCommandName =
   | 'review.capture_claim'
   | 'review.capture_land'
   | 'review.pin_comment'
+  | 'review.propose_change'
+  | 'review.decide_change'
   | 'review.read'
   | 'review.picture';

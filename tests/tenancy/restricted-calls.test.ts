@@ -429,6 +429,14 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.storage_objects': `insert into public.storage_objects
        (business_id, id, digest, byte_count, body)
      values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
+  // C57: the journey files no change request. One on the seeded review, its task standing in
+  // for the pin.
+  'public.review_change_requests': `insert into public.review_change_requests
+       (business_id, id, review_id, comment_id, task_id, request_text, proposed_by_actor_id,
+        proposed_by_person_id)
+     select business_id, gen_random_uuid(), id, task_id, task_id, 'seed', opened_by_actor_id,
+            opened_by_person_id
+       from public.reviews where business_id = $1 order by id limit 1 returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)
