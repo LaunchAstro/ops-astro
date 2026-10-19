@@ -62,6 +62,8 @@ export interface ReviewAt {
   readonly partyId?: string;
   readonly pageUrl?: string;
   readonly path?: string;
+  /** The agent's lease length, when a proof waits for it to run out. */
+  readonly leaseSeconds?: number;
 }
 
 /** A review on `title`'s task, its first revision landed showing `page`, and the agent's lease. */
@@ -72,7 +74,7 @@ export async function landedReview(
   at: ReviewAt = {},
 ): Promise<{ readonly reviewed: Reviewed; readonly lease: Lease }> {
   const reviewed = await underReview(w, title, at);
-  const lease = await pickUpReviewed(w, reviewed);
+  const lease = await pickUpReviewed(w, reviewed, at.leaseSeconds);
   await landPage(w, lease, reviewed.revisionId, page);
   return { reviewed, lease };
 }
@@ -113,7 +115,28 @@ export const carryUnder = async (
 ): Promise<{ readonly operationId: string; readonly result: CommandResult }> =>
   await underLease(w, lease, { command: 'review.carry_pins', revisionId }, database);
 
-/** End `lease` now, on the database's clock, as if its time ran out. */
+/** Wait, reading the database's clock only, until `lease` itself has run out. */
+export async function untilLeaseEnds(w: C35World, lease: Lease): Promise<void> {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    // Polling is sequential by definition.
+    // eslint-disable-next-line no-await-in-loop
+    const [row] = await w.world.db.admin.execute<{ readonly past: boolean }>(
+      'select expires_at <= clock_timestamp() as past from public.leases where id = $1',
+      [lease.leaseId],
+    );
+    if (row?.past === true) return;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+  throw new Error('c35-x carry: the lease never ran out');
+}
+
+/**
+ * End `lease` now, on the database's clock, as if its time ran out. Only while nothing holds
+ * the lease's row: a call parked behind another lock holds it.
+ */
 export async function expireNow(w: C35World, lease: Lease): Promise<void> {
   await w.world.db.admin.execute(
     'update public.leases set expires_at = clock_timestamp() where id = $1',

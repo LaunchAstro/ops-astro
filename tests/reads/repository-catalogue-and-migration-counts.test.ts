@@ -23,7 +23,7 @@ it('the exported catalogue contains the 196 operations covered by the audit matr
   expect(COMMAND_SURFACE).toHaveLength(196);
 });
 
-it('the timing matrix covers 131 identifier-bearing operations', () => {
+it('the timing matrix covers 132 identifier-bearing operations', () => {
   const targetFree = new Set(TARGET_FREE.map(([name]) => name));
-  expect(COMMAND_SURFACE.filter((entry) => !targetFree.has(entry.name))).toHaveLength(131);
+  expect(COMMAND_SURFACE.filter((entry) => !targetFree.has(entry.name))).toHaveLength(132);
 });
