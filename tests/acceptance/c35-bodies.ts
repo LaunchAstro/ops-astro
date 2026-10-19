@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- every C35 command's body, person and agent, read in one place */
 //
 // C35's and C57's positive bodies for the role-case matrix (#2011, #2016, #2117), answered from `role-case-setup.ts`'s
 // `tableBody`: a review is opened by the admin on a task under a client of its own, for that
