@@ -52,6 +52,14 @@ export async function selfOf(call: Call, mine: Proposer): Promise<string | Unans
   return mine.actorId;
 }
 
+/** The task the delegation names, read under it now: a revoked one answers its refusal. */
+export async function delegatedTask(call: Call): Promise<string | Unanswered> {
+  const capabilities = await call('session.capabilities', {});
+  if (!('body' in capabilities)) return capabilities;
+  const scope = capabilities.body['purposeScope'] as { id?: unknown } | null | undefined;
+  return typeof scope?.id === 'string' ? scope.id : '';
+}
+
 /** `step` proposed once on the delegation's task, one pass at a time per worker. */
 export async function proposeStep(
   call: Call,

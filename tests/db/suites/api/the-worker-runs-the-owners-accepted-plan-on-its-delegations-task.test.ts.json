@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "the worker picks up a plan the owner proposed and accepted only on its own live delegation's task, and that run is carried on the owner's plan; a member's proposal, another business's plan, another delegation's task and a revoked delegation run nothing, and the worker's own proposal still runs and is refused the plan"
+}

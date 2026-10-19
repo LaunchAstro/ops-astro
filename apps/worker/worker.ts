@@ -22,7 +22,7 @@ import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
-import { proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
+import { delegatedTask, proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
 import { handBackForReview, type HandedBack } from './review.ts';
 import { SYNTHETIC_RUNNER, type StepEnd, type StepRunner } from './step-runner.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
@@ -134,9 +134,8 @@ async function applyOnce(
 }
 
 /**
- * The queued work on `taskId` that this agent proposed, read before any
- * delegation (`agent-envelope.ts`). Work another actor proposed on the same
- * task is theirs: a person's approval of it never runs this worker's step.
+ * The queued work on `taskId` it runs (`agent-envelope.ts`): its own, or the
+ * owner's accepted plan on the task its delegation names, read under it now.
  */
 async function ask(
   options: WorkerOptions,
@@ -148,25 +147,28 @@ async function ask(
   const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
-  // Its own proposal of its own step: an approval of any other step never runs this one.
-  const work = entries.find(
-    (entry) =>
-      entry['taskId'] === taskId &&
-      entry['proposedByActorId'] === actorId &&
-      entry['purpose'] === SYNTHETIC_STEP.kind,
+  const steps = entries.filter(
+    (entry) => entry['taskId'] === taskId && entry['purpose'] === SYNTHETIC_STEP.kind,
   );
+  let work = steps.find((entry) => entry['proposedByActorId'] === actorId);
+  const owners = steps.find((entry) => entry['ownerProposed'] === true);
+  if (work === undefined && owners !== undefined) {
+    const delegated = await delegatedTask(agentCall(options, options.delegation));
+    if (typeof delegated !== 'string') return delegated;
+    if (delegated === taskId) work = owners;
+  }
   if (work === undefined) return { idle: { taskId } };
   // Its own per pass, never the reservation's: a second process naming the same
   // pickup would replay the first's answer and hold its lease (T3f).
   return { reservationId: work['reservationId'], operationId: randomUUID() };
 }
 
-/** The pickup, under the identity it was first asked with. */
+/** The pickup, under the identity it was first asked with and its delegation, which it answers to. */
 async function pickUp(
   options: WorkerOptions,
   asked: Asked,
 ): Promise<{ readonly held: Held } | WorkerOutcome> {
-  const picked = await agentCall(options)('task.pickup', asked);
+  const picked = await agentCall(options, options.delegation)('task.pickup', asked);
   if (!('body' in picked)) return picked;
   return {
     held: {
