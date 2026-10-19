@@ -68,6 +68,7 @@ agency | Projects
   projects | Projects | @agency:projects-board | MP-5-8 | /agency/projects/
   maps | Maps | @agency:maps | 1552
   reviews | Reviews | projects/reviews/ | MP-8-1
+  ~review-workspace | Review workspace | @agency:review-workspace | C35-2105
 agency | Clients
   clients | Clients | @agency:clients | MP-8-5 | /agency/clients/
   forms | Forms | clients/forms/ | MP-12-6
