@@ -61,7 +61,8 @@ and d; the round register, items 10, 11 and 13).
   owner's own hand-typed request too, not only the agent's. The decision
   re-reads the mode and the operator count under its lock, so a second
   operator added while it waits is seen and the approval refused with nothing
-  written.
+  written. Like any approval, it lands only while the site runner checked the
+  page within the last 60 seconds (#1693).
 - The business's first such approval also needs Astra's review recorded on
   the correction, bound to its exact version digest and approving it; the
   latest review of that version is the one that counts. The
