@@ -4,7 +4,9 @@
 // headless M5 (an SSH tunnel, Screen Sharing as fallback), which plan, how
 // his consent for background use is given and recorded, the Time Machine
 // exclusion and its check, the ancestor folders check, and what each refusal
-// the sign-in can answer means. It never asks for a key in chat.
+// the sign-in can answer means. It never asks for a key in chat. #1705: after
+// sign-in it checks the file's mode and that another user cannot read it,
+// without printing the file, and marks the Linux ACL branch not applicable.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -62,5 +64,16 @@ describe("the owner's sign-in checklist", () => {
   it('never asks for a token, a code or the token file in chat', () => {
     expect(page).toMatch(/Never paste a token, a code or the token file into chat/u);
     expect(page).not.toMatch(/paste (?:the|your) (?:token|key|code)/iu);
+  });
+});
+
+describe("the owner's checks after sign-in on the M5", () => {
+  it('checks another user cannot read the token file without printing it, and marks the Linux ACL branch not applicable on the M5', () => {
+    expect(page).toContain(
+      `cd / && sudo -u nobody sh -c 'test -r "$1" && echo READABLE-STOP || echo denied-ok' _ ~/.ops-astro/chatgpt-plan.json`,
+    );
+    expect(page).toContain('stat -f %Sp ~/.ops-astro/chatgpt-plan.json');
+    expect(page).not.toMatch(/\bcat [^\n]*chatgpt-plan\.json/u);
+    expect(page).toMatch(/Linux ACL branch: not applicable on the M5\. It runs macOS/u);
   });
 });
