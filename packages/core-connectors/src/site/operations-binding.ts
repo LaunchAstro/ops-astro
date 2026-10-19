@@ -100,7 +100,7 @@ export const BINDING_OPERATIONS: readonly OperationRegistration[] = [
   operation(read('site.source.head', SOURCE_QUOTA, 'site_source'), {
     host: SOURCE_HOST,
     method: 'GET',
-    pathTemplate: '/repos/{repository*}/git/ref/heads/{branch}',
+    pathTemplate: '/repos/{repository*}/git/ref/heads/{branch*}',
     bodyParams: [],
     responseSchema: { 'object.sha': 'string' },
     refusalProofs: {},
