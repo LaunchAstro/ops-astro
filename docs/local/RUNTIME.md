@@ -1643,7 +1643,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   the step's held calls in its transaction, with `outcome` and
   `outcome_person_id`; no timer does. `readCallDrops` reads a task's held
   calls in its business. Tests: `tests/broker/aw-10-*`.
-- Turns and the call limit (#1623 R3, `20261019083600_turn_provenance_and_call_limit`,
+- Turns and the call limit (#1623 R3, `20261019115000_turn_provenance_and_call_limit`,
   `core-custody/src/broker-turn.ts`, `broker-turn-read.ts`, `broker-limit.ts`):
   each hold of a run attempt records its place among the attempt's calls
   (`call_ordinal`, counted under the run lock) and the attempt's limit, the one
