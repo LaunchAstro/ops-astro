@@ -10,7 +10,7 @@
 // refuses it: an agent-proposed run is never owner-started. The worker runs
 // against the served API over a real database, and each plan call goes
 // through the real broker and custody, the replay provider answering for the
-// plan's host. The last three cases are review S2113's proofs.
+// plan's host. The last six cases are review S2113's proofs.
 
 /* eslint-disable max-lines -- one served API and broker, a case per crossing */
 import { createHash, randomUUID } from 'node:crypto';
@@ -33,6 +33,7 @@ import {
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  mintChildDelegation,
   mintDelegation,
   revokeDelegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
@@ -557,5 +558,114 @@ describe.skipIf(serverUrl === undefined)("the worker runs the owner's accepted p
     );
     expect(JSON.stringify(row)).not.toContain(fixture.member.actorId);
     expect(JSON.stringify(row)).not.toContain(fixture.member.personId);
+  }, 120_000);
+
+  // Review S2113's round two: a pickup's delegation, its own and its parent's, assertions as given.
+  it("a pickup under one delegation cannot claim another delegation's task, and its minted authority rolls back", async () => {
+    const mine = await ownersTask();
+    const theirs = await ownersTask();
+    const reservationId = await acceptedPlan(ownerToken, theirs.taskId, theirs.revision);
+    const before = await fixture.db.admin.execute<{ id: string }>(
+      'select id from public.delegations where business_id = $1',
+      [fixture.business],
+    );
+    const response = await transport(
+      `/api/a/b/${BUSINESS_KEY}${pathOf('task.pickup')}`,
+      JSON.stringify({ operationId: randomUUID(), reservationId }),
+      agentToken,
+      mine.credential,
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'DELEGATION_OUT_OF_PURPOSE' });
+    expect(await reservation(reservationId)).toStrictEqual({ state: 'held', lease_id: null });
+    const after = await fixture.db.admin.execute<{ id: string }>(
+      'select id from public.delegations where business_id = $1',
+      [fixture.business],
+    );
+    expect(after.map((r) => r.id).toSorted()).toEqual(before.map((r) => r.id).toSorted());
+  }, 120_000);
+
+  it('a worker whose delegation was revoked after it cached its identity cannot pick up its own accepted proposal', async () => {
+    const { taskId, credential, delegationId } = await ownersTask();
+    const pickups: Pickup[] = [];
+    const worker = workerOn(callingOn([PLAN_ROUTE], taskId, pickups), credential);
+    const proposal = await worker.proposeOnce();
+    if (!('proposed' in proposal)) throw new Error('proposal refused');
+    const [gate] = await fixture.db.admin.execute<{ version_id: string }>(
+      'select version_id::text from public.gates where id = $1',
+      [proposal.proposed.gateId],
+    );
+    const reservationId = await ownerAccepts({
+      gateId: proposal.proposed.gateId,
+      versionId: gate?.version_id,
+    });
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await revokeDelegation(tx, delegationId);
+    });
+    expect(await worker.applyOnce(taskId)).toMatchObject({
+      refused: { code: 'DELEGATION_NOT_LIVE' },
+    });
+    expect(pickups).toEqual([]);
+    expect(await reservation(reservationId)).toStrictEqual({ state: 'held', lease_id: null });
+  }, 120_000);
+
+  // eslint-disable-next-line max-lines-per-function -- the helper's chain is minted inline, as the review wrote it
+  it("a helper whose parent delegation is revoked after the helper's task read claims nothing and calls no model", async () => {
+    const { taskId, revision } = await ownersTask();
+    const reservationId = await acceptedPlan(ownerToken, taskId, revision);
+    const { parentId, credential } = await fixture.db.app.withBusiness(
+      fixture.business,
+      async (tx) => {
+        await grantTo(tx, fixture.member, 'write', { kind: 'business', id: null }, false, 'run');
+        const parentActor = randomUUID();
+        await tx.query(
+          `insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`,
+          [fixture.business, parentActor],
+        );
+        const parent = await mintDelegation(tx, {
+          agentActorId: parentActor,
+          delegatePersonId: fixture.member.personId,
+          mintedByActorId: fixture.member.actorId,
+          purpose: `parent_${randomUUID().slice(0, 8)}`,
+          collections: ['task', 'run'],
+          actions: ['read', 'comment', 'write'],
+          purposeScope: { kind: 'record', id: taskId },
+          expiresAt: new Date(Date.now() + 3_600_000),
+        });
+        if (!parent.ok) throw new Error(parent.refusal.code);
+        const child = await mintChildDelegation(tx, parent.value.delegation, {
+          agentActorId: fixture.agentActorId,
+          purpose: `helper_${randomUUID().slice(0, 8)}`,
+          collections: ['task'],
+          actions: ['read', 'comment', 'write'],
+          expiresAt: new Date(Date.now() + 1_800_000),
+        });
+        if (!child.ok) throw new Error(child.refusal.code);
+        return { parentId: parent.value.delegation.id, credential: child.value.credential };
+      },
+    );
+    const pickups: Pickup[] = [];
+    const through = callingOn([PLAN_ROUTE], taskId, pickups);
+    let revoked = false;
+    const revokeBeforePickup: Transport = async (path, body, bearer, delegation) => {
+      if (path.endsWith('/task/pickup') && !revoked) {
+        revoked = true;
+        await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+          expect(await revokeDelegation(tx, parentId)).toBeInstanceOf(Date);
+        });
+      }
+      return await through(path, body, bearer, delegation);
+    };
+    const outcome = await workerOn(revokeBeforePickup, credential).applyOnce(taskId);
+    expect({
+      outcome,
+      pickupCount: pickups.length,
+      calls: pickups.flatMap((p) => p.calls).map((c) => c.ok),
+      reservation: await reservation(reservationId),
+    }).toMatchObject({
+      pickupCount: 0,
+      calls: [],
+      reservation: { state: 'held', lease_id: null },
+    });
   }, 120_000);
 });
