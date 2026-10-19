@@ -15,6 +15,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { isBusinessId, isUuid } from '../../packages/core-records/src/index.ts';
+import { heartbeatEvery } from '../worker/heartbeat.ts';
 import type { ConfiguredSite } from './configured.ts';
 
 export const SETTINGS = 'SITE_RUNNER_SETTINGS';
@@ -40,6 +41,8 @@ const TLS_MODES = new Set(['require', 'verify-ca', 'verify-full']);
 export type Settings = Readonly<Record<(typeof REQUIRED)[number], string>> & {
   readonly providerKey: string;
   readonly heartbeat: string | undefined;
+  /** The least milliseconds between two pings (`OPS_HEARTBEAT_EVERY_MS`); 0, every pass. */
+  readonly heartbeatEvery: number;
   /** The configured site's page addresses: the capture fence's agency pages. */
   readonly pages: readonly string[];
   readonly site: ConfiguredSite;
@@ -147,11 +150,14 @@ export function settingsFrom(env: Readonly<Record<string, string | undefined>>):
   if (typeof site === 'string') return site;
   const locate = env['SITE_RUNNER_LOCATE_ONLY'] ?? '';
   if (locate !== '' && locate !== '1') return 'SITE_RUNNER_LOCATE_ONLY is not 1';
+  const every = heartbeatEvery(env);
+  if (typeof every === 'string') return every;
   const settings = Object.fromEntries(REQUIRED.map((name) => [name, value(name)]));
   return {
     ...(settings as Readonly<Record<(typeof REQUIRED)[number], string>>),
     providerKey: env['SUPABASE_PUBLISHABLE_KEY'] ?? '',
     heartbeat: env['SITE_RUNNER_HEARTBEAT_URL'],
+    heartbeatEvery: every,
     pages: site.pages.map((page) => page.pageUrl),
     site,
     locateOnly: locate === '1',

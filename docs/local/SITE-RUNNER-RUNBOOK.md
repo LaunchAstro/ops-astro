@@ -33,8 +33,13 @@ secret by name.
    `OPS_ASTRO_BUSINESS_ID`, `OPS_ASTRO_EMAIL`, `OPS_ASTRO_PASSWORD`,
    `OPS_ASTRO_GOTRUE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
    `SITE_RUNNER_DATABASE_URL`, `SITE_RUNNER_CREDENTIALS_FILE` (step 3),
-   `SITE_RUNNER_SITE` (below) and `SITE_RUNNER_HEARTBEAT_URL` (its own
-   heartbeat check). Each is a string except `SITE_RUNNER_SITE`, which may be
+   `SITE_RUNNER_SITE` (below), `SITE_RUNNER_HEARTBEAT_URL` (its own
+   heartbeat check, "Ops Astro production site runner", from the Bitwarden
+   item "GlitchTip - Ops Astro Production Heartbeats" as
+   `PRODUCTION_SITE_RUNNER_HEARTBEAT_URL`) and `OPS_HEARTBEAT_EVERY_MS` (the
+   least time between two pings, a little under the check's period: `55000`
+   for a 1-minute check, as a pass runs every 15 s; whole milliseconds, at
+   most a day, or the runner refuses to start). Each is a string except `SITE_RUNNER_SITE`, which may be
    written as an object. `SITE_RUNNER_LOCATE_ONLY` set to `"1"` runs the
    locate alone (below).
 
@@ -80,7 +85,8 @@ secret by name.
 - **Stop:** park, then remove `~/Library/LaunchAgents/ops-astro-site-runner.plist`.
   To withdraw its database reach too: `drop role site_runner;`.
 - **Check:** each pass logs one line per correction it settled, put off or
-  ran, its id and a code, and pings the heartbeat. A correction found bound to
+  ran, its id and a code, and pings the heartbeat, no more often than
+  `OPS_HEARTBEAT_EVERY_MS`. A correction found bound to
   any other site logs `<id> SITE_NOT_CONFIGURED`. A stopped or failing runner pings nothing, so the
   watcher mails. A raised person task logs `raised <code> on task <id>` and
   is written as an internal comment on the correction's task.

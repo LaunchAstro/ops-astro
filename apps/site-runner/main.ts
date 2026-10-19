@@ -9,16 +9,16 @@
 // the claims (`runner.ts`), each on its own so a failure in one leaves the
 // other and the heartbeat going. Locate only (`SITE_RUNNER_LOCATE_ONLY=1`)
 // takes no claims and signs in nowhere, and custody routes nothing but reads.
-// After each pass it pings its heartbeat, so a stopped or broken runner goes
-// quiet. SIGTERM, which `launchctl bootout` sends, stops custody and the
-// database and exits. Its settings come from one file only its owner can read
-// (`settings.ts`). Nothing printed carries a password, a key, a bearer, a
-// token or an address.
+// After each pass it pings its heartbeat, no more often than its settings
+// file's pace, so a stopped or broken runner goes quiet. SIGTERM, which
+// `launchctl bootout` sends, stops custody and the database and exits. Its
+// settings come from one file only its owner can read (`settings.ts`).
+// Nothing printed carries a password, a key, a bearer, a token or an address.
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createCli, httpTransport, isRefusal, unredirected } from '../cli/client.ts';
 import { agentSignIn } from '../worker/sign-in.ts';
-import { ping } from '../worker/heartbeat.ts';
+import { paced, ping } from '../worker/heartbeat.ts';
 import { pinnedTransport, systemResolver } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import { connect, type BusinessId, type Database } from '../../packages/core-records/src/index.ts';
@@ -196,6 +196,19 @@ export async function passes({ pass, ping: beat, sleep: wait, stopping }: Passes
   }
 }
 
+/**
+ * The heartbeat a pass pings, no more often than the settings file's pace: a
+ * pass runs every 15 s, more than a free watcher's budget takes.
+ */
+export function heartbeat(
+  settings: Pick<Settings, 'heartbeat' | 'heartbeatEvery'>,
+  send: (address: string | undefined) => Promise<string> = ping,
+  now?: () => number,
+): () => Promise<void> {
+  const beat = paced(settings.heartbeatEvery, send, now);
+  return async () => void (await beat(settings.heartbeat));
+}
+
 async function main(): Promise<number> {
   const settings = readSettings(process.env);
   if (typeof settings === 'string') {
@@ -229,7 +242,7 @@ async function main(): Promise<number> {
   process.once('SIGTERM', () => stopping.abort());
   await passes({
     pass,
-    ping: async () => void (await ping(settings.heartbeat)),
+    ping: heartbeat(settings),
     sleep: async (signal) =>
       void (await sleep(FOLLOW_EVERY_MS, null, { signal }).catch(() => null)),
     stopping: stopping.signal,
