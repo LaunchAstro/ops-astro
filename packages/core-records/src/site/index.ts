@@ -8,9 +8,7 @@ export {
   APPROVER_SETTING,
   GATE_COLLECTION,
   RUN_COLLECTION,
-  correctionOfPlan,
   insertLiveCorrection,
-  planVersionOfDelegation,
   listCoveredCorrections,
   lockCoveredCorrection,
   type CorrectionState,
@@ -75,3 +73,4 @@ export {
   reviewApproves,
   type NewReview,
 } from './single-operator.ts';
+export { correctionOfPlan, planVersionOfDelegation } from './plan-corrections.ts';

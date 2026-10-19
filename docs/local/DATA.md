@@ -1140,3 +1140,14 @@ request, so the migration sets their `located_at` to `created_at`.
 An approval lands only while `verified_at` is at most 60 s old by
 `clock_timestamp()` in the update that writes it. `locating` counts as open
 for the site freeze.
+
+## One correction per accepted plan (20261019120000, #1717)
+
+An agent's request stores `plan_version_id`: the plan version its pickup
+serves, read from the lease its delegation was minted with (`leases` to
+`reservations.version_id`), never from the request. A person's request leaves
+it null. `live_corrections_one_per_plan_idx` holds one row per business and
+plan version, so a second request on the same plan, from a later attempt or
+at the same moment, stores nothing and is answered the first correction: the
+second insert waits on the first's index entry, then reads the stored row.
+The column never changes once written (`live_corrections_plan_kept`).
