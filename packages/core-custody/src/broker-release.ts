@@ -7,6 +7,40 @@
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { COUNTED_CAUSES, countedHold, giveBack } from './broker-give-back.ts';
+import type { Broker, BrokerRefusal } from './broker-types.ts';
+
+/**
+ * A start refused under its locks (`markStarted`, broker.ts): the hold is
+ * released, never started, with the route it would have taken and no start
+ * time, gives back what was counted of it, and is audited. A release that
+ * moved nothing records nothing and gives nothing back.
+ */
+export async function releaseRefused(
+  tx: TenantQuery,
+  callId: string,
+  route: readonly (string | null)[],
+  code: BrokerRefusal,
+  broker: Pick<Broker, 'audit'>,
+): Promise<BrokerRefusal> {
+  const released = await tx.query(
+    `update public.model_calls
+        set state = 'released', ended_at = clock_timestamp(),
+            route_key = $3, route_reach = $4, credential_kind = $5,
+            provider = $6, credential_ref = $7, account = $8
+      where business_id = $1 and id = $2 and state = 'reserved'
+      returning id`,
+    [tx.businessId, callId, ...route],
+  );
+  if (released.length === 0) return code;
+  await giveBack(tx, callId);
+  await broker.audit(tx, {
+    action: 'model.call_released',
+    outcome: 'refused',
+    refusalCode: code,
+    detail: { callId, code },
+  });
+  return code;
+}
 
 /**
  * The sweep's release of calls never started on a lease that ended. One its

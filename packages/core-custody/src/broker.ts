@@ -47,10 +47,10 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { taskAdmission } from './broker-admission.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
-import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { lockEnvelope } from './broker-give-back.ts';
 import { carriesHere, sweepCarried, writeCarriers } from './broker-carriage.ts';
 import type { Handoff } from './carriage.ts';
-import { releaseUnsent } from './broker-release.ts';
+import { releaseRefused, releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
@@ -128,26 +128,7 @@ async function markStarted(
     const checked = here
       ? startable(facts, request, reserved, unknown)
       : ({ ok: false, code: 'CARRIAGE_UNAVAILABLE' } as const);
-    if (!checked.ok) {
-      const released = await tx.query(
-        `update public.model_calls
-            set state = 'released', ended_at = clock_timestamp(),
-                route_key = $3, route_reach = $4, credential_kind = $5,
-                provider = $6, credential_ref = $7, account = $8
-          where business_id = $1 and id = $2 and state = 'reserved'
-          returning id`,
-        [tx.businessId, reserved.callId, ...route],
-      );
-      if (released.length === 0) return checked.code;
-      await giveBack(tx, reserved.callId);
-      await broker.audit(tx, {
-        action: 'model.call_released',
-        outcome: 'refused',
-        refusalCode: checked.code,
-        detail: { callId: reserved.callId, code: checked.code },
-      });
-      return checked.code;
-    }
+    if (!checked.ok) return await releaseRefused(tx, reserved.callId, route, checked.code, broker);
     if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';
     const started = await tx.query(
       `update public.model_calls
