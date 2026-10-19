@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Once the agent's turn is written to the owner's plan through the carriage, any ending short of a complete answer (a named refusal, a cut 503, a usage limit in the stream, a lost connection) holds the call as unknown, never released, and a restart or an operation-id replay keeps it held without asking the plan again."
+}
