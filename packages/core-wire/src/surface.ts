@@ -36,6 +36,7 @@ import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
 import { DECIDE_AT_CORRECTION, REVERT_AT_CORRECTION } from './surface-live-correction.ts';
 import { LAUNCH_SURFACE } from './surface-launch.ts';
+import { REVIEW_SURFACE } from './surface-review.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -656,6 +657,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   declare('live_correction.decide', 'decide', DECIDE_AT_CORRECTION),
   declare('live_correction.revert', 'decide', REVERT_AT_CORRECTION),
+  ...REVIEW_SURFACE,
   declare('settings.set_live_correction_approver', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,

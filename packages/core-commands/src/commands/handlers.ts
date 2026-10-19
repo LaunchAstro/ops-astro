@@ -88,6 +88,7 @@ import {
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
 import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
+import { REVIEW_HANDLERS } from './handlers-review.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
@@ -198,6 +199,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'live_correction.decide': decideLiveCorrection,
   'live_correction.revert': askLiveRevert,
   'settings.set_live_correction_approver': setApprover,
+  ...REVIEW_HANDLERS,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
   // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the
@@ -281,7 +283,6 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'activation.turn_off': turnOffActivationAsPerson,
   'approval.revoke': revokeStandingApproval,
 };
-
 function writeOwned(
   tx: TenantQuery,
   context: CommandContext,
@@ -289,7 +290,6 @@ function writeOwned(
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
 }
-
 export async function handleCommand<K extends WriteName>(
   tx: TenantQuery,
   context: CommandContext,

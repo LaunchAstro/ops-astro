@@ -22,6 +22,7 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
+import { REVIEW_EFFECTS } from './data-effects-review.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -161,6 +162,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_retention_window': SETTINGS,
   'settings.set_priority_stages': SETTINGS,
   ...LIVE_CORRECTION_EFFECTS,
+  ...REVIEW_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

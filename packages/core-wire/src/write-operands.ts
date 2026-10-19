@@ -7,6 +7,7 @@ import type { CommandName } from './command-names.ts';
 import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
 import { CHAT_OPERANDS } from './write-operands-chat.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
+import { REVIEW_OPERANDS } from './write-operands-review.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
@@ -297,4 +298,5 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'approval.revoke': { approvalId: 'id' },
   ...SETUP_OPERANDS,
   ...LIVE_CORRECTION_OPERANDS,
+  ...REVIEW_OPERANDS,
 };

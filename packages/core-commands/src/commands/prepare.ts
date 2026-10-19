@@ -55,6 +55,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
+import { REVIEW_TARGET_LOOKUPS } from './review-lookups.ts';
 import { deploymentCarrier, readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
@@ -438,6 +439,7 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
   'live_correction.decide': CORRECTION_PARTY,
   'live_correction.revert': CORRECTION_PARTY,
+  ...REVIEW_TARGET_LOOKUPS,
   'grant.revoke': [
     'grantId',
     (tx, id) =>
