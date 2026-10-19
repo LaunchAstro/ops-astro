@@ -176,3 +176,8 @@ export function toolsKept(turn: Turn): boolean {
   }
   return true;
 }
+
+/** Stub for the red run (#2091). */
+export function answerCallsKept(_turn: Turn, _calls: readonly ToolCall[]): boolean {
+  return true;
+}
