@@ -24,6 +24,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_client_sign_off', { value: false }],
   ['settings.set_live_correction_approver', { value: null }],
   ['settings.set_money_step_up', { value: true }],
+  ['settings.set_single_operator', { value: false }],
   ['settings.set_conversation_window', { value: 14 }],
   ['settings.set_retention_window', { value: 90 }],
   ['settings.set_priority_stages', { value: ['sales'] }],

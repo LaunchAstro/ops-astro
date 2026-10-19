@@ -132,16 +132,9 @@ export async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCor
   }
   const correction = made as LiveCorrection;
   if (decision === undefined) return correction;
-  const { decider } = lows().s;
-  return await inBusiness(
-    async (tx) =>
-      await writeCorrectionDecision(tx, {
-        id: correction.id,
-        decision,
-        actorId: decider.actorId,
-        personId: decider.personId,
-      }),
-  );
+  const { actorId, personId } = lows().s.decider;
+  const write = { id: correction.id, decision, actorId, personId, selfApproval: false };
+  return await inBusiness(async (tx) => await writeCorrectionDecision(tx, write));
 }
 
 export async function stateOf(id: string): Promise<string | undefined> {

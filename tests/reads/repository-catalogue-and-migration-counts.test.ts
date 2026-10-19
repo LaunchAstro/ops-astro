@@ -19,11 +19,11 @@ it('the carriage upgrade contains four migrations in its reserved interval', () 
   expect(carriage).toHaveLength(4);
 });
 
-it('the exported catalogue contains the 180 operations covered by the audit matrix', () => {
-  expect(COMMAND_SURFACE).toHaveLength(180);
+it('the exported catalogue contains the 182 operations covered by the audit matrix', () => {
+  expect(COMMAND_SURFACE).toHaveLength(182);
 });
 
-it('the timing matrix covers 117 identifier-bearing operations', () => {
+it('the timing matrix covers 118 identifier-bearing operations', () => {
   const targetFree = new Set(TARGET_FREE.map(([name]) => name));
-  expect(COMMAND_SURFACE.filter((entry) => !targetFree.has(entry.name))).toHaveLength(117);
+  expect(COMMAND_SURFACE.filter((entry) => !targetFree.has(entry.name))).toHaveLength(118);
 });

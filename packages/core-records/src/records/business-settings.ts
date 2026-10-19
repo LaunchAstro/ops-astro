@@ -143,6 +143,17 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     owningOperations: ['settings.set_live_correction_approver'],
   },
   {
+    // R5: whether the one operator may approve their own live correction. Off
+    // by default; on only while the business has one operator, and turned off
+    // by the membership that makes a second (20261018050000).
+    key: 'single_operator_mode',
+    label: 'Single-operator mode',
+    valueType: 'boolean',
+    value: false,
+    writeMode: 'operation',
+    owningOperations: ['settings.set_single_operator'],
+  },
+  {
     key: 'retention_window_days',
     label: 'Retention window (days)',
     valueType: 'numeric',

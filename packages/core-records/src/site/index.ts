@@ -59,3 +59,12 @@ export {
   type PartySiteRecord,
   type SiteWrite,
 } from './party-sites.ts';
+export {
+  SINGLE_OPERATOR_SETTING,
+  hasSelfApproved,
+  insertReview,
+  lockSingleOperatorMode,
+  operatorCount,
+  reviewApproves,
+  type NewReview,
+} from './single-operator.ts';

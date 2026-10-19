@@ -12,6 +12,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'party_sites'],
   ['sid', 'party_site_pages'],
   ['si', 'live_correction_revert_asks'],
+  // R5 (20261018050000): Astra's review of a correction, written once.
+  ['si', 'live_correction_reviews'],
   ['si', 'live_correction_proposals'],
 ];
 

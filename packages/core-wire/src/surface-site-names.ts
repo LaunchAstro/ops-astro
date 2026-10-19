@@ -14,4 +14,6 @@ export type SiteCommandName =
   | 'live_correction.receipts'
   | 'live_correction.decide'
   | 'live_correction.revert'
-  | 'settings.set_live_correction_approver';
+  | 'live_correction.record_review'
+  | 'settings.set_live_correction_approver'
+  | 'settings.set_single_operator';

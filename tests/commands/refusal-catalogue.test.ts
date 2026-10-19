@@ -202,6 +202,9 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['APPROVER_NOT_CONFIGURED', 409, 'caller'],
   ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
   ['SELF_APPROVAL_REFUSED', 403, 'caller'],
+  // R5's two, beside C80's.
+  ['SINGLE_OPERATOR_REFUSED', 409, 'caller'],
+  ['ASTRA_REVIEW_MISSING', 409, 'caller'],
   ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
   ['PAGE_OUTSIDE_PARTY_SITE', 409, 'caller'],
   ['REQUESTER_GRANT_ENDED', 409, 'caller'],
