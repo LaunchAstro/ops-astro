@@ -82,8 +82,11 @@ export async function lockCarriedTask(
       where business_id = $1 and id = $2 and kind = 'agent' and active for share`,
     [tx.businessId, call.agent],
   );
-  const route = task.broker.routes.find((candidate) => candidate.key === call.route);
   const operation = task.broker.operations.get(task.request.operation);
+  // The call's route is its key on its operation's provider, never another route under that key.
+  const route = task.broker.routes.find(
+    (candidate) => candidate.key === call.route && candidate.provider === operation?.provider,
+  );
   if (agent.length === 0 || call.agent !== task.carrier.agent) return LOST;
   if (route === undefined || operation === undefined) return LOST;
   return { facts: checked.facts, route, operation };
