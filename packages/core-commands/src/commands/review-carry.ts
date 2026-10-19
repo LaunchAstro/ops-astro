@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `review.carry_pins` (C35-X, #2075, #2014 slice A): the worker carries a review's pins onto
-// its new revision, under the live lease on the review's task, as `review.capture_land` lands
-// its pictures. The lease is held and re-checked, the revision's capture rows are locked, so
-// carries onto one revision run one at a time, and the lease and the authority behind it are
-// judged again at the instant read after that wait (`review-captures.ts`). Every width must
+// its new revision, under the live lease on the review's task, once `review.capture_land` answers
+// `carryDue`. The lease is held, the revision's capture rows are locked, so carries onto one
+// revision run one at a time, then the rows the carries reference, and the lease and the
+// authority behind it are judged again after the audit chain's wait (`review-captures.ts`), so
+// an insert or its audit waits on nothing after. Every width must
 // have landed (CARRY_NOT_READY). Each pin not yet carried there is carried once, found again
 // or lost (`carries.ts`); a pin is never closed or changed. The operation's audit names the
 // revision, and each comment it carried gets an event of its own, so the comment's history
 // shows `comment carried forward`. Neither the actor nor the lease comes from the body.
 
 import {
-  carryPinsOnto,
   landedCarryTarget,
   lockRevisionCaptures,
+  planCarries,
+  writeCarries,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -58,11 +60,12 @@ export async function carryPins(
   const revisionId = String(fields.revisionId).toLowerCase();
   const locked = await lockRevisionCaptures(tx, revisionId, held.lease);
   if ('code' in locked) return refused(NOT_FOUND);
+  const target = await landedCarryTarget(tx, revisionId);
+  const plan = target === undefined ? undefined : await planCarries(tx, target.review, target.to);
   const lapsed = await stillHeld(tx, held.lease, caller);
   if (lapsed !== null) return refused(lapsed);
-  const target = await landedCarryTarget(tx, revisionId);
-  if (target === undefined) return refused(NOT_READY);
-  const carried = await carryPinsOnto(tx, target.review, target.to, {
+  if (plan === undefined) return refused(NOT_READY);
+  const carried = await writeCarries(tx, plan, {
     leaseId: held.lease.leaseId,
     fence: held.lease.fence,
     actorId: caller.holderActorId,

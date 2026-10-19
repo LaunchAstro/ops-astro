@@ -18,6 +18,8 @@ import {
   CAPTURE_WIDTHS,
   DATABASE_STORAGE,
   MOST_STORED_BYTES,
+  advisoryLock,
+  carryDueOnto,
   checkDelegatedAuthority,
   claimLockedCaptures,
   isUuid,
@@ -128,16 +130,19 @@ export async function holdLease(
 }
 
 /**
- * After the capture rows' lock wait, at a fresh instant: the lease is still the caller's, live
- * and current, a person's own write on the task still stands, and an agent's delegating person
- * still holds the write its call was checked for (`checkDelegatedAuthority` judges grants as
- * its statement runs). The refusal, or `null` when the write may go ahead.
+ * After the capture rows' lock wait and then the audit chain's, taken here as the envelope's
+ * last wait (so lands of one revision also run one at a time), at a fresh instant: the lease is
+ * still the caller's, live and current, a person's own write on the task still stands, and an
+ * agent's delegating person still holds the write its call was checked for
+ * (`checkDelegatedAuthority` judges grants as its statement runs). The refusal, or `null` when
+ * the write may go ahead.
  */
 export async function stillHeld(
   tx: TenantQuery,
   lease: CaptureLease,
   caller: CaptureCaller,
 ): Promise<CommandRefusal | null> {
+  await advisoryLock(tx, tx.businessId.toLowerCase());
   const at = await lockedInstant(tx);
   const owner = await recheckOwner(
     tx,
@@ -266,6 +271,7 @@ export async function landCapture(
       width,
       pictureId: stored.id,
       pictureDigest: stored.digest,
+      carryDue: await carryDueOnto(tx, revisionId),
     }),
     lastCheck: judgedAgain(tx, held.lease, caller),
   };
