@@ -34,6 +34,8 @@ export {
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
   REPLAY_TURN,
+  AGENT_TURN_KEY,
+  REPLAY_AGENT_TURN,
 } from './replay-adapter.ts';
 
 export type { ReplayLookupMode } from './replay-lookup.ts';

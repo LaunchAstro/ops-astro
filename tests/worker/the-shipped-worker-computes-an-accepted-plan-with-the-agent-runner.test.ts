@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Transport } from '../../apps/cli/client.ts';
 import { main } from '../../apps/worker/main.ts';
-import { REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
+import { AGENT_TURN_KEY } from '../../packages/core-connectors/src/index.ts';
 import { pathOf, type CommandName } from '../../packages/core-wire/src/index.ts';
 import { SIGN_IN_SETTINGS } from '../support/stand-in-gotrue.ts';
 
@@ -107,7 +107,7 @@ describe('the shipped worker on an accepted plan', () => {
     const verbs = sent.map((call) => call.verb);
     const turn = sent.find((call) => call.verb === 'model.call');
     expect(turn?.body, verbs.join(' ')).toMatchObject({
-      operation: REPLAY_TURN.key,
+      operation: AGENT_TURN_KEY,
       kind: 'turn',
       leaseId: 'lease-1',
     });

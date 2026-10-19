@@ -131,6 +131,12 @@ export const REPLAY_TURN: ModelOperationDeclaration = {
   turn: true,
 };
 
+/** The one key the agent's runner names for a turn, whichever provider an install answers it with (#2091). */
+export const AGENT_TURN_KEY = 'model.agent_turn';
+
+/** The agent's turn where an install answers it with the replay provider. */
+export const REPLAY_AGENT_TURN: ModelOperationDeclaration = { ...REPLAY_TURN, key: AGENT_TURN_KEY };
+
 /** The price of an answer, in minor units, from what the provider says it used. Never above the maximum. */
 export function replayCostMinor(read: ModelAnswer): number {
   return read.usage.inputUnits + 2 * read.usage.outputUnits;

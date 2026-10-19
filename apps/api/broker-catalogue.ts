@@ -31,6 +31,7 @@ import {
   openrouterCostMinor,
   openrouterRequest,
   REPLAY_COMPOSE,
+  REPLAY_AGENT_TURN,
   REPLAY_TURN,
   replayAdapter,
   replayCostMinor,
@@ -55,8 +56,14 @@ const LOCAL_GPT = { build: localGptAdapter, price: localGptCostMinor };
 
 const OPERATIONS = {
   // The agent's turn (#1717 R8b) is the local replay stand-in until a real provider's turn is catalogued.
-  api: catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER, REPLAY_TURN]),
-  'local-gpt': catalogue([REPLAY_COMPOSE, LOCAL_GPT_COMPOSE, LOCAL_GPT_CONVERSATION, REPLAY_TURN]),
+  api: catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER, REPLAY_TURN, REPLAY_AGENT_TURN]),
+  'local-gpt': catalogue([
+    REPLAY_COMPOSE,
+    LOCAL_GPT_COMPOSE,
+    LOCAL_GPT_CONVERSATION,
+    REPLAY_TURN,
+    REPLAY_AGENT_TURN,
+  ]),
   ollama: catalogue([OLLAMA_CONVERSATION]),
 } as const;
 const PROVIDERS = {

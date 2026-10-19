@@ -8,30 +8,38 @@
 
 import { describe, expect, it } from 'vitest';
 import { catalogueOf } from '../../apps/api/broker-catalogue.ts';
-import { REPLAY_COMPOSE, REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
+import {
+  AGENT_TURN_KEY,
+  REPLAY_COMPOSE,
+  REPLAY_TURN,
+} from '../../packages/core-connectors/src/index.ts';
 
 describe("the API's turn operation", () => {
   it.each(['api', 'local-gpt'] as const)(
-    'is the replay turn in the %s catalogue, over the replay provider',
+    "is the replay turn in the %s catalogue, over the replay provider, and the agent's turn is it",
     (provider) => {
       const { operations, providers } = catalogueOf(provider, false);
-      expect(operations.get(REPLAY_TURN.key)).toMatchObject({
-        provider: REPLAY_COMPOSE.provider,
-        fields: { turn: 'business_internal' },
-        turn: true,
-      });
+      for (const key of [REPLAY_TURN.key, AGENT_TURN_KEY]) {
+        expect(operations.get(key)).toMatchObject({
+          key,
+          provider: REPLAY_COMPOSE.provider,
+          fields: { turn: 'business_internal' },
+          turn: true,
+        });
+      }
       expect(providers.has(String(REPLAY_COMPOSE.provider))).toBe(true);
     },
   );
 
   it('is in no other catalogue, and no turn but the replay is served', () => {
     expect(catalogueOf('ollama', false).operations.has(REPLAY_TURN.key)).toBe(false);
+    expect(catalogueOf('ollama', false).operations.has(AGENT_TURN_KEY)).toBe(false);
     for (const provider of ['api', 'local-gpt', 'ollama'] as const) {
       const turns = [...catalogueOf(provider, true).operations.values()].filter(
         (operation) => (operation as { turn?: boolean }).turn === true,
       );
       expect(turns.map((operation) => operation.key)).toEqual(
-        provider === 'ollama' ? [] : [REPLAY_TURN.key],
+        provider === 'ollama' ? [] : [REPLAY_TURN.key, AGENT_TURN_KEY],
       );
     }
   });

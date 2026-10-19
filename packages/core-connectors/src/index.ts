@@ -95,6 +95,8 @@ export {
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
   REPLAY_TURN,
+  AGENT_TURN_KEY,
+  REPLAY_AGENT_TURN,
   startReplayProvider,
   type ReplayLookupMode,
   type ReplayMode,
@@ -291,7 +293,6 @@ export {
 } from './chatgpt-plan.ts';
 export {
   AGENT_TURN_INSTRUCTIONS,
-  AGENT_TURN_KEY,
   CHATGPT_PLAN_TURN,
   chatgptPlanTurnAdapter,
   readChatgptPlanTurnAnswer,

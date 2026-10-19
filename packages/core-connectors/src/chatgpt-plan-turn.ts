@@ -30,9 +30,7 @@ import {
   type PlanItem,
 } from './chatgpt-plan.ts';
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
-
-/** The one key the agent's runner names for a turn, whichever provider an install answers it with. */
-export const AGENT_TURN_KEY = 'model.agent_turn';
+import { AGENT_TURN_KEY } from './replay-adapter.ts';
 
 /** The instructions a turn goes under while no definition part is bound (#1904). */
 export const AGENT_TURN_INSTRUCTIONS: string = [
@@ -128,6 +126,7 @@ export const CHATGPT_PLAN_TURN: ModelOperationDeclaration = {
   provider: CHATGPT_PLAN_PROVIDER,
   destination: CHATGPT_PLAN_PROVIDER,
   fields: { turn: 'business_internal', tools: 'business_internal' },
+  turn: true,
   answer: readChatgptPlanTurnAnswer,
   timeoutMs: CHATGPT_PLAN_TIMEOUT_MS,
   maxResponseBytes: CHATGPT_PLAN_ANSWER_BYTES,

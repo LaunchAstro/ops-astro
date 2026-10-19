@@ -21,7 +21,7 @@
 
 import { httpTransport, shownAddress, unredirected, type Transport } from '../cli/client.ts';
 import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
-import { REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
+import { REPLAY_AGENT_TURN } from '../../packages/core-connectors/src/index.ts';
 import { AGENT_MODEL_CALL_LIMIT } from '../../packages/core-wire/src/index.ts';
 import { agentRunner } from './agent-runner.ts';
 import { agentSignIn } from './sign-in.ts';
@@ -136,9 +136,13 @@ async function signedInWorker(
     credential: signedIn,
     delegation: env['OPS_ASTRO_DELEGATION'] as string,
     // The plan holds its compute's ceiling too, every turn at its maximum, so its reviewed successor fits.
-    reporter: { ...SYNTHETIC_USAGE, compute: AGENT_MODEL_CALL_LIMIT * REPLAY_TURN.maximumMinor },
-    // An accepted plan is computed by the agent, its turns the API's replay turn (#1717 R8b).
-    runner: agentRunner({ operation: REPLAY_TURN.key }),
+    reporter: {
+      ...SYNTHETIC_USAGE,
+      compute: AGENT_MODEL_CALL_LIMIT * REPLAY_AGENT_TURN.maximumMinor,
+    },
+    // An accepted plan is computed by the agent, its turns the API's agent turn: the replay's,
+    // or the owner's plan where the carried deployment has the plan route (#1717 R8b, #2091).
+    runner: agentRunner({ operation: REPLAY_AGENT_TURN.key }),
   });
 }
 

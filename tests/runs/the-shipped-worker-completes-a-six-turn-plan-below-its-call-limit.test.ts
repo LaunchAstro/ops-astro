@@ -178,7 +178,7 @@ it.skipIf(noDatabase)(
     if (turns.length > 0)
       expect(turns[0]).toMatchObject({
         status: 200,
-        body: { operation: 'model.replay_turn', kind: 'turn' },
+        body: { operation: 'model.agent_turn', kind: 'turn' },
         detail: { state: 'settled', actualMinor: count === 1 ? 100 : 500 },
       });
     const verbs = log.map((sent) => sent.verb);
