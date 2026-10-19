@@ -1675,7 +1675,9 @@ CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
   runs `core-agent`'s loop, each turn a `model.call` and each tool the
   product's own command through the worker's one call port under the run's
   delegation: `task.read`, and `live_correction.request` as a person sends it.
-  The correction is stored `locating`; the M5 pins its base revision (#1693)
+  A turn answered with no words (a reply lost and replayed from the ledger,
+  or a send that was not ok) ends the attempt `ANSWER_LOST`, never success
+  (R1706-F1). The correction is stored `locating`; the M5 pins its base revision (#1693)
   and a person decides it. The runner opens no connection of its own.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing

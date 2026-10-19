@@ -76,9 +76,14 @@ function brokerOver(context: StepContext, operation: string): BrokerPort {
         return { stopped: stop.refused, recorded: stop.recorded };
       }
       const { callId, text, toolCalls, terminal } = answer.detail;
+      // No words is no answer: a reply lost and replayed from the ledger, or a
+      // send that was not ok (`{outcome}`), never the model's (R1706-F1).
+      if (typeof text !== 'string' || 'outcome' in answer.detail) {
+        return { stopped: 'ANSWER_LOST', recorded: false };
+      }
       return {
         callId: String(callId),
-        text: String(text),
+        text,
         toolCalls: (toolCalls ?? []) as readonly ToolCall[],
         ...(terminal === undefined ? {} : { terminal: terminal as RunOutcome }),
       };

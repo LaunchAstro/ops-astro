@@ -132,18 +132,18 @@ async function delegationFor(taskId: string): Promise<string> {
 }
 
 /**
- * The worker's plan on a fresh task, accepted and not launched. `runner`,
- * when given (a scripted one, or the shipped agent runner), is injected
- * through the worker's options as `runner`; `broker`, when given, is the
- * door's `model.call` broker in place of the world's (one with the turn
- * operation, for the agent runner).
+ * The worker's plan on a fresh task, accepted and not launched. When given,
+ * `runner` (scripted, or the shipped agent runner) is the worker's own;
+ * `broker` is the door's `model.call` broker (one with the turn operation,
+ * for the agent runner); `around` wraps the worker's transport.
  */
 export async function acceptedPlan(
   title: string,
   runner?: Scripted['runner'] | StepRunner,
   broker?: ModelBroker,
+  around?: (transport: Transport) => Transport,
 ): Promise<Seam> {
-  const { taskId, log, options } = await unproposed(title, runner, broker);
+  const { taskId, log, options } = await unproposed(title, runner, broker, around);
   const worker = createWorker(options);
   const proposed = await worker.proposeOnce();
   if (!('proposed' in proposed)) throw new Error(`setup: propose ${JSON.stringify(proposed)}`);
@@ -172,6 +172,7 @@ export async function unproposed(
   title: string,
   runner?: Scripted['runner'] | StepRunner,
   broker?: ModelBroker,
+  around: (transport: Transport) => Transport = (transport) => transport,
 ): Promise<{ readonly taskId: string; readonly log: Sent[]; readonly options: WorkerOptions }> {
   await retirePickups();
   const taskId = await createTask(s, `${title} ${randomUUID()}`);
@@ -182,7 +183,7 @@ export async function unproposed(
   );
   const log: Sent[] = [];
   const options = {
-    transport: transportOver(door(undefined, broker), log),
+    transport: around(transportOver(door(undefined, broker), log)),
     businessKey: String(business?.key),
     credential: await tokenFor(s.agent.subject),
     delegation: await delegationFor(taskId),
