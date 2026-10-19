@@ -76,6 +76,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'review.capture_claim': ['leaseId and revisionId', 'agent'],
   'review.capture_land': ['leaseId and revisionId', 'agent'],
   'review.picture': ['pictureId', 'review'],
+  'review.decide': ['reviewId', 'review'],
+  'review.record_astra_review': ['reviewId', 'review'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

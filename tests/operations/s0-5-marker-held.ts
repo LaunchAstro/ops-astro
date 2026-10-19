@@ -60,6 +60,9 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'review.capture',
   // A pin is a comment on the review's task (#2012).
   'review.pin_comment',
+  // A decision and Astra's review name the review's revision (#2014).
+  'review.decide',
+  'review.record_astra_review',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);

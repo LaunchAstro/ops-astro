@@ -24,6 +24,9 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35 (20261019142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
+  // C35-X (20261019150000): a decision and Astra's review of a revision, written once.
+  ['si', 'review_decisions'],
+  ['si', 'review_astra_reviews'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
