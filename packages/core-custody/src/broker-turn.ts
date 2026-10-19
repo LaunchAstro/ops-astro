@@ -30,15 +30,23 @@ import { isUuid, TASK_SPINE, type TenantQuery } from '../../core-records/src/ind
 import type { ToolCall, TurnPart } from '../../core-wire/src/index.ts';
 import type { Facts } from './broker-facts.ts';
 import { businessInternal, resolveFields } from './broker-sources.ts';
+import { nestsTooDeep } from './json-depth.ts';
 import { readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
 import type { BrokerRefusal, ModelCallRequest, ResolvedField } from './broker-types.ts';
 
 /** What binding reads of the call's facts: its lease and its task as held. */
 type Bindings = Pick<Facts, 'leaseId' | 'source'>;
 
-/** The answer's digest: sha256 of the canonical JSON (RFC 8785's order) of its bytes. */
-export const answerDigest = (text: string, toolCalls: readonly ToolCall[]): string =>
-  payloadDigest({ v: 1, text, toolCalls });
+/** How deep an answer's tool calls may nest and still have a digest (#1623 R3, S1900-6). */
+const ANSWER_DEPTH = 64;
+
+/**
+ * The answer's digest: sha256 of the canonical JSON (RFC 8785's order) of its bytes. Tool
+ * calls nested ANSWER_DEPTH deep or more have none, judged without recursion, so the
+ * canonical writer only ever recurses within the bound and no answer makes it throw.
+ */
+export const answerDigest = (text: string, toolCalls: readonly ToolCall[]): string | undefined =>
+  nestsTooDeep(toolCalls, ANSWER_DEPTH) ? undefined : payloadDigest({ v: 1, text, toolCalls });
 
 /** The task fields an external reader, and so the agent, is shown. */
 const SHOWN = TASK_SPINE.filter((field) => field.visibilityClass === 'shared').map((f) => f.key);
@@ -70,12 +78,13 @@ async function answerMessage(
   facts: Bindings,
   part: TurnPart & { ref: 'answer' },
 ): Promise<Bound> {
-  if (!isUuid(part.callId)) return undefined;
+  const digest = answerDigest(part.text, part.toolCalls);
+  if (!isUuid(part.callId) || digest === undefined) return undefined;
   const [call] = await tx.query<{ answer_source: FieldSource }>(
     `select answer_source from public.model_calls
       where business_id = $1 and id = $2 and lease_id = $3 and state = 'settled'
         and answer_digest = $4`,
-    [tx.businessId, part.callId, facts.leaseId, answerDigest(part.text, part.toolCalls)],
+    [tx.businessId, part.callId, facts.leaseId, digest],
   );
   if (call === undefined) return undefined;
   const message: Message = { role: 'assistant', text: part.text, toolCalls: part.toolCalls };

@@ -68,10 +68,17 @@ export async function settledAnswer(
   const { costMinor } = settlement;
   const { text, toolCalls } = settlement.answer;
   if (turn !== undefined) {
+    const digest = answerDigest(text, toolCalls ?? []);
+    // An answer too deep to digest can never be bound by a later turn: the call stays
+    // settled priced and the attempt ends with the turn's refusal (S1900-6).
+    if (digest === undefined) {
+      const refused = { ok: false as const, code: 'TURN_MALFORMED' as const, callId };
+      return await stopAtSettlement(tx, leaseId, 'stands', 'TURN_MALFORMED', refused);
+    }
     await tx.query(
       `update public.model_calls set answer_digest = $3, answer_source = $4
         where business_id = $1 and id = $2 and state = 'settled'`,
-      [tx.businessId, callId, answerDigest(text, toolCalls ?? []), turn],
+      [tx.businessId, callId, digest, turn],
     );
   }
   const result = {
