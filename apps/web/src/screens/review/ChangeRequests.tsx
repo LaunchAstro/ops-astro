@@ -74,8 +74,15 @@ function Request(props: {
   const phase = phaseOf(request);
   const made = phase === 'made' ? request.createdTaskId : null;
   return (
-    <li className="stack" data-change-request={request.changeRequestId} data-phase={phase}>
-      <StatusMark tone={PHASE_TONE[phase]}>{PHASE_LABEL[phase]}</StatusMark>
+    <div
+      className="stack"
+      role="listitem"
+      data-change-request={request.changeRequestId}
+      data-phase={phase}
+    >
+      <StatusMark look="line" tone={PHASE_TONE[phase]}>
+        {PHASE_LABEL[phase]}
+      </StatusMark>
       <p className="card__sub">{request.text}</p>
       {phase === 'pending' ? (
         <p className="card__sub" role="status">
@@ -95,7 +102,7 @@ function Request(props: {
         </div>
       )}
       {phase === 'proposed' && panel.canDecide ? <Decide request={request} panel={panel} /> : null}
-    </li>
+    </div>
   );
 }
 
@@ -107,7 +114,7 @@ function FilePin(props: {
   const { pin, panel } = props;
   const words = text.trim();
   return (
-    <li className="stack" data-file-pin={pin.commentId}>
+    <div className="stack" role="listitem" data-file-pin={pin.commentId}>
       <p className="card__sub">The client pinned: {pin.body}</p>
       <TextField
         label="The change, in your words"
@@ -127,7 +134,7 @@ function FilePin(props: {
           File as a change request
         </Button>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -159,22 +166,22 @@ export function ChangeRequestPanel(props: ChangeRequestPanelProps): ReactElement
             {load.requests.length === 0 ? (
               <Empty look="inline" title="No change requests on this review yet" />
             ) : (
-              <ul className="stack">
+              <div className="stack" role="list">
                 {load.requests.map((request) => (
                   <Request key={request.changeRequestId} request={request} panel={props} />
                 ))}
-              </ul>
+              </div>
             )}
             <div data-agent-path={props.agent}>
               <Banner tone="info" lead="Agent filing:">
                 {AGENT_WAIT}
               </Banner>
             </div>
-            <ul className="stack">
+            <div className="stack" role="list">
               {unfiledClientPins(load.pins, load.requests).map((pin) => (
                 <FilePin key={pin.commentId} pin={pin} panel={props} />
               ))}
-            </ul>
+            </div>
           </>
         )}
       </div>
