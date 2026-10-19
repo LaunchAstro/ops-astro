@@ -65,6 +65,8 @@ export interface ProviderState {
   proposalParent: string;
   /** The default branch's protection as the provider answers it, or none (404). */
   protection: unknown;
+  /** Whether the provider marks the request merged once its head is on its base. */
+  closesRequests: boolean;
 }
 
 const encode = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
@@ -121,7 +123,11 @@ function advance(state: ProviderState, body: Readonly<Record<string, string>>) {
     state.deployments[sha] = 'dpl_merged';
     state.newest = 'dpl_merged';
     // The request is closed as merged once its head is on its base, as the provider does.
-    if (state.request?.head === sha && (state.request.base ?? 'main') === 'main')
+    if (
+      state.closesRequests &&
+      state.request?.head === sha &&
+      (state.request.base ?? 'main') === 'main'
+    )
       state.request.merged = true;
   }
   state.mainHead = sha;
@@ -261,6 +267,7 @@ export function provider(start: Partial<ProviderState> & Pick<ProviderState, 'co
     parents: {},
     proposalParent: 'base-commit',
     protection: ENFORCED,
+    closesRequests: true,
     ...start,
   };
   const sent: SentRequest[] = [];

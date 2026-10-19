@@ -75,7 +75,7 @@ export interface RunnerOn {
 
 /** The providers, with the base revision's file kept as it was, and every raised task. */
 export function world(): World {
-  const site: Provider = provider({ content: BEFORE });
+  const site: Provider = provider({ content: BEFORE, mainHead: REV, proposalParent: REV });
   const base = { blob: site.state.blob, content: BEFORE };
   const raised: string[] = [];
   const captured: string[] = [];

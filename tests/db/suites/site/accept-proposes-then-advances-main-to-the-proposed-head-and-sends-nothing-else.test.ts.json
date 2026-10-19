@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "After Accept the site runner proposes and then publishes by advancing the default branch to the proposal's head as a fast-forward, sending nothing else; the request reads merged and the receipt's revision is the head (#1986)."
+}

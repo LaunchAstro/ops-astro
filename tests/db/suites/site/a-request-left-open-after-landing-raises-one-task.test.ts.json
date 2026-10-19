@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A live advance whose review request the provider has not closed as merged stays live and raises one person task naming the request left open (#1986)."
+}
