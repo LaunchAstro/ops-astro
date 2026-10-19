@@ -284,8 +284,8 @@ reservation, purpose slug or held amount, and a repeated read is served again
 rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
 reservation the agent already knows is not narrowed. A `task.pickup` sent under a
 delegation credential answers to that delegation: judged last, once the
-agent's judgement holds it `for share`, it must be live and name the task the
-claim took, or the claim rolls back (`DELEGATION_NOT_LIVE`,
+agent's judgement holds it `for share`, it and its parent must be live and it must
+name the task the claim took, or the claim rolls back (`DELEGATION_NOT_LIVE`,
 `DELEGATION_OUT_OF_PURPOSE`; `pickup-delegation.ts`). The worker sends every
 pickup so. Each queue entry's `ownerProposed` says the owner proposed and
 approved it, as a role and never the person, so the worker also works the
