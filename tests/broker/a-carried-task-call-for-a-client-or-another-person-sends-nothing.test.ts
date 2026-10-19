@@ -78,7 +78,7 @@ describe.skipIf(serverUrl === undefined)('a carried task call, inside one busine
     const crossed = { ...world, presented, token: await tokenFor(otherSub) };
     const sent = world.plan.sent.length;
     const answer = await carriedCall(crossed, work);
-    expect(answer).toMatchObject({ ok: false, code: 'AUTHORITY_LOST' });
+    expect(answer).toMatchObject({ ok: false, code: 'CALL_RELEASED', reason: 'AUTHORITY_LOST' });
     expect(world.plan.sent).toHaveLength(sent);
     expect(await offeredOn(work)).toBe(0);
   }, 60_000);
@@ -117,7 +117,7 @@ describe.skipIf(serverUrl === undefined)('a carried task call, inside one busine
     const on = { ...world.broker, carrier: { ...carrier, people: [randomUUID()] } };
     const sent = world.plan.sent.length;
     const answer = await carriedCall(world, work, on);
-    expect(answer).toMatchObject({ ok: false, code: 'AUTHORITY_LOST' });
+    expect(answer).toMatchObject({ ok: false, code: 'CALL_RELEASED', reason: 'AUTHORITY_LOST' });
     expect(world.plan.sent).toHaveLength(sent);
     expect(await offeredOn(work)).toBe(0);
   }, 60_000);
