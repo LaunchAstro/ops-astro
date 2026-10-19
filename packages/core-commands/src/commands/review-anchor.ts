@@ -38,36 +38,48 @@ const onlyKeys = (sent: Sent, allowed: readonly string[]): boolean =>
 const text = (value: unknown, least: number, most: number): value is string =>
   typeof value === 'string' && value.length >= least && value.length <= most && storableText(value);
 
-/** Each selector type's parser: the selector as written, or null when it is malformed. */
-const SELECTORS: Readonly<Record<string, (sent: Sent, width: CaptureWidth) => Selector | null>> = {
-  FragmentSelector: (sent, width) => {
-    const value = sent['value'];
-    if (
-      !onlyKeys(sent, ['type', 'conformsTo', 'value']) ||
-      sent['conformsTo'] !== MEDIA_FRAGMENTS
-    ) {
-      return null;
-    }
-    const [x = -1, y = -1, w = 0, h = 0] =
-      typeof value === 'string' ? (XYWH.exec(value) ?? []).slice(1).map(Number) : [];
-    const inside = x >= 0 && y >= 0 && w >= 1 && h >= 1 && x + w <= width;
-    return inside && y + h <= MOST_CAPTURE_HEIGHT && typeof value === 'string'
-      ? { type: 'FragmentSelector', conformsTo: MEDIA_FRAGMENTS, value }
-      : null;
-  },
-  TextQuoteSelector: (sent) => {
-    const { exact, prefix, suffix } = sent;
-    const context = (part: unknown) => part === undefined || text(part, 0, MOST_QUOTE_CONTEXT);
-    const formed = onlyKeys(sent, ['type', 'exact', 'prefix', 'suffix']);
-    if (!formed || !text(exact, 1, MOST_QUOTE) || !context(prefix) || !context(suffix)) return null;
-    return {
-      type: 'TextQuoteSelector',
-      exact,
-      ...(typeof prefix === 'string' ? { prefix } : {}),
-      ...(typeof suffix === 'string' ? { suffix } : {}),
-    };
-  },
-};
+type Parse = (sent: Sent, width: CaptureWidth) => Selector | null;
+
+/**
+ * Each selector type's parser: the selector as written, or null when it is malformed. A Map,
+ * so a type naming an inherited property (`constructor`, `__proto__`) finds no parser.
+ */
+const SELECTORS: ReadonlyMap<string, Parse> = new Map<string, Parse>([
+  [
+    'FragmentSelector',
+    (sent, width) => {
+      const value = sent['value'];
+      if (
+        !onlyKeys(sent, ['type', 'conformsTo', 'value']) ||
+        sent['conformsTo'] !== MEDIA_FRAGMENTS
+      ) {
+        return null;
+      }
+      const [x = -1, y = -1, w = 0, h = 0] =
+        typeof value === 'string' ? (XYWH.exec(value) ?? []).slice(1).map(Number) : [];
+      const inside = x >= 0 && y >= 0 && w >= 1 && h >= 1 && x + w <= width;
+      return inside && y + h <= MOST_CAPTURE_HEIGHT && typeof value === 'string'
+        ? { type: 'FragmentSelector', conformsTo: MEDIA_FRAGMENTS, value }
+        : null;
+    },
+  ],
+  [
+    'TextQuoteSelector',
+    (sent) => {
+      const { exact, prefix, suffix } = sent;
+      const context = (part: unknown) => part === undefined || text(part, 0, MOST_QUOTE_CONTEXT);
+      const formed = onlyKeys(sent, ['type', 'exact', 'prefix', 'suffix']);
+      if (!formed || !text(exact, 1, MOST_QUOTE) || !context(prefix) || !context(suffix))
+        return null;
+      return {
+        type: 'TextQuoteSelector',
+        exact,
+        ...(typeof prefix === 'string' ? { prefix } : {}),
+        ...(typeof suffix === 'string' ? { suffix } : {}),
+      };
+    },
+  ],
+]);
 
 const isRecord = (value: unknown): value is Sent =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -76,9 +88,8 @@ const isRecord = (value: unknown): value is Sent =>
 function selectorsOf(sent: unknown, width: CaptureWidth): readonly Selector[] | null {
   if (!Array.isArray(sent) || sent.length === 0 || sent.length > MOST_SELECTORS) return null;
   const parsed = (sent as readonly unknown[]).map((item) => {
-    const parse =
-      isRecord(item) && typeof item['type'] === 'string' ? SELECTORS[item['type']] : null;
-    return parse === null || parse === undefined || !isRecord(item) ? null : parse(item, width);
+    if (!isRecord(item) || typeof item['type'] !== 'string') return null;
+    return SELECTORS.get(item['type'])?.(item, width) ?? null;
   });
   const kept = parsed.filter((selector) => selector !== null);
   const types = kept.map((selector) => selector.type);
