@@ -2,7 +2,8 @@
 //
 // The site runner host's own rules (#1692), with no database: its settings
 // file is refused when others can read it, when the database login does not
-// require TLS or a page is not exact, and no refusal repeats a value; its
+// require TLS, a page is not exact or the heartbeat address is not an https
+// address off the machine, and no refusal repeats a value; its
 // heartbeat is pinged after each pass and goes quiet on a failed pass or once
 // stopped; its plist keeps it alive from the build and names the label park
 // and stop use.
@@ -71,6 +72,9 @@ describe('the site runner, its settings', () => {
       }),
       settingsFrom({ ...GOOD, SITE_RUNNER_SITE: siteWith('http://agencyastro.com/about') }),
       settingsFrom({ ...GOOD, OPS_ASTRO_PASSWORD: '' }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `http://watch.example/${SECRET}/` }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `https://127.0.0.1/${SECRET}/` }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `${SECRET}` }),
     ];
     expect(refusals).toEqual([
       'the settings file is readable by others',
@@ -78,8 +82,20 @@ describe('the site runner, its settings', () => {
       'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
       'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
       'missing OPS_ASTRO_PASSWORD',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
     ]);
     expect(JSON.stringify(refusals)).not.toContain(SECRET);
+  });
+
+  it('takes an https heartbeat address off the machine, and none at all', () => {
+    const address = `https://watch.example/api/0/organizations/agency/heartbeat/${SECRET}/`;
+    const heartbeats = [
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: address }),
+      settingsFrom(GOOD),
+    ].map((settings) => (typeof settings === 'string' ? settings : settings.heartbeat));
+    expect(heartbeats).toEqual([address, undefined]);
   });
 });
 
