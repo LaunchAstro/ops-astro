@@ -21,7 +21,8 @@
 // `answer_by`), so the sweep never takes a send for none; the request goes only
 // once the send judgement passes after it. That judgement's transaction holds
 // its locks until the agent reports the write or a refusal, or W after the
-// accept was heard, on the pool's one connection: nothing needs a second.
+// accept was heard (`carriage-fence.ts`), on the pool's one connection:
+// nothing needs a second.
 
 import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
 import { SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
@@ -38,16 +39,13 @@ import {
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { lockedInstant } from '../../../core-runtime/src/index.ts';
+import { busy, holdSend, LOST } from './carriage-fence.ts';
 import { heldTasks, holdGrants, readsTasks } from './carriage-grants.ts';
 import { holdsOwnConversations } from './conversations.ts';
 import { pageTaskOf } from './conversation-page-task.ts';
 
 /** After the send's window and the model's wait, ten seconds more: the latest an answer settles. */
 const SETTLE_MARGIN_MS = 10_000;
-
-const LOST = { ok: false, code: 'AUTHORITY_LOST' } as const;
-
-const nothing = (): void => {};
 
 interface Asked {
   readonly presented: VerifiedSubject;
@@ -166,12 +164,6 @@ async function judgeCarriage(
   return own ? { ok: true } : LOST;
 }
 
-/** Grant contention under the `nowait` hold: nothing was sent, so the call is released. */
-export const busy = (cause: unknown): { readonly ok: false; readonly code: string } => {
-  if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-  return { ok: false, code: 'AUTHORITY_BUSY' };
-};
-
 /** The offer judgement; passing, `offered_at` is set and its trigger rings the doorbell, ids only. */
 async function offer(database: Database, businessId: BusinessId, asked: Asked): Promise<Judged> {
   const judged = await withSession(database, businessId, asked.presented, async (tx, session) => {
@@ -216,54 +208,6 @@ export async function recordSend(
     )
     .catch(() => []);
   return recorded.length > 0;
-}
-
-type Fenced = Awaited<ReturnType<Handoff['fence']>>;
-
-/** The send judgement in `open`'s transaction, its locks held until released or W after `heardAt`. */
-export function holdSend<By>(
-  open: (work: (tx: TenantQuery, by: By) => Promise<void>) => Promise<unknown>,
-  judge: (tx: TenantQuery, by: By) => Promise<Judged>,
-  heardAt: number,
-): Promise<Fenced> {
-  return new Promise<Fenced>((ready) => {
-    let letGo = nothing;
-    const released = new Promise<void>((resolve) => {
-      letGo = resolve;
-    });
-    const running = open(async (tx, by) => {
-      const passed = await judge(tx, by);
-      if (!passed.ok) {
-        ready(passed);
-        return;
-      }
-      await tx.query(`set local idle_in_transaction_session_timeout = '10s'`);
-      ready({
-        ok: true,
-        release: async () => {
-          letGo();
-          await running;
-        },
-      });
-      const left = Math.max(0, heardAt + SEND_WINDOW_MS - Date.now());
-      await Promise.race([
-        released,
-        new Promise((resolve) => {
-          setTimeout(resolve, left);
-        }),
-      ]);
-    })
-      .catch((cause: unknown) => {
-        ready(busy(cause));
-      })
-      .catch(() => {
-        ready({ ok: false, code: 'CARRIAGE_UNAVAILABLE' });
-      })
-      .finally(() => {
-        // A session that no longer resolves answered nothing above: its authority is gone.
-        ready(LOST);
-      });
-  });
 }
 
 /**
