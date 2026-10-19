@@ -37,10 +37,12 @@ function useLivePhase(
   load: string,
 ): Phase {
   const [settled, setSettled] = useState<{ readonly at: string; readonly phase: Phase }>();
-  // Each page the frame shows is its own wait: a page after the hello starts another.
-  const [left, setLeft] = useState({ load, times: 0 });
-  const times = left.load === load ? left.times : 0;
-  const at = `${load}\n${times}`;
+  // Each load (a new serial, so switching back never revives an old hello) and
+  // each page the frame shows after a hello (`times`) is its own wait.
+  const [round, setRound] = useState({ load, serial: 0, times: 0 });
+  if (round.load !== load) setRound({ load, serial: round.serial + 1, times: 0 });
+  const { serial, times } = round.load === load ? round : { serial: round.serial + 1, times: 0 };
+  const at = `${serial}\n${times}`;
   useEffect(() => {
     const element = frame.current;
     if (address === undefined || element === null) return () => {};
@@ -51,7 +53,8 @@ function useLivePhase(
       loaded: times > 0,
       onLive: () => setSettled({ at, phase: 'live' }),
       onExpired: () => setSettled({ at, phase: 'fallback' }),
-      onLeft: () => setLeft({ load, times: times + 1 }),
+      onLeft: () =>
+        setRound((now) => (now.serial === serial ? { ...now, times: now.times + 1 } : now)),
     });
     // The wait restarts only for a new load or page; `address` is read from `load`.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
