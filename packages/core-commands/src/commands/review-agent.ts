@@ -14,6 +14,7 @@
 // that task alone (`review-pin.ts`).
 // A change request's filing (#2016) is a `record` row that is refused CLIENT_MODEL_USE_OFF
 // (`review-change.ts`); its decision has no row, as the surface never offers it to an agent.
+// The worker's `review.make_change_task` (#2117) is a lease row: `task:write` on the leased task.
 
 import {
   delegatingSubjects,
@@ -35,6 +36,7 @@ import {
 import { carryPins } from './review-carry.ts';
 import { PIN_COMMENT } from './review-pin.ts';
 import { PROPOSE_CHANGE } from './review-change.ts';
+import { MAKE_CHANGE_TASK } from './review-change-task.ts';
 
 /** A review row: checked on the task its body names, and served under that delegation. */
 export interface ReviewAgentRow {
@@ -156,10 +158,18 @@ type ReviewAgentName =
   | 'review.capture_land'
   | 'review.carry_pins'
   | 'review.pin_comment'
-  | 'review.propose_change';
+  | 'review.propose_change'
+  | 'review.make_change_task';
 
 export const reviewAgentRows = <T>(
-  close: (typed: ReviewAgentRow | UnderLease | typeof PIN_COMMENT | typeof PROPOSE_CHANGE) => T,
+  close: (
+    typed:
+      | ReviewAgentRow
+      | UnderLease
+      | typeof PIN_COMMENT
+      | typeof PROPOSE_CHANGE
+      | typeof MAKE_CHANGE_TASK,
+  ) => T,
 ): readonly (readonly [ReviewAgentName, T])[] => [
   ['review.open', close(OPEN)],
   ['review.capture', close(CAPTURE)],
@@ -168,4 +178,5 @@ export const reviewAgentRows = <T>(
   ['review.carry_pins', close(underLease(carryPins))],
   ['review.pin_comment', close(PIN_COMMENT)],
   ['review.propose_change', close(PROPOSE_CHANGE)],
+  ['review.make_change_task', close(MAKE_CHANGE_TASK)],
 ];

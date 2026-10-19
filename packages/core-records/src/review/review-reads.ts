@@ -9,6 +9,7 @@
 // the grant is judged again after the last of them (`stillCovered`, `pictureCovered`): a grant
 // revoked or run out meanwhile reads nothing written since, and no bytes (S2061-1, S2276-1,
 // S2147-3).
+// The review's change requests (C57) carry their text: that read is the team's alone.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
@@ -16,6 +17,7 @@ import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
 import { readCarried, type CarriedPinView } from './carries.ts';
 import { DATABASE_STORAGE } from './storage.ts';
+import { readChangeRequests, type ChangeRequestView } from './change-requests.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -44,6 +46,8 @@ export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   readonly carried: readonly CarriedPinView[];
   /** `after` has landed at every width and a pin before it is not yet carried onto it. */
   readonly carryDue: boolean;
+  /** C57's change requests (#2016, #2117): proposed, approved and pending or made, refused. */
+  readonly changeRequests: readonly ChangeRequestView[];
 }
 
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
@@ -82,6 +86,7 @@ export async function readCoveredReview(
     captures: captures.get(revision.id) ?? [],
   }));
   const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views);
+  const changeRequests = await readChangeRequests(tx, reviewId);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
@@ -94,6 +99,7 @@ export async function readCoveredReview(
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
     ...notes,
+    changeRequests,
   };
 }
 

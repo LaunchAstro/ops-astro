@@ -29,9 +29,12 @@ export {
   type CorrectionDecision,
 } from './correction-decisions.ts';
 export {
+  holdTaskLease,
   readCorrectionForRun,
   recordObservedResult,
   type HeldForRun,
+  type LeaseAt,
+  type ObservedRefusal,
   type ObservedResult,
   type ReceiptOutcome,
   type UnderLease,

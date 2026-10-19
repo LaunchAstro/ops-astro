@@ -93,16 +93,37 @@ type OwnedLease = { readonly task_id: string; readonly delegation_id: string | n
  * write (`holdOwnWrite`, `ownWriteStands`).
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
-  // The lease the caller holds names the one task it may reach, asked before any correction:
-  // another task's correction and an id that names none get the same answer.
+  const held = await holdTaskLease(
+    tx,
+    at,
+    async (taskId) => await lockCorrectionForSystem(tx, at.correctionId, taskId),
+  );
+  return held.ok ? { ok: true, correction: held.subject } : held;
+}
+
+/** The lease a worker names: its id, the fence it holds and its own actor. */
+export type LeaseAt = Pick<UnderLease, 'leaseId' | 'fence' | 'actorId'>;
+
+/**
+ * `holdUnderLease`'s check for any subject on the leased task: `lock` locks it on the lease's
+ * own task, in the correction's place in the lock order, and answers undefined for one that
+ * is absent or on another task (`NOT_FOUND`).
+ */
+export async function holdTaskLease<T>(
+  tx: TenantQuery,
+  at: LeaseAt,
+  lock: (taskId: string) => Promise<T | undefined>,
+): Promise<{ readonly ok: true; readonly subject: T } | Refused> {
+  // The lease the caller holds names the one task it may reach, asked before any subject:
+  // another task's subject and an id that names none get the same answer.
   const [owned] = await tx.query<OwnedLease>(
     `select l.task_id, l.delegation_id from public.leases l
       where l.business_id = $1 and l.id = $2 and l.fence = $3 and l.holder_actor_id = $4`,
     [tx.businessId, at.leaseId, at.fence, at.actorId],
   );
   if (owned === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
-  if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
+  const subject = await lock(owned.task_id);
+  if (subject === undefined) return { ok: false, code: 'NOT_FOUND' };
   const person = await holdPersonWrites(tx, at.actorId, owned);
   if (person === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
@@ -110,7 +131,7 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
       where l.business_id = $1 and l.id = $2 and l.task_id = $3 and l.fence = $4
         and l.holder_actor_id = $5
       for share of l`,
-    [tx.businessId, at.leaseId, correction.taskId, at.fence, at.actorId],
+    [tx.businessId, at.leaseId, owned.task_id, at.fence, at.actorId],
   );
   if (lease === undefined || lease.delegation_id !== owned.delegation_id) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
@@ -135,7 +156,7 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   if (instant === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const stands = await delegatedWriteStands(tx, person, instant.at);
   if (!stands.ok) return stands;
-  return { ok: true, correction };
+  return { ok: true, subject };
 }
 
 interface PersonHeld {
