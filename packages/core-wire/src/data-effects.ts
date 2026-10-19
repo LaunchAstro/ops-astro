@@ -44,6 +44,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.update': TASK,
   'task.complete': TASK,
   'task.reopen': TASK,
+  // A comment names its task in `uuid_1`, not the parent slot (`uuid_4`) the map trigger reads,
+  // and leaves the task's row as it is, so a comment on a ticket or a map refreshes no map (S7).
   'task.comment': writing(client('records')),
   // A comment's own edit and deletion (MP-4-5), on its record.
   'task.edit_comment': writing(client('records')),
@@ -70,7 +72,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ]),
   'task.start': TASK,
   // An assignment raises the assignee's item (INB-1).
-  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.assign': writing([...TASK.writes, ...client('inbox_items')]),
   // A run opened for the task's agent, with the delegation it acts under.
   ...LAUNCH_EFFECTS,
   'task.triage': TASK,
@@ -80,8 +82,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
   'task.set_category': TASK,
-  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
-  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8), a ticket's too.
+  'task.duplicate': writing([...TASK.writes, ...client('record_links')]),
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
@@ -98,7 +100,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...TASK.writes,
     ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
     ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
-    ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
+    ...client('map_components', 'map_versions'),
   ]),
   'task.read': READ,
   'task.board': READ,
