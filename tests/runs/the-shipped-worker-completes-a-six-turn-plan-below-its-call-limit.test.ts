@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Sol's proof for S2092-2 on #2092 (copied unchanged but for its names and two type annotations, #1717 R8b).
+// Sol's proof for S2092-2 on #2092 (copied unchanged but for its names, two type annotations, and its turn script
+// and `main()` call moved out of the test body for the line limit; #1717 R8b).
 // Five ordinary task-read tool results followed by a final answer need six
 // model calls, below the shipped limit of twelve. Observe the real graph's
 // thrown error without changing its input, config or execution. The shipped
@@ -111,38 +112,51 @@ function printed(): string[] {
   return out;
 }
 
+/** The provider's turns: a task read each, then a final answer on the last. */
+function scriptTurns(count: number, taskId: string): void {
+  world.provider.script(
+    Array.from({ length: count }, (_, i) => ({
+      ...(replied(
+        'Proof turn',
+        i + 1 === count ? [] : [{ id: `read_${i}`, name: 'task.read', args: { taskId } }],
+      ) as object),
+      usage: { input: count === 1 ? 100 : 500, output: 0 },
+    })),
+  );
+}
+
+/** The shipped worker's `main()`, signed in as the plan's delegation over `transport`. */
+async function shippedMain(
+  options: Awaited<ReturnType<typeof unproposed>>['options'],
+  transport: Transport,
+): Promise<number> {
+  return await main(
+    [],
+    {
+      ...SIGN_IN_SETTINGS,
+      OPS_ASTRO_BUSINESS: options.businessKey,
+      OPS_ASTRO_DELEGATION: options.delegation,
+      OPS_ASTRO_WORKER_INTERVAL_MS: '0',
+    },
+    async () => await Promise.resolve('sent'),
+    {
+      ...signedInReach(String(options.credential)),
+      transport: () => transport,
+    },
+  );
+}
+
 it.skipIf(noDatabase)(
   'the shipped worker completes a six-turn accepted plan below its call limit',
   async () => {
     const count: number = 6;
     const broker = { ...agentBroker(), ...catalogueOf('api', false) };
     const { taskId, log, options } = await unproposed('shipped success', undefined, broker);
-    world.provider.script(
-      Array.from({ length: count }, (_, i) => ({
-        ...(replied(
-          'Proof turn',
-          i + 1 === count ? [] : [{ id: `read_${i}`, name: 'task.read', args: { taskId } }],
-        ) as object),
-        usage: { input: count === 1 ? 100 : 500, output: 0 },
-      })),
-    );
+    scriptTurns(count, taskId);
     const seen: Seen = { faults: [] };
     const transport = launching(options.transport, log, taskId, seen);
     const out = printed();
-    const code = await main(
-      [],
-      {
-        ...SIGN_IN_SETTINGS,
-        OPS_ASTRO_BUSINESS: options.businessKey,
-        OPS_ASTRO_DELEGATION: options.delegation,
-        OPS_ASTRO_WORKER_INTERVAL_MS: '0',
-      },
-      async () => await Promise.resolve('sent'),
-      {
-        ...signedInReach(String(options.credential)),
-        transport: () => transport,
-      },
-    );
+    const code = await shippedMain(options, transport);
     expect(
       seen.launchRefusal,
       `the shipped worker must leave a reviewed successor that fits its own envelope: ${JSON.stringify(seen.budget)}`,
