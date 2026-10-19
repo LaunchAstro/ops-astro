@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 probe: completion records an MP4's codec, rational frame rate, start timecode and duration on the asset and the review read carries them; a disagreeing codec or an unreadable probe refuses the asset."
+}

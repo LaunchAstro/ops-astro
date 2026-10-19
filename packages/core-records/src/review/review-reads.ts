@@ -10,6 +10,9 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
 import type { CaptureWidth, Review } from './reviews.ts';
 import { DATABASE_STORAGE } from './storage.ts';
+import type { MediaKind } from './media.ts';
+import type { ContractRefusal } from './upload-contract.ts';
+import type { MediaProbe } from './mp4-probe.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -19,11 +22,22 @@ export interface CaptureView {
   readonly observation: Readonly<Record<string, unknown>> | null;
 }
 
+/** A media revision's asset (#2039): whether it can play, and why not when it cannot. */
+export interface MediaView {
+  readonly assetId: string;
+  readonly kind: MediaKind;
+  readonly playable: boolean;
+  readonly why: 'quarantined' | 'scan_failed' | ContractRefusal | null;
+  readonly probe: MediaProbe | null;
+}
+
 export interface RevisionView {
   readonly revisionId: string;
   readonly number: number;
   readonly digest: string;
   readonly captures: readonly CaptureView[];
+  /** A media review's revisions only. */
+  readonly media?: MediaView;
 }
 
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
@@ -60,6 +74,8 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
+  const media =
+    review.kind === 'media' ? await mediaOf(tx, reviewId) : new Map<string, MediaView>();
   return {
     reviewId,
     taskId: review.task_id,
@@ -67,13 +83,72 @@ export async function readCoveredReview(
     kind: review.kind,
     pageUrl: review.page_url,
     path: review.path,
-    revisions: revisions.map((revision) => ({
-      revisionId: revision.id,
-      number: revision.number,
-      digest: revision.digest,
-      captures: captures.get(revision.id) ?? [],
-    })),
+    revisions: revisions.map((revision) =>
+      withMedia(
+        {
+          revisionId: revision.id,
+          number: revision.number,
+          digest: revision.digest,
+          captures: captures.get(revision.id) ?? [],
+        },
+        media.get(revision.id),
+      ),
+    ),
   };
+}
+
+const withMedia = (view: RevisionView, media: MediaView | undefined): RevisionView =>
+  media === undefined ? view : { ...view, media };
+
+interface MediaRow {
+  readonly id: string;
+  readonly revision_id: string;
+  readonly kind: MediaKind;
+  readonly refusal: ContractRefusal | null;
+  readonly scan_state: 'quarantined' | 'passed' | 'failed' | null;
+  readonly probe_codec: string | null;
+  readonly probe_fps_num: number;
+  readonly probe_fps_den: number;
+  readonly probe_timecode: string;
+  readonly probe_duration: string;
+  readonly probe_timescale: number;
+}
+
+const WHY_NOT_PLAYABLE = {
+  quarantined: 'quarantined',
+  failed: 'scan_failed',
+  passed: null,
+} as const;
+
+/** A completed asset as the read says it: playable once passed, else why not. */
+const mediaViewOf = (row: MediaRow): MediaView => ({
+  assetId: row.id,
+  kind: row.kind,
+  playable: row.scan_state === 'passed',
+  why: row.refusal ?? (row.scan_state === null ? null : WHY_NOT_PLAYABLE[row.scan_state]),
+  // The probe's columns are all set or none (`review_media_assets_probe_whole`).
+  probe:
+    row.probe_codec === null
+      ? null
+      : {
+          codec: row.probe_codec,
+          fps: { num: row.probe_fps_num, den: row.probe_fps_den },
+          startTimecode: row.probe_timecode,
+          duration: Number(row.probe_duration),
+          timescale: row.probe_timescale,
+        },
+});
+
+/** Each completed asset of a media review, by the revision it is. */
+async function mediaOf(tx: TenantQuery, reviewId: string): Promise<ReadonlyMap<string, MediaView>> {
+  const rows = await tx.query<MediaRow>(
+    `select id, revision_id, kind, refusal, scan_state, probe_codec, probe_fps_num, probe_fps_den,
+            probe_timecode, probe_duration::text, probe_timescale
+       from public.review_media_assets
+      where business_id = $1 and review_id = $2 and state = 'completed'`,
+    [tx.businessId, reviewId],
+  );
+  return new Map(rows.map((row) => [row.revision_id, mediaViewOf(row)]));
 }
 
 /** Every capture of the review's revisions, widest first, by the revision it is of. */

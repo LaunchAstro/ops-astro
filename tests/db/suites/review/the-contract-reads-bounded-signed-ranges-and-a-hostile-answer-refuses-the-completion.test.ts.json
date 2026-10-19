@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 range read: the contract reads only bounded ranges of the asset's own object, never the whole of it; a store answering another length refuses the completion, removes the object and writes no revision."
+}

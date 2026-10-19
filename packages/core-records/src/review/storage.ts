@@ -4,8 +4,9 @@
 // business whose transaction asks. One provider today, the bounded database
 // one over `storage_objects`, so a picture lands in the same transaction as
 // the capture row that names it. The media unit (U89, #2038) adds the
-// multipart transfers an object store answers (`ObjectTransfers`); the
-// database provider refuses each of them by name.
+// multipart transfers an object store answers (`ObjectTransfers`), and the
+// upload contract (#2039) a signed read and a bounded range read of a
+// completed object; the database provider refuses each of them by name.
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -63,6 +64,14 @@ export interface ObjectTransfers {
   abort(key: string, uploadId: string): Promise<boolean | TransferRefusal>;
   /** A completed object removed, as a refused completion leaves none. */
   remove(key: string): Promise<boolean | TransferRefusal>;
+  /** A GET of one completed object signed for `lifeSeconds`: playback or delivery. */
+  signRead(key: string, lifeSeconds: number): Promise<SignedTransfer | TransferRefusal>;
+  /**
+   * At most `length` bytes of a completed object from `from`, through a GET signed for that
+   * object; in production custody carries it to the bucket's listed destination under its
+   * timeout and response limit. The answer is the store's word, checked by the caller.
+   */
+  readRange(key: string, from: number, length: number): Promise<Uint8Array | TransferRefusal>;
 }
 
 export interface StorageProvider extends ObjectTransfers {
@@ -89,6 +98,8 @@ export const DATABASE_STORAGE: StorageProvider = {
   complete: unsupported,
   abort: unsupported,
   remove: unsupported,
+  signRead: unsupported,
+  readRange: unsupported,
   async put(tx, body) {
     if (body.byteLength === 0) return { refused: 'OBJECT_EMPTY' };
     if (body.byteLength > MOST_STORED_BYTES) return { refused: 'OBJECT_TOO_LARGE' };

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 quarantine: a clean asset's playback sign is refused by name until its scan passes, then the store signs one GET of that object; a verdict lands once."
+}
