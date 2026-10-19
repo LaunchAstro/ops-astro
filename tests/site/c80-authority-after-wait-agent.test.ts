@@ -51,7 +51,9 @@ async function parkedOnTheInsert(): Promise<boolean> {
     `select a.query from pg_stat_activity a
       where a.datname = current_database() and a.wait_event_type = 'Lock'`,
   );
-  return found.some((row) => /^\s*insert into public\.live_corrections/u.test(row.query));
+  return found.some((row) =>
+    /^\s*with task as \([\s\S]*\sinsert into public\.live_corrections\s/u.test(row.query),
+  );
 }
 
 const correctionsOn = async (taskId: string): Promise<number> =>

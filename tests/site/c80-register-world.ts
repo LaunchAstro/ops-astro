@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, expect } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { c80World, type C80World } from './c80-world.ts';
+import { c80World, pinFromBefore, requestBody, type C80World } from './c80-world.ts';
 import {
   runLivePublish,
   runLiveRevert,
@@ -51,10 +51,15 @@ export function useRegisterWorld(): void {
   });
 }
 
-export async function approved(overrides: Readonly<Record<string, unknown>> = {}): Promise<string> {
-  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, ...overrides }));
-  const id = String(detail['correctionId']);
-  expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
+/**
+ * Party A's correction under the lease, pinned from `before` as the runner would (the about page's
+ * text by default) and approved.
+ */
+export async function approved(before?: string): Promise<string> {
+  const asked = await w.asRaw(w.ava, { ...requestBody(w.partyA, lease.taskId) });
+  const id = String(detailOf(asked)['correctionId']);
+  const { versionId } = await pinFromBefore(w.world.db.admin, id, before);
+  expect(codeOf(await w.approve(w.ben, id, versionId))).toBe('not-a-refusal');
   return id;
 }
 

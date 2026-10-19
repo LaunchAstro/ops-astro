@@ -5,22 +5,18 @@
 
 import type { Envelope } from './request-envelope.ts';
 
-// The request carries the one file's text before and after, which the
-// handler checks against the envelope before anything is written, and keeps
-// only as digests; the approval names the exact version the caller read.
+// The request names the task, the page as the person typed it and the two
+// words, nothing else (#1693): the server resolves the page of the task's own
+// site, and the site runner pins the version from the file itself, so no
+// caller supplies a revision, a file or a digest. The approval names the exact
+// version the caller read.
 export type LiveCorrectionRequest =
   | ({
       readonly command: 'live_correction.request';
-      /** The task's client, or null for the business's own site (R6). */
-      readonly partyId: string | null;
       readonly taskId: string;
-      readonly path: string;
+      readonly page: string;
       readonly word: string;
       readonly replacement: string;
-      readonly pageUrl: string;
-      readonly baseRevision: string;
-      readonly before: string;
-      readonly after: string;
     } & Envelope)
   | ({
       readonly command: 'live_correction.decide';
