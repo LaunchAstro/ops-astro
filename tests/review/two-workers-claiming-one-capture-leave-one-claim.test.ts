@@ -13,12 +13,13 @@ import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import {
   c35World,
-  capturesOf,
   pickUpReviewed,
-  underLease,
   underReview,
   type C35World,
+  type Lease,
+  type Reviewed,
 } from './c35-world.ts';
+import { capturesOf, underLease } from './c35-landing.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C35 claim race: DATABASE_URL is unset.');
@@ -56,6 +57,67 @@ async function untilParked(count: number): Promise<void> {
   throw new Error(`fewer than ${String(count)} claims ever waited: they never ran at once`);
 }
 
+/**
+ * Hold the revision's capture rows on `holderDb` until `release` is called; resolves once
+ * they are held.
+ */
+async function holdCaptures(
+  holderDb: ReturnType<typeof connect>,
+  reviewed: Reviewed,
+): Promise<{ readonly holding: Promise<void>; readonly release: () => void }> {
+  let locked!: () => void;
+  let release!: () => void;
+  const lockedNow = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holding = holderDb.withBusiness(w.world.business, async (tx) => {
+    await tx.query(
+      `select 1 from public.review_captures
+        where business_id = $1 and revision_id = $2 for update`,
+      [w.world.business, reviewed.revisionId],
+    );
+    locked();
+    await gate;
+  });
+  await lockedNow;
+  return { holding, release };
+}
+
+/** The refused claim was answered after the applied one committed: its audit row follows. */
+async function expectLostAfterWon(wonOperation: string, lostOperation: string): Promise<void> {
+  const events = await w.world.db.app.withBusiness(
+    w.world.business,
+    async (tx) => await readAuditEvents(tx),
+  );
+  const seqOf = (operationId: string) =>
+    BigInt(events.find((event) => event.operation_id === operationId)?.seq ?? '0');
+  expect(seqOf(wonOperation)).toBeGreaterThan(0n);
+  expect(seqOf(lostOperation)).toBeGreaterThan(seqOf(wonOperation));
+}
+
+/** One claim on the rows: both widths under the lease that won, at its fence. */
+async function expectOneClaim(reviewed: Reviewed, lease: Lease): Promise<void> {
+  expect(await capturesOf(w, reviewed.revisionId)).toStrictEqual([
+    {
+      width: 1480,
+      state: 'claimed',
+      lease_id: lease.leaseId,
+      picture_id: null,
+      picture_digest: null,
+    },
+    {
+      width: 390,
+      state: 'claimed',
+      lease_id: lease.leaseId,
+      picture_id: null,
+      picture_digest: null,
+    },
+  ]);
+}
+
 describe.skipIf(serverUrl === undefined)('C35 the claim race', () => {
   it('C35 two workers claiming one capture at once leave exactly one claim', async () => {
     const reviewed = await underReview(w, 'two workers, one capture');
@@ -66,24 +128,7 @@ describe.skipIf(serverUrl === undefined)('C35 the claim race', () => {
     const firstDb = connect(w.world.db.appUrl, { source: 'racer' });
     const secondDb = connect(w.world.db.appUrl, { source: 'racer' });
     try {
-      let locked!: () => void;
-      let release!: () => void;
-      const lockedNow = new Promise<void>((resolve) => {
-        locked = resolve;
-      });
-      const gate = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const holding = holderDb.withBusiness(w.world.business, async (tx) => {
-        await tx.query(
-          `select 1 from public.review_captures
-            where business_id = $1 and revision_id = $2 for update`,
-          [w.world.business, reviewed.revisionId],
-        );
-        locked();
-        await gate;
-      });
-      await lockedNow;
+      const { holding, release } = await holdCaptures(holderDb, reviewed);
 
       const claim = { command: 'review.capture_claim', revisionId: reviewed.revisionId };
       const first = underLease(w, lease, claim, firstDb);
@@ -103,32 +148,10 @@ describe.skipIf(serverUrl === undefined)('C35 the claim race', () => {
       });
 
       // The refused claim was answered after the applied one committed: its audit row follows.
-      const events = await w.world.db.app.withBusiness(
-        w.world.business,
-        async (tx) => await readAuditEvents(tx),
-      );
-      const seqOf = (operationId: string) =>
-        BigInt(events.find((event) => event.operation_id === operationId)?.seq ?? '0');
-      expect(seqOf(won!.operationId)).toBeGreaterThan(0n);
-      expect(seqOf(lost!.operationId)).toBeGreaterThan(seqOf(won!.operationId));
+      await expectLostAfterWon(won!.operationId, lost!.operationId);
 
       // One claim on the rows: both widths under the lease that won, at its fence.
-      expect(await capturesOf(w, reviewed.revisionId)).toStrictEqual([
-        {
-          width: 1480,
-          state: 'claimed',
-          lease_id: lease.leaseId,
-          picture_id: null,
-          picture_digest: null,
-        },
-        {
-          width: 390,
-          state: 'claimed',
-          lease_id: lease.leaseId,
-          picture_id: null,
-          picture_digest: null,
-        },
-      ]);
+      await expectOneClaim(reviewed, lease);
     } finally {
       await Promise.all([holderDb.close(), firstDb.close(), secondDb.close()]);
     }
