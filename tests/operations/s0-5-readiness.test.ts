@@ -121,15 +121,11 @@ async function notShut(
   return found;
 }
 
-/**
- * The positive recipe, or, for a live delegation or a grant to revoke (the recipe has neither:
- * its grant would be a later case's), one made here.
- */
+/** The positive recipe, or one made here: a grant to revoke and a live delegation have none. */
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
   if (declaration.name === 'grant.revoke') {
-    const { world } = harness;
-    const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
-      return await grantTo(tx, world.noah as Parameters<typeof grantTo>[1], 'read');
+    const grantId = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+      return await grantTo(tx, harness.world.noah as Parameters<typeof grantTo>[1], 'read');
     });
     return { grantId };
   }
