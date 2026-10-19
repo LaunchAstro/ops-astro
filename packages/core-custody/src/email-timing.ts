@@ -23,6 +23,7 @@
 // attempts under a lock on their key (`email-class.ts`).
 
 import {
+  stillStanding,
   toldAtOnce,
   type BusinessId,
   type Database,
@@ -179,7 +180,7 @@ export async function emailDailyBatch(
     const prepared = await withinCap(tx, await batchable(tx, personId, timing.preferences));
     if (prepared.length === 0) return 'NOTHING_WAITING';
     if (!(await room())) return 'EMAIL_AT_CEILING';
-    const items = await stillReadable(tx, prepared);
+    const items = await stillReadable(tx, await stillStanding(tx, prepared));
     const [first] = items;
     if (first === undefined) return 'NOTHING_WAITING';
     const reserved = await recordAsked(tx, items, true);

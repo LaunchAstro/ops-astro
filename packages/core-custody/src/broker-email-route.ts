@@ -137,3 +137,23 @@ export function observed(
   if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
   return { state: 'accepted', evidence: `${source}:${answer.text}` };
 }
+
+/**
+ * Accepted evidence with its message id kept only when the id carries no piece of the recipient's
+ * local part, compared without case: the provider knows the address and may answer it back.
+ */
+export function withoutRecipient(
+  seen: { readonly state: 'accepted' | 'failed'; readonly evidence: string },
+  to: string,
+): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
+  if (seen.state !== 'accepted') return seen;
+  const at = seen.evidence.indexOf(':');
+  const id = seen.evidence.slice(at + 1).toLowerCase();
+  const pieces =
+    to
+      .slice(0, to.lastIndexOf('@'))
+      .toLowerCase()
+      .match(/[a-z0-9-]+/gu) ?? [];
+  if (!pieces.some((piece) => id.includes(piece))) return seen;
+  return { state: 'accepted', evidence: `${seen.evidence.slice(0, at)}:withheld` };
+}

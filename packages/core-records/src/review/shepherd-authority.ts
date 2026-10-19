@@ -2,7 +2,8 @@
 //
 // C57 (#2017): whether the broker may send one review shepherd item now. Asked inside the
 // broker's checking transaction (`core-custody/src/broker-email.ts` `checkItem`), after the
-// item and its task are locked, every time it would send: a comment the shepherd did not write
+// item and its task are locked, and again after the weekly window and the ceiling waited
+// (`stillStanding`), every time it would send: a comment the shepherd did not write
 // is not this module's to judge. A shepherd send stands only while the occurrence's activation
 // is still enabled on its version with its standing approval unrevoked, the item's recipient is
 // one the send named, and either a person approved the send's exact digest or a live standing
@@ -39,6 +40,21 @@ export async function shepherdSendStands(
     currency: SHEPHERD_CURRENCY,
   });
   return verdict.covered ? 'stands' : 'unapproved';
+}
+
+/**
+ * The items whose review shepherd send still stands, asked again after the weekly window and the
+ * ceiling waited: a mandate that lapsed during those waits sends nothing. Other items pass.
+ */
+export async function stillStanding<
+  T extends { readonly factKind: string; readonly factId: string; readonly recipient: string },
+>(tx: TenantQuery, items: readonly T[]): Promise<T[]> {
+  const kept: T[] = [];
+  for (const item of items) {
+    // oxlint-disable-next-line no-await-in-loop
+    if ((await shepherdSendStands(tx, item)) !== 'unapproved') kept.push(item);
+  }
+  return kept;
 }
 
 export interface ShepherdApprover {

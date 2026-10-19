@@ -13,7 +13,8 @@
 //    gone out; relationship mail to a client also needs the client's week
 //    unspent (`email-class.ts`). An item of a review shepherd's comment also
 //    needs its send to stand: a person's approval of its exact digest or a
-//    live standing mandate (`shepherdSendStands`, C57). A refusal writes
+//    live standing mandate (`shepherdSendStands`, C57), asked again after
+//    the window and ceiling waits (`stillStanding`). A refusal writes
 //    nothing and sends nothing.
 //    Then each item the email covers is recorded `asked`, with its class.
 // 2. Send, through custody, a request the adapter built from the declared
@@ -23,7 +24,9 @@
 // 3. Record what came back as each item's next observation: `accepted`
 //    with the provider's message id (`mock:` before it over the loopback
 //    mock, never `provider:`), or `failed` with the fault's kind. No answer
-//    body, address or link is kept, returned or written anywhere.
+//    body, address or link is kept, returned or written anywhere: an id that
+//    carries any piece of the recipient's local part, which the provider
+//    could echo, is kept as `withheld` (`withoutRecipient`, beside `observed`).
 //
 // Nothing here reads a provider answer as an instruction, and no path from
 // an answer reaches the item's work state or any gate: an attempt never
@@ -33,13 +36,14 @@ import {
   readableNow,
   recordDeliveryAttempt,
   shepherdSendStands,
+  stillStanding,
   type BusinessId,
   type Database,
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { SenderReport } from '../../core-connectors/src/index.ts';
-import { observed, reserveFresh, sendRoute } from './broker-email-route.ts';
+import { observed, reserveFresh, sendRoute, withoutRecipient } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 import { holdItem } from './email-item-lock.ts';
 import {
@@ -137,6 +141,8 @@ export async function checkItem(
     recipient: item.recipient,
     subject: item.subject,
     raisedAt: item.raisedAt,
+    factKind: item.factKind,
+    factId: item.factId,
     to: address.value,
     client: item.client,
     mailClass: await classOf(tx, item),
@@ -179,6 +185,7 @@ export async function askOne(
     return 'CLIENT_CAP_SPENT';
   }
   if (!(await room())) return 'EMAIL_AT_CEILING';
+  if ((await stillStanding(tx, [item])).length === 0) return 'SEND_NOT_APPROVED';
   if ((await stillReadable(tx, [item])).length === 0) return 'ITEM_WITHHELD';
   const reserved = await recordAsked(tx, [item], false);
   return { itemIds: [itemId], to: item.to, link: itemId, reserved };
@@ -230,17 +237,20 @@ export async function deliver<R extends string>(
   const built = adapter.build({ to: asked.to, from: mail.from, address });
   const seen = lapsed(asked.reserved)
     ? ({ state: 'failed', evidence: 'expired' } as const)
-    : observed(
-        await broker.custody.dispatch(route.credentialRef, {
-          destination: operation.destination,
-          path: built.path,
-          method: built.method,
-          body: built.body,
-          timeoutMs: operation.timeoutMs,
-          maxResponseBytes: operation.maxResponseBytes,
-        }),
-        operation,
-        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
+    : withoutRecipient(
+        observed(
+          await broker.custody.dispatch(route.credentialRef, {
+            destination: operation.destination,
+            path: built.path,
+            method: built.method,
+            body: built.body,
+            timeoutMs: operation.timeoutMs,
+            maxResponseBytes: operation.maxResponseBytes,
+          }),
+          operation,
+          isLoopbackMock(broker.custody) ? 'mock' : 'provider',
+        ),
+        asked.to,
       );
   const attemptIds = await database.withBusiness(businessId, async (tx) => {
     const ids: string[] = [];
