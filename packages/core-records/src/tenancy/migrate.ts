@@ -38,10 +38,9 @@
 //   schema: one that is active, has a transaction open (idle or aborted in
 //   it), or holds any lock. A session that is idle with no transaction and no
 //   lock passes, which is what a transaction-mode pooler such as Supavisor
-//   keeps open and refills when it is ended (#1984). So does a single
-//   statement, alone in its transaction and holding no other lock, whose only
-//   wait is on the runner's own locks: it has read nothing yet, and it sees the
-//   new schema when the run commits. The supported upgrade is the
+//   keeps open and refills when it is ended (#1984). A statement queued
+//   behind the run's locks still counts, and the run refuses: its transaction
+//   may already have run an old function definition. The supported upgrade is the
 //   application stopped, and a migration run beside a live application has two
 //   known ways to go wrong in 0030 alone. The check is a backstop to stopping
 //   the application, not the stop (docs/local/DATA.md, "Upgrade"). A role that
@@ -234,15 +233,10 @@ export async function otherSessions(
 /**
  * The sessions of `OTHER_SESSIONS` that could be using the old schema: not
  * idle, or with a transaction open, or holding or awaiting any lock. A null
- * state counts. One statement queued behind the run's own locks does not:
- * its wait is on a lock that only this backend blocks, it is its
- * transaction's only statement (`xact_start = query_start`), and it holds no
- * granted lock but its own virtual transaction id. It has read nothing yet,
- * a function definition included, and reads the new schema after the commit.
- * A transaction with any statement before the waiting one counts, because a
- * function takes no lock and that statement may have run the old one
- * (S2007-1). Outside a transaction this backend holds nothing, so the clause
- * matches nobody.
+ * state counts. A statement queued behind the run's own locks counts too,
+ * whatever its transaction or message did before it: a function takes no
+ * lock, so it may already have run the old definition (S2007-3), and the
+ * server's timestamps cannot tell one statement from several sent at once.
  */
 const BUSY_SESSIONS = `select a.pid, a.usename::text as usename, a.application_name,
        host(a.client_addr) as client_addr, a.backend_start::text as backend_start,
@@ -257,11 +251,6 @@ const BUSY_SESSIONS = `select a.pid, a.usename::text as usename, a.application_n
    and (a.state is distinct from 'idle'
         or a.xact_start is not null
         or exists (select 1 from pg_locks l where l.pid = a.pid))
-   and not (a.wait_event_type is not distinct from 'Lock'
-            and pg_blocking_pids(a.pid) = array[pg_backend_pid()]
-            and a.xact_start = a.query_start
-            and not exists (select 1 from pg_locks l
-                             where l.pid = a.pid and l.granted and l.locktype <> 'virtualxid'))
  order by a.pid`;
 
 /**

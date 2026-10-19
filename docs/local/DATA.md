@@ -97,15 +97,14 @@ one idle backend per runtime login (port 6543) and opens a new one within
 100 ms when it is ended, so a rule that counted any session could never pass
 there (#1984, 19 October 2026). Such a backend cannot be mid-work on the old
 schema. Any statement it starts on a table in `ops` or `public` waits on the
-run's locks, and once the run commits, it reads the new schema. A single
-statement queued behind the runner's own locks passes for the same reason:
-its wait is a `Lock` that only the runner blocks (`pg_blocking_pids`), it is
-its transaction's only statement (`xact_start = query_start`), and it holds no
-granted lock but its own virtual transaction id. It has read nothing yet. A
-session in a transaction that ran any statement before the one it waits on
-still refuses, whatever that statement was, because a function takes no lock
-and it may have run the old definition. So does one holding any lock, an
-advisory lock included.
+run's locks, and once the run commits, it reads the new schema. A session
+that is already waiting on the run's locks when the runner looks still counts,
+and the run refuses naming it, applying nothing. A function takes no lock, so
+its transaction, or the same statement, may already have run an old definition
+(S2007-3), and `pg_stat_activity` cannot tell one statement from several sent
+in one message. Once the run has rolled back, the waiting statement finishes on
+the old schema. A session in a transaction refuses whatever it has done, and
+so does one holding any lock, an advisory lock included.
 
 A refused run has applied nothing and written no ledger row. The CLI prints
 the refusal and each session and exits 2. The rule applies to any client
@@ -219,7 +218,8 @@ databases at 0023 and at the head. It covers the refusal with the application
 login mid-transaction, with other client sessions mid-transaction, the ledger
 and schema unchanged after it, the apply once they close, the apply beside an
 idle pooled session, a held lock refused after the bounded retries, a query
-that arrives mid-run waiting and reading the new schema, an up-to-date install
+that arrives mid-run and waits refusing the run and then reading the old
+schema, an up-to-date install
 with the application connected, a session that starts a transaction inside a
 migration, one that does so during the second of two pending files and a
 failure in the second of two (neither leaves the first), the refusal of each

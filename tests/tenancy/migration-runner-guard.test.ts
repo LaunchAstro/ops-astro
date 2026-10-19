@@ -340,7 +340,9 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await state(built)).toBe(before);
   }, 120_000);
 
-  it('lets a query that arrives mid-run wait on the locks and then read the new schema', async () => {
+  // #1992 proof 4 as ruled (FIX2007C): a statement queued behind the run's
+  // locks may already have run an old function definition, so it counts.
+  it('refuses a query that arrives mid-run and waits on the locks, which then reads the old schema', async () => {
     const built = await createEmptyDatabase({ part: 'busylate' });
     db = built;
     await migrate(built.admin, 'migrations');
@@ -350,6 +352,7 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
       '9001_busy_late',
       'alter table public.businesses add column late_seen text; select pg_sleep(3)',
     );
+    const before = await state(built);
     const watch = connectAsAdmin(serverUrl ?? '', { source: 'watch' });
     watchers.push(watch);
 
@@ -358,13 +361,18 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     );
     expect(await sleepingOn(watch, built.name)).toBe(true);
     // The column exists only inside the run's uncommitted transaction.
-    const reading = pooled.pool.betweenTransactions(
-      'select late_seen from public.businesses limit 0',
-    );
+    const reading = pooled.pool
+      .betweenTransactions('select late_seen from public.businesses limit 0')
+      .catch((error: unknown) => error);
 
     expect(await waitingOnLock(watch, pooled.pid)).toBe(true);
-    expect(await running).toMatchObject({ applied: ['9001_busy_late'] });
-    await expect(reading).resolves.toHaveLength(0);
+    const refused = refusal(await running);
+    expect(refused.pending).toStrictEqual(['9001_busy_late']);
+    expect(refused.sessions.map((s) => ({ pid: s.pid, state: s.state }))).toStrictEqual([
+      { pid: pooled.pid, state: 'active' },
+    ]);
+    expect(await reading).toMatchObject({ message: 'column "late_seen" does not exist' });
+    expect(await state(built)).toBe(before);
   }, 120_000);
 
   it('keeps the strict reader the staging reset asks, which still counts an idle session', async () => {
