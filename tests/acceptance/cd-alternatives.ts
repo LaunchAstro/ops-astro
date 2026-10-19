@@ -55,6 +55,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
   'run.delegate_child': ['leaseId', 'agent'],
+  // #1623 R1: the worker's own stop, by the lease its delegation holds.
+  'run.end': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],

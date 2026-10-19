@@ -133,6 +133,8 @@ export interface TopCell {
  */
 const AGENT_ONLY: ReadonlySet<CommandName> = new Set([
   'model.call',
+  // The worker's own stop (#1623 R1); its cells run on the agent prefix as the others do.
+  'run.end',
   'run.delegate_child',
   'run.child_handback',
   'task.take_launch',

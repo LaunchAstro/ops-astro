@@ -65,14 +65,16 @@ it("another business's lookup slot does not show in this business's rows", async
 
   // Bravo's slot holds the route's one place: this business waits, told nothing of bravo.
   const mine = await liveWork(s, 'slot iso waits', 2_000);
+  // #1623 R1 (B2): a recorded refusal that ends the attempt, with no retry.
   expect(await callIn(s, mine, route)).toStrictEqual({
     ok: false,
     code: 'RATE_LIMITED',
-    callId: null,
-    retryAfterSeconds: 5,
+    callId: expect.any(String),
   });
   held.end('go');
   await passing;
   expect((await callsOf(bravo, theirs.work))[0]).toMatchObject({ state: 'released' });
-  expect(await callIn(s, mine, route)).toMatchObject({ ok: true });
+  // The wait ended that attempt (B2): fresh work takes the place it waited for.
+  const next = await liveWork(s, 'slot goes', 2_000);
+  expect(await callIn(s, next, route)).toMatchObject({ ok: true });
 });

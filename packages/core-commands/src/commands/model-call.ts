@@ -25,6 +25,7 @@
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { isUuid } from '../../../core-records/src/index.ts';
+import { lockDropAtSettlement as dropLock } from '../../../core-runtime/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -79,7 +80,8 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
         delegationId: delegation.id,
         attendedByPersonId: null,
       };
-      const audited: Broker = { ...broker, audit: auditAs(call.session.actorId) };
+      // A provider drop at settlement records T3e1's drop with the stop (#1623 R1).
+      const audited: Broker = { ...broker, audit: auditAs(call.session.actorId), drops: dropLock };
       const stepId = await stepOfLease(tx, operands.leaseId);
       const modelRequest: ModelCallRequest = { ...operands, stepId };
       const reservation = await reserveModelCall(tx, caller, modelRequest, audited);

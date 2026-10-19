@@ -25,6 +25,7 @@ import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { CORRECTION_REQUEST } from './live-correction-agent.ts';
+import { RUN_END } from './run-end-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { handbackLease } from './tasks-handback.ts';
@@ -189,7 +190,6 @@ export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed 
 
 /** The operands of a row that reads none beyond its identifiers. */
 const NONE = (): NoOperands => ({});
-
 /**
  * A `recordId` that is present and not a string, refused before any authority
  * in the words the person prefix answers the same body with (`refusal`).
@@ -284,7 +284,6 @@ export async function capabilitiesOf(
 
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
-
 async function serveComment(
   tx: TenantQuery,
   { session, request, declaration }: AgentCall,
@@ -901,6 +900,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   ['live_correction.request', row(CORRECTION_REQUEST)],
+  ['run.end', row(RUN_END)],
   [
     'model.call',
     modelCallRow(() =>

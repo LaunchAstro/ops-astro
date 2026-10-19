@@ -25,6 +25,7 @@ import { createHarness, type Harness } from '../acceptance/role-case-harness.ts'
 import { PROPOSAL, type Prepared } from '../acceptance/role-case-bodies.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
+import { AGENT_ONLY } from './s0-5-agent-only.ts';
 import {
   changed,
   fingerprint,
@@ -36,14 +37,6 @@ import {
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
 }
-
-/** Commands no person path reaches, so this person-path proof cannot run them. */
-const AGENT_ONLY: ReadonlySet<string> = new Set([
-  'model.call',
-  'run.delegate_child',
-  'run.child_handback',
-  'task.take_launch',
-]);
 
 let harness: Harness;
 

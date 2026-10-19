@@ -242,3 +242,15 @@ export async function committedMinor(tx: TenantQuery, reservationId: string): Pr
   );
   return Number(row?.committed ?? 0);
 }
+
+/**
+ * The call's state, read and locked under its envelope's and reservation's
+ * locks before it settles: a call already closed stays closed.
+ */
+export async function lockedState(tx: TenantQuery, callId: string): Promise<string | undefined> {
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, callId],
+  );
+  return call?.state;
+}
