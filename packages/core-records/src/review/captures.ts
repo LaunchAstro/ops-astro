@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35's worker writes on the captures (#2011): the claim and the land. Their authority is the
-// lease, which the caller has locked and re-checked (`lockOwnedLease`) before these run, and
-// they reach only captures of a review on the lease's own task: a revision of another task's
-// review, or of another business's, is not found.
+// lease, which the caller has locked and re-checked (`lockOwnedLease`) before these run and
+// re-judges after their row lock waits. They reach only captures of a review on the lease's own
+// task: a revision of another task's review, or of another business's, is not found.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { CaptureWidth } from './reviews.ts';
@@ -15,21 +15,18 @@ export interface CaptureLease {
   readonly fence: number;
 }
 
-export type CaptureRefusal = { readonly code: 'NOT_FOUND' | 'CAPTURE_NOT_CLAIMABLE' };
+export type CaptureRefusal = { readonly code: 'CAPTURE_NOT_CLAIMABLE' };
 
 /**
- * Claim a revision's captures not yet landed for the lease, all at once. The rows are locked
- * first; then each must be requested, or claimed under a lease no longer live at the instant read
- * after that lock wait. A second worker waits on the rows and then finds them claimed under a live
- * lease, so one claim wins. A width landed before its lease ended stays landed, and a later lease
- * claims the rest. A revision with nothing left to land is not claimable; one of a review on
- * another task is not found.
+ * Lock a revision's captures for a claim, if the revision is of a review on the lease's task; one
+ * of a review on another task, or in another business, is not found. The caller re-judges its
+ * lease after this wait, then claims what it holds (`claimLockedCaptures`).
  */
-export async function claimCaptures(
+export async function lockRevisionCaptures(
   tx: TenantQuery,
   revisionId: string,
   lease: CaptureLease,
-): Promise<{ readonly widths: readonly CaptureWidth[] } | CaptureRefusal> {
+): Promise<{ readonly ids: readonly string[] } | { readonly code: 'NOT_FOUND' }> {
   const locked = await tx.query<{ readonly id: string }>(
     `select k.id from public.review_captures k
        join public.review_revisions v on v.business_id = k.business_id and v.id = k.revision_id
@@ -39,7 +36,21 @@ export async function claimCaptures(
         for update of k`,
     [tx.businessId, revisionId, lease.taskId],
   );
-  if (locked.length === 0) return { code: 'NOT_FOUND' };
+  return locked.length === 0 ? { code: 'NOT_FOUND' } : { ids: locked.map((row) => row.id) };
+}
+
+/**
+ * Claim the locked captures not yet landed for the lease, all at once. Each must be requested,
+ * or claimed under a lease no longer live at the instant read after the lock wait. A second
+ * worker waits on the rows and then finds them claimed under a live lease, so one claim wins. A
+ * width landed before its lease ended stays landed, and a later lease claims the rest. A
+ * revision with nothing left to land is not claimable.
+ */
+export async function claimLockedCaptures(
+  tx: TenantQuery,
+  ids: readonly string[],
+  lease: CaptureLease,
+): Promise<{ readonly widths: readonly CaptureWidth[] } | CaptureRefusal> {
   const rows = await tx.query<{
     readonly id: string;
     readonly width: CaptureWidth;
@@ -53,7 +64,7 @@ export async function claimCaptures(
        from public.review_captures k
       where k.business_id = $1 and k.id = any($2::uuid[]) and k.state <> 'landed'
       order by k.width`,
-    [tx.businessId, locked.map((row) => row.id)],
+    [tx.businessId, ids],
   );
   if (rows.length === 0 || !rows.every((row) => row.claimable)) {
     return { code: 'CAPTURE_NOT_CLAIMABLE' };
