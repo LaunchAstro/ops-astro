@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X R5 self-approval: the author or the person whose agent authored the revision approves only in single-operator mode with Astra's latest review of this exact digest approving; the command and the table refuse otherwise."
+}
