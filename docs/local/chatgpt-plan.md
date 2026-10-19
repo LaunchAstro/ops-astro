@@ -94,6 +94,9 @@ email offline_access resource.invoke chatgpt.tokens.use.direct` and the
    other columns (the 6th and 9th characters), and list no ACL entry that
    grants `write` or `add_file`. If one fails, stop and tell the orchestrator.
 
+   Linux ACL branch: not applicable on the M5. It runs macOS, so custody's
+   ACL check reads `ls -lde`; the GNU `ls -ld` `+` branch runs only on Linux.
+
 6. **Check the port is free.** The sign-in uses port 1455 unless you pass
    `--port`. A running `codex login` holds 1455 on either machine. If
    `lsof -nP -iTCP:1455` on the M5 or the laptop shows anything, finish or
@@ -121,9 +124,20 @@ email offline_access resource.invoke chatgpt.tokens.use.direct` and the
    asks you to name the agent (it suggests `Ops Astro`) and to approve its
    use of your plan. Approve. The page then says you can close the tab.
 4. The terminal says `Signed in.`, or `sign-in refused:` and a name (below).
-5. Check the file is yours only: `ls -l ~/.ops-astro/chatgpt-plan.json` shows
-   `-rw-------`.
-6. Close the SSH session.
+5. Check the file is yours only: `stat -f %Sp ~/.ops-astro/chatgpt-plan.json`
+   shows `-rw-------`.
+6. Check another user can't read it. The check prints a word, never the file:
+
+   ```sh
+   cd / && sudo -u nobody sh -c 'test -r "$1" && echo READABLE-STOP || echo denied-ok' _ ~/.ops-astro/chatgpt-plan.json
+   ```
+
+   It must answer `denied-ok`. `READABLE-STOP` means stop and tell the
+   director. `sudo` asks for your password; if it fails, it prints neither
+   word, so run it again. Never check with `cat`: if the mode were wrong, it
+   would print the token.
+
+7. Close the SSH session.
 
 **Fallback: Screen Sharing.** If the tunnel won't work, open Screen Sharing to
 the M5, run step 2 in Terminal there, and open the printed address in the
@@ -158,7 +172,8 @@ contents:
 - the plan (Plus or Pro) and the consent line above;
 - the output of `tmutil isexcluded ~/.ops-astro`;
 - that every ancestor line passed (or which failed);
-- the output of `ls -l ~/.ops-astro/chatgpt-plan.json`;
+- the output of `stat -f %Sp ~/.ops-astro/chatgpt-plan.json`;
+- `denied-ok` or `READABLE-STOP` from the other-user check;
 - `Signed in.` or the refusal's name.
 
 ## Rules
