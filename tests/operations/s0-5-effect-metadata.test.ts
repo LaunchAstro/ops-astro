@@ -32,6 +32,7 @@ import {
   undeclared,
   type EffectPath,
 } from './s0-5-effect-diff.ts';
+import { ON_A_PATH } from './s0-5-effect-on-a-path.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
@@ -165,12 +166,6 @@ const EXACT: ReadonlySet<string> = new Set([
   'run.end_at_budget_stop',
   'run.revise_state',
 ]);
-
-/** An EXACT kind its fixture misses, proved where written: money-paths, the reopened-step end. */
-const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
-  'run.top_up': ['attempts'],
-  'run.end_at_budget_stop': ['attempts'],
-};
 
 /**
  * Write commands whose fixture changes no row, each with where its write is
