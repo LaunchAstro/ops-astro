@@ -9,7 +9,9 @@
 //   - `provider_unavailable`: the provider did not answer (the provider's);
 //   - `connection_lost`: the connection to it was lost (the network's);
 //   - `worker_lost`: our worker went silent and its lease ran out (ours).
-// A worker reports the first two by handing back `dropped` (`handback.ts`);
+// A worker reports the first two by handing back `dropped` (`handback.ts`), or
+// settlement's stop records them when it ends the attempt first
+// (`lockDropAtSettlement`, #1623 R1);
 // nothing reports the third, so the sweep names it when the lease's own
 // deadline passes (`sweepLostWorkers` below, the pass's sweep). A silent run is
 // running until then.
@@ -26,9 +28,16 @@
 // comes here, and its lineage is terminal, so nothing it stopped returns.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { LockSet } from '../locks.ts';
+import { acquire, type LockSet } from '../locks.ts';
 import { appendRunEvent } from '../run-events.ts';
-import type { Classification } from './classifier.ts';
+import {
+  AFFECTED_COLUMNS,
+  AFFECTED_JOINS,
+  classifyAll,
+  locksFor,
+  type Affected,
+  type Classification,
+} from './classifier.ts';
 import { DROP_FAULT, joinOutage, type DropCause } from './outage.ts';
 import { resume, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 import { sweepExpiredLeases } from './sweep.ts';
@@ -128,6 +137,45 @@ export async function recordDrop(
     drop.locks,
   );
   return `dropped and reactivated as attempt ${next.id}`;
+}
+
+/**
+ * A provider drop that ends its attempt at settlement (#1623 R1; ruling R1B-A,
+ * 18 October 2026). The broker's stop records the outcome and retires the
+ * work, so the worker can no longer hand back `dropped`; this records T3e1's
+ * drop in the same transaction instead. Two halves, so the locks keep their
+ * order: this takes the hold's complete set (`locksFor`) before custody takes
+ * its own, and the writer it returns, called after the stop, classifies the
+ * hold as the handback does and records the drop. A lease holding no run's
+ * hold (a conversation's) has nothing to drop.
+ */
+export async function lockDropAtSettlement(
+  tx: TenantQuery,
+  leaseId: string,
+): Promise<((cause: DropCause) => Promise<void>) | undefined> {
+  const found = await tx.query<Omit<Affected, 'cause' | 'cause_id'>>(
+    `select ${AFFECTED_COLUMNS} ${AFFECTED_JOINS} where res.business_id = $1 and res.lease_id = $2`,
+    [tx.businessId, leaseId],
+  );
+  const affected: readonly Affected[] = found.map((row) =>
+    Object.assign({}, row, { cause: 'handback_completed' as const, cause_id: leaseId }),
+  );
+  if (affected.length === 0) return undefined;
+  const locks = await acquire(tx, locksFor(affected));
+  return async (cause) => {
+    await classifyAll(tx, affected, locks, (row) => ({
+      reservationId: row.reservation_id,
+      cause: row.cause,
+      causeId: row.cause_id,
+    }));
+    const [attempt] = await tx.query<{ readonly id: string }>(
+      'select id from public.attempts where business_id = $1 and lease_id = $2',
+      [tx.businessId, leaseId],
+    );
+    // The stop revoked the delegation, so the work comes back under none of it.
+    if (attempt !== undefined)
+      await recordDrop(tx, { attemptId: attempt.id, cause, retire: false, locks });
+  };
 }
 
 /**

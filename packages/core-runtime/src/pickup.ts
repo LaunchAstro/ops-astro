@@ -34,11 +34,11 @@ import { randomUUID } from 'node:crypto';
 import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { leaseReason, personWriteLive } from './lease-ownership.ts';
+import { claimStopped, leaseReason, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
-import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
+import { checkAuthorityAt, classifyUnderLocks, loseLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
@@ -443,7 +443,7 @@ async function recheckClaim(
   // answer as a reservation that never existed (#10).
   if (state === undefined)
     return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
-  const plan = planClaim(state, reservationId);
+  const plan = (await claimStopped(tx, state.attempt_id)) ?? planClaim(state, reservationId);
   if (plan.kind === 'refuse') return plan.refusal;
   return { ok: true, value: { state, plan } };
 }
@@ -466,7 +466,7 @@ async function claimHold(
 ): Promise<RuntimeResult<{ readonly reservationId: string; readonly attemptId: string }>> {
   const expiredLeaseId = plan.kind === 'replace' ? plan.fence : null;
   if (expiredLeaseId !== null) {
-    await endLease(tx, expiredLeaseId, 'expired');
+    await loseLease(tx, expiredLeaseId);
     const classified = await classifyUnderLocks(
       tx,
       { reservationId, cause: 'lease_expired_and_fenced', causeId: expiredLeaseId },
@@ -593,7 +593,7 @@ async function fenceLiveLease(
       'Wait for it to be handed back, or for it to expire.',
     );
   }
-  await endLease(tx, current.id, 'expired');
+  await loseLease(tx, current.id);
   for (const row of taskLeases) {
     if (row.lease_id !== current.id || row.reservation_id === null) continue;
     // eslint-disable-next-line no-await-in-loop

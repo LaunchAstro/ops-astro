@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: run.end through the real agent door commits its outcome and retirement as a retained refusal, replays it for the same operation id, refuses other operands, and commits nothing when its delegation or session ends while it waits."
+}

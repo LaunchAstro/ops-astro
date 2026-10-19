@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: a retained rate or budget stop whose agent session ended while it waited on the run, on a separate connection in either order, is refused AUTH_SESSION_EXPIRED and commits nothing; on a live session it commits one outcome, one retirement and one audit."
+}

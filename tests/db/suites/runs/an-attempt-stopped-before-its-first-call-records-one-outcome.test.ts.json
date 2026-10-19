@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1: a cancel or a lost worker before the first model call records one outcome for the attempt in the stopping transaction (cancelled / TASK_CANCELLED, lease_lost / LEASE_EXPIRED); a live idle attempt gets none."
+}
