@@ -21,12 +21,13 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
-import { auditAs } from '../../packages/core-commands/src/commands/model-call.ts';
+import { auditAs, type ModelBroker } from '../../packages/core-commands/src/commands/model-call.ts';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
 import { reserveModelCall, type Broker } from '../../packages/core-custody/src/index.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../../apps/cli/client.ts';
+import type { StepRunner } from '../../apps/worker/step-runner.ts';
 import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { tokenFor } from '../api/fixture.ts';
@@ -132,9 +133,16 @@ async function delegationFor(taskId: string): Promise<string> {
 
 /**
  * The worker's plan on a fresh task, accepted and not launched. `runner`,
- * when given, is injected through the worker's options as `runner`.
+ * when given (a scripted one, or the shipped agent runner), is injected
+ * through the worker's options as `runner`; `broker`, when given, is the
+ * door's `model.call` broker in place of the world's (one with the turn
+ * operation, for the agent runner).
  */
-export async function acceptedPlan(title: string, runner?: Scripted['runner']): Promise<Seam> {
+export async function acceptedPlan(
+  title: string,
+  runner?: Scripted['runner'] | StepRunner,
+  broker?: ModelBroker,
+): Promise<Seam> {
   await retirePickups();
   const taskId = await createTask(s, `${title} ${randomUUID()}`);
   const [business] = await rows<{ key: string }>(
@@ -144,7 +152,7 @@ export async function acceptedPlan(title: string, runner?: Scripted['runner']): 
   );
   const log: Sent[] = [];
   const options = {
-    transport: transportOver(door(), log),
+    transport: transportOver(door(undefined, broker), log),
     businessKey: String(business?.key),
     credential: await tokenFor(s.agent.subject),
     delegation: await delegationFor(taskId),
