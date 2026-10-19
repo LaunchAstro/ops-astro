@@ -23,6 +23,7 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
+import type { SitePageView } from '../../../core-wire/src/index.ts';
 import { pageOf, type Cite } from './conversation-context.ts';
 import { hearingAt, heldElsewhere, type Asked } from './conversation-pieces.ts';
 import {
@@ -113,7 +114,10 @@ export interface PaidAsk {
 /** A paid call's seams, and the reply its settle kept, as the panel is answered. */
 export function paidSeams(ask: PaidAsk): {
   readonly seams: PaidSeams;
-  readonly replied: (cites: readonly Cite[]) => ConversationReply | null;
+  readonly replied: (
+    cites: readonly Cite[],
+    sites: readonly SitePageView[],
+  ) => ConversationReply | null;
 } {
   const { database, businessId, presented, asked } = ask;
   let kept: Kept | undefined;
@@ -134,7 +138,10 @@ export function paidSeams(ask: PaidAsk): {
       return done === undefined || isCommandRefusal(done) ? undefined : done.value;
     },
   };
-  return { seams, replied: (cites) => (kept === undefined ? null : answered(kept, cites)) };
+  return {
+    seams,
+    replied: (cites, sites) => (kept === undefined ? null : answered(kept, cites, sites)),
+  };
 }
 
 /**

@@ -32,6 +32,10 @@
 //   with every one after it (#1666, `conversation-targets.ts`).
 // - Created (#1666): on no page, the model is told only that the chat created
 //   tasks (`{"created":true}`), never an id or a title.
+// - Sites (#1988): the business's own bound pages the caller's `run:write`
+//   reaches, each by repository and address (`{"sites":[…]}` in the page
+//   field), so a site change the model plays back names one of them. Catalogue
+//   data only: never a page's file, content or a client's site.
 // - Cites: the page task, by its own key, when the page is sent. Never a
 //   string the model wrote.
 
@@ -39,6 +43,7 @@ import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import {
   advisoryLock,
+  coveredOwnSitePages,
   heldScopes,
   slotOf,
   subjectsOf,
@@ -46,6 +51,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
+import { SITE_PAGE_LIMIT, type SitePageView } from '../../../core-wire/src/index.ts';
 import { earlierOf, earlierRows } from './conversation-earlier.ts';
 import { createdOf, NO_CREATED, type Created } from './conversation-targets.ts';
 
@@ -65,6 +71,8 @@ export interface Context {
   readonly authors: readonly string[];
   /** The conversation's created tasks and the history cut they make (#1666). */
   readonly created: Created;
+  /** The bound pages the model is given (#1988), which the reply's card may name. */
+  readonly sites: readonly SitePageView[];
 }
 
 export { EARLIER_COUNT, EARLIER_LIMIT } from './conversation-earlier.ts';
@@ -124,7 +132,14 @@ export async function pageOf(
 
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
-const REFUSED: Context = { refused: true, fields: [], cites: [], authors: [], created: NO_CREATED };
+const REFUSED: Context = {
+  refused: true,
+  fields: [],
+  cites: [],
+  authors: [],
+  created: NO_CREATED,
+  sites: [],
+};
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
 
@@ -227,11 +242,13 @@ export async function contextOf(
     pageOf(tx, session, id),
   );
   const rows = await earlierRows(tx, asked, created.cut);
+  const sites = await coveredOwnSitePages(tx, subjectsOf(session), SITE_PAGE_LIMIT);
+  const listed = sites.length === 0 ? {} : { sites };
   const fields: Context['fields'][number][] = [];
   const cites: Cite[] = [];
   if (page !== null) {
     const title = (page.title ?? '').slice(0, PAGE_TITLE_LIMIT);
-    fields.push({ name: 'page', value: JSON.stringify({ task: page.id, title }) });
+    fields.push({ name: 'page', value: JSON.stringify({ task: page.id, title, ...listed }) });
     if (page.key !== null && page.key !== '') {
       cites.push({
         label: title === '' ? page.key : title,
@@ -239,7 +256,9 @@ export async function contextOf(
       });
     }
   } else if ((created.snapshot?.tasks.length ?? 0) > 0) {
-    fields.push({ name: 'page', value: JSON.stringify({ created: true }) });
+    fields.push({ name: 'page', value: JSON.stringify({ created: true, ...listed }) });
+  } else if (sites.length > 0) {
+    fields.push({ name: 'page', value: JSON.stringify(listed) });
   }
   const around = Object.fromEntries([
     ...fields.map(({ name, value }) => [name, value]),
@@ -248,5 +267,5 @@ export async function contextOf(
   const earlier = earlierOf(rows, around);
   if (earlier !== '') fields.push({ name: 'earlier', value: earlier });
   const authors = rows.filter((row) => row.role === 'person').map((row) => row.author);
-  return { refused: false, fields, cites, authors, created };
+  return { refused: false, fields, cites, authors, created, sites };
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1988: the side chat's context gives the model only its own business's bound pages that the caller's run:write reaches; another business's own site, a client's site, a one-client grant and no run grant are each given none, and no page path leaves."
+}
