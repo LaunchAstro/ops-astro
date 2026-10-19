@@ -3,7 +3,7 @@
 // The run outcome contract (#1623 R1, "Run outcome contract, 18 October 2026" in
 // `docs/current-decisions.md`). Every attempt that stops ends in one of seven named outcomes, with
 // a typed end code from one closed union. The stop's own transaction writes it (`run_outcomes`,
-// migration 20261018151500), and the code is never a suffix or free text: `outcomeOf` is the one
+// migration 20261019083500), and the code is never a suffix or free text: `outcomeOf` is the one
 // place a code finds its outcome, and its table is keyed by every code, so a new one fails the type
 // check until it has a row here and in the migration's per-outcome check.
 
