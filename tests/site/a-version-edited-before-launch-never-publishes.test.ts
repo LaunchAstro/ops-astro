@@ -17,9 +17,9 @@
 //   refused as not a fast-forward, nothing applied, and read back unknown
 //   with one person task;
 // - an edit to another file after the pin leaves the version fresh, but the
-//   default branch has moved from its base, so the publish stops at
-//   `BASE_MOVED` with nothing sent and one person task (re-pinning at Accept
-//   is #2101).
+//   default branch has moved from its base, so the read back before the send
+//   stops it with nothing sent and one person task (re-pinning at Accept is
+//   #2101).
 // The design's table also names a review before Launch: there is no review
 // command (only `live_correction.decide`), so no case calls one.
 /* eslint-disable max-lines-per-function -- each case keeps its stamp, edit, Launch and run in one place */
@@ -171,11 +171,13 @@ describe.skipIf(serverUrl === undefined)('a version edited before Launch never p
 
     expect(codeOf(await launch(id, versionId))).toBe('not-a-refusal');
     const { runner } = runnerOn(id, given.world);
-    // The default branch is no longer the pinned base: nothing is advanced, a person asks again.
+    // The default branch is no longer the pinned base. The read back before the send already finds
+    // its head neither the proposal's nor the base, so it stops there: nothing is sent, and the
+    // person's task reads RECONCILE_UNPROVEN, never reaching the publish's BASE_MOVED check.
     expect(await runner.pass()).toEqual([{ correctionId: id, outcome: 'unknown' }]);
     expect(merges(given.world.site)).toEqual([]);
     expect(given.published).toEqual([]);
     expect(given.world.site.state.content).toBe(BEFORE);
-    expect(given.world.raised).toEqual(['BASE_MOVED']);
+    expect(given.world.raised).toEqual(['RECONCILE_UNPROVEN']);
   });
 });
