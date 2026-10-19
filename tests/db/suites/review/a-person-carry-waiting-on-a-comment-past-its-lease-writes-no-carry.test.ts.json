@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X a person's carry that waits on a comment's lock past its lease's expiry is refused LEASE_EXPIRED and writes no carry: the lease is judged after the last wait."
+}
