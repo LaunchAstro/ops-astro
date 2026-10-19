@@ -70,7 +70,10 @@ export interface SignedPart {
 
 /** A video declared as anything but H.264 or HEVC in an MP4 is a camera original. */
 export const isReviewRender = (declared: DeclaredAsset): boolean =>
-  declared.kind !== 'video' || REVIEW_RENDER_CODEC.source !== '' || declared.codec !== null;
+  declared.kind !== 'video' ||
+  (declared.type === 'video/mp4' &&
+    declared.codec !== null &&
+    REVIEW_RENDER_CODEC.test(declared.codec));
 
 export const mediaObjectKey = (
   businessId: string,
