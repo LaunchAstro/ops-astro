@@ -91,6 +91,7 @@ describe.skipIf(serverUrl === undefined)('the send fence of a carried task call'
     expect(called.changed).toMatchObject({ command: 'task.handback' });
     expect(called.order).toEqual(['fence about to let go', 'change committed']);
     expect(called).toMatchObject({ sent: 1, state: 'settled' });
-    expect(called.answer).toMatchObject({ ok: true });
+    // The lease ended once the fence let go, so its words are not handed to the former holder.
+    expect(called.answer).toMatchObject({ ok: false, code: 'LEASE_EXPIRED' });
   }, 60_000);
 });
