@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's read (#2011): one review with its revisions and their captures. It
-// filters by the caller's grant at the review's holder inside the query
-// (`covering.ts`), so a party grant reads no other client's review. The revisions and captures
-// are read in statements of their own, so the grant is judged again after the last of them
-// (`stillCovered`): a grant revoked or run out meanwhile reads nothing written since (S2061-1).
+// C35's reads (#2011): one review with its revisions and captures, and one
+// landed picture's bytes. Each filters by the caller's grant at the review's
+// holder inside the query (`covering.ts`), so a party grant reads no other
+// client's review and a picture of another business or out of reach is one
+// answer with a picture that is not there. The revisions and captures are read in statements
+// of their own, so the grant is judged again after the last of them (`stillCovered`): a grant
+// revoked or run out meanwhile reads nothing written since (S2061-1).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
 import type { CaptureWidth, Review } from './reviews.ts';
+import { DATABASE_STORAGE } from './storage.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
   readonly state: 'requested' | 'claimed' | 'landed';
+  readonly pictureId: string | null;
+  readonly pictureDigest: string | null;
+  readonly observation: Readonly<Record<string, unknown>> | null;
 }
 
 export interface RevisionView {
@@ -82,8 +88,11 @@ async function capturesOf(
     readonly revision_id: string;
     readonly width: CaptureWidth;
     readonly state: CaptureView['state'];
+    readonly picture_id: string | null;
+    readonly picture_digest: string | null;
+    readonly observation: Readonly<Record<string, unknown>> | null;
   }>(
-    `select k.revision_id, k.width, k.state
+    `select k.revision_id, k.width, k.state, k.picture_id, k.picture_digest, k.observation
        from public.review_captures k
        join public.review_revisions v on v.business_id = k.business_id and v.id = k.revision_id
       where k.business_id = $1 and v.review_id = $2
@@ -96,6 +105,9 @@ async function capturesOf(
     captures.push({
       width: row.width,
       state: row.state,
+      pictureId: row.picture_id,
+      pictureDigest: row.picture_digest,
+      observation: row.observation,
     });
     byRevision.set(row.revision_id, captures);
   }
@@ -118,4 +130,37 @@ async function stillCovered(
     [tx.businessId, ...coveringParameters(covering), reviewId],
   );
   return rows.length > 0;
+}
+
+export interface ReviewPicture {
+  readonly pictureId: string;
+  readonly digest: string;
+  readonly byteCount: number;
+  /** The bytes, base64. */
+  readonly body: string;
+}
+
+/** A landed picture whose review the caller's grant covers, as base64 with its digest. */
+export async function readCoveredPicture(
+  tx: TenantQuery,
+  pictureId: string,
+  covering: Covering,
+): Promise<ReviewPicture | undefined> {
+  const reached = await tx.query<{ readonly picture_id: string }>(
+    `${EFFECTIVE_AT}
+     select k.picture_id from public.review_captures k
+       join public.review_revisions v on v.business_id = k.business_id and v.id = k.revision_id
+       join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
+      where k.business_id = $1 and k.picture_id = $6 and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), pictureId],
+  );
+  if (reached.length === 0) return undefined;
+  const stored = await DATABASE_STORAGE.get(tx, pictureId);
+  if (stored === undefined) return undefined;
+  return {
+    pictureId,
+    digest: stored.digest,
+    byteCount: stored.byteCount,
+    body: Buffer.from(stored.body).toString('base64'),
+  };
 }

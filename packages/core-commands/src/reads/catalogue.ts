@@ -947,7 +947,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // C80 and #1694: a correction's decision, the list and a correction's receipts.
   ...CORRECTION_READS,
-  // C35 (#2011): a review with its revisions and captures.
+  // C35 (#2011): a review with its revisions and captures, and a landed picture.
   ...REVIEW_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
