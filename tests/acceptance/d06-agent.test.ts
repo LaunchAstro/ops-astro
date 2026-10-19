@@ -63,8 +63,7 @@ const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
   'task.decide',
   'task.create',
   'task.take_launch',
-  'review.open',
-  'review.capture',
+  ...(['review.open', 'review.capture', 'review.pin_comment'] as const),
 ]);
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),

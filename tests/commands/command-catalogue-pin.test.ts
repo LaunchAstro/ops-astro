@@ -388,6 +388,10 @@ vi.mock('../../packages/core-commands/src/commands/review-captures.ts', async (o
   claimCaptureAsPerson: recorder('claimCaptureAsPerson'),
   landCaptureAsPerson: recorder('landCaptureAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
+  ...(await original<object>()),
+  pinComment: recorder('pinComment'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -529,6 +533,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
   'review.open': ['taskId'],
+  'review.pin_comment': ['revisionId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -691,6 +696,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture_land',
   'review.open',
   'review.picture',
+  'review.pin_comment',
   'review.read',
   'run.child_handback',
   'run.delegate_child',
@@ -757,6 +763,7 @@ const PINNED_AGENT_SURFACE = [
   'review.capture_claim',
   'review.capture_land',
   'review.open',
+  'review.pin_comment',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1057,6 +1064,15 @@ const REQUESTS: readonly CommandRequest[] = [
     observation: {},
   },
   {
+    command: 'review.pin_comment',
+    operationId: 'op',
+    revisionId: 'v',
+    width: 1480,
+    selector: [],
+    body: 'b',
+    audience: 'internal',
+  },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -1262,6 +1278,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.capture': ['askReviewCapture', 'request'],
   'review.capture_claim': ['claimCaptureAsPerson', 'request'],
   'review.capture_land': ['landCaptureAsPerson', 'request'],
+  'review.pin_comment': ['pinComment', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
