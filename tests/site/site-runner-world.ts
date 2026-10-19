@@ -15,7 +15,7 @@ import {
 import { siteRunnerPorts, type RunnerPorts } from '../../packages/core-commands/src/index.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { doubles } from './c80-runner-doubles.ts';
-import { BEFORE } from './c80-world.ts';
+import { REV, BEFORE } from './c80-world.ts';
 import {
   MERGED,
   PROJECT,
@@ -70,8 +70,7 @@ export function world(): World {
     propose: (_site, _path, raiseTask) => ({
       connector: site.deps,
       // The file at a commit; only the base revision is ever asked for here.
-      file: (at) =>
-        Promise.resolve(at === 'rev-1' ? ({ kind: 'ok', value: base } as const) : refused),
+      file: (at) => Promise.resolve(at === REV ? ({ kind: 'ok', value: base } as const) : refused),
       branch: () => Promise.resolve(refused),
       request: () => Promise.resolve(refused),
       raiseTask,
