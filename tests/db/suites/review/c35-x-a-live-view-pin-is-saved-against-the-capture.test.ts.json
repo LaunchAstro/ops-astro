@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X live-view pins: a pin from the live view is kept on the newest landed capture at the frame width only, with no text from the live page; otherwise refused with nothing stored."
+}
