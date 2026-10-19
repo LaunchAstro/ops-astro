@@ -162,6 +162,7 @@ describe.skipIf(serverUrl === undefined)(
     afterAll(async () => {
       await api?.stop();
       rmSync(scratch, { recursive: true, force: true });
+      await world?.close();
     });
 
     it('files, decides and makes the task the same on the command line and the app route', async () => {
