@@ -171,22 +171,18 @@ describe.skipIf(noDatabase)('C57 the shepherd writes under its lease in one tran
       const raised = settled.flatMap((answer) =>
         answer.ok && answer.outcome.kind === 'raised' ? [answer.outcome] : [],
       );
-      // At most one first raise; any other answer is the same send replayed.
+      // One first raise; the other answer is the same send replayed.
       expect(raised.filter((answer) => !answer.replayed)).toHaveLength(1);
       const [sent] = await w.db.admin.execute<{ readonly id: string }>(
         'select id from public.review_shepherd_sends where review_id = $1',
         [s.review],
       );
       for (const answer of raised) expect(answer.sendId).toBe(sent?.id);
-      // The answer each run gave, read back for the report: a replay, or the unique refusal.
+      // Both runs answer the one send: neither throws, and the second is its replay.
       expect(
-        settled.every(
-          (answer) =>
-            (answer.ok && answer.outcome.kind === 'raised') ||
-            (!answer.ok && /review_shepherd_sends|duplicate key|unique/u.test(answer.error)),
-        ),
-        JSON.stringify(settled.map((answer) => (answer.ok ? answer.outcome.kind : answer.error))),
-      ).toBe(true);
+        settled.map((answer) => (answer.ok ? answer.outcome.kind : answer.error)),
+      ).toStrictEqual(['raised', 'raised']);
+      expect(raised.filter((answer) => answer.replayed)).toHaveLength(1);
     } finally {
       await holder.close();
       for (const database of pools) {
