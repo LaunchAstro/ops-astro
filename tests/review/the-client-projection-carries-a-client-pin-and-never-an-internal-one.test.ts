@@ -54,7 +54,7 @@ describe.skipIf(serverUrl === undefined)('C35 the client projection of pins', ()
       read: 'task.read',
       recordId: w.taskA,
     } as never);
-    expect('task' in read).toBe(true);
+    expect('task' in read, JSON.stringify(read).slice(0, 400)).toBe(true);
     if (!('task' in read)) return;
     const comments = read.task.comments as readonly Readonly<Record<string, unknown>>[];
     const pin = comments.find((comment) => comment['id'] === forClient['commentId']);
