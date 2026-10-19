@@ -33,17 +33,19 @@
 // removed whatever happens.
 //
 // Before Vercel is asked, the sign-in server reports its version (`/health`
-// under GOTRUE_URL, staging's own sign-in address, with the publishable key
-// when set); no answer, no deploy. Only a deploy read back ready on production
-// returns its record: the version, the artefact, the digest, the deployment,
-// the region, the function runtime and the sign-in server's version (`S0-6
-// image pins`).
+// under GOTRUE_URL, staging's own sign-in address, with the publishable key,
+// whose setting is refused up front when unset); no answer, no deploy. Only a
+// deploy read back ready on production returns its record: the version, the
+// artefact, the digest, the deployment, the region, the function runtime and
+// the sign-in server's version (`S0-6 image pins`).
 //
 // The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
 // same prebuilt way, with no database asked, so a broken database never keeps
 // it off; it holds no function, so it declares no region, and it is recorded
 // on the deploy's answer alone, without `vercel inspect`. Deploying a version
-// again takes it off.
+// again takes it off. A planned maintenance names that version and first runs
+// its deploy's own checks (`version-checks.ts`), so the page goes up only if
+// that deploy could run now (#1985); the bare form says it ran none.
 //
 // Production's deploy makes every check above but made-up-only, which its real
 // sign-ins would fail: first DATABASE_ADMIN_URL and GOTRUE_URL must be
@@ -53,15 +55,20 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { authVersionOf } from './auth-version.ts';
 import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
 import { type Authorised, heldFor } from './authorised-act.ts';
 import { notStillStaged } from './deployment-record.ts';
-import { type StoredArtefact, stagedArtefact, storedArtefact } from './promotion.ts';
+import type { StoredArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
 import { deployPrebuilt, readBack } from './vercel-cli.ts';
-import { type DeployEnvironment, productionAddressRefusal } from './deploy.ts';
+import type { DeployEnvironment } from './deploy.ts';
+import {
+  settingProblems,
+  type VersionDeployOptions,
+  type VersionRequest,
+  versionReady,
+} from './version-checks.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -80,13 +87,14 @@ export interface WebDeployRecord {
 type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
 export type WebDeployOutcome = Unrecorded | { kind: 'deployed'; record: WebDeployRecord };
 export type MaintenanceOutcome =
-  Unrecorded | { kind: 'deployed'; record: { action: 'maintenance recorded'; deployment: string } };
+  | Unrecorded
+  | {
+      kind: 'deployed';
+      record: { action: 'maintenance recorded'; deployment: string };
+      /** Set on the bare form: the version deploy after it was not checked. */
+      unchecked?: string;
+    };
 
-/** The project Vercel deploys into, by its ids: `team_…` and `prj_…`, nothing else. */
-const IDS = {
-  VERCEL_ORG_ID: /^team_[A-Za-z0-9]{1,64}$/u,
-  VERCEL_PROJECT_ID: /^prj_[A-Za-z0-9]{1,64}$/u,
-};
 /** The API function's declared runtime, or undefined when it declares none. */
 function runtimeOf(output: string): string | undefined {
   try {
@@ -96,26 +104,6 @@ function runtimeOf(output: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** Why the settings cannot deploy, naming each setting, never its value. */
-function settingProblems(env: Environment): string[] {
-  const problems = Object.entries(IDS)
-    .filter(([name, shape]) => !shape.test(env[name] ?? ''))
-    .map(([name]) => `${name} is not set to a Vercel id`);
-  if ((env['VERCEL_TOKEN'] ?? '') !== '') {
-    problems.push("VERCEL_TOKEN is set: the deploy runs under the person's own sign-in only");
-  }
-  return problems;
-}
-
-/** Production's addresses: its database and sign-in on its own project, never staging's. */
-function productionProblems(env: Environment): string[] {
-  const refusal = productionAddressRefusal(env);
-  if (refusal !== undefined) return [refusal];
-  return env['GOTRUE_URL'] === `https://${env['PRODUCTION_PROJECT_REF'] ?? ''}.supabase.co/auth/v1`
-    ? []
-    : ["GOTRUE_URL is not production's sign-in"];
 }
 
 const refused = (why: string): Unrecorded => ({
@@ -193,42 +181,19 @@ async function deployCopy(
 }
 
 export async function deployWeb(
-  request: { version: string; store: string },
-  options: {
-    env: Environment;
-    preflight: () => Promise<string[]>;
-    environment?: DeployEnvironment;
-    /** Staging's record folder (OPS_ASTRO_DEPLOYMENTS); production deploys only the digest it holds. */
-    records?: string;
-    /** The operator's held grant, under which Vercel is asked; production refuses without it. */
-    authorised?: Authorised;
-  },
+  request: VersionRequest,
+  options: VersionDeployOptions,
 ): Promise<WebDeployOutcome> {
+  const ready = await versionReady(request, options);
+  if (typeof ready === 'string') return refused(ready);
   const environment = options.environment ?? 'staging';
-  const production = environment === 'production';
-  const settings = settingProblems(options.env);
-  if (production) settings.push(...productionProblems(options.env));
-  if (production && options.authorised === undefined) {
-    settings.push("a production deploy runs only under the operator's held grant");
-  }
-  if (settings.length > 0) return refused(settings.join('; '));
-  const records = options.records ?? '';
-  const selected = production
-    ? stagedArtefact(request.version, request.store, records)
-    : storedArtefact(request.version, request.store);
-  if (typeof selected === 'string') return refused(selected);
-  const signs = await options.preflight();
-  if (signs.length > 0) {
-    return refused(`${environment}'s database failed the preflight: ${signs.join('; ')}`);
-  }
-  const authVersion = await authVersionOf(options.env);
-  if (authVersion === undefined) {
-    return refused('the sign-in server at GOTRUE_URL did not report its version');
-  }
+  const { selected, authVersion } = ready;
   const held: Held = {
     authorised: options.authorised ?? (async (work) => await work()),
     changed: () =>
-      production ? notStillStaged(records, request.version, selected.digest) : undefined,
+      environment === 'production'
+        ? notStillStaged(options.records ?? '', request.version, selected.digest)
+        : undefined,
   };
   return await inFolder(
     async (folder) =>
@@ -243,14 +208,35 @@ export async function deployWeb(
   );
 }
 
-/** The maintenance page to the main address: its deployment, recorded; no database is asked. */
-export function deployMaintenance(options: { env: Environment }): Promise<MaintenanceOutcome> {
+const UNCHECKED =
+  'no version was named, so the deploy that takes the page off was not checked; outside an incident, name it with --version and --artefacts';
+
+/**
+ * The maintenance page to the main address: its deployment, recorded; no
+ * database is asked. Planned, it first runs the checks of the version deploy
+ * that takes it off, and goes up only if that deploy could run now.
+ */
+export async function deployMaintenance(
+  options: { env: Environment },
+  planned?: { request: VersionRequest; options: VersionDeployOptions },
+): Promise<MaintenanceOutcome> {
   const settings = settingProblems(options.env);
-  if (settings.length > 0) return Promise.resolve(refused(settings.join('; ')));
-  return inFolder((folder): MaintenanceOutcome => {
+  if (settings.length > 0) return refused(settings.join('; '));
+  if (planned !== undefined) {
+    const ready = await versionReady(planned.request, planned.options);
+    if (typeof ready === 'string') {
+      return refused(
+        `the deploy of ${planned.request.version} that takes the page off would be refused: ${ready}`,
+      );
+    }
+  }
+  return await inFolder((folder): MaintenanceOutcome => {
     writeMaintenanceOutput(join(folder, '.vercel', 'output'));
     const deployment = deployPrebuilt(folder, options.env);
     if (deployment === undefined) return NO_ADDRESS;
-    return { kind: 'deployed', record: { action: 'maintenance recorded', deployment } };
+    const record = { action: 'maintenance recorded', deployment } as const;
+    return planned === undefined
+      ? { kind: 'deployed', record, unchecked: UNCHECKED }
+      : { kind: 'deployed', record };
   });
 }

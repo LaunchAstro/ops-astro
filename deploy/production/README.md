@@ -39,6 +39,11 @@ after use.
 
 ### How a migrate window drains
 
+The window opens with the planned maintenance page (`web-deploy.mjs
+--maintenance --version <id> --artefacts <store> --production`), naming the
+version that takes it off, so production is never left on the page by a deploy
+that cannot run.
+
 A migration refuses while any other session is connected, so production's
 database drains the way staging's does ([staging README](../staging/README.md),
 "How a migrate window drains"): the API's alias detached, the worker and
@@ -156,7 +161,10 @@ done (migration 0058).
 A deploy that Vercel reads back as ready on production writes `deploy recorded`
 to the operator's record folder (`OPS_ASTRO_DEPLOYMENTS`), as staging's does,
 with `environment: "production"`. `--maintenance --production` puts the
-maintenance page on production's address.
+maintenance page on production's address. In a window it takes the planned
+form, `--maintenance --version <id> --artefacts <store> --production`: the
+page goes up only if that version passes production's deploy checks now. The
+bare form is for an incident.
 
 ## The M5 unit
 

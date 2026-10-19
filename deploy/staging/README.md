@@ -141,6 +141,11 @@ restores only into a throwaway container of its own.
 
 ### How a migrate window drains
 
+The window opens with the planned maintenance page,
+`scripts/ops/web-deploy.mjs --maintenance --version <id> --artefacts <store>`,
+naming the version that takes it off, so staging is never left on the page by
+a deploy that cannot run (#1985).
+
 The migrations and the reset refuse while any other session is connected. To
 drain staging's database, detach the API's alias so no request reaches the
 function, stop the M5 unit's worker and forwarder (each holds a session of its
@@ -305,7 +310,8 @@ and hands the CLI nothing else from the environment. It refuses to run with
 `VERCEL_TOKEN` set. Then it asks `vercel inspect` about the deployment it
 made, which must report that same deployment `READY` on `production`. Before
 it asks Vercel, the sign-in server at `GOTRUE_URL` must report its version on
-`/health` (with `SUPABASE_PUBLISHABLE_KEY` as its key when set): no version,
+`/health` with `SUPABASE_PUBLISHABLE_KEY` as its key, a setting refused up
+front when unset: no version,
 no deploy. Only a deployment read back that way writes `deploy recorded`: the
 version, the artefact, the digest, the deployment's own address, the region,
 the function runtime and the sign-in server's version. The region is `syd1`,
@@ -337,7 +343,12 @@ enrolment until it is reconciled.
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
 without asking the database: one static page for every path, nothing that
-runs. Deploying a version again takes it off. The page answers 200, so the
+runs. Deploying a version again takes it off. The planned form,
+`--maintenance --version <id> --artefacts <store>`, names that version and
+first runs its deploy's checks (the settings, the artefact and its digest, the
+preflight, the sign-in server's version); the page goes up only if all pass,
+and a refusal deploys nothing. The bare form is for an incident and says it
+checked no deploy. The page answers 200, so the
 watcher's web check stays green; its keyword check on the page's marker
 (`alerts.mjs plan`, watch `maintenance`) alerts while it is up.
 
