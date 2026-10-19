@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1625 R9: the ChatGPT plan's usage allowance, unavailable (503) and sign-in (401) answers end the run in their own outcome (waiting_plan_allowance, plan_unavailable, cancelled) with custody asked once and never again; the codes count only where the operation declares them; task.restart starts a fresh attempt and the stopped one keeps its row."
+}
