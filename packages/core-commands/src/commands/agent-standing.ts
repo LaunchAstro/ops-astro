@@ -64,12 +64,8 @@ export async function workJudged(
     // Only a stop that retired its own work (#1623 R1) keeps rows that are judged.
     const retained = isRefused(ran);
     if (retained && (ran.retains !== true || !STOPS.has(judged.call.declaration.name))) return ran;
-    standing.ended = await agentStanding(
-      tx,
-      judged,
-      retained,
-      retained ? undefined : ran.handsOver,
-    );
+    const handsOver = retained ? undefined : ran.handsOver;
+    standing.ended = await agentStanding(tx, judged, retained, handsOver);
     if (standing.ended !== undefined) return refused(standing.ended);
     if (retained) return ran;
     const last = await ran.lastCheck?.();
@@ -156,9 +152,8 @@ async function stillTheAgent(tx: TenantQuery, session: AgentCall['session']): Pr
 /**
  * Live now, or handed back by this very call: a handback settles its own
  * delegation (`settleDelegation` stamps the transaction's `now()`), and that
- * is the write, not a lapse. So is a retained stop's retirement of its own
- * work (`revokeDelegation` stamps `now()` too, cause `work_retired`). Another
- * revocation or an expiry still refuses it.
+ * is the write, not a lapse. So is a retained stop's retirement of its own work (`revokeDelegation`
+ * stamps `now()` too, cause `work_retired`). Another revocation or an expiry still refuses it.
  */
 async function delegationStands(
   tx: TenantQuery,
