@@ -25,6 +25,8 @@ const VERSION = '20261007174204_run_bound_keys';
 const AGENT_COLUMNS = '20261011115838_agent_record.sql';
 /** A conversation call's message (#1531): a column on model_calls, which the snapshot reads. */
 const CALL_MESSAGE = '20261013010000_model_call_message.sql';
+/** The run outcome (#1623 R1): today's runtime writes one where it stops an attempt. */
+const RUN_OUTCOMES = '20261019105500_run_outcomes.sql';
 const ALL = readMigrations('migrations');
 let beforeDirectory: string;
 
@@ -38,7 +40,10 @@ beforeAll(() => {
     // these rows, and its inbox raise joins an agent's owner.
     if (
       file.endsWith('.sql') &&
-      (file < `${VERSION}.sql` || file === AGENT_COLUMNS || file === CALL_MESSAGE)
+      (file < `${VERSION}.sql` ||
+        file === AGENT_COLUMNS ||
+        file === CALL_MESSAGE ||
+        file === RUN_OUTCOMES)
     ) {
       copyFileSync(join('migrations', file), join(beforeDirectory, file));
     }

@@ -94,6 +94,8 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
     const ran = await w.run({
       skill: skill.versionId,
       calls: [{ state: 'settled', minor: 100 }, { state: 'reserved' }],
+      // #1623 R1 (B2): a revoke's stop releases a call never started, so the run stays open.
+      end: 'open',
       hoursAgo: 60,
     });
     const result = await log(around(60));
@@ -107,6 +109,8 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
       figure: { kind: 'none' },
       soloTotal: '0',
     });
+    // Taken back after the reads, so the agent may pick up the next case's run.
+    await w.controls.asPerson('delegation.revoke', { delegationId: ran.picked['delegationId'] });
   });
 
   it('F3 a run with an open call is unpriced in every agent’s row and adds to no total', async () => {

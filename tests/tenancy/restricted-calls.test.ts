@@ -157,6 +157,21 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
+  // The journey stops no attempt (#1623 R1): one outcome on the business's first
+  // attempt and its run, where it has one; otherwise ids that key nothing.
+  'public.run_outcomes': `insert into public.run_outcomes
+       (business_id, attempt_id, planned_run_id, outcome, end_code, recorded_by)
+     select $1, coalesce(att.id, gen_random_uuid()), coalesce(att.run_id, gen_random_uuid()),
+            'cancelled', 'TOOL_REFUSED', coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select t.id, t.run_id from public.attempts t
+          where t.business_id = $1 and not exists (
+                  select 1 from public.run_outcomes o where o.business_id = $1 and o.attempt_id = t.id)
+          order by t.id limit 1) att on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   // The journey launches nothing (Launch from the task): one waiting launch on
   // the business's own task, agent, delegation and person where it has them.
   'public.task_launches': `insert into public.task_launches

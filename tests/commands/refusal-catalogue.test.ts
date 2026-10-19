@@ -142,6 +142,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FOUR_EYES_REQUIRED', 409, 'caller'],
   ['BUDGET_UNAVAILABLE', 409, 'caller'],
   ['BUDGET_EXHAUSTED', 402, 'caller'],
+  // #1623 R1: the worker's own stop, retained with its outcome (`run.end`).
+  ['RUN_ENDED', 409, 'caller'],
   ['EVIDENCE_MISMATCH', 409, 'caller'],
   ['GATE_NOT_FOUND', 404, 'caller'],
   ['GATE_EXPIRED', 410, 'caller'],

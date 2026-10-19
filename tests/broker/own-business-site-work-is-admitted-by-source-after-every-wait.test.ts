@@ -68,17 +68,24 @@ describe.skipIf(serverUrl === undefined)("the owner's own internal work", () => 
   }, 120_000);
 });
 
+/** A client's task, picked up under that client. */
+const pickUp = async () =>
+  await w.pickUpUnder(w.ava, `client work ${randomUUID().slice(0, 6)}`, w.partyA);
+
 describe.skipIf(serverUrl === undefined)("a real client's task", () => {
   it('is refused SUBSCRIPTION_NOT_FOR_CLIENT_WORK before any send, and cannot request on our site', async () => {
     await movesTo(w.ava.personId, 'owner');
-    const picked = await w.pickUpUnder(w.ava, `client work ${randomUUID().slice(0, 6)}`, w.partyA);
+    // A refused call stops its attempt and retires its lease (#1623 R1, B2): each ask takes its own pickup.
     const before = sends();
     for (const routes of [[SEAT], [LOCAL, CLOUD, SEAT]]) {
       // oxlint-disable-next-line no-await-in-loop -- one route set after the other
-      const answer = await ask(picked, freeText(picked.taskId), routes);
+      const fresh = await pickUp();
+      // oxlint-disable-next-line no-await-in-loop -- one route set after the other
+      const answer = await ask(fresh, freeText(fresh.taskId), routes);
       expect(answer).toMatchObject({ ok: false, code: 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK' });
     }
     expect(sends()).toBe(before);
+    const picked = await pickUp();
     expect(codeOf(await requestOwn(picked))).toBe('NOT_FOUND');
     expect(await storedOn(picked.taskId)).toBe(0);
   }, 120_000);
@@ -98,11 +105,15 @@ describe.skipIf(serverUrl === undefined)(
       async (_how, touch) => {
         const picked = await workedBy('owner', 'Our about page, touched');
         await touch(picked.taskId);
+        // The refused call retires picked's lease (#1623 R1, B2): the request asks on its own pickup.
+        const again = await workedBy('owner', 'Our about page, touched');
+        await touch(again.taskId);
         const before = sends();
         expect(await ask(picked)).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
         expect(sends()).toBe(before);
-        expect(codeOf(await requestOwn(picked))).toBe('CORRECTION_NOT_OWN_WORK');
+        expect(codeOf(await requestOwn(again))).toBe('CORRECTION_NOT_OWN_WORK');
         expect(await storedOn(picked.taskId)).toBe(0);
+        expect(await storedOn(again.taskId)).toBe(0);
       },
       120_000,
     );

@@ -1464,12 +1464,19 @@ model use off, C60; a client's task offered a subscription route is
 `SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead, owner line 72), the four
 `SUBSCRIPTION_` codes, `SUBSCRIPTION_NOT_OWNER_STARTED` (the owner's ChatGPT
 plan's route carries only runs the owner proposed and approved on a task the owner
-created, #1620 P4), `RATE_LIMITED`
-with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
-`model_calls` row. `BUDGET_UNAVAILABLE` is the approved ceiling reached: the
-run stops and asks in the same transaction (AW-05, the budget wait in
-[RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
-is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
+created, #1620 P4), `RATE_LIMITED`, `BUDGET_UNAVAILABLE`); one recorded
+as a step keeps its `model_calls` row. A refusal recorded as a step is
+definitive (#1623 R1): in the same transaction the attempt records its outcome
+(`cancelled` with the code, the run outcome contract in
+[current-decisions.md](../current-decisions.md)), its unsent holds are released,
+its lease ends and its delegation is retired, so every later call on that lease
+is refused as an ended lease is. The answer is a retained refusal, judged again
+on the agent's login, session and delegation after its last lock wait: one
+that ended meanwhile is refused instead, and nothing commits.
+`BUDGET_UNAVAILABLE` is the approved ceiling reached: the run stops and asks in
+the same transaction (AW-05, the budget wait in [RUNTIME.md](RUNTIME.md)), and
+the attempt records `budget_wait`. `RATE_LIMITED` is recorded as a step and
+ends the attempt; it answers two ceilings,
 each counting a call from its hold until it ends, and a reconciliation pass's
 provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
@@ -1506,6 +1513,34 @@ text, or a task in the trash is `SOURCE_UNREADABLE` 422, recorded as a step,
 in the same words whoever's row it was. The start reads the rows again, and a row that stopped being a
 business-internal source since the hold releases the call unsent
 (`LOCAL_MODEL_REQUIRED`); the values sent are the ones read at the start.
+
+### The worker's own stop, `run.end`
+
+`POST /api/a/b/<business>/run/end`, on the agent prefix only, under the
+delegation the pickup minted (`run.end` is among its permitted operations).
+The body is `{ operationId, leaseId, fence, endCode }`. `endCode` is one of
+the codes only the worker can see (`TOOL_NOT_CATALOGUED`, `TOOL_REFUSED`,
+`TURN_MALFORMED`, `TRACING_NOT_ALLOWED`, `DEFINITION_MISMATCH`, `ANSWER_LOST`)
+or the door's refusal of its call while its delegation was live
+(`SCOPE_NOT_GRANTED`, `GATE_SHUT`, `DELEGATION_EXCLUDES_OPERATION`,
+`OPERATION_ID_REUSED`); the server derives the outcome and never takes one from
+the body. `ANSWER_LOST` needs a settled call on the lease, and
+`DEFINITION_MISMATCH` the pinned file's own mismatch, read again; otherwise the
+end is `TRANSITION_NOT_PERMITTED` and nothing is written.
+
+Under the run, the lease and its delegation, in the lock order, it reads the
+lease and its fence again, then records the attempt's outcome and retires the
+work: unsent holds released, the lease released, the delegation revoked. A
+call still dispatched makes the outcome `unknown_provider_outcome /
+OPEN_CALL_AT_STOP`, the claimed code kept as its stop cause. The answer is the
+retained refusal `RUN_ENDED` 409, `names` the outcome and its code, committed
+with its register row and audit event; the same operation id replays it, and
+the same id with other operands is `OPERATION_ID_REUSED`. A delegation revoked
+or a session ended while it waited is refused (`DELEGATION_NOT_LIVE`,
+`AUTH_SESSION_EXPIRED`) and commits nothing. A person has no `run.end`
+(`SCOPE_NOT_GRANTED`); a person stops work with `task.cancel`. The task's
+execution read gives each run its latest attempt's `runOutcome`
+(`{ attemptId, outcome, endCode }`, or null).
 
 ## The answers at the budget stop
 

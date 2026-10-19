@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1 (B2): after a stop (run.end, a recorded RATE_LIMITED refusal) the worker cannot pick up the same reservation again; the pickup is refused RESERVATION_NOT_CLAIMABLE and writes nothing; an expired lease with no stop is still replaced (R5)."
+}

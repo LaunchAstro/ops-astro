@@ -58,11 +58,13 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // pending, so the upgrade below still applies 0033 onto these rows.
 // And the agent record's columns (20261011115838): that runtime's inbox raise
 // asks who the task is assigned to, joining an agent's owner.
+// And #1623 R1's run outcomes: that runtime's pickup reads a stopped attempt's outcome.
 const SEEDED = (version: string): boolean =>
   THROUGH_0032(version) ||
   ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4)) ||
   version.startsWith('20261004040200') ||
-  version.startsWith('20261011115838');
+  version.startsWith('20261011115838') ||
+  `${version}.sql` === '20261019105500_run_outcomes.sql';
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(

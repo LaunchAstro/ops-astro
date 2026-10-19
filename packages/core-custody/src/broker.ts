@@ -47,8 +47,9 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { taskAdmission } from './broker-admission.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
-import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { lockEnvelope } from './broker-give-back.ts';
 import { sweepCarried } from './broker-carriage.ts';
+import { refusedAtStart } from './broker-stop.ts';
 import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal, resolveFields } from './broker-sources.ts';
@@ -119,7 +120,8 @@ async function markStarted(
     await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
-    const checked = startable(facts, request, reserved, unknown);
+    const copied = facts.ok && (await promptCopyRegistered(tx, reserved.callId));
+    const checked = startable(facts, request, reserved, unknown, copied);
     if (!checked.ok) {
       const released = await tx.query(
         `update public.model_calls
@@ -130,17 +132,10 @@ async function markStarted(
           returning id`,
         [tx.businessId, reserved.callId, ...route],
       );
-      if (released.length === 0) return checked.code;
-      await giveBack(tx, reserved.callId);
-      await broker.audit(tx, {
-        action: 'model.call_released',
-        outcome: 'refused',
-        refusalCode: checked.code,
-        detail: { callId: reserved.callId, code: checked.code },
-      });
+      if (released.length > 0)
+        await refusedAtStart(tx, reserved.callId, checked.code, facts, broker);
       return checked.code;
     }
-    if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';
     const started = await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
@@ -162,12 +157,14 @@ async function markStarted(
  * client, or a task that became unreadable or stopped being a
  * business-internal source, releases the call unsent (AW-12 A7, C60, S3). The
  * values sent are the ones read here, under the share locks.
+ * A prompt copy never registered is refused last, released unsent the same way.
  */
 function startable(
   facts: Checked,
   request: ModelCallRequest,
   reserved: ReservedCall,
   siblingUnknown: boolean,
+  copied: boolean,
 ):
   | { readonly ok: true; readonly fields: readonly ResolvedField[] }
   | { readonly ok: false; readonly code: BrokerRefusal } {
@@ -180,6 +177,7 @@ function startable(
   if (!resolved.ok) return resolved;
   const still = eligibleRoutes(reserved.operation.fields, resolved.fields, [reserved.route]);
   if (!still.ok || still.routes.length === 0) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
+  if (!copied) return { ok: false, code: 'COPY_NOT_REGISTERED' };
   return { ok: true, fields: resolved.fields };
 }
 

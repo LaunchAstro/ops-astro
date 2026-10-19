@@ -248,6 +248,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     unknowns: [],
     revised_by_actor_id: randomUUID(),
   },
+  // The journey stops no attempt (#1623 R1): one outcome, written with foreign keys off.
+  'public.run_outcomes': {
+    attempt_id: randomUUID(),
+    planned_run_id: randomUUID(),
+    outcome: 'cancelled',
+    end_code: 'TOOL_REFUSED',
+    recorded_by: randomUUID(),
+  },
   // The journey launches nothing (Launch from the task).
   'public.task_launches': {
     task_id: randomUUID(),
