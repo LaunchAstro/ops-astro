@@ -123,7 +123,7 @@ export async function writeComment(
      values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text, 'on_behalf_of', $12::text, 'anchor', $13::jsonb)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text, 'on_behalf_of', $12::text, 'anchor', $13::text::jsonb)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
     [
       tx.businessId,
       id,

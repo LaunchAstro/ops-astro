@@ -107,9 +107,9 @@ describe.skipIf(serverUrl === undefined)('C35 review:comment', () => {
     expect(codeOf(await w.world.asAgent(pinBody(onA), writeOnly))).toMatch(/^DELEGATION_/u);
     const forA = await delegated(w.taskA, ['comment']);
     expect(codeOf(await w.world.asAgent(pinBody(onB), forA))).toBe('DELEGATION_OUT_OF_PURPOSE');
-    // A stray recordId naming the delegated task does not steer the check.
-    expect(codeOf(await w.world.asAgent(pinBody(onB, { recordId: w.taskA }), forA))).toMatch(
-      /^(DELEGATION_OUT_OF_PURPOSE|FIELD_NOT_DECLARED|FIELD_VALUE_INVALID)$/u,
+    // A stray recordId naming the delegated task does not steer the check: the body is refused.
+    expect(codeOf(await w.world.asAgent(pinBody(onB, { recordId: w.taskA }), forA))).toBe(
+      'COMMAND_BODY_INVALID',
     );
     // Inside its delegation, the agent writes a team note and never a client's pin.
     expect(codeOf(await w.world.asAgent(pinBody(onA, { audience: 'client' }), forA))).toBe(
