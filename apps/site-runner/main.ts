@@ -25,6 +25,7 @@ import { connect, type BusinessId, type Database } from '../../packages/core-rec
 import { QueueUnread, queueClaims, type AgentCall } from './claims.ts';
 import { holderRefuses } from './configured.ts';
 import { locatePass } from './locate.ts';
+import type { Captured } from './review-captures.ts';
 import { createSiteRunner, FOLLOW_EVERY_MS, type Claim, type Passed } from './runner.ts';
 import { HOSTING_ORIGIN, readSettings, SOURCE_ORIGIN, type Settings } from './settings.ts';
 import { custodySites, siteDestinations, type RunnerSites } from './sites.ts';
@@ -140,6 +141,7 @@ export interface Parts {
   readonly locate: () => Promise<readonly Passed[]>;
   /** Absent while locating only: no claim is taken. */
   readonly claims?: () => Promise<readonly Passed[]>;
+  readonly captures?: () => Promise<readonly Captured[]>;
 }
 
 /** The pass the host runs: locating only, the claims are never taken. */
