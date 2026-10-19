@@ -5,9 +5,9 @@
 // delegation its pickup minted; the plan version is the server's own read of
 // that pickup's lease, never a field the agent sends. Asked again under a new
 // operation id, as a second attempt on the same plan would, the door answers
-// the first correction and stores nothing. Two asks at once on separate
-// connections store one row between them. A new version of the plan is new
-// work, and holds its own.
+// the first correction and stores nothing. Two asks at once, each on its own
+// backend and held until both wait at the insert, store one row between them.
+// A new version of the plan is new work, and holds its own.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
@@ -21,6 +21,7 @@ import {
   workOn,
   type Detail,
 } from './agent-draft-world.ts';
+import { requestsAtOnce } from './at-once-world.ts';
 import { s, useStopWorld, type Answer } from './run-stop-world.ts';
 
 useStopWorld('r8aoneplan');
@@ -49,15 +50,19 @@ describe.skipIf(serverUrl === undefined)("an accepted plan's agent correction", 
     expect(stored[0]).toMatchObject({ word: 'Townsvile', replacement: 'Townsville' });
   }, 120_000);
 
-  it('is one row when two asks arrive at once', async () => {
+  it('is one row when two asks meet at the insert on separate backends', async () => {
     const work = await workOn(await createTask(s, 'asked at once'));
-    const answers = await Promise.all([
-      requestAsAgent(work, requestOf(work.taskId)),
-      requestAsAgent(work, { ...requestOf(work.taskId), ...OTHER_WORDS }),
+    const { answers, backends, waited } = await requestsAtOnce(work, [
+      requestOf(work.taskId),
+      { ...requestOf(work.taskId), ...OTHER_WORDS },
     ]);
+    // Each on its own backend, and both inside their transactions at the insert at once.
+    expect(backends.map((one) => one.length)).toEqual([1, 1]);
+    expect(backends[0]?.[0]).not.toBe(backends[1]?.[0]);
+    expect(waited).toBe(2);
     for (const answer of answers) expect(answer.status, JSON.stringify(answer.body)).toBe(200);
 
-    expect(correctionOf(answers[0])).toBe(correctionOf(answers[1]));
+    expect(correctionOf(answers[0] as Answer)).toBe(correctionOf(answers[1] as Answer));
     expect(await correctionsOn(work.taskId)).toHaveLength(1);
   }, 120_000);
 
