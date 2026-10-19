@@ -89,6 +89,8 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
         'money_step_up_required',
         'priority_stages',
         'retention_window_days',
+        // R5 (#1689): the mode `settings.set_single_operator` owns, internal like the approver.
+        'single_operator_mode',
       ]);
       const band = result.settings.find((setting) => setting.key === 'four_eyes_threshold');
       expect(band?.value).toBe(500);
