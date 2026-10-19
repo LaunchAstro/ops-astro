@@ -2,7 +2,6 @@
 //
 // S0-5: each command's effect on data, declared beside its permission key. Its shapes, the class
 // the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
-
 import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import {
@@ -22,6 +21,7 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
+import { REVIEW_EFFECTS } from './data-effects-review.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -32,7 +32,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
 /**
  * Every command's effects, one entry each: the type is keyed by every command name, so a command
  * added without an entry does not compile. Record kinds are tables. Each is proved against the rows
@@ -161,6 +160,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_retention_window': SETTINGS,
   'settings.set_priority_stages': SETTINGS,
   ...LIVE_CORRECTION_EFFECTS,
+  ...REVIEW_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,
