@@ -9,7 +9,10 @@
 // head branch) and recorded `proposed` only on an exact match with the claim and
 // the after-image, else `unknown` with one person task (`askOnce`). Only a
 // `proposed` row feeds the binding. No transaction spans a provider call, and
-// nothing here holds a credential: the connector borrows one per call.
+// nothing here holds a credential: the connector borrows one per call. Before
+// the first write the default branch's head is read afresh and its file must
+// still hold the pinned pre-image, or nothing is sent (`CONTENT_DRIFTED`, one
+// person task); the publish's blob precondition stays the final check.
 
 import {
   claimProposal,
@@ -47,6 +50,8 @@ export interface SeamReads {
 }
 
 export interface ProposePorts extends SeamReads {
+  /** The default branch's head commit now (`site.source.head`), read before the first write. */
+  readonly head: () => Promise<ProviderResult<string>>;
   /** `proposeSource`'s guarded calls: the credential is borrowed per call, never held here. */
   readonly connector: CallDependencies;
   readonly raiseTask: (reason: string) => Promise<void>;
@@ -78,6 +83,24 @@ async function imageOf(correction: LiveCorrection, ports: ProposePorts): Promise
   const pin = { target: targetOf(correction), preImageDigest, baseRevision, pageUrl, seam };
   const after = approvedChange(pin, base.value.content, correction.versionDigest)?.files[0]?.after;
   return typeof after === 'string' ? { blob: base.value.blob, after } : 'PROPOSAL_SUPERSEDED';
+}
+
+/**
+ * The file on the default branch now still holds the pinned pre-image: the head read afresh and
+ * the file at it (#1693). A page edited since the pin is `CONTENT_DRIFTED`; a read that does not
+ * answer leaves it unchecked.
+ */
+async function stillPinned(
+  correction: LiveCorrection,
+  ports: ProposePorts,
+): Promise<string | undefined> {
+  const head = await ports.head();
+  if (head.kind !== 'ok') return 'CONTENT_DRIFT_UNCHECKED';
+  const now = await ports.file(head.value);
+  if (now.kind !== 'ok') return 'CONTENT_DRIFT_UNCHECKED';
+  return contentDigest(now.value.content) === correction.preImageDigest
+    ? undefined
+    : 'CONTENT_DRIFTED';
 }
 
 const AT = { step: 'publish', outcome: 'unknown' } as const;
@@ -191,7 +214,10 @@ export async function proposeCorrection(
   if (correction.state !== 'approved') return refused('APPROVAL_MISSING');
   if (site === undefined) return refused('PAGE_OUTSIDE_PARTY_SITE');
   const image = await imageOf(correction, ports);
-  if (image === 'CONTENT_DRIFTED') return await waiting(image, ports);
+  // Before the first write: the file at the base revision, then the default branch's file now.
+  const drift = typeof image === 'string' ? image : await stillPinned(correction, ports);
+  if (drift === 'CONTENT_DRIFTED') return await waiting(drift, ports);
+  if (drift !== undefined) return refused(drift);
   if (typeof image === 'string') return refused(image);
   const claim = await db.withBusiness(
     run.business,

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1693) checks every waiting correction in turn: 20 a pass, never-checked first, one head and one file read per path; a failing provider backs off 30, 60 then 120 s and a good read stamps it; a locating one settles SITE_UNREACHABLE at 120 s; a failing path leaves a healthy one checked; the storage keeps the schedule forward only while waiting."
+}

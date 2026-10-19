@@ -9,7 +9,14 @@ import {
 import { approved, lease, serverUrl, w } from './c80-register-world.ts';
 import { detailOf } from '../commands/agent-fixture.ts';
 import { B_PAGE } from './c80-sites.ts';
-import { building, time, useRunnerWorld, world, writes } from './site-runner-world.ts';
+import {
+  building,
+  configuredSite,
+  time,
+  useRunnerWorld,
+  world,
+  writes,
+} from './site-runner-world.ts';
 
 useRunnerWorld();
 
@@ -28,6 +35,7 @@ function runnerFor(
   return createSiteRunner({
     db: w.world.db.app,
     business: w.world.business,
+    site: configuredSite(),
     actorId: lease.holder,
     sites: given.sites,
     claims: {

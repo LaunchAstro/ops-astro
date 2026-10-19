@@ -21,6 +21,60 @@ custody's child process and can be frozen once it has answered
 no database (`.dependency-cruiser.cjs:134-147`). Running it inside the
 production worker container is #1697.
 
+## The one configured site
+
+The runner acts for one site, named in its settings (`SITE_RUNNER_SITE`, #1693):
+the holder (the business or one of its clients), the repository, the default
+branch, the hosting project, and each page with its source file. A token's
+scope is never relied on. Every provider call is checked against that site
+first, before the host, the credential or the address (`admitting` in
+`configured.ts`, the guarded call's `admit`). A call naming another
+repository, path, project or page host, a write or head read on any branch but
+the default one, or a request opened onto another branch is refused
+`SITE_NOT_CONFIGURED`, and nothing is sent. The locate, the proposal and the
+publish all go through the same check.
+
+A claim whose correction's site or page is not the configured one runs
+nothing. It raises one person task and hands the lease back
+`SITE_NOT_CONFIGURED`.
+
+## The locate
+
+Each pass starts with the locate (`locate.ts`), then takes the claims. The two
+parts run apart, so a failure in one leaves the other and the heartbeat going.
+
+- It takes up to 20 waiting corrections (`locating` or `requested`) of the
+  configured site's holder in turn: those never checked first, then the
+  oldest. Another client's corrections are left for that client's own runner.
+- Before any provider call, a correction bound to another site is refused. A
+  `locating` one settles `unlocated SITE_NOT_CONFIGURED`. A `requested` one is
+  put behind the rest, unstamped. A page and file that are not a configured
+  pair settle `unlocated NOT_FOUND`.
+- It reads the default branch's head once (`site.source.head`), then each due
+  path once at that commit (`site.source.read`).
+- A `locating` correction is pinned from that file: the word replaced, the
+  change inside the envelope, its digests computed once, then `requested`.
+  Otherwise it settles `WORD_NOT_FOUND` or `CHANGE_ENVELOPE_EXCEEDED`.
+- A `requested` correction is stamped while its file still holds the pinned
+  bytes, and superseded once it does not. The pin, the stamp and the supersede
+  each write only while the correction's binding is still the configured
+  site's, checked in the writing statement.
+- A failed or timed-out read backs its corrections off 30 s, 60 s, then 120 s.
+  A `locating` correction still unread 120 s after its request settles
+  `unlocated SITE_UNREACHABLE`. An answer not in the provider's shape (a field
+  missing or of another type, a body that is not JSON, a commit or blob that is
+  not a hash, content that is not canonical base64) settles a `locating`
+  correction `PROVIDER_RESPONSE_MALFORMED` and counts as a failure for a
+  `requested` one.
+
+Before its first write, the proposal reads the head again and the file at it.
+If the file no longer holds the pinned pre-image, the proposal refuses
+`CONTENT_DRIFTED` with one person task and writes nothing. The publish's blob
+precondition stays the final check.
+
+With `SITE_RUNNER_LOCATE_ONLY=1` the runner takes no claim and signs in to no
+API, and custody holds the catalogued reads only.
+
 ## The lease on the correction's task
 
 The runner takes its lease through the existing queue, under its own agent

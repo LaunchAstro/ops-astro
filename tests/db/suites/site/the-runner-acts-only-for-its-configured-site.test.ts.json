@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1693) acts for its one configured site: a correction whose holder's site was bound elsewhere is settled unlocated SITE_NOT_CONFIGURED, one whose site moved after its approval runs nothing at dispatch and asks a person, and a waiting one bound to another project is put off unstamped; none reaches the provider."
+}

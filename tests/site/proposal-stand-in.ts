@@ -164,6 +164,8 @@ export function standIn(
       },
     },
     ...seamReads(held),
+    // The default branch's head now: the base revision until something moves it.
+    head: () => ok(held.branches.get('main') ?? ''),
     raiseTask: (reason) => {
       raised.push(reason);
       return Promise.resolve();
