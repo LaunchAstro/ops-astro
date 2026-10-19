@@ -3514,7 +3514,8 @@ to the site origin only, with a fresh nonce for that load. The embed answers
 a ping only from the product origin it was loaded from, and only from the
 window framing the page, with a hello echoing the nonce. The view shows the
 page only on a hello from the selected frame's own window, the site origin
-and that nonce within 3 seconds. Otherwise the frame is removed and the
+and that nonce within 3 seconds, after the frame has loaded. Each later page
+the frame loads hides it again until a hello for a fresh nonce. Otherwise the frame is removed and the
 capture stands with "Live view isn't set up for this site" and a link to the
 staged page. The product never fetches, rewrites or proxies the page, the
 live view stores nothing, and no pin or approval binds to it.

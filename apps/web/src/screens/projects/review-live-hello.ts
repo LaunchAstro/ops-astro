@@ -37,10 +37,20 @@ export function freshNonce(): string {
     .replace(/=+$/u, '');
 }
 
+/** The ping for one load, sent to the site origin alone. */
+const pinger = (frame: HTMLIFrameElement, siteOrigin: string, nonce: string) => (): void => {
+  frame.contentWindow?.postMessage(
+    { type: LIVE_PROTOCOL.ping, version: LIVE_PROTOCOL.version, nonce },
+    siteOrigin,
+  );
+};
+
 /**
- * Wait for `frame`'s hello: `onLive` on the first valid one, `onExpired` when
- * none came in time. Either settles the wait; the returned stop settles it
- * with neither (a revision switch or an unmount), and nothing counts after.
+ * Wait for `frame`'s hello: `onLive` on the first valid one after the frame
+ * has loaded its page, `onExpired` when none came in time. After the hello,
+ * any load is another page, which the hello does not cover: `onLeft`, once.
+ * The returned stop ends the wait (a revision switch or an unmount), and
+ * nothing counts after it.
  */
 export function awaitHello(options: {
   readonly frame: HTMLIFrameElement;
@@ -54,17 +64,33 @@ export function awaitHello(options: {
   readonly onLeft: () => void;
 }): () => void {
   const { frame, siteOrigin, nonce } = options;
-  const ping = (): void => {
-    frame.contentWindow?.postMessage(
-      { type: LIVE_PROTOCOL.ping, version: LIVE_PROTOCOL.version, nonce },
-      siteOrigin,
-    );
+  let loaded = options.loaded;
+  let live = false;
+  const ping = pinger(frame, siteOrigin, nonce);
+  const quiet = (): void => {
+    clearInterval(pinging);
+    clearTimeout(expiry);
+    window.removeEventListener('message', listen);
+  };
+  const stop = (): void => {
+    quiet();
+    frame.removeEventListener('load', load);
+  };
+  const load = (): void => {
+    if (!live) {
+      loaded = true;
+      ping();
+      return;
+    }
+    stop();
+    options.onLeft();
   };
   const listen = (event: MessageEvent): void => {
     const own = frame.contentWindow;
-    if (own === null || event.source !== own || event.origin !== siteOrigin) return;
+    if (!loaded || own === null || event.source !== own || event.origin !== siteOrigin) return;
     if (liveMessage(event.data, 'hello') !== nonce) return;
-    stop();
+    live = true;
+    quiet();
     options.onLive();
   };
   const pinging = setInterval(ping, PING_EVERY_MS);
@@ -72,13 +98,7 @@ export function awaitHello(options: {
     stop();
     options.onExpired();
   }, LIVE_HELLO_MS);
-  function stop(): void {
-    clearInterval(pinging);
-    clearTimeout(expiry);
-    window.removeEventListener('message', listen);
-    frame.removeEventListener('load', ping);
-  }
   window.addEventListener('message', listen);
-  frame.addEventListener('load', ping);
+  frame.addEventListener('load', load);
   return stop;
 }

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35-X, LF-2: the live view beside a review's capture. The bound page is
-// framed directly, hidden until its embed says hello for this load; with no
+// framed directly, hidden until its embed says hello for this load, and
+// hidden again to wait for a new hello whenever the frame loads another page; with no
 // hello in time, or no address fit to frame, the frame is removed and the
 // capture stands with the line and a link to the staged page. The capture
 // stays the evidence: the live view stores nothing and nothing binds to it.
@@ -35,7 +36,11 @@ function useLivePhase(
   address: URL | undefined,
   load: string,
 ): Phase {
-  const [settled, setSettled] = useState<{ readonly load: string; readonly phase: Phase }>();
+  const [settled, setSettled] = useState<{ readonly at: string; readonly phase: Phase }>();
+  // Each page the frame shows is its own wait: a page after the hello starts another.
+  const [left, setLeft] = useState({ load, times: 0 });
+  const times = left.load === load ? left.times : 0;
+  const at = `${load}\n${times}`;
   useEffect(() => {
     const element = frame.current;
     if (address === undefined || element === null) return () => {};
@@ -43,16 +48,16 @@ function useLivePhase(
       frame: element,
       siteOrigin: address.origin,
       nonce: freshNonce(),
-      loaded: false,
-      onLeft: () => {},
-      onLive: () => setSettled({ load, phase: 'live' }),
-      onExpired: () => setSettled({ load, phase: 'fallback' }),
+      loaded: times > 0,
+      onLive: () => setSettled({ at, phase: 'live' }),
+      onExpired: () => setSettled({ at, phase: 'fallback' }),
+      onLeft: () => setLeft({ load, times: times + 1 }),
     });
-    // The wait restarts only for a new load; `address` is read from `load`.
+    // The wait restarts only for a new load or page; `address` is read from `load`.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [load]);
+  }, [at]);
   if (address === undefined) return 'fallback';
-  return settled?.load === load ? settled.phase : 'waiting';
+  return settled?.at === at ? settled.phase : 'waiting';
 }
 
 function Fallback(props: { readonly address: URL | undefined }): ReactElement {
