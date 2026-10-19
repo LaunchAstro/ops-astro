@@ -38,7 +38,13 @@ describe.skipIf(serverUrl === undefined)('C35 before and after', () => {
     const first = detailOf(await w.open(w.ava));
     expect(await pairOf(first['reviewId'])).toStrictEqual({
       before: null,
-      after: { revisionId: first['revisionId'], number: 1, digest: first['digest'], captures: [] },
+      after: {
+        revisionId: first['revisionId'],
+        number: 1,
+        digest: first['digest'],
+        captures: [],
+        decision: null,
+      },
     });
     expect(codeOf(await w.capture(w.ava, first['revisionId']))).toBe('not-a-refusal');
     expect(await pairOf(first['reviewId'])).toStrictEqual({
@@ -48,6 +54,7 @@ describe.skipIf(serverUrl === undefined)('C35 before and after', () => {
         number: 1,
         digest: first['digest'],
         captures: BOTH,
+        decision: null,
       },
     });
 
@@ -60,12 +67,14 @@ describe.skipIf(serverUrl === undefined)('C35 before and after', () => {
         number: 1,
         digest: first['digest'],
         captures: BOTH,
+        decision: null,
       },
       after: {
         revisionId: second['revisionId'],
         number: 2,
         digest: second['digest'],
         captures: BOTH,
+        decision: null,
       },
     });
 
@@ -76,8 +85,15 @@ describe.skipIf(serverUrl === undefined)('C35 before and after', () => {
         number: 2,
         digest: second['digest'],
         captures: BOTH,
+        decision: null,
       },
-      after: { revisionId: third['revisionId'], number: 3, digest: third['digest'], captures: [] },
+      after: {
+        revisionId: third['revisionId'],
+        number: 3,
+        digest: third['digest'],
+        captures: [],
+        decision: null,
+      },
     });
   });
 });

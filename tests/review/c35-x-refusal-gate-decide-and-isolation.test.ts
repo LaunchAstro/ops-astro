@@ -15,7 +15,7 @@ import { openPageReview } from '../../packages/core-records/src/review/reviews.t
 import type { TransactionQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { waitSeen } from '../site/party-site-races.ts';
+import { lockWaiters } from '../site/party-site-races.ts';
 import { ABOUT, B_FILE, B_PAGE, PAGE } from './c35-world.ts';
 import { c35xWorld, openedOf, type C35XWorld, type Opened } from './c35-x-world.ts';
 
@@ -62,6 +62,37 @@ function held(business: string, work: (tx: TransactionQuery) => Promise<unknown>
       await own.close();
     });
   return { ready: isReady, release, done };
+}
+
+/** The statements waiting on a lock once one does, within five seconds; empty if none does. */
+async function waiters(): Promise<readonly string[]> {
+  for (let tries = 0; tries < 200; tries += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polling for the waiter
+    const waiting = await lockWaiters(w);
+    if (waiting.length > 0) return waiting;
+    // oxlint-disable-next-line no-await-in-loop -- polling for the waiter
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 25);
+    });
+  }
+  return [];
+}
+
+/** What `decide` waited on while `holding` held its lock, and its answer once released. */
+async function decidedBehind(
+  holding: ReturnType<typeof held>,
+  decide: () => Promise<unknown>,
+): Promise<{ readonly waited: readonly string[]; readonly answer: unknown }> {
+  await holding.ready;
+  const deciding = decide();
+  let waited: readonly string[] = [];
+  try {
+    waited = await waiters();
+  } finally {
+    holding.release();
+    await holding.done;
+  }
+  return { waited, answer: await deciding };
 }
 
 describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
@@ -114,9 +145,10 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
     const inBeta = openedOf(detailOf(await w.open(w.eve, { taskId: w.betaTask }, w.beta)));
     const betaDecisions = await count('review_decisions', w.beta);
 
-    // dee's gate key reaches party B only: party A's review is not there for her.
-    expect(codeOf(await w.decide(w.dee, onA))).toBe('NOT_FOUND');
-    expect(codeOf(await w.astra(w.dee, onA))).toBe('NOT_FOUND');
+    // dee's gate key reaches party B only: the door asks it at party A and refuses her, as it
+    // refuses her `review.capture` there.
+    expect(codeOf(await w.decide(w.dee, onA))).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await w.astra(w.dee, onA))).toBe('SCOPE_NOT_GRANTED');
     // eve's business-wide key in beta reaches nothing of alpha's, and ben's nothing of beta's.
     expect(codeOf(await w.decide(w.eve, onA, w.beta))).toBe('NOT_FOUND');
     expect(codeOf(await w.astra(w.eve, onA, 'approve', w.beta))).toBe('NOT_FOUND');
@@ -142,12 +174,15 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
         writer: { actorId: w.fay.actorId, personId: w.fay.personId, delegationId: null },
       });
     });
-    await adding.ready;
-    const deciding = w.decide(w.ben, opened);
-    await waitSeen(w, /from public\.reviews c[\s\S]*for update of c/u);
-    adding.release();
-    await adding.done;
-    expect(codeOf(await deciding)).toBe('VERSION_STALE');
+    const { waited, answer } = await decidedBehind(
+      adding,
+      async () => await w.decide(w.ben, opened),
+    );
+    expect(
+      waited.some((query) => /public\.reviews c/u.test(query)),
+      waited.join(' | '),
+    ).toBe(true);
+    expect(codeOf(answer as never)).toBe('VERSION_STALE');
     const decided = await w.decisions(w.world.business);
     expect(decided.filter((row) => row['review_id'] === opened.reviewId)).toStrictEqual([]);
   });
@@ -171,12 +206,15 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
         [w.beta],
       );
     });
-    await ending.ready;
-    const deciding = w.decide(w.eve, opened, w.beta);
-    await waitSeen(w, /from public\.business_settings[\s\S]*for share/u);
-    ending.release();
-    await ending.done;
-    expect(codeOf(await deciding)).toBe('SELF_APPROVAL_REFUSED');
+    const { waited, answer } = await decidedBehind(
+      ending,
+      async () => await w.decide(w.eve, opened, w.beta),
+    );
+    expect(
+      waited.some((query) => /from public\.business_settings[\s\S]*for share/u.test(query)),
+      waited.join(' | '),
+    ).toBe(true);
+    expect(codeOf(answer as never)).toBe('SELF_APPROVAL_REFUSED');
     expect(await count('review_decisions', w.beta)).toBe(before);
   });
 });

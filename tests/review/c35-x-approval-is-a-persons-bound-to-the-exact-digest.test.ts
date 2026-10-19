@@ -24,7 +24,10 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
-/** Rows in every business-scoped public table of alpha but the decision's own and the audit's. */
+/**
+ * Rows in every business-scoped public table of alpha but the decision's own, the audit's and
+ * the sign-in's record of the call.
+ */
 async function otherRows(): Promise<Readonly<Record<string, number>>> {
   const tables = await w.world.db.admin.execute<{ readonly name: string }>(
     `select c.table_name as name from information_schema.columns c
@@ -32,7 +35,7 @@ async function otherRows(): Promise<Readonly<Record<string, number>>> {
          on t.table_schema = c.table_schema and t.table_name = c.table_name
       where c.table_schema = 'public' and c.column_name = 'business_id'
         and t.table_type = 'BASE TABLE'
-        and c.table_name not in ('review_decisions', 'audit_events', 'command_operations')
+        and c.table_name not in ('review_decisions', 'audit_events', 'authentication_attempts')
       order by 1`,
   );
   const counts: Record<string, number> = {};
