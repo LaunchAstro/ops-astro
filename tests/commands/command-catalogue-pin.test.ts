@@ -401,6 +401,11 @@ vi.mock('../../packages/core-commands/src/commands/review-captures.ts', async (o
   claimCaptureAsPerson: recorder('claimCaptureAsPerson'),
   landCaptureAsPerson: recorder('landCaptureAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-change.ts', async (original) => ({
+  ...(await original<object>()),
+  proposeChange: recorder('proposeChange'),
+  decideChange: recorder('decideChange'),
+}));
 vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
   ...(await original<object>()),
   pinComment: recorder('pinComment'),
@@ -546,8 +551,10 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture': ['revisionId'],
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
+  'review.decide_change': ['changeRequestId'],
   'review.open': ['taskId'],
   'review.pin_comment': ['revisionId'],
+  'review.propose_change': ['commentId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -709,9 +716,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture',
   'review.capture_claim',
   'review.capture_land',
+  'review.decide_change',
   'review.open',
   'review.picture',
   'review.pin_comment',
+  'review.propose_change',
   'review.read',
   'run.child_handback',
   'run.delegate_child',
@@ -779,6 +788,7 @@ const PINNED_AGENT_SURFACE = [
   'review.capture_land',
   'review.open',
   'review.pin_comment',
+  'review.propose_change',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1101,6 +1111,8 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b',
     audience: 'internal',
   },
+  { command: 'review.propose_change', operationId: 'op', commentId: 'c', text: 't' },
+  { command: 'review.decide_change', operationId: 'op', changeRequestId: 'c', decision: 'approve' },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -1313,6 +1325,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.capture_claim': ['claimCaptureAsPerson', 'request'],
   'review.capture_land': ['landCaptureAsPerson', 'request'],
   'review.pin_comment': ['pinComment', 'request'],
+  'review.propose_change': ['proposeChange', 'request'],
+  'review.decide_change': ['decideChange', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
@@ -1412,7 +1426,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and forty from an expected revision', () => {
+  it('exempts the same one hundred and forty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

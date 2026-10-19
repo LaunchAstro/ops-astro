@@ -8,12 +8,15 @@
 // the worker's, asked of the lease's task and served under the delegation `authorise`
 // resolved, as `task.check` is. A pin (#2012) is a `record` row: `review:comment` on the
 // delegation's own task, served on that task alone (`review-pin.ts`).
+// A change request's filing (#2016) is a `record` row that is refused CLIENT_MODEL_USE_OFF
+// (`review-change.ts`); its decision has no row, as the surface never offers it to an agent.
 
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentCall, NoOperands } from './agent-call.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { claimCapture, landCapture } from './review-captures.ts';
 import { PIN_COMMENT } from './review-pin.ts';
+import { PROPOSE_CHANGE } from './review-change.ts';
 
 /** A row a pickup's delegation never reaches: no operands, no `serve`. */
 export interface OutsidePurpose {
@@ -67,14 +70,16 @@ type ReviewAgentName =
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
-  | 'review.pin_comment';
+  | 'review.pin_comment'
+  | 'review.propose_change';
 
 export const reviewAgentRows = <T>(
-  close: (typed: OutsidePurpose | UnderLease | typeof PIN_COMMENT) => T,
+  close: (typed: OutsidePurpose | UnderLease | typeof PIN_COMMENT | typeof PROPOSE_CHANGE) => T,
 ): readonly (readonly [ReviewAgentName, T])[] => [
   ['review.open', close(OUTSIDE_PURPOSE)],
   ['review.capture', close(OUTSIDE_PURPOSE)],
   ['review.capture_claim', close(underLease(claimCapture))],
   ['review.capture_land', close(underLease(landCapture))],
   ['review.pin_comment', close(PIN_COMMENT)],
+  ['review.propose_change', close(PROPOSE_CHANGE)],
 ];

@@ -40,4 +40,17 @@ export type ReviewRequest =
       readonly selector: unknown;
       readonly body: string;
       readonly audience: string;
+    } & Envelope)
+  | ({
+      readonly command: 'review.propose_change';
+      /** The client pin filed: a comment on the review's task. */
+      readonly commentId: string;
+      /** The change asked for, in the filing person's words. */
+      readonly text: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'review.decide_change';
+      readonly changeRequestId: string;
+      /** approve or refuse. */
+      readonly decision: unknown;
     } & Envelope);
