@@ -5,6 +5,9 @@
 
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 
+/** What any stop writes (#1623 R1): its attempt's outcome, and its unsent calls released. */
+export const STOP = ['model_calls', 'run_outcomes'] as const;
+
 // #1623 R1: the worker's stop records its attempt's outcome, releases its
 // unsent holds and retires its work, the lease released and its delegation
 // revoked.

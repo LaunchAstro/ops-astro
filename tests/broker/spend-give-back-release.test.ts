@@ -91,7 +91,7 @@ const topUp = async (work: Work) =>
 
 /**
  * #1623 R1 (B2): every stop releases the unsent calls its hold never counted
- * (`broker-stop.ts:86-89`; docs/current-decisions.md:94), and a pickup after a
+ * (`broker-stop.ts:75-78`; docs/current-decisions.md:94), and a pickup after a
  * top-up re-holds on a fresh reservation no top-up counted (`budget-answer.ts:21-23`),
  * so no product path leaves a reserved call for a count any more (#1937). The
  * stop's own released call is seeded back to reserved, as

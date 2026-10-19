@@ -22,7 +22,7 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
-import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS } from './data-effects-runs.ts';
+import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS, STOP } from './data-effects-runs.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -53,8 +53,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.delete_comment': writing(client('records')),
   // AW-09: the lease holder's revision of its output is the reviewed output too.
   // A restart opens a new lineage, which supersedes nothing, so it marks none.
-  // A supersession records the outcome of the attempt it stops (#1623 R1).
-  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs', 'run_outcomes')]),
+  // A supersession records the outcome of the attempt it stops, releasing its unsent calls (#1623 R1).
+  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs', ...STOP)]),
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
@@ -62,7 +62,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // its budget instead (AW-05): the ask, and after the run's last ask a person told on the task.
   'task.pickup': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
-    ...client('run_events', 'run_outcomes'),
+    ...client('run_events', ...STOP),
     ...business('delegations'),
   ]),
   // A successor is a proposal on the lineage, and the reviewed output (AW-08).
@@ -257,7 +257,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ],
     [{ provider: 'identity', forClient: false }],
   ),
-  'grant.revoke': GRANTS,
+  // T5: the authority loss it causes stops the work it retires (#1623 R1).
+  'grant.revoke': writing([...GRANTS.writes, ...client(...STOP)]),
   'delegation.revoke': writing([
     // The agent's person is owed the decision on a task the agent held (INB-1).
     ...client(
@@ -272,7 +273,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'task.cancel': writing(
-    client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages', 'run_outcomes'),
+    client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages', ...STOP),
   ),
   'task.restart': PROPOSAL,
   'task.heartbeat': writing(client('leases')),
