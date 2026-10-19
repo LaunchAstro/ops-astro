@@ -99,6 +99,8 @@ export interface CarriedTaskWorld {
   duringPrepare: () => Promise<void>;
   /** What runs once the send judgement has passed, its locks held, before the send is written. */
   duringFence: () => Promise<void>;
+  /** A code the model agent refuses with once it has reported the write; a case sets it. */
+  refusesAfterWrite: string | undefined;
   close(): Promise<void>;
 }
 
@@ -167,9 +169,16 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
   const box = {
     duringPrepare: async (): Promise<void> => {},
     duringFence: async (): Promise<void> => {},
+    refusesAfterWrite: undefined as string | undefined,
   };
   const paused = (custody: AgentCustody): AgentCustody => ({
     ...custody,
+    dispatch: async (request, gate, onPiece) => {
+      const code = box.refusesAfterWrite;
+      if (code === undefined) return await custody.dispatch(request, gate, onPiece);
+      gate.onWritten();
+      return { kind: 'refused', started: false, code };
+    },
     prepare: async () => {
       await box.duringPrepare();
       return await (custody.prepare?.() ?? Promise.resolve({ ok: true }));
@@ -219,6 +228,12 @@ export async function openCarriedTaskWorld(): Promise<CarriedTaskWorld> {
     },
     set duringFence(next) {
       box.duringFence = next;
+    },
+    get refusesAfterWrite() {
+      return box.refusesAfterWrite;
+    },
+    set refusesAfterWrite(next) {
+      box.refusesAfterWrite = next;
     },
     close: async () => {
       await agent.stop();
