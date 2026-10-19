@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Covering } from '../site/covering.ts';
 import { lockCoveredReview } from './reviews.ts';
-import { holdTaskLease, type LeaseAt, type ObservedRefusal } from '../site/correction-receipts.ts';
+import { holdTaskLease, type LeaseAt, type ObservedRefusal } from '../site/task-lease.ts';
 
 export type ChangeRequestState = 'proposed' | 'approved' | 'refused';
 export type ChangeRequestDecision = 'approve' | 'refuse';
