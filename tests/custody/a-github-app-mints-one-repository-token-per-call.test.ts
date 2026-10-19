@@ -274,6 +274,11 @@ it('the key, the signed request and the minted token never reach the caller or a
 
 it('custody refuses an App entry it could not mint with', () => {
   const entry = { ...ENTRY, app: { id: APP_ID, bindings: [AGENCY] } };
+  /** The client's binding spelling the agency's repository. */
+  const sharing = (repository: string) => ({
+    ...entry,
+    app: { id: APP_ID, bindings: [AGENCY, { ...CLIENT, repository }] },
+  });
   expect(parseCredentials([entry]).ok).toBe(true);
   const ecKey = generateKeyPairSync('ec', { namedCurve: 'P-256' })
     .privateKey.export({ type: 'pkcs8', format: 'pem' })
@@ -283,17 +288,8 @@ it('custody refuses an App entry it could not mint with', () => {
     { ...entry, value: ecKey },
     { ...entry, app: { id: '12ab', bindings: [AGENCY] } },
     { ...entry, app: { id: APP_ID, bindings: [AGENCY, { ...CLIENT, party: AGENCY.party }] } },
-    {
-      ...entry,
-      app: { id: APP_ID, bindings: [AGENCY, { ...CLIENT, repository: AGENCY.repository }] },
-    },
-    {
-      ...entry,
-      app: {
-        id: APP_ID,
-        bindings: [AGENCY, { ...CLIENT, repository: AGENCY.repository.toLowerCase() }],
-      },
-    },
+    sharing(AGENCY.repository),
+    sharing(AGENCY.repository.toLowerCase()),
     { ...entry, app: { id: APP_ID, bindings: [{ ...AGENCY, repository: 'LaunchAstro/../x' }] } },
     { ...entry, app: { id: APP_ID, bindings: [{ ...AGENCY, installation: 0 }] } },
     { ...entry, app: { id: APP_ID, bindings: [AGENCY] }, extra: true },
