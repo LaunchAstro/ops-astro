@@ -245,6 +245,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     proposed_by_actor_id: randomUUID(),
     proposed_by_person_id: randomUUID(),
   },
+  // C35-X: the journey carries no pin; one lost carry between made-up revisions.
+  'public.review_pin_carries': {
+    review_id: randomUUID(),
+    comment_id: randomUUID(),
+    from_revision_id: randomUUID(),
+    to_revision_id: randomUUID(),
+    state: 'lost',
+    lease_id: randomUUID(),
+    fence: 1,
+    operation_id: randomUUID(),
+    carried_by_actor_id: randomUUID(),
+  },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),

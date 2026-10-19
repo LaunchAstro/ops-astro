@@ -26,6 +26,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C57 (20261019160000): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
+  // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
+  ['si', 'review_pin_carries'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */

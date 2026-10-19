@@ -31,7 +31,6 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
     expect([one['number'], two['number']]).toStrictEqual([1, 2]);
     expect(one['digest']).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(two['digest']).not.toBe(one['digest']);
-
     expect(await w.read(w.ava, one['reviewId'])).toStrictEqual({
       ok: true,
       review: {
@@ -45,10 +44,12 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
           { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
           { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
         ],
-        // The latest beside the one before it, and no pins or change requests yet (#2012, #2117).
+        // The latest beside the one before it, nothing pinned, carried or filed yet.
         after: { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
         before: { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
         pins: [],
+        carried: [],
+        carryDue: false,
         changeRequests: [],
       },
     });

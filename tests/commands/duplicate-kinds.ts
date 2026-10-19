@@ -266,6 +266,8 @@ export const DECLARED: Readonly<
   'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
   'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },
   'review.make_change_task': { carry: 'not carried', plant: 'needs an approved change request' },
+  // C35-X: a pin's carry is history of the old task's review; a duplicate carries none.
+  'review.carry_pins': { carry: 'not carried', plant: 'needs a landed revision under a lease' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

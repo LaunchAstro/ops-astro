@@ -738,11 +738,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 129 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 130 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(129);
-    expect(names).toHaveLength(129);
+    expect(new Set(names).size, 'distinct operations').toBe(130);
+    expect(names).toHaveLength(130);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -64,6 +64,8 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'review.propose_change',
   'review.decide_change',
   'review.make_change_task',
+  // A pin's carry names the review's revision, which leads back to the task (#2075).
+  'review.carry_pins',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);

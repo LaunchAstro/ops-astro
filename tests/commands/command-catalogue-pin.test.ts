@@ -397,6 +397,10 @@ vi.mock('../../packages/core-commands/src/commands/review-change-task.ts', async
   ...(await original<object>()),
   makeChangeTaskAsPerson: recorder('makeChangeTaskAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-carry.ts', async (original) => ({
+  ...(await original<object>()),
+  carryPinsAsPerson: recorder('carryPinsAsPerson'),
+}));
 vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
   ...(await original<object>()),
   pinComment: recorder('pinComment'),
