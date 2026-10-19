@@ -16,13 +16,12 @@
 // Which task it works on is the delegation's answer, read from
 // `session.capabilities`, never chosen here.
 
-import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
-import { proposeStep, selfOf, type Proposer } from './proposal.ts';
+import { proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
 import { handBackForReview, type HandedBack } from './review.ts';
 import { SYNTHETIC_RUNNER, type StepEnd, type StepRunner } from './step-runner.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
@@ -44,13 +43,8 @@ export interface WorkerOptions {
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
 
 export type WorkerOutcome =
-  | {
-      readonly proposed: {
-        readonly taskId: string;
-        readonly version: number;
-        readonly gateId: string;
-      };
-    }
+  /** A proposal's answer, or its own approved one in the queue after a restart (`proposal.ts`). */
+  | Proposed
   | {
       readonly applied: {
         readonly taskId: string;
@@ -64,8 +58,6 @@ export type WorkerOutcome =
   | { readonly ended: { readonly taskId: string } & StepEnd }
   /** The provider call dropped after the step was marked, and may have acted; handed back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
-  /** Nothing approved and unpicked on the task: done already, or not yet approved. */
-  | { readonly idle: { readonly taskId: string } }
   | Unanswered;
 
 /** The effect's text: a note to the team, and nothing leaves the app. */
@@ -149,7 +141,7 @@ async function ask(
   options: WorkerOptions,
   taskId: string,
   self: () => Promise<string | Unanswered>,
-): Promise<Asked | WorkerOutcome> {
+): Promise<Asked | { readonly idle: { readonly taskId: string } } | Unanswered> {
   const actorId = await self();
   if (typeof actorId !== 'string') return actorId;
   const queued = await agentCall(options)('task.queue', {});
@@ -163,7 +155,11 @@ async function ask(
       entry['purpose'] === SYNTHETIC_STEP.kind,
   );
   if (work === undefined) return { idle: { taskId } };
-  return { reservationId: work['reservationId'], operationId: randomUUID() };
+  // The pickup's identity is its reservation's, so a pickup asked again by any pass replays.
+  return {
+    reservationId: work['reservationId'],
+    operationId: `pickup:${String(work['reservationId'])}`,
+  };
 }
 
 /** The pickup, under the identity it was first asked with. */
@@ -249,7 +245,7 @@ async function effectOnce(
     const context = { phase: 'compute', taskId, attemptId, lease, call } as const;
     const ended = await (options.runner ?? SYNTHETIC_RUNNER).compute(context);
     if (ended.outcome !== 'success') return { ended: { taskId, ...ended } };
-    const review = { operationId: randomUUID() };
+    const review = { operationId: `review:${attemptId}` };
     keep({ ...held, review });
     return await forReview(review.operationId);
   }
@@ -265,7 +261,7 @@ async function effectOnce(
     link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
     const cause = fault instanceof ProviderFault ? fault.dropCause : 'connection_lost';
-    const drop = { cause, operationId: randomUUID() };
+    const drop = { cause, operationId: `drop:${attemptId}` };
     keep({ ...held, drop });
     // Any other rejection still ends this pass, and the provider may have acted:
     // the next pass hands the drop back and never calls it again.
@@ -295,6 +291,13 @@ export function createWorker(options: WorkerOptions): {
       running.set(taskId, pass);
       return await pass;
     },
-    proposeOnce: async () => await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter),
+    proposeOnce: async () =>
+      await proposeStep(
+        call,
+        mine,
+        SYNTHETIC_STEP,
+        options.reporter,
+        async (taskId) => await ask(options, taskId, self),
+      ),
   };
 }
