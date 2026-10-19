@@ -53,10 +53,13 @@ export async function columnUpdateFindings(
  * written once, so an update that does not move its revision by one is refused
  * as a constraint (23001, restrict_violation). 20261013051839 (C80): a page of a
  * client's site is unbound and bound again, never changed, so every update raises.
+ * 20261019142500 (C35): a capture only moves forward, so a requested or landed
+ * capture left as it was raises.
  */
 const OWN_UPDATE_REFUSALS: Readonly<Record<string, string>> = {
   'public.standing_mandates': 'constraint',
   'public.party_site_pages': 'raised',
+  'public.review_captures': 'raised',
 };
 
 /** A column update's answer: the own business its own rows, other application positions none. */
