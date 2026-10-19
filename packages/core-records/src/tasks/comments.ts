@@ -180,8 +180,9 @@ export function externalCommentProjection(
     .map((comment) => {
       const projected: Record<string, unknown> = { id: comment.id };
       for (const field of shared) {
-        const read = VALUE_OF[field.key];
-        if (read !== undefined) projected[field.key] = read(comment);
+        // A field a comment does not carry (a pin's anchor on a plain comment) is absent.
+        const value = VALUE_OF[field.key]?.(comment);
+        if (value !== undefined) projected[field.key] = value;
       }
       return projected;
     });
