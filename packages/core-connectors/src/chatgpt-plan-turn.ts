@@ -208,8 +208,16 @@ function argumentsOf(
     const value = Object.hasOwn(args, key) ? args[key] : undefined;
     return typeof value === 'string' && value !== '' && value.length <= MOST_OPERAND_UNITS;
   });
-  const fits = Buffer.byteLength(canonicalPayload(args), 'utf8') <= MOST_ARGUMENT_BYTES;
-  return kept && fits ? args : undefined;
+  return kept && fits(args) ? args : undefined;
+}
+
+/** Whether arguments are within the bytes a turn carries; ones no canonical payload holds are not. */
+function fits(args: Record<string, unknown>): boolean {
+  try {
+    return Buffer.byteLength(canonicalPayload(args), 'utf8') <= MOST_ARGUMENT_BYTES;
+  } catch {
+    return false;
+  }
 }
 
 /** One of the plan's calls as the catalogue's, or undefined when it is out of shape. */
