@@ -22,6 +22,8 @@ export const REVIEW_EFFECTS: {
   // C57: a change request names the review's task and its pin (#2016).
   'review.propose_change': writing(client('review_change_requests')),
   'review.decide_change': writing(client('review_change_requests')),
+  // #2117: the task made of an approved request, and its link.
+  'review.make_change_task': writing(client('records', 'review_change_requests')),
   'review.read': writing([]),
   'review.picture': writing([]),
 };
