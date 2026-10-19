@@ -10,9 +10,12 @@
 // on the M5.
 //
 // Final authority (F5): both judgements take every lock the call rests on
-// (`lockCarriedTask`), then the calling agent's ending keys, shared, then
-// read the instant and judge at it (`judgeCarriedTask`): the agent's login
-// and session, its token's expiry, the lease and each delegation. The send
+// (`lockCarriedTask`), then the task grants each delegation draws on, for
+// share `nowait` (runtime rows are held, and `grant.revoke` takes grants
+// first: contention refuses, nothing sent), then the calling agent's ending
+// keys, shared, then read the instant and judge at it (`judgeCarriedTask`):
+// the agent's login and session, its token's expiry, the lease, each
+// delegation and the `task:write` it still carries on the lease's task. The send
 // judgement comes after the agent's accept, so after its prepare and the
 // refresh it may wait on: a client link, a delegation ending or a session
 // ending committed during that wait is seen, and nothing is sent. Its
@@ -27,13 +30,17 @@ import {
   type Judged,
 } from '../../../core-custody/src/index.ts';
 import {
+  checkDelegatedAuthority,
+  delegatingSubjects,
+  resolveLiveById,
   sessionEndedHeld,
   type BusinessId,
   type Database,
+  type Delegation,
   type TenantQuery,
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { lockedInstant } from '../../../core-runtime/src/index.ts';
+import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { busy, holdSend, LOST } from './carriage-fence.ts';
 import { expiresAt, recordSend } from './carriage-origin.ts';
 
@@ -60,6 +67,62 @@ async function agentStands(tx: TenantQuery, asked: Asked): Promise<boolean> {
   return rows.length > 0;
 }
 
+interface Delegators {
+  readonly task: string;
+  readonly delegations: readonly Delegation[];
+  readonly held: ReadonlySet<string>;
+}
+
+/** The lease's task, its live delegations and their subjects' task grants, held `nowait`; none, null. */
+async function holdDelegators(
+  tx: TenantQuery,
+  asked: Asked,
+  ids: readonly (string | null)[],
+): Promise<Delegators | null> {
+  const [lease] = await tx.query<{ readonly task: string }>(
+    `select task_id::text as task from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, asked.task.request.leaseId],
+  );
+  const delegations: Delegation[] = [];
+  for (const id of new Set(ids)) {
+    // oxlint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
+    const live = id === null ? undefined : await resolveLiveById(tx, asked.task.caller.actorId, id);
+    if (live !== undefined) delegations.push(live);
+    else if (id !== null) return null;
+  }
+  if (lease === undefined || delegations.length === 0) return null;
+  const subjects = [];
+  for (const delegation of delegations) {
+    // oxlint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
+    subjects.push(...(await delegatingSubjects(tx, delegation)));
+  }
+  const held = await holdCoveringGrants(tx, subjects, 'task', 'nowait');
+  return { task: lease.task, delegations, held: new Set(held) };
+}
+
+/** Whether each delegation still carries `task:write` on the lease's task at `at`, through a grant held. */
+async function delegatorsStand(tx: TenantQuery, by: Delegators, at: string): Promise<boolean> {
+  const scope = { kind: 'record', id: by.task } as const;
+  for (const delegation of by.delegations) {
+    // oxlint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
+    const asked = await checkDelegatedAuthority(tx, delegation, {
+      collection: 'task',
+      action: 'write',
+      scope,
+    });
+    if (!asked.ok) return false;
+    // oxlint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
+    const live = await tx.query(
+      `select 1 from public.grants
+        where business_id = $1 and id = any($2::uuid[])
+          and (expires_at is null or expires_at > $3::timestamptz)`,
+      [tx.businessId, asked.value.filter((id) => by.held.has(id)), at],
+    );
+    if (live.length === 0) return false;
+  }
+  return true;
+}
+
 /** Every lock in order, then the judgement at the instant read after them. */
 async function judgeTask(
   tx: TenantQuery,
@@ -68,10 +131,13 @@ async function judgeTask(
 ): Promise<Judged> {
   const held = await lockCarriedTask(tx, asked.task, mode);
   if (!('facts' in held)) return held;
+  const { delegationId, callerDelegationId } = held.facts;
+  const delegators = await holdDelegators(tx, asked, [delegationId, callerDelegationId]);
   const ended = await sessionEndedHeld(tx, asked.presented);
   const stands = await agentStands(tx, asked);
   const at = await lockedInstant(tx);
   if (ended || !stands || expiresAt(asked.accessToken) <= Date.parse(at)) return LOST;
+  if (delegators === null || !(await delegatorsStand(tx, delegators, at))) return LOST;
   return await judgeCarriedTask(tx, asked.task, held, at);
 }
 
