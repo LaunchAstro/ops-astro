@@ -31,6 +31,19 @@ export const LIVE_CORRECTION_ROWS = [
     source: 'C80, release decision 3.4',
   },
   {
+    code: 'SINGLE_OPERATOR_REFUSED',
+    status: 409,
+    meaning: 'Single-operator mode is on only while the business has exactly one operator',
+    source: 'R5, decision R5-S1-20261018',
+  },
+  {
+    code: 'ASTRA_REVIEW_MISSING',
+    status: 409,
+    meaning:
+      "The business's first single-operator approval needs Astra's review of this exact version",
+    source: 'R5, decision R5-S1-20261018',
+  },
+  {
     code: 'CORRECTION_PARTY_MISMATCH',
     status: 409,
     meaning: 'The correction names a party that is not the client of its task',

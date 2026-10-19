@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "R5: single-operator Launch. With the mode on and Astra's review of the exact version recorded, the one operator approves their own correction (hand-typed and her agent's), marked; with it off, self-approval is refused by the command and the table; turning it on with two operators is refused; the marked correction's revert ask is admitted."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "R5: a second operator added on a separate connection while a self-approval waits on the mode's row is seen and refused with nothing written, and turns the mode off in its own transaction; a grant expired during the wait refuses; turning the mode on again and a revert ask on the marked correction are refused once there are two operators."
+}

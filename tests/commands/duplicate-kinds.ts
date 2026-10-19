@@ -254,6 +254,8 @@ export const DECLARED: Readonly<
   'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
   'live_correction.revert': { carry: 'not carried', plant: 'needs a live correction' },
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
+  'settings.set_single_operator': { carry: 'not carried', plant: 'a business setting' },
+  'live_correction.record_review': { carry: 'not carried', plant: 'needs a requested correction' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

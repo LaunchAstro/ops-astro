@@ -68,6 +68,7 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   // dispatch in the business, and this world's other cells decide.
   'settings.set_client_sign_off': { value: false },
   'settings.set_money_step_up': { value: true },
+  'settings.set_single_operator': { value: false },
   // Inside C122-1's bounds whichever runs first: seven or more, and the
   // retention window never below the conversation window.
   'settings.set_conversation_window': { value: 14 },

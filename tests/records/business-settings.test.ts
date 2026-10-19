@@ -120,6 +120,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       'money_step_up_required',
       'priority_stages',
       'retention_window_days',
+      'single_operator_mode',
     ]);
   });
 
@@ -184,6 +185,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         ['money_step_up_required', 1],
         ['priority_stages', 1],
         ['retention_window_days', 1],
+        ['single_operator_mode', 1],
       ]);
     });
 

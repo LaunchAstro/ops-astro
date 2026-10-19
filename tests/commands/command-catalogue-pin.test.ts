@@ -376,6 +376,14 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
 vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-review.ts',
+  async (original) => ({
+    ...(await original<object>()),
+    recordReview: recorder('recordReview'),
+    setSingleOperator: recorder('setSingleOperator'),
+  }),
+);
+vi.mock(
   '../../packages/core-commands/src/commands/live-correction-revert-ask.ts',
   async (original) => ({
     ...(await original<object>()),
@@ -497,6 +505,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
   'live_correction.decide': ['correctionId', 'versionId'],
+  'live_correction.record_review': ['correctionId'],
   'live_correction.request': ['partyId', 'taskId'],
   'live_correction.revert': ['correctionId'],
   'map.chart': [],
@@ -530,6 +539,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
   'settings.set_live_correction_approver': [],
+  'settings.set_single_operator': [],
   'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
@@ -628,6 +638,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'live_correction.list',
   'live_correction.read',
   'live_correction.receipts',
+  'live_correction.record_review',
   'live_correction.request',
   'live_correction.revert',
   'mandate.file',
@@ -672,6 +683,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_money_step_up',
   'settings.set_priority_stages',
   'settings.set_retention_window',
+  'settings.set_single_operator',
   'tag.create',
   'tag.list',
   'task.accept_plan',
@@ -985,6 +997,15 @@ const REQUESTS: readonly CommandRequest[] = [
     decision: 'approve',
   },
   { command: 'live_correction.revert', operationId: 'op', correctionId: 'c' },
+  {
+    command: 'live_correction.record_review',
+    operationId: 'op',
+    correctionId: 'c',
+    versionDigest: 'd',
+    verdict: 'approve',
+    review: 'r',
+  },
+  { command: 'settings.set_single_operator', operationId: 'op', value: true },
   { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
     command: 'budget.set_planning_cap',
@@ -1185,6 +1206,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'live_correction.request': ['requestLiveCorrection', 'request'],
   'live_correction.decide': ['decideLiveCorrection', 'request'],
   'live_correction.revert': ['askLiveRevert', 'request'],
+  'live_correction.record_review': ['recordReview', 'request'],
+  'settings.set_single_operator': ['setSingleOperator', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
