@@ -47,24 +47,29 @@ async function correctionOn(
 /** What a refusal's code may be when printed: the server's text it came with never is. */
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
-/** A `task.queue` the API refused: the pass fails on it, never reading the queue as empty. */
-export class QueueRefused extends Error {
-  readonly code: string;
+/**
+ * A `task.queue` the runner could not read: refused, with its code, or with no
+ * usable answer. The pass fails on it, never reading the queue as empty.
+ */
+export class QueueUnread extends Error {
+  /** The refusal's code when it reads as one, `unreadable` when not; none for a fault. */
+  readonly code: string | undefined;
 
-  constructor(code: string) {
-    const printed = CODE.test(code) ? code : 'unreadable';
-    super(`the queue was refused: ${printed}`);
-    this.name = 'QueueRefused';
-    this.code = printed;
+  constructor(refused?: string) {
+    const code = refused === undefined || CODE.test(refused) ? refused : 'unreadable';
+    super(
+      code === undefined ? 'the queue gave no usable answer' : `the queue was refused: ${code}`,
+    );
+    this.name = code === undefined ? 'QueueFault' : 'QueueRefused';
+    this.code = code;
   }
 }
 
 /** The queue's work; a refused queue, or one with no list of work, fails the pass. */
 function entriesOf(answer: Answer): readonly Readonly<Record<string, unknown>>[] {
-  if ('refused' in answer) throw new QueueRefused(answer.refused);
+  if ('refused' in answer) throw new QueueUnread(answer.refused);
   const queue = 'detail' in answer ? answer.detail['queue'] : undefined;
-  if (!Array.isArray(queue))
-    throw Object.assign(new Error('the queue gave no usable answer'), { name: 'QueueFault' });
+  if (!Array.isArray(queue)) throw new QueueUnread();
   return queue as readonly Readonly<Record<string, unknown>>[];
 }
 
@@ -116,7 +121,9 @@ export function queueClaims(call: AgentCall, db: Database, business: BusinessId)
   return {
     holder: () => holder,
     async take() {
-      const queued = entriesOf(await call('task.queue', {}));
+      // A call that never answered is a queue with no usable answer too.
+      const answer = await call('task.queue', {}).catch(() => ({ fault: true }) as const);
+      const queued = entriesOf(answer);
       const claims: Claim[] = [];
       for (const entry of queued.filter((work) => work['purpose'] === SITE_PURPOSE)) {
         // oxlint-disable-next-line no-await-in-loop -- one pickup at a time, each its own lease

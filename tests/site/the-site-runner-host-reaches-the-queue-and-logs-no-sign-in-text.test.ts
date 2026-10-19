@@ -173,7 +173,9 @@ describe('the site runner host, launched as launchd launches it', () => {
     });
     expect(hosted.asked.some((path) => path.startsWith('/api/'))).toBe(false);
   }, 120_000);
+});
 
+describe('the site runner host, its queue refused or faulted', () => {
   it('prints the code alone when the queue is refused or faulted with the password echoed', async () => {
     const signedIn: Reply = {
       status: 200,
@@ -185,10 +187,16 @@ describe('the site runner host, launched as launchd launches it', () => {
       body: { refused: true, code: 'AUTH_SESSION_EXPIRED', message: echoed, fixes: [echoed] },
     });
     const faulted = await host(signedIn, { status: 500, body: { error: echoed } });
-    expect([refused, faulted].map(({ code, printed }) => ({ code, printed }))).toEqual([
-      { code: 0, printed: 'site-runner: the queue was refused: AUTH_SESSION_EXPIRED\n' },
-      { code: 0, printed: 'site-runner: a pass failed: QueueFault\n' },
-    ]);
+    // The fixture has no database, so the locate's fault is named first.
+    const located = '(?:site-runner: the locate failed: [A-Za-z]+\\n)*';
+    expect(refused.code).toBe(0);
+    expect(refused.printed).toMatch(
+      new RegExp(`^${located}site-runner: the queue was refused: AUTH_SESSION_EXPIRED\\n$`, 'u'),
+    );
+    expect(faulted.code).toBe(0);
+    expect(faulted.printed).toMatch(
+      new RegExp(`^${located}site-runner: a pass failed: QueueFault\\n$`, 'u'),
+    );
     for (const { asked } of [refused, faulted])
       expect(asked.filter((path) => path.startsWith('/api/'))).toEqual([
         expect.stringMatching(/\/task\/queue$/u),
