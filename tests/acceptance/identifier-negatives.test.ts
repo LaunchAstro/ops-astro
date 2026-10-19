@@ -18,7 +18,7 @@
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
-import { seedForeignReview } from './c35-bodies.ts';
+import { LANDING, seedAskedRevision, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
 import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -702,6 +702,18 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { ...page, taskId: w.foreign.task.id },
         fabricated: { ...page, taskId: randomUUID() },
       });
+      // A picture bravo's worker landed on that revision, under bravo's lease.
+      const pictureId = await seedForeignPicture(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        revisionId,
+        w.foreign.picked,
+        w.foreign.admin,
+      );
+      await refuses('review.picture', 'pictureId', ada, 'NOT_FOUND', {
+        foreign: { pictureId },
+        fabricated: { pictureId: randomUUID() },
+      });
     },
     120_000,
   );
@@ -760,6 +772,9 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
         // A code it may end on, so the lease is what is compared (#1623 R1).
         ['run.end', { endCode: 'TOOL_REFUSED' }],
+        // C35's claim and land: the lease is compared, the revision one no form reaches.
+        ['review.capture_claim', { revisionId: randomUUID() }],
+        ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
       ];
       for (const [op, extra] of byLease) {
         const forms = {
@@ -771,6 +786,38 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, 'leaseId', agent, 'LEASE_NOT_OWNED', forms, apart);
       }
+      // Under the agent's own lease, a revision of bravo's and a fabricated one answer alike;
+      // a revision asked on the agent's own task is the control the claim reaches.
+      const { revisionId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        f.task.id,
+        f.admin,
+      );
+      const held = { leaseId: own.leaseId, fence: own.fence };
+      for (const [op, extra] of [
+        ['review.capture_claim', {}],
+        ['review.capture_land', LANDING],
+      ] as const) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, 'revisionId', agent, 'NOT_FOUND', {
+          foreign: { ...held, revisionId, ...extra },
+          fabricated: { ...held, revisionId: randomUUID(), ...extra },
+        });
+      }
+      const asked = await seedAskedRevision(
+        w.h.world.db.admin,
+        w.h.world.alpha,
+        own.taskId,
+        w.h.world.ada,
+      );
+      const claimed = await w.agent(
+        w.h.world.agent,
+        'review.capture_claim',
+        { operationId: randomUUID(), ...held, revisionId: asked },
+        own.credential,
+      );
+      expect(claimed.code, 'the claim under the agent’s own lease').toBe('ok');
     },
     300_000,
   );

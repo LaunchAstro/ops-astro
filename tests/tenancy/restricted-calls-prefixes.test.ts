@@ -234,6 +234,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     asked_by_actor_id: randomUUID(),
     asked_by_person_id: randomUUID(),
   },
+  // C35: the journey lands no picture; one stored object of four bytes.
+  'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),
