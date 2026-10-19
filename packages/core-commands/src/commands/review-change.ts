@@ -71,6 +71,10 @@ const OUT_OF_PURPOSE = refuseCommand(
   ['A delegation reaches only the task it was minted for.'],
 );
 
+/** An id left out is the caller's to send; a malformed one names nothing, as a fabricated one. */
+const MISSING = (name: string): HandlerOutcome =>
+  refused(refuseCommand('FIELD_VALUE_INVALID', [name], [`Send ${name} as an identifier.`]));
+
 const proposal = (context: CommandContext, action: 'write' | 'decide'): Covering => ({
   subjects: subjectsOf(context.session),
   collection: PROPOSAL_COLLECTION,
@@ -98,7 +102,7 @@ export async function proposeChange(
   context: CommandContext,
   request: Of<'review.propose_change'>,
 ): Promise<HandlerOutcome> {
-  // A malformed id names no pin, as a fabricated one does.
+  if (typeof request.commentId !== 'string') return MISSING('commentId');
   if (!isUuid(request.commentId)) return refused(refuseNotFound());
   // An agent key of the person's own is still an agent reading the client's words.
   if (context.session.credentialScope !== undefined) return refused(WAITS_ON_A_LOCAL_MODEL);
@@ -132,6 +136,7 @@ export async function decideChange(
   context: CommandContext,
   request: Of<'review.decide_change'>,
 ): Promise<HandlerOutcome> {
+  if (typeof request.changeRequestId !== 'string') return MISSING('changeRequestId');
   if (!isUuid(request.changeRequestId)) return refused(refuseNotFound());
   const { decision } = request;
   if (decision !== 'approve' && decision !== 'refuse') {
@@ -178,6 +183,7 @@ export const PROPOSE_CHANGE: {
   operands: () => ({}),
   serve: async (tx, call, _operands, delegation) => {
     const commentId = call.request['commentId'];
+    if (typeof commentId !== 'string') return MISSING('commentId');
     if (!isUuid(commentId)) return refused(refuseNotFound());
     const source = await clientPinSource(tx, commentId.toLowerCase());
     if (source === undefined) return refused(refuseNotFound());
