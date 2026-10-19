@@ -766,17 +766,6 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { reviewId },
         fabricated: { reviewId: randomUUID() },
       });
-      // The foreign review's digest, so only the id differs between the pair.
-      const decision = { digest: 'sha256:0', response: 'approve' };
-      await refuses('review.decide', 'reviewId', ada, 'NOT_FOUND', {
-        foreign: { ...decision, reviewId },
-        fabricated: { ...decision, reviewId: randomUUID() },
-      });
-      const astra = { digest: 'sha256:0', verdict: 'approve', review: 'r' };
-      await refuses('review.record_astra_review', 'reviewId', ada, 'NOT_FOUND', {
-        foreign: { ...astra, reviewId },
-        fabricated: { ...astra, reviewId: randomUUID() },
-      });
       const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
       await refuses('review.open', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...page, taskId: w.foreign.task.id },
@@ -803,6 +792,31 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('review.pin_comment', 'revisionId', ada, 'NOT_FOUND', {
         foreign: { ...pin, revisionId },
         fabricated: { ...pin, revisionId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.reviewDecision,
+    async () => {
+      // A review of bravo's and fabricated ids: each pair answers alike.
+      const { reviewId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      // The foreign review's digest, so only the id differs between the pair.
+      const decision = { digest: 'sha256:0', response: 'approve' };
+      await refuses('review.decide', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { ...decision, reviewId },
+        fabricated: { ...decision, reviewId: randomUUID() },
+      });
+      const astra = { digest: 'sha256:0', verdict: 'approve', review: 'r' };
+      await refuses('review.record_astra_review', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { ...astra, reviewId },
+        fabricated: { ...astra, reviewId: randomUUID() },
       });
     },
     120_000,
