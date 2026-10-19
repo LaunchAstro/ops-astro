@@ -335,10 +335,6 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
-    'apps/worker/agent-runner.ts',
-    "the worker's agent step runner (#1624 R7, which gives it its correction tool); the worker's entry selects it in #1905",
-  ],
-  [
     'packages/core-records/src/site/locate.ts',
     "the locate's runner-only writes (#1693); the site runner's locate imports it in the stacked #1924, which removes this entry",
   ],
