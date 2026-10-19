@@ -32,7 +32,9 @@ import type { ToolCall, TurnPart } from '../../core-wire/src/index.ts';
 import type { Facts } from './broker-facts.ts';
 import { businessInternal, resolveFields } from './broker-sources.ts';
 import { nestsTooDeep } from './json-depth.ts';
-import { readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
+import { MALFORMED as ANSWER_MALFORMED } from './broker-fault.ts';
+import type { Settlement } from './broker-settle.ts';
+import { answerCallsKept, readTurn, toolsKept, type Part, type Turn } from './broker-turn-read.ts';
 import type { BrokerRefusal, ModelCallRequest, ResolvedField } from './broker-types.ts';
 
 /** What binding reads of the call's facts: its lease and its task as held. */
@@ -193,4 +195,18 @@ export async function fieldsOf(
   if (bound === undefined) return { ok: false, code: 'PROVENANCE_UNBOUND' };
   if (!toolsKept(turn)) return MALFORMED;
   return { ok: true, fields: [{ name: 'turn', source: bound.source, value: bound.value }] };
+}
+
+/**
+ * A turn's priced answer as the broker settles it (#2091): one whose calls
+ * are not this turn's to make (`answerCallsKept`) is held as malformed, so
+ * the runner never sees any of them and no tool runs.
+ */
+export function keptTurnAnswer(settlement: Settlement, request: ModelCallRequest): Settlement {
+  if (settlement.kind !== 'priced' || request.turn === undefined) return settlement;
+  const turn = readTurn(request.turn);
+  const calls = settlement.answer.toolCalls ?? [];
+  return turn !== undefined && answerCallsKept(turn, calls)
+    ? settlement
+    : { kind: 'unknown', ...ANSWER_MALFORMED };
 }

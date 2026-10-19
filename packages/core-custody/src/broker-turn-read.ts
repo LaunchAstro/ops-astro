@@ -20,14 +20,27 @@ const MOST_ARGUMENT_BYTES = 16 * 1024;
  */
 const REQUEST_KEYS = Object.keys(declarationOf('live_correction.request').operands ?? {});
 
-/** The tools the catalogue offers a turn (`AGENT_TOOLS`), each with its arguments' schema. */
-const TOOLS: ReadonlyMap<string, (args: Readonly<Record<string, unknown>>) => boolean> = new Map([
-  ['task.read', (args) => Object.keys(args).length === 1 && typeof args['taskId'] === 'string'],
-  [
-    'live_correction.request',
-    (args) => keysAre(args, REQUEST_KEYS) && typeof args['taskId'] === 'string',
-  ],
+/** The longest any operand may be, in UTF-16 units; the command judges its words (#1693). */
+const MOST_OPERAND_UNITS = 4096;
+
+/** The tools the catalogue offers a turn (`AGENT_TOOLS`), each with its operands, every one a string. */
+const TOOLS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['task.read', ['taskId']],
+  ['live_correction.request', REQUEST_KEYS],
 ]);
+
+/** A call's arguments are its tool's operands exactly, each a string of 1 to 4,096 units. */
+function argumentsKept(name: string, args: Readonly<Record<string, unknown>>): boolean {
+  const operands = TOOLS.get(name);
+  return (
+    operands !== undefined &&
+    keysAre(args, operands) &&
+    operands.every((key) => {
+      const value = args[key];
+      return typeof value === 'string' && value !== '' && value.length <= MOST_OPERAND_UNITS;
+    })
+  );
+}
 
 /** The tool each kind of result answers. */
 const ANSWERS: Readonly<Record<'task' | 'correction', string>> = {
@@ -160,8 +173,7 @@ export function toolsKept(turn: Turn): boolean {
   for (const part of turn.parts) {
     if (part.ref === 'answer') {
       for (const call of part.toolCalls) {
-        const schema = TOOLS.get(call.name);
-        if (!offered.has(call.name) || schema === undefined || !schema(call.args)) return false;
+        if (!offered.has(call.name) || !argumentsKept(call.name, call.args)) return false;
         asked.set(call.id, call);
       }
     } else if (
@@ -177,7 +189,25 @@ export function toolsKept(turn: Turn): boolean {
   return true;
 }
 
-/** Stub for the red run (#2091). */
-export function answerCallsKept(_turn: Turn, _calls: readonly ToolCall[]): boolean {
-  return true;
+/**
+ * An answer's calls, before the runner sees any (#2091): each names a tool
+ * this turn offered, with its operands exactly and within the bytes a turn
+ * carries, under an id used once in the answer and by no earlier call of the
+ * turn. One that is not refuses the whole answer.
+ */
+export function answerCallsKept(turn: Turn, calls: readonly ToolCall[]): boolean {
+  const offered = new Set(turn.tools);
+  const used = new Set(
+    turn.parts.flatMap((part) => (part.ref === 'answer' ? part.toolCalls.map((c) => c.id) : [])),
+  );
+  return calls.every((call) => {
+    const fresh = !used.has(call.id);
+    used.add(call.id);
+    return (
+      fresh &&
+      offered.has(call.name) &&
+      argumentsKept(call.name, call.args) &&
+      argumentsFit(call.args as Record<string, unknown>)
+    );
+  });
 }

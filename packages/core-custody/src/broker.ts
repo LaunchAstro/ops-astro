@@ -53,7 +53,7 @@ import type { Handoff } from './carriage.ts';
 import { releaseRefused, releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { clientRefusal } from './broker-sources.ts';
-import { fieldsOf, type RequestFields } from './broker-turn.ts';
+import { fieldsOf, keptTurnAnswer, type RequestFields } from './broker-turn.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import { settle, settlementOf } from './broker-settle.ts';
@@ -247,7 +247,7 @@ export async function sendReservedCall(
       : undefined,
     carrier === undefined ? undefined : carry?.(reserved.callId),
   );
-  const settlement = settlementOf(outcome, reserved.operation, adapter);
+  const settlement = keptTurnAnswer(settlementOf(outcome, reserved.operation, adapter), request);
   // A turn's answer keeps the class it was made with (#1623 R3).
   const turn = request.turn === undefined ? undefined : started.fields[0]?.source;
   return await settle(database, businessId, caller, request, reserved, settlement, broker, turn);
