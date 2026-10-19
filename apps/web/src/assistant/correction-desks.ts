@@ -11,6 +11,7 @@
 // whole file as it reads now, none of which the sidebar knows: the host hands
 // them in through `Locate`, the site read. Without one no door is drawn.
 
+import type { CorrectionReceiptView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { replaced, type CardState, type CorrectionAsk, type ProposePort } from './correction.ts';
@@ -26,6 +27,8 @@ export interface Correction {
   readonly versionId: string | null;
   /** The last read's or decision's refusal, in the server's words. */
   readonly refusal: string | null;
+  /** Its receipts, newest first, once a person opened them; null until then. */
+  readonly receipts: readonly CorrectionReceiptView[] | null;
 }
 
 export interface Desk {
