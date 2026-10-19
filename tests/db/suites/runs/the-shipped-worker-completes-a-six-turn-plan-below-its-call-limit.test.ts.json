@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8b, Sol S2092-2: the shipped worker's agent graph is sized from the plan's call limit, so a six-turn accepted plan (five task reads, then a final answer) completes, hands back and applies its reviewed successor below the twelve-call limit."
+}
