@@ -75,7 +75,10 @@ function toolsOf(state: AttemptState, ports: AttemptPorts): StructuredToolInterf
 interface OpsAstroAgent {
   readonly invoke: (
     input: { readonly messages: readonly BaseMessage[] },
-    config: { readonly configurable: { readonly thread_id: string } },
+    config: {
+      readonly configurable: { readonly thread_id: string };
+      readonly recursionLimit: number;
+    },
   ) => Promise<{ readonly messages: readonly BaseMessage[] }>;
 }
 
@@ -96,6 +99,16 @@ const limits = (limit: number): Middleware =>
     modelCallLimitMiddleware({ runLimit: limit, exitBehavior: 'error' } as unknown as ModelLimit),
     toolCallLimitMiddleware({ runLimit: limit, exitBehavior: 'error' } as unknown as ToolLimit),
   ] as unknown as Middleware;
+
+/**
+ * LangGraph's step bound, exactly what `limit` calls need, so the call limit,
+ * never the graph, ends a run: five steps a call (the model limit's check, the
+ * model, both limits' checks after it, the tools) and two to close after a
+ * final answer on the last allowed call. Measured on the pinned stack; one
+ * fewer ends that answer `ANSWER_LOST`, as the default 25 ended valid reads
+ * at five calls (S2092-2). The call-limit test holds both edges.
+ */
+const steps = (limit: number): number => 5 * limit + 2;
 
 /** The agent for one attempt. Its model and every binding share `state`. */
 function createOpsAstroAgent(
@@ -151,7 +164,7 @@ export async function runAttempt(
       ];
       const done = await agent.invoke(
         { messages },
-        { configurable: { thread_id: `attempt:${state.taskId}` } },
+        { configurable: { thread_id: `attempt:${state.taskId}` }, recursionLimit: steps(limit) },
       );
       const last = done.messages.at(-1);
       if (
