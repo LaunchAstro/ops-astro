@@ -23,6 +23,8 @@ import { grantTo } from './fixture.ts';
 
 const LINK = '20261011155623_proposal_launch_delegation';
 const GUARD = '20261011193804_pending_launch_proposals_refuse_upgrade';
+/** The run outcome (#1623 R1): today's runtime reads a stopped attempt's outcome at pickup. */
+const RUN_OUTCOMES = '20261019105500_run_outcomes.sql';
 
 let prefixDirectory: string;
 let w: AiWorld;
@@ -39,7 +41,7 @@ vi.mock('../support/fresh-database.ts', async (importOriginal) => {
 beforeAll(async () => {
   prefixDirectory = mkdtempSync(join(tmpdir(), 'launch-upgrade-'));
   for (const file of readdirSync('migrations').filter(
-    (name) => name.endsWith('.sql') && name < LINK,
+    (name) => name.endsWith('.sql') && (name < LINK || name === RUN_OUTCOMES),
   )) {
     copyFileSync(join('migrations', file), join(prefixDirectory, file));
   }
