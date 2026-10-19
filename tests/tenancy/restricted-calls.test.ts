@@ -407,6 +407,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)
      select business_id, gen_random_uuid(), id, requested_by_actor_id, requested_by_person_id
        from public.live_corrections where business_id = $1 order by id limit 1 returning 1`,
+  // R5's review of a correction: the journey records none. One on the seeded correction.
+  'public.live_correction_reviews': `insert into public.live_correction_reviews
+       (business_id, id, correction_id, version_digest, verdict, review,
+        recorded_by_actor_id, recorded_by_person_id)
+     select business_id, gen_random_uuid(), id, version_digest, 'approve', 'seed',
+            requested_by_actor_id, requested_by_person_id
+       from public.live_corrections where business_id = $1 order by id limit 1 returning 1`,
   // C80: a correction's proposal, claimed on the seeded correction under a lease the
   // journey left; nothing the journey does proposes one.
   'public.live_correction_proposals': `insert into public.live_correction_proposals

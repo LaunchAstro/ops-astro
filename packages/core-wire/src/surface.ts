@@ -34,7 +34,7 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
-import { DECIDE_AT_CORRECTION, REVERT_AT_CORRECTION } from './surface-live-correction.ts';
+import { SITE_SURFACE } from './surface-site.ts';
 import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
@@ -55,7 +55,6 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
-const RUN_COLLECTION = 'run';
 const CUSTODY_COLLECTION = 'custody';
 const MANDATE_COLLECTION = 'mandate';
 const CONVERSATION_COLLECTION = 'conversation';
@@ -326,6 +325,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       'settings.set_conversation_window',
       'settings.set_retention_window',
       'settings.set_priority_stages',
+      'settings.set_single_operator',
     ] as const
   ).map((name) =>
     declare(name, 'manage', {
@@ -638,29 +638,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
-  // read inside its query), so one client's grant reaches no other client's
-  // correction. The request is `run:write`, an agent's inside its delegation; the
-  // read asks the request's own `run:write` (ORCH33); the approval and the revert
-  // ask `gate:decide`, never an agent's, and only of the configured approver who
-  // is not the requester.
-  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
-  read('live_correction.list', RUN_COLLECTION, { action: 'write' }),
-  read('live_correction.receipts', RUN_COLLECTION, { action: 'write' }),
-  declare('live_correction.request', 'write', {
-    collection: RUN_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'target',
-    untargetedIdentifiers: ['partyId', 'taskId'],
-    agent: 'delegated',
-  }),
-  declare('live_correction.decide', 'decide', DECIDE_AT_CORRECTION),
-  declare('live_correction.revert', 'decide', REVERT_AT_CORRECTION),
-  declare('settings.set_live_correction_approver', 'manage', {
-    collection: SETTINGS_COLLECTION,
-    targetsExistingRecord: false,
-    untargetedIdentifiers: [],
-  }),
+  ...SITE_SURFACE,
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the

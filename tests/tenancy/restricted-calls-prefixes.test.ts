@@ -217,6 +217,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     asked_by_actor_id: randomUUID(),
     asked_by_person_id: randomUUID(),
   },
+  // R5: Astra's review of a correction; the journey records none.
+  'public.live_correction_reviews': {
+    correction_id: randomUUID(),
+    version_digest: 'sha256:seed',
+    verdict: 'approve',
+    review: 'seed',
+    recorded_by_actor_id: randomUUID(),
+    recorded_by_person_id: randomUUID(),
+  },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
   // The journey revises no run's state (MP-6-2).

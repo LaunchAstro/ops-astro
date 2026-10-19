@@ -50,6 +50,7 @@ const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_retention_window': 'retention_window_days',
   'settings.set_priority_stages': 'priority_stages',
   'settings.set_live_correction_approver': 'live_correction_approver',
+  'settings.set_single_operator': 'single_operator_mode',
 };
 
 type WindowCommand = 'settings.set_conversation_window' | 'settings.set_retention_window';
@@ -120,6 +121,7 @@ export async function setBusinessSetting(
     | 'settings.set_client_sign_off'
     | 'settings.set_money_step_up'
     | 'settings.set_live_correction_approver'
+    | 'settings.set_single_operator'
     | 'settings.set_priority_stages'
     | WindowCommand,
   value: unknown,

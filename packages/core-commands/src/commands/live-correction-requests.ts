@@ -30,6 +30,14 @@ export type LiveCorrectionRequest =
     } & Envelope)
   // The configured approver's one ask that a live correction be reverted.
   | ({ readonly command: 'live_correction.revert'; readonly correctionId: string } & Envelope)
+  // R5: Astra's saved review of the version its digest names.
+  | ({
+      readonly command: 'live_correction.record_review';
+      readonly correctionId: string;
+      readonly versionDigest: string;
+      readonly verdict: string;
+      readonly review: string;
+    } & Envelope)
   | ({
       readonly command: 'settings.set_live_correction_approver';
       /** A member's person id, or null to leave no one configured. */
