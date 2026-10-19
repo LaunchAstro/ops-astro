@@ -9,6 +9,8 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { ABOUT_FILE } from '../site/party-site-fixture.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import type { Caller } from './cast.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -44,4 +46,30 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }
     : { body: { reviewId: detail['reviewId'] } };
+}
+
+/**
+ * A review of another business's with its first revision, written as its open writes it, for
+ * the identifier cases. A media review names no page, so no site of that business is needed.
+ */
+export async function seedForeignReview(
+  admin: Pick<AdminConnection, 'execute'>,
+  business: string,
+  taskId: string,
+  by: Pick<Caller, 'actorId' | 'personId'>,
+): Promise<{ readonly reviewId: string; readonly revisionId: string }> {
+  const [reviewId, revisionId] = [randomUUID(), randomUUID()];
+  await admin.execute(
+    `insert into public.reviews
+       (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
+     values ($1, $2, $3, 'media', $4, $5)`,
+    [business, reviewId, taskId, by.actorId, by.personId],
+  );
+  await admin.execute(
+    `insert into public.review_revisions
+       (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
+     values ($1, $2, $3, 1, 'sha256:0', $4, $5)`,
+    [business, revisionId, reviewId, by.actorId, by.personId],
+  );
+  return { reviewId, revisionId };
 }
