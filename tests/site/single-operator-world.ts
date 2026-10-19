@@ -118,8 +118,15 @@ export interface HeldTransaction {
 }
 
 /** `work` in a transaction of beta's on its own connection, held open until released. */
-export function heldInBeta(
+export const heldInBeta = (
   w: C80World,
+  work: (tx: TransactionQuery) => Promise<unknown>,
+): HeldTransaction => heldIn(w, w.beta, work);
+
+/** `work` in a transaction of `business`'s on its own connection, held open until released. */
+export function heldIn(
+  w: C80World,
+  business: string,
   work: (tx: TransactionQuery) => Promise<unknown>,
 ): HeldTransaction {
   const own = connect(w.world.db.appUrl, { source: 'runtime' });
@@ -132,7 +139,7 @@ export function heldInBeta(
     release = resolve;
   });
   const done = own
-    .withBusiness(w.beta, async (tx) => {
+    .withBusiness(business, async (tx) => {
       const answer = await work(tx);
       ready();
       await released;

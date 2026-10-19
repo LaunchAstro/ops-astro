@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2063: live_correction.record_review records Astra's review only on the version a person may Launch: no version gives VERSION_NOT_READY before GATE_ALREADY_DECIDED, another digest VERSION_STALE, a page not checked in 60 s (read after the row lock wait) VERSION_UNVERIFIED; a refused review stores nothing, so it cannot admit a single operator's first self-approval (R5)."
+}
