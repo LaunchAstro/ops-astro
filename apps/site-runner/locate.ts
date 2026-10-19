@@ -12,10 +12,10 @@
 //   NOT_FOUND`.
 // - Then one head read for the pass, and one read of each due path at that
 //   commit: 1 + P provider calls, however many corrections share a path.
-// - A `locating` correction is pinned from the file it read: the one-word
-//   change made here (`replaced`), inside the envelope, its digests computed
-//   one way (`versionDigestOf`). A `requested` one is stamped while its file
-//   still holds the pinned bytes, else superseded.
+// - A `locating` correction is pinned from the file it read: the phrase
+//   change made here at the place the envelope holds (`replaced`), its
+//   digests computed one way (`versionDigestOf`). A `requested` one is
+//   stamped while its file still holds the pinned bytes, else superseded.
 // - A head or file read that fails backs its corrections off (`checksFailed`),
 //   and healthy paths go on. An answer not in the provider's own shape (a
 //   field missing or of another type, a body that is not JSON, a commit or
@@ -158,7 +158,7 @@ async function malformed(locate: Locate, dues: readonly DueCorrection[]): Promis
 /** A `locating` correction pinned from the file at `head`, or settled with the reason it cannot be. */
 async function pin(locate: Locate, due: DueCorrection, content: string, head: string) {
   const path = due.targetPath;
-  const after = replaced(content, due.word, due.replacement);
+  const after = replaced(path, content, due.word, due.replacement);
   if (after === null) return await unlocated(locate, due.id, 'WORD_NOT_FOUND');
   const target = { path, word: due.word, replacement: due.replacement };
   const change = { files: [{ path, before: content, after }] };
