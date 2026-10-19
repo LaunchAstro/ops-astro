@@ -96,6 +96,8 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+// C35: a review capture's claim and land hold their lease as a check does (#2011).
+export { lockOwnedLease, type LeaseCaller } from './heartbeat.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
 export { endRun, type RunEndRequest } from './run-end.ts';
 export { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
