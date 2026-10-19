@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the migration runner's lock-first rule against real sessions: a reader queued behind the run's locks whose transaction already read an old function definition and holds an advisory lock still refuses the run with nothing in the ledger, and locking a public table does not lock its inheritance child in auth"
+}
