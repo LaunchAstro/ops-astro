@@ -22,7 +22,7 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/v
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import { revertBody, reviewBody } from './c80-revert-body.ts';
-import { reviseAsAnother } from './c35-bodies.ts';
+import { reviseAsAnother } from './c35-x-seeds.ts';
 import type { C80Seeds } from './c80-seeds.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
