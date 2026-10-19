@@ -25,8 +25,8 @@
 //    with the provider's message id (`mock:` before it over the loopback
 //    mock, never `provider:`), or `failed` with the fault's kind. No answer
 //    body, address or link is kept, returned or written anywhere: an id that
-//    carries any piece of the recipient's local part, which the provider
-//    could echo, is kept as `withheld` (`withoutRecipient`, beside `observed`).
+//    contains the recipient's local part, which the provider could echo,
+//    is kept as `withheld` (`withoutRecipient`, beside `observed`).
 //
 // Nothing here reads a provider answer as an instruction, and no path from
 // an answer reaches the item's work state or any gate: an attempt never

@@ -139,8 +139,10 @@ export function observed(
 }
 
 /**
- * Accepted evidence with its message id kept only when the id carries no piece of the recipient's
- * local part, compared without case: the provider knows the address and may answer it back.
+ * Accepted evidence with its message id kept unless the id contains the recipient's local part,
+ * compared on letters and digits alone without case: the provider knows the address and may
+ * answer it back, and an id can carry no dot or plus. An ordinary id that only shares a letter
+ * with it is kept, so the delivery and bounce webhooks still find it.
  */
 export function withoutRecipient(
   seen: { readonly state: 'accepted' | 'failed'; readonly evidence: string },
@@ -148,12 +150,9 @@ export function withoutRecipient(
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
   if (seen.state !== 'accepted') return seen;
   const at = seen.evidence.indexOf(':');
-  const id = seen.evidence.slice(at + 1).toLowerCase();
-  const pieces =
-    to
-      .slice(0, to.lastIndexOf('@'))
-      .toLowerCase()
-      .match(/[a-z0-9-]+/gu) ?? [];
-  if (!pieces.some((piece) => id.includes(piece))) return seen;
+  const id = alphanumeric(seen.evidence.slice(at + 1));
+  if (!id.includes(alphanumeric(to.slice(0, to.lastIndexOf('@'))))) return seen;
   return { state: 'accepted', evidence: `${seen.evidence.slice(0, at)}:withheld` };
 }
+
+const alphanumeric = (text: string): string => text.toLowerCase().replaceAll(/[^a-z0-9]/gu, '');

@@ -86,7 +86,15 @@ export async function runReviewShepherd(
   if (pending.open === 0) return { kind: 'nothing_pending' };
   const recipients = await shepherdRecipients(tx, pending.taskId, pending.partyId);
   if (recipients.length === 0) return { kind: 'no_recipients' };
-  // Judged again after the review's lock wait: a lease that lapsed during it writes nothing.
+  // The writes wait on the task's foreign key and on the audit chain, and a lease can run out in
+  // either wait. So both locks are taken here (the last waits) and the lease judged again after
+  // them: a lapsed one writes nothing.
+  const task = await tx.query(
+    'select id from public.records where business_id = $1 and id = $2 for key share',
+    [tx.businessId, pending.taskId],
+  );
+  if (task.length === 0) return { kind: 'refused', code: 'NOT_FOUND' };
+  await advisoryLock(tx, tx.businessId.toLowerCase());
   const lapsed = await shepherdRunStands(tx, request.occurrenceId, request.lease.leaseId);
   if (lapsed !== undefined) return { kind: 'refused', code: lapsed };
   const send = await writeShepherdSend(tx, {
