@@ -7,7 +7,10 @@
 // and nothing past the capture, an unknown selector type or an unbounded quote is kept.
 
 import { describe, expect, it } from 'vitest';
-import { MOST_CAPTURE_HEIGHT, parseAnchor } from '../../packages/core-records/src/review/anchor.ts';
+import {
+  MOST_CAPTURE_HEIGHT,
+  parseAnchor,
+} from '../../packages/core-commands/src/commands/review-anchor.ts';
 
 const REVISION = '7d3c1a52-8f0e-4c8b-9a51-0b2f6e4d9c10';
 const MEDIA_FRAGMENTS = 'http://www.w3.org/TR/media-frags/';
