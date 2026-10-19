@@ -95,7 +95,7 @@ function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement
           Estimate {timeWords(proposal.estimate)}
         </p>
       )}
-      {edit ? null : (
+      {edit || proposal.site !== undefined ? null : (
         <p className="aip__plan-meta" data-proposal="assignee">
           Assigned to you
         </p>
