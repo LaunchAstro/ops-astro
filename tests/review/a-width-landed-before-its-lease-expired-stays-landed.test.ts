@@ -11,16 +11,14 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import {
   c35World,
-  capturesOf,
-  claimUnder,
-  landUnder,
   pickUpAgainAfterExpiry,
   pickUpReviewed,
-  pictureBytes,
-  storedObjects,
   underReview,
   type C35World,
+  type Lease,
+  type Reviewed,
 } from './c35-world.ts';
+import { capturesOf, claimUnder, landUnder, pictureBytes, storedObjects } from './c35-landing.ts';
 
 /** A stored picture's digest, computed here rather than by the product under test. */
 const storedDigestOf = (body: Uint8Array): string =>
@@ -39,23 +37,54 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+/** A short lease claims both widths and lands 1480. */
+async function firstLandsWide(reviewed: Reviewed): Promise<{
+  readonly first: Lease;
+  readonly wide: Buffer;
+  readonly widePicture: string;
+}> {
+  const first = await pickUpReviewed(w, reviewed, 4);
+  expect(detailOf(await claimUnder(w, first, reviewed.revisionId))).toStrictEqual({
+    revisionId: reviewed.revisionId,
+    widths: [390, 1480],
+  });
+  const wide = pictureBytes(148);
+  const landedWide = await landUnder(w, first, {
+    revisionId: reviewed.revisionId,
+    width: 1480,
+    picture: wide,
+  });
+  expect(codeOf(landedWide.result)).toBe('not-a-refusal');
+  return { first, wide, widePicture: String(detailOf(landedWide.result)['pictureId']) };
+}
+
+/** Neither lease lands what is not its own to land. */
+async function expectNoLandOutOfTurn(
+  reviewed: Reviewed,
+  first: Lease,
+  later: Lease,
+): Promise<void> {
+  // The landed width is not the later lease's to land again.
+  const again = await landUnder(w, later, {
+    revisionId: reviewed.revisionId,
+    width: 1480,
+    picture: pictureBytes(149),
+  });
+  expect(codeOf(again.result)).toBe('CAPTURE_NOT_CLAIMED');
+  // The old lease lands nothing now.
+  const late = await landUnder(w, first, {
+    revisionId: reviewed.revisionId,
+    width: 390,
+    picture: pictureBytes(150),
+  });
+  expect(codeOf(late.result)).toBe('DELEGATION_NOT_LIVE');
+}
+
 describe.skipIf(serverUrl === undefined)('C35 a landed width outlives its lease', () => {
   it('C35 a width landed before its lease expired stays landed and a later lease claims only the rest', async () => {
     const reviewed = await underReview(w, 'a capture landed in two leases');
     const stored = await storedObjects(w, w.world.business);
-    const first = await pickUpReviewed(w, reviewed, 4);
-    expect(detailOf(await claimUnder(w, first, reviewed.revisionId))).toStrictEqual({
-      revisionId: reviewed.revisionId,
-      widths: [390, 1480],
-    });
-    const wide = pictureBytes(148);
-    const landedWide = await landUnder(w, first, {
-      revisionId: reviewed.revisionId,
-      width: 1480,
-      picture: wide,
-    });
-    expect(codeOf(landedWide.result)).toBe('not-a-refusal');
-    const widePicture = String(detailOf(landedWide.result)['pictureId']);
+    const { first, wide, widePicture } = await firstLandsWide(reviewed);
 
     const later = await pickUpAgainAfterExpiry(w, first);
     expect(later.leaseId).not.toBe(first.leaseId);
@@ -66,20 +95,7 @@ describe.skipIf(serverUrl === undefined)('C35 a landed width outlives its lease'
       revisionId: reviewed.revisionId,
       widths: [390],
     });
-    // The landed width is not the later lease's to land again.
-    const again = await landUnder(w, later, {
-      revisionId: reviewed.revisionId,
-      width: 1480,
-      picture: pictureBytes(149),
-    });
-    expect(codeOf(again.result)).toBe('CAPTURE_NOT_CLAIMED');
-    // The old lease lands nothing now.
-    const late = await landUnder(w, first, {
-      revisionId: reviewed.revisionId,
-      width: 390,
-      picture: pictureBytes(150),
-    });
-    expect(codeOf(late.result)).toBe('DELEGATION_NOT_LIVE');
+    await expectNoLandOutOfTurn(reviewed, first, later);
 
     const narrow = pictureBytes(39);
     const landedNarrow = await landUnder(w, later, {
