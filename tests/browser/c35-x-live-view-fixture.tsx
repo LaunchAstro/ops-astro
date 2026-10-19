@@ -24,6 +24,9 @@ function Proof(): ReactElement {
       <button type="button" data-next-revision="" onClick={() => setRevision((n) => n + 1)}>
         Next revision
       </button>
+      <button type="button" data-previous-revision="" onClick={() => setRevision((n) => n - 1)}>
+        Previous revision
+      </button>
       <button type="button" data-unmount="" onClick={() => setShown(false)}>
         Unmount
       </button>

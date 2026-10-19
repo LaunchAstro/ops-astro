@@ -46,6 +46,11 @@ const SITE_PAGES: Record<string, { readonly body: string; readonly framing?: str
       location.href = '${SITE}/embed';
     }, 1000);</script>`,
   },
+  '/embed-then-endless': {
+    body: `<p>${CANARY}</p>${SNIPPET.script}<script>setTimeout(() => {
+      location.href = '${HOSTILE}/endless';
+    }, 1000);</script>`,
+  },
   '/bare': { body: `<p>${CANARY}</p>` },
   '/refused': { body: `<p>${CANARY}</p>${SNIPPET.script}`, framing: "frame-ancestors 'none'" },
   '/late': {
@@ -90,6 +95,8 @@ const SITE_PAGES: Record<string, { readonly body: string; readonly framing?: str
 
 const HOSTILE_PAGES: Record<string, string> = {
   '/away': `<p>${CANARY}</p>`,
+  // Its image never answers, so the frame's load never fires.
+  '/endless': `<p>${CANARY}</p><img src="${HOSTILE}/hang" alt="">`,
   '/forge': `<script>addEventListener('message', (e) => {
     top.postMessage({ type: ${HELLO}, version: ${VERSION}, nonce: e.data }, '*');
     document.body.dataset.sent = '1';
@@ -190,7 +197,9 @@ async function routeOrigins(context: BrowserContext): Promise<void> {
     );
   });
   await context.route(`${HOSTILE}/**`, async (route) => {
-    const found = HOSTILE_PAGES[new URL(route.request().url()).pathname];
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/hang') return;
+    const found = HOSTILE_PAGES[path];
     await route.fulfill(
       found === undefined
         ? { status: 404, body: '' }
