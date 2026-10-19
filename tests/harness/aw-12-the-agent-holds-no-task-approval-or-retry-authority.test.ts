@@ -15,7 +15,7 @@ import { expect, it as vitestIt } from 'vitest';
 import { agentRunner } from '../../apps/worker/agent-runner.ts';
 import type { StepContext, StepRunner } from '../../apps/worker/step-runner.ts';
 import { REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
-import { approve, rows } from '../runtime/schedules-harness.ts';
+import { appliedDetail, approveBody, asPerson, rows } from '../runtime/schedules-harness.ts';
 import { agentBroker, replied } from '../runs/agent-draft-world.ts';
 import { acceptedPlan, verbsOf, type Seam } from '../runs/compute-seam-world.ts';
 import {
@@ -51,7 +51,7 @@ function remembering(): { readonly runner: StepRunner; readonly seen: StepContex
 async function computed(text: string): Promise<{
   readonly seam: Seam;
   readonly agent: ReturnType<typeof remembering>;
-  readonly handedBack: Parameters<typeof approve>[1];
+  readonly handedBack: Readonly<Record<string, unknown>>;
 }> {
   const agent = remembering();
   const seam = await acceptedPlan(`aw12 real ${randomUUID()}`, agent.runner, agentBroker());
@@ -66,6 +66,19 @@ async function computed(text: string): Promise<{
   if (!('handedBack' in first)) throw new Error(`hand back: ${JSON.stringify(first)}`);
   return { seam, agent, handedBack: { ...first.handedBack } };
 }
+
+/** The review gate's state, as the product's rows hold it. */
+const gateState = async (gateId: unknown): Promise<string | undefined> =>
+  (await rows<{ state: string }>(s, 'select state from public.gates where id = $1', [gateId]))[0]
+    ?.state;
+
+/** A person's decision on the handed-back review gate, through the product's own command. */
+const decides = async (handedBack: Readonly<Record<string, unknown>>): Promise<void> => {
+  appliedDetail(
+    await asPerson(s, { ...approveBody(handedBack), decision: 'reject', note: 'not this one' }),
+    'task.decide',
+  );
+};
 
 /** Every row of every table in the product's schema that holds `canary`, as `table: count`. */
 async function holding(canary: string): Promise<string[]> {
@@ -107,7 +120,7 @@ const footprint = async (seam: Seam): Promise<readonly unknown[]> =>
     [s.business, seam.taskId, seam.work().picked['leaseId']],
   );
 
-it("A1 task authority: the agent's own state is in no product row, and the Launch applies from the product's rows alone", async () => {
+it("A1 task authority: the agent's own state is in no product row, and its next step is a person's decision on the product's rows", async () => {
   const canary = `aw12-plan-canary-${randomUUID()}`;
   const before = world.provider.seen.length;
   const { seam, handedBack } = await computed(canary);
@@ -116,10 +129,10 @@ it("A1 task authority: the agent's own state is in no product row, and the Launc
   expect(shapeOf(await outcomesOf(seam.work()))).toEqual([named('success', 'COMPLETED')]);
   // The attempt's store went with it: none of it is in any product row.
   expect(await holding(canary)).toStrictEqual([]);
-  // The next step is the product's: the person launches, and the next pass applies from the rows.
-  await approve(s, { ...handedBack });
-  const applied = await seam.worker.applyOnce(seam.taskId);
-  expect(applied).toMatchObject({ applied: { taskId: seam.taskId } });
+  // The next step is the product's: its review gate waits on a person, and their decision moves it.
+  expect(await gateState(handedBack['gateId'])).toBe('pending');
+  await decides(handedBack);
+  expect(await gateState(handedBack['gateId'])).not.toBe('pending');
   expect(await holding(canary)).toStrictEqual([]);
 });
 
@@ -152,10 +165,9 @@ it("A2 approval authority: the agent's own resume of its handed-back attempt mov
   ).toEqual([]);
 
   // Control: the person's gate decision is what moves it on.
-  await approve(s, { ...handedBack });
-  expect(await seam.worker.applyOnce(seam.taskId)).toMatchObject({
-    applied: { taskId: seam.taskId },
-  });
+  expect(await gateState(handedBack['gateId'])).toBe('pending');
+  await decides(handedBack);
+  expect(await footprint(seam)).not.toStrictEqual(footprintBefore);
 });
 
 it('A7 the retry owner: a failed turn is sent once, the agent never sends it again, and the product never re-asks', async () => {
@@ -178,7 +190,10 @@ it('A7 the retry owner: a failed turn is sent once, the agent never sends it aga
   expect(shapeOf(await outcomesOf(seam.work()))).toEqual([
     named('unknown_provider_outcome', 'LIABILITY_UNKNOWN'),
   ]);
-  expect(verbsOf(seam), 'no handback').not.toContain('task.handback');
+  expect(
+    seam.log.filter((entry) => entry.verb === 'task.handback' && entry.status === 200),
+    'no handback accepted',
+  ).toEqual([]);
 
   // Control: with the provider answering, the same runner's turn is sent once and succeeds.
   const { seam: clean } = await computed('Clean.');
