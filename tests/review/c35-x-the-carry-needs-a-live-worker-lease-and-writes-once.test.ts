@@ -23,6 +23,7 @@ import {
   landPage,
   landedReview,
   must,
+  untilLeaseEnds,
   nextRevision,
   pinOn,
   quote,
@@ -112,7 +113,10 @@ describe.skipIf(serverUrl === undefined)('C35-X the carry and its lease', () => 
   }, 90_000);
 
   it('C35-X a carry that waited on the captures past its lease’s expiry writes nothing', async () => {
-    const { reviewed, lease } = await landedReview(w, 'carry waits', PAGE_ONE);
+    // A short lease: it runs out on its own while the carry waits, holding the lease's row.
+    const { reviewed, lease } = await landedReview(w, 'carry waits', PAGE_ONE, {
+      leaseSeconds: 15,
+    });
     await pinOn(w, reviewed.revisionId);
     const second = await nextRevision(w, reviewed);
     await landPage(w, lease, second, PAGE_TWO);
@@ -122,7 +126,7 @@ describe.skipIf(serverUrl === undefined)('C35-X the carry and its lease', () => 
     const carrying = carryUnder(w, lease, second);
     try {
       expect(await untilParked(), 'the carry must reach the capture lock').toBe(true);
-      await expireNow(w, lease);
+      await untilLeaseEnds(w, lease);
     } finally {
       await held.release();
     }

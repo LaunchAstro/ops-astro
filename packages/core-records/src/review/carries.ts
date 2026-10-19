@@ -143,18 +143,19 @@ export async function landedCarryTarget(
     readonly review_id: string;
     readonly task_id: string;
     readonly number: number;
-    readonly widths: readonly number[];
   }>(
-    `select v.review_id, c.task_id, v.number,
-            array(select k.width from public.review_captures k
-                   where k.business_id = v.business_id and k.revision_id = v.id
-                     and k.state = 'landed') as widths
-       from public.review_revisions v
+    `select v.review_id, c.task_id, v.number from public.review_revisions v
        join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
       where v.business_id = $1 and v.id = $2`,
     [tx.businessId, revisionId],
   );
-  if (row === undefined || !CAPTURE_WIDTHS.every((width) => row.widths.includes(width))) {
+  const landed = await tx.query<{ readonly width: number }>(
+    `select width from public.review_captures
+      where business_id = $1 and revision_id = $2 and state = 'landed'`,
+    [tx.businessId, revisionId],
+  );
+  const widths = new Set(landed.map((one) => one.width));
+  if (row === undefined || !CAPTURE_WIDTHS.every((width) => widths.has(width))) {
     return undefined;
   }
   return {

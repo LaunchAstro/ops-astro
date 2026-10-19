@@ -429,6 +429,14 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.storage_objects': `insert into public.storage_objects
        (business_id, id, digest, byte_count, body)
      values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
+  // C35-X: the journey carries no pin. One lost carry from the seeded revision onto a
+  // made-up one, as every seed here is written, foreign keys off.
+  'public.review_pin_carries': `insert into public.review_pin_carries
+       (business_id, id, review_id, comment_id, from_revision_id, to_revision_id, state,
+        lease_id, fence, operation_id, carried_by_actor_id)
+     select business_id, gen_random_uuid(), review_id, gen_random_uuid(), id, gen_random_uuid(),
+            'lost', gen_random_uuid(), 1, gen_random_uuid(), created_by_actor_id
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)
