@@ -6,7 +6,6 @@
 import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import {
-  CHAT,
   CREDENTIAL,
   GRANTS,
   LEGAL,
@@ -14,6 +13,7 @@ import {
   READ,
   SETTINGS,
   SHARE,
+  SIDE_CHAT_EFFECTS,
   TASK,
 } from './data-effects-shapes.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
@@ -197,8 +197,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'gate.pending': READ,
   'conversation.read': READ,
   'conversation.list': READ,
-  'conversation.start': CHAT,
-  'conversation.message': CHAT,
+  ...SIDE_CHAT_EFFECTS,
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
   'conversation.set_model': writing(client('conversations')),
