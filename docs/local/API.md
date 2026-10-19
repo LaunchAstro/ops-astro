@@ -3432,6 +3432,34 @@ register's order, and `dataClasses`: the data-class register's classes in use
 when it was drafted, each `{ dataClass, purpose, disclosures, retention,
 deletion }`, in the register's order.
 
+### The review embed for the live view (C35-X, LF-2)
+
+`GET /api/public/review-embed.js` needs no sign-in. It answers the embed
+script as `text/javascript; charset=utf-8` with `nosniff` and
+`cross-origin-resource-policy: cross-origin`; nothing else is served there.
+A site the agency builds or hosts loads it and lets the product frame it, as
+`reviewEmbedSnippet(<product origin>)` gives them (`packages/core-wire/src/review-embed.ts`):
+
+```html
+<script src="https://<product origin>/api/public/review-embed.js" async></script>
+```
+
+```text
+Content-Security-Policy: frame-ancestors 'self' https://<product origin>
+```
+
+The live view (`apps/web/src/screens/projects/review-live-frame.tsx`) frames
+the review's bound https page with `sandbox="allow-scripts allow-same-origin"`
+and camera, microphone, geolocation and payment denied, then pings the frame,
+to the site origin only, with a fresh nonce for that load. The embed answers
+a ping only from the product origin it was loaded from, and only from the
+window framing the page, with a hello echoing the nonce. The view shows the
+page only on a hello from the selected frame's own window, the site origin
+and that nonce within 3 seconds. Otherwise the frame is removed and the
+capture stands with "Live view isn't set up for this site" and a link to the
+staged page. The product never fetches, rewrites or proxies the page, the
+live view stores nothing, and no pin or approval binds to it.
+
 ### The client record and grants on Settings ▸ Access (C32)
 
 `client.create` takes `{ operationId, name }` under `record:write`, never an
