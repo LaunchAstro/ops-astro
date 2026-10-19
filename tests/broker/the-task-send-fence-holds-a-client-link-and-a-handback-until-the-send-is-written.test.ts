@@ -85,8 +85,10 @@ describe.skipIf(serverUrl === undefined)('the send fence of a carried task call'
     const work = await fresh('Handback at the fence');
     const called = await callWith(
       work,
-      async () => await asAgent(s, handbackBody(work.picked), undefined, second),
+      async () =>
+        await asAgent(s, handbackBody(work.picked), String(work.picked['credential']), second),
     );
+    expect(called.changed).toMatchObject({ command: 'task.handback' });
     expect(called.order).toEqual(['fence about to let go', 'change committed']);
     expect(called).toMatchObject({ sent: 1, state: 'settled' });
     expect(called.answer).toMatchObject({ ok: true });
