@@ -15,6 +15,16 @@ import type { ReviewReadResult } from '../../../../../packages/core-wire/src/ind
 export type ChangeRequestView = ReviewReadResult['review']['changeRequests'][number];
 export type PinView = ReviewReadResult['review']['pins'][number];
 
+/** What the panel has read: nothing yet, the server's refusal, or the review's requests and pins. */
+export type DockLoad =
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'refused'; readonly because: string }
+  | {
+      readonly kind: 'ready';
+      readonly requests: readonly ChangeRequestView[];
+      readonly pins: readonly PinView[];
+    };
+
 /** Where a request stands: `pending` is approved with its task not made yet. */
 export type RequestPhase = 'proposed' | 'pending' | 'made' | 'refused';
 
@@ -39,7 +49,10 @@ export const PHASE_TONE = {
 } as const satisfies Readonly<Record<RequestPhase, string>>;
 
 /** The two refusals that mean the agent's filing waits on a local model. */
-export const LOCAL_MODEL_CODES = ['CLIENT_MODEL_USE_OFF', 'SUBSCRIPTION_NOT_FOR_CLIENT_WORK'] as const;
+export const LOCAL_MODEL_CODES = [
+  'CLIENT_MODEL_USE_OFF',
+  'SUBSCRIPTION_NOT_FOR_CLIENT_WORK',
+] as const;
 export type LocalModelCode = (typeof LOCAL_MODEL_CODES)[number];
 
 export const waitsOnLocalModel = (code: string): code is LocalModelCode =>
