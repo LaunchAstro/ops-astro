@@ -33,7 +33,7 @@ const GOOD = {
 };
 
 /** Passes 15 s apart for two minutes on a clock the test holds; the seconds each ping was sent at. */
-async function pingsOverTwoMinutes(every: string | undefined): Promise<number[]> {
+async function pingsOverTwoMinutes(every?: string): Promise<number[]> {
   const settings = settingsFrom({ ...GOOD, OPS_HEARTBEAT_EVERY_MS: every });
   if (typeof settings === 'string') throw new Error(settings);
   let seconds = 0;
@@ -67,7 +67,7 @@ describe('the site runner, its heartbeat on a free watcher', () => {
 
   it('pings after every pass when the pace is unset or empty', async () => {
     const everyPass = [0, 15, 30, 45, 60, 75, 90, 105, 120];
-    expect(await pingsOverTwoMinutes(undefined)).toEqual(everyPass);
+    expect(await pingsOverTwoMinutes()).toEqual(everyPass);
     expect(await pingsOverTwoMinutes('')).toEqual(everyPass);
   });
 
