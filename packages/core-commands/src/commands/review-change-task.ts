@@ -12,6 +12,7 @@
 // Proposing and approving make nothing: no task exists until a worker asks.
 
 import {
+  advisoryLock,
   holdApprovedChange,
   isUuid,
   linkChangeTask,
@@ -95,8 +96,11 @@ async function makeTask(
     parentId: held.taskId,
   });
   if (isRefused(created)) return created;
-  // The placement can wait on the sibling set after the lease was judged, and a lease cannot end
-  // under its share lock but can run out: judged again after that wait, a lapsed one makes nothing.
+  // The placement can wait on the sibling set after the lease was judged, and so can the audit
+  // chain, and a lease cannot end under its share lock but can run out. So the chain's lock is
+  // taken here (the envelope's last wait) and the lease judged again after it: a lapsed one makes
+  // nothing.
+  await advisoryLock(tx, tx.businessId.toLowerCase());
   const still = await holdApprovedChange(tx, at, held.id);
   if (!still.ok) return refused(REFUSALS[still.code]);
   const taskId = String(created.recordId);
