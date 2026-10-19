@@ -13,18 +13,15 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import {
   c35World,
-  capturesOf,
-  claimUnder,
-  landUnder,
   pickUpAgainAfterExpiry,
   pickUpReviewed,
-  pictureBytes,
-  storedObjects,
   underReview,
   untilExpired,
   type C35World,
   type Lease,
+  type Reviewed,
 } from './c35-world.ts';
+import { capturesOf, claimUnder, landUnder, pictureBytes, storedObjects } from './c35-landing.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
@@ -39,22 +36,42 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+/** Another task of alpha's, picked up for the default lease, and a capture asked in beta. */
+async function elsewhere(): Promise<{ readonly otherLease: Lease; readonly betaRevision: string }> {
+  const other = await underReview(w, 'another task under review');
+  const otherLease = await pickUpReviewed(w, other);
+  const opened = detailOf(await w.open(w.eve, { taskId: w.betaTask }, w.beta));
+  expect(codeOf(await w.capture(w.eve, opened['revisionId'], w.beta))).toBe('not-a-refusal');
+  return { otherLease, betaRevision: String(opened['revisionId']) };
+}
+
+/** A capture under review, its widths claimed by a lease of three seconds. */
+async function claimedByShortLease(): Promise<{
+  readonly reviewed: Reviewed;
+  readonly claiming: Lease;
+}> {
+  const reviewed = await underReview(w, 'a capture its lease claimed');
+  const claiming = await pickUpReviewed(w, reviewed, 3);
+  expect(detailOf(await claimUnder(w, claiming, reviewed.revisionId))).toStrictEqual({
+    revisionId: reviewed.revisionId,
+    widths: [390, 1480],
+  });
+  return { reviewed, claiming };
+}
+
+/** The land of a 1480 picture under `lease`, answered as its code. */
+const land = async (lease: Lease, revisionId: string, seed: number) =>
+  codeOf(
+    (await landUnder(w, lease, { revisionId, width: 1480, picture: pictureBytes(seed) })).result,
+  );
+
 describe.skipIf(serverUrl === undefined)('C35 a land needs the claiming lease', () => {
   it('C35 a land without the live lease that claimed it is refused and stores nothing', async () => {
     // Another task of alpha's, picked up for the default lease, and a capture asked in beta.
-    const other = await underReview(w, 'another task under review');
-    const otherLease = await pickUpReviewed(w, other);
-    const opened = detailOf(await w.open(w.eve, { taskId: w.betaTask }, w.beta));
-    expect(codeOf(await w.capture(w.eve, opened['revisionId'], w.beta))).toBe('not-a-refusal');
-    const betaRevision = String(opened['revisionId']);
+    const { otherLease, betaRevision } = await elsewhere();
 
     // The capture under test, claimed by a short lease.
-    const reviewed = await underReview(w, 'a capture its lease claimed');
-    const claiming = await pickUpReviewed(w, reviewed, 3);
-    expect(detailOf(await claimUnder(w, claiming, reviewed.revisionId))).toStrictEqual({
-      revisionId: reviewed.revisionId,
-      widths: [390, 1480],
-    });
+    const { reviewed, claiming } = await claimedByShortLease();
 
     const claimed = await capturesOf(w, reviewed.revisionId);
     const betaCaptures = await capturesOf(w, betaRevision);
@@ -63,11 +80,6 @@ describe.skipIf(serverUrl === undefined)('C35 a land needs the claiming lease', 
       alpha: await storedObjects(w, w.world.business),
       beta: await storedObjects(w, w.beta),
     };
-    const land = async (lease: Lease, revisionId: string, seed: number) =>
-      codeOf(
-        (await landUnder(w, lease, { revisionId, width: 1480, picture: pictureBytes(seed) }))
-          .result,
-      );
 
     // A live lease of the same business, on another task: the capture is not its task's.
     expect(await land(otherLease, reviewed.revisionId, 1)).toBe('NOT_FOUND');
