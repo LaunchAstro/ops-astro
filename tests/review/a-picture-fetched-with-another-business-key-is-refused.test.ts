@@ -11,17 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import {
-  c35World,
-  claimUnder,
-  landUnder,
-  pickUpReviewed,
-  pictureBytes,
-  readPicture,
-  storedObjects,
-  underReview,
-  type C35World,
-} from './c35-world.ts';
+import { c35World, pickUpReviewed, underReview, type C35World } from './c35-world.ts';
+import { claimUnder, landUnder, pictureBytes, readPicture, storedObjects } from './c35-landing.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C35 picture across businesses: DATABASE_URL is unset.');
