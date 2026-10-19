@@ -159,7 +159,14 @@ export {
   siteCatalogue,
   siteOperation,
 } from './site/operations.ts';
-export { compareCaptures, type PageObservation } from './site/captures.ts';
+export {
+  changedStylesheets,
+  changedText,
+  compareCaptures,
+  type PageObservation,
+  type StylesheetChange,
+  type TextChange,
+} from './site/captures.ts';
 export {
   checkEnvelope,
   wordOffsets,

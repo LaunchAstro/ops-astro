@@ -280,4 +280,9 @@ export {
   type WorkerEndCode,
 } from './run-outcomes.ts';
 // What the review reads answer (C35, #2011).
-export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from './views-review.ts';
+export type {
+  ReviewCaptureView,
+  ReviewPictureResult,
+  ReviewReadResult,
+  WidthDifference,
+} from './views-review.ts';
