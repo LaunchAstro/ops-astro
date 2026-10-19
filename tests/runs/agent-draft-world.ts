@@ -22,6 +22,7 @@ import {
   BUSINESS_SETTINGS,
   installBusinessSettings,
 } from '../../packages/core-records/src/records/business-settings.ts';
+import type { ConfiguredSite } from '../../packages/core-records/src/site/locate.ts';
 import { bindPartySite } from '../../packages/core-records/src/site/party-sites.ts';
 import { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS } from '../../packages/core-wire/src/index.ts';
 import { CLOUD, LOCAL } from '../broker/broker-world.ts';
@@ -85,12 +86,13 @@ async function movesTo(of: Schedules, role: string): Promise<void> {
 /**
  * `of`'s decider made its owner before any task, holding run:write (so a
  * pickup they approve carries `run`) and task:share; its own site bound with
- * `page`; and an approver named, without whom a request stores nothing.
+ * `page`; and an approver named, without whom a request stores nothing. The
+ * site as the M5's runner is configured for it.
  */
-export async function ownSiteOf(of: Schedules, page: string): Promise<void> {
+export async function ownSiteOf(of: Schedules, page: string): Promise<ConfiguredSite> {
   await movesTo(of, 'owner');
   const approver = await enrol(of.db.app, of.business, 'approver');
-  await of.db.app.withBusiness(of.business, async (tx) => {
+  const configured = await of.db.app.withBusiness(of.business, async (tx) => {
     const setting = BUSINESS_SETTINGS.filter((each) => each.key === 'live_correction_approver');
     await installBusinessSettings(tx, setting);
     await grantTo(tx, of.decider, 'write', undefined, false, 'run');
@@ -105,12 +107,14 @@ export async function ownSiteOf(of: Schedules, page: string): Promise<void> {
     };
     const bound = await bindPartySite(tx, site, of.decider.actorId);
     if (!bound.ok) throw new Error(`setup: own site bind refused ${bound.code}`);
+    return { ...site, holder: of.business };
   });
   await of.db.admin.execute(
     `update public.business_settings set value = to_jsonb($2::text)
       where business_id = $1 and key = 'live_correction_approver'`,
     [of.business, approver.personId],
   );
+  return configured;
 }
 
 /** The request on `taskId`'s own about page, as the agent and a person ask it. */
