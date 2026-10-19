@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35-X isolation: a carry under one client's lease finds no revision of another client's review, is refused in another business and writes no carry in either; each review carries only its own pins; a reader on another client reads none of it; the client projection shows its own pin and never an internal one or a carry."
+}
