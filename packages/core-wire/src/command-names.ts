@@ -6,6 +6,7 @@
 import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 import type { SiteCommandName } from './surface-site-names.ts';
+import type { ReviewCommandName } from './surface-review-names.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -292,4 +293,5 @@ export type CommandName =
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName
   | LaunchCommandName
-  | SiteCommandName;
+  | SiteCommandName
+  | ReviewCommandName;
