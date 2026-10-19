@@ -21,6 +21,7 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.read',
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.picture',
 ]);
 
@@ -96,10 +97,11 @@ export async function seedForeignReview(
   return { reviewId, revisionId };
 }
 
-/** The worker's claim and land, and the picture read a land leaves behind. */
+/** The worker's claim, land and carry, and the picture read a land leaves behind. */
 const WORKER_NAMES: ReadonlySet<string> = new Set([
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.picture',
 ]);
 
@@ -167,7 +169,10 @@ async function leasedCapture(
   return { leaseId: String(picked['leaseId']), fence: Number(picked['fence']), revisionId };
 }
 
-/** The claim under the admin's own lease, a land of what it claimed, and the landed picture. */
+/**
+ * The claim under the admin's own lease, a land of what it claimed, the carry once both widths
+ * landed, and the landed picture.
+ */
 async function workerBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (context.bindClientSite === undefined) {
     return { exception: 'this harness binds no client site (C35)' };
@@ -180,7 +185,12 @@ async function workerBody(name: CommandName, context: BodyContext): Promise<Prep
     await context.asPerson('review.capture_land', { ...lease, ...LANDING }),
     'review.capture_land',
   );
-  return { body: { pictureId: landed['pictureId'] } };
+  if (name !== 'review.carry_pins') return { body: { pictureId: landed['pictureId'] } };
+  detailOf(
+    await context.asPerson('review.capture_land', { ...lease, ...LANDING, width: 390 }),
+    'review.capture_land 390',
+  );
+  return { body: { ...lease } };
 }
 
 /** A media review on `taskId` with both widths asked, as the ask writes them; its revision. */
@@ -248,11 +258,23 @@ export async function c35AgentBody(
   held: { readonly taskId: string; readonly leaseId: string; readonly fence: number },
   credential: string,
 ): Promise<Fields | undefined> {
-  if (name !== 'review.capture_claim' && name !== 'review.capture_land') return undefined;
+  const worker = ['review.capture_claim', 'review.capture_land', 'review.carry_pins'];
+  if (!worker.includes(name)) return undefined;
   const { world } = harness;
   const revisionId = await seedAskedRevision(world.db.admin, world.alpha, held.taskId, world.ada);
   const lease = { leaseId: held.leaseId, fence: held.fence, revisionId };
   if (name === 'review.capture_claim') return lease;
   detailOf(await harness.asAgent('review.capture_claim', lease, credential), 'agent claim');
-  return { ...lease, ...LANDING };
+  if (name === 'review.capture_land') return { ...lease, ...LANDING };
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await harness.asAgent(
+      'review.capture_land',
+      { ...lease, ...LANDING, width },
+      credential,
+    );
+    detailOf(landed, 'agent land');
+  }
+  return lease;
 }

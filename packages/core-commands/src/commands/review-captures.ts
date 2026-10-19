@@ -89,13 +89,13 @@ export const personCaller = (context: CommandContext): CaptureCaller => {
   };
 };
 
-interface LeaseFields {
+export interface LeaseFields {
   readonly leaseId: unknown;
   readonly fence: unknown;
   readonly revisionId: unknown;
 }
 
-const invalidLease = (fields: LeaseFields): string[] => [
+export const invalidLease = (fields: LeaseFields): string[] => [
   ...(typeof fields.fence === 'number' && Number.isSafeInteger(fields.fence) ? [] : ['fence']),
   ...(isUuid(fields.revisionId) ? [] : ['revisionId']),
 ];
@@ -112,7 +112,7 @@ const leaseCallerOf = (caller: CaptureCaller, leaseId: string, fence: number): L
     : { ...caller, leaseId, fence };
 
 /** The lease held and re-checked, or the refusal; a malformed id is a lease not owned. */
-async function holdLease(
+export async function holdLease(
   tx: TenantQuery,
   fields: LeaseFields,
   caller: CaptureCaller,
@@ -133,7 +133,7 @@ async function holdLease(
  * still holds the write its call was checked for (`checkDelegatedAuthority` judges grants as
  * its statement runs). The refusal, or `null` when the write may go ahead.
  */
-async function stillHeld(
+export async function stillHeld(
   tx: TenantQuery,
   lease: CaptureLease,
   caller: CaptureCaller,
@@ -165,7 +165,7 @@ export const judgedAgain =
   async (): Promise<CommandRefusal | undefined> =>
     (await stillHeld(tx, lease, caller)) ?? undefined;
 
-const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
+export const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', wrong, [fix]));
 
 export async function claimCapture(
