@@ -50,8 +50,14 @@ create table public.review_change_requests (
     foreign key (business_id, decided_by_person_id) references public.people (business_id, id),
   constraint review_change_requests_state_known
     check (state in ('proposed', 'approved', 'refused')),
-  constraint review_change_requests_decided_by_a_person
-    check ((state = 'proposed') = (decided_by_person_id is null and decided_at is null)),
+  -- A proposed request names no decider; a decided one names its actor, person and time, all
+  -- three, whatever an UPDATE sends.
+  constraint review_change_requests_decided_by_a_person check (
+    (state = 'proposed'
+       and decided_by_actor_id is null and decided_by_person_id is null and decided_at is null)
+    or (state <> 'proposed' and decided_by_actor_id is not null
+        and decided_by_person_id is not null and decided_at is not null)
+  ),
   constraint review_change_requests_task_only_approved
     check (created_task_id is null or state = 'approved'),
   constraint review_change_requests_text_bounded
