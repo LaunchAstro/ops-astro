@@ -5,7 +5,14 @@
 // providers (C80). Re-exported whole by the package index.
 
 export { CONNECTOR_HOSTS, SITE_OPERATIONS, siteCatalogue, siteOperation } from './operations.ts';
-export { compareCaptures, type PageObservation } from './captures.ts';
+export {
+  changedStylesheets,
+  changedText,
+  compareCaptures,
+  type PageObservation,
+  type StylesheetChange,
+  type TextChange,
+} from './captures.ts';
 export {
   checkEnvelope,
   wordOffsets,
