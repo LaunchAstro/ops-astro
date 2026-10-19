@@ -30,19 +30,21 @@
 //    the conversation's row lock, as a message and the purge do, so a reply
 //    never lands in a body being purged, and asks the grant again under it,
 //    with the grants held for share and judged at the clock after the locks;
-//    a grant being changed at that moment keeps nothing.
+//    a grant being changed at that moment keeps nothing (`conversation-keep.ts`).
 //
 // A message has at most one reply, and at most one model call, whichever
 // process asks (#1531). A repeat of the request finds the reply kept and
 // answers with it, and the model is not asked again; a repeat while the answer
 // is with the model, in the same process, waits for it; in another process it
-// is told the answer is on its way, and after a call that kept no reply, that
-// the answer ended and the message is to be sent again. The model's words
-// are kept in the reply's row and nowhere else: a refusal answers in fixed
-// words, never the model's or the person's. Words the store cannot hold as
-// sent (a NUL, half a split character) are refused as unusable, never a fault.
+// is told the answer is on its way. A repeat after the call settled and its
+// keep failed keeps the reply once from the answer's copy the settlement made
+// (#1563), and after a call that ended with no answer, it is told the answer
+// ended and the message is to be sent again. The model's words are at rest in
+// that transient copy until the reply is kept, then in the reply's row and
+// nowhere else: a refusal answers in fixed words, never the model's or the
+// person's. Words the store cannot hold as sent (a NUL, half a split
+// character) are refused as unusable, never a fault.
 
-import { randomUUID } from 'node:crypto';
 import {
   CONVERSATION_ANSWER,
   OPENROUTER_CONVERSATION_KEY,
@@ -62,7 +64,8 @@ import type {
 import { carriedBy } from './carriage-handoff.ts';
 import { contextOf, type Context } from './conversation-context.ts';
 import { pageTaskOf } from './conversation-page-task.ts';
-import { hearingAt, heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
+import { heldElsewhere, judgedPieces, type Asked } from './conversation-pieces.ts';
+import { keep, keptReply, replyTo } from './conversation-keep.ts';
 import { operationFor, paidSeams, unanswered, usableReply } from './conversation-paid.ts';
 import { holdsOwnConversations } from './conversations.ts';
 import { requestFor } from './conversation-request.ts';
@@ -103,16 +106,6 @@ interface Question {
   readonly page: string | null;
   /** Who wrote the asked message and each earlier person turn read. */
   readonly authors: readonly string[];
-}
-
-/** The kept reply to a message, if there is one. */
-async function replyTo(tx: TenantQuery, asked: Asked): Promise<Kept | undefined> {
-  const [reply] = await tx.query<Kept>(
-    `select id, body from conversation_messages
-      where business_id = $1 and conversation_id = $2 and answers_message_id = $3`,
-    [tx.businessId, asked.conversationId, asked.messageId],
-  );
-  return reply;
 }
 
 /** The caller's own person message, in a conversation of this business whose body is kept. */
@@ -158,49 +151,6 @@ async function questionOf(
   };
 }
 
-/** The answer, kept as the reply to the message, or the reply already kept. */
-async function keep(
-  tx: TenantQuery,
-  session: Session,
-  asked: Asked,
-  body: string,
-): Promise<Kept | undefined> {
-  // The conversation's row locked, the session asked, then the grants held
-  // for share and judged at the clock after the locks (`hearingAt`): a
-  // revocation that committed first is seen, and one that comes later waits
-  // for this reply to commit.
-  const at = await hearingAt(tx, session, asked, 'update');
-  if (at === undefined) return undefined;
-  const id = randomUUID();
-  // The reply and the activity are stamped at that same instant, so a reply
-  // that waited behind a message is listed and dated after it (#444). The
-  // instant goes in as text: a timestamptz parameter keeps milliseconds only.
-  const inserted = await tx.query(
-    `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
-        created_at, context_epoch)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz,
-             (select context_epoch from conversations where business_id = $1 and id = $3))
-     on conflict (business_id, conversation_id, answers_message_id)
-       where answers_message_id is not null
-     do nothing
-     returning id`,
-    [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
-  );
-  if (inserted.length === 0) return await replyTo(tx, asked);
-  await activeAt(tx, asked.conversationId, at);
-  return { id, body };
-}
-
-/** The conversation's last activity moved up to `at`, never back. */
-async function activeAt(tx: TenantQuery, conversationId: string, at: string): Promise<void> {
-  await tx.query(
-    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
-      where business_id = $1 and id = $2`,
-    [tx.businessId, conversationId, at],
-  );
-}
-
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
   database: Database,
@@ -213,9 +163,9 @@ async function answerOnce(
 ): Promise<ConversationReply | null> {
   // Pieces reach the caller only while they may hear the answer, judged as the reply is.
   const pieces = by.onPiece && judgedPieces(database, businessId, presented, asked, by.onPiece);
-  // A read that came back after an earlier answer was kept and its flight ended: read again.
+  // Read again after an earlier answer was kept, or keep it now from its settled copy (#1563).
   const reread = async () =>
-    await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+    await withSession(database, businessId, presented, keptReply(asked)).catch(heldElsewhere);
   const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
   const operation = operationFor(question.model);
