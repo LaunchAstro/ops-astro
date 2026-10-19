@@ -43,6 +43,7 @@ import { CONNECTION_READS } from './made-up-connections.ts';
 import { COST_READS } from './made-up-costs.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
+import { REVIEW_READS, pictureOf } from './made-up-review.ts';
 import { SECRET_LIST } from './made-up-secrets.ts';
 import { WAYFINDER_READS } from './made-up-wayfinder.ts';
 
@@ -197,6 +198,7 @@ const READS = {
   'automation.history': AUTOMATION_HISTORY,
   ...CONNECTION_READS,
   ...COST_READS,
+  ...REVIEW_READS,
   ...WAYFINDER_READS,
   ...BIN_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
@@ -249,7 +251,7 @@ const UNRANKED_READ = {
 export function madeUpAnswer(
   pathname: string,
   variant: MadeUpVariant = {},
-  body: { readonly recordId?: unknown; readonly conversationId?: unknown } = {},
+  body: Readonly<Partial<Record<'recordId' | 'conversationId' | 'pictureId', unknown>>> = {},
 ): MadeUpAnswer | undefined {
   const match = /^\/api\/b\/[^/]+\/(.+)$/u.exec(pathname);
   if (match === null) return undefined;
@@ -264,6 +266,7 @@ export function madeUpAnswer(
   if (name === 'task.read' && body.recordId === MOCKUP_TASK_KEY) {
     return { status: 200, json: UNRANKED_READ };
   }
+  if (name === 'review.picture') return { status: 200, json: pictureOf(body.pictureId) };
   if (name === 'chat.messages') {
     const read = messagesOf(body.conversationId);
     return read === undefined ? undefined : { status: 200, json: read };
