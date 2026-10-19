@@ -27,7 +27,8 @@
 // and an approved card reads its correction again until a final state. Each
 // answer, a refusal included, lands unless one sent after it landed first
 // (`correction-order.ts`), and the list counts as a read of every correction it
-// carries. A decision's refusal is said with the read that follows it, so it
+// carries. The list names no check, so a card it lists at a new version waits
+// for a read of that version before Approve (`correction-list.ts`). A decision's refusal is said with the read that follows it, so it
 // lands or is dropped with that read.
 
 import { useEffect, useState } from 'react';
