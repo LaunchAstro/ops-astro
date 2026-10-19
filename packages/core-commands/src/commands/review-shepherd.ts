@@ -18,6 +18,7 @@ import {
   isUuid,
   readShepherdPending,
   shepherdRecipients,
+  shepherdRunStands,
   subjectsOf,
   writeShepherdSend,
   type Covering,
@@ -58,7 +59,8 @@ export function shepherdBody(open: number, revision: number): string {
 
 /**
  * One occurrence's walk-through of one review, in the caller's transaction: the lease and the
- * occurrence's standing approval are held first, and every write follows under them. A replayed
+ * occurrence's standing approval are held first, judged again after the last lock wait, and
+ * every write follows under them. A replayed
  * occurrence answers its first send. A review of the business's own site has no client to tell.
  */
 export async function runReviewShepherd(
@@ -84,6 +86,9 @@ export async function runReviewShepherd(
   if (pending.open === 0) return { kind: 'nothing_pending' };
   const recipients = await shepherdRecipients(tx, pending.taskId, pending.partyId);
   if (recipients.length === 0) return { kind: 'no_recipients' };
+  // Judged again after the review's lock wait: a lease that lapsed during it writes nothing.
+  const lapsed = await shepherdRunStands(tx, request.occurrenceId, request.lease.leaseId);
+  if (lapsed !== undefined) return { kind: 'refused', code: lapsed };
   const send = await writeShepherdSend(tx, {
     occurrenceId: request.occurrenceId,
     reviewId: request.reviewId,

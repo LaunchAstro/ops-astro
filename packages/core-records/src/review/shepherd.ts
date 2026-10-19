@@ -24,9 +24,7 @@ export type ShepherdHoldRefusal = 'LEASE_NOT_OWNED' | 'APPROVAL_NOT_STANDING';
 /**
  * The occurrence's run held for this transaction: its lease (the caller's, on the run the
  * occurrence's dispatch started, its fence current, held by an active worker) share-locked
- * first, then the occurrence's activation (an occurrence row never changes once written); the
- * clock is read once after the locks, and the lease must be live at it, the activation enabled
- * on the occurrence's version and its standing approval unrevoked.
+ * first, then the run judged as it stands (`shepherdRunStands`).
  */
 export async function holdShepherdRun(
   tx: TenantQuery,
@@ -46,6 +44,21 @@ export async function holdShepherdRun(
     [tx.businessId, lease.leaseId, lease.fence, lease.workerActorId, occurrenceId],
   );
   if (held === undefined) return 'LEASE_NOT_OWNED';
+  return await shepherdRunStands(tx, occurrenceId, lease.leaseId);
+}
+
+/**
+ * The occurrence's activation share-locked (an occurrence row never changes once written), then
+ * the clock read in the same statement: the lease must be live at it, the activation enabled on
+ * the occurrence's version and its standing approval unrevoked. Asked again just before the
+ * walk-through writes, after every lock it waited on, where it waits on nothing more: this
+ * transaction already holds the lease and the activation.
+ */
+export async function shepherdRunStands(
+  tx: TenantQuery,
+  occurrenceId: string,
+  leaseId: string,
+): Promise<ShepherdHoldRefusal | undefined> {
   const [standing] = await tx.query<{ readonly live: boolean; readonly standing: boolean }>(
     `with instant as materialized (select clock_timestamp() as at)
      select (l.state = 'live' and l.expires_at > instant.at) as live,
@@ -59,7 +72,7 @@ export async function holdShepherdRun(
             instant
       where o.business_id = $1 and o.id = $2
       for share of a`,
-    [tx.businessId, occurrenceId, lease.leaseId],
+    [tx.businessId, occurrenceId, leaseId],
   );
   if (standing === undefined || !standing.live) return 'LEASE_NOT_OWNED';
   if (!standing.standing) return 'APPROVAL_NOT_STANDING';
