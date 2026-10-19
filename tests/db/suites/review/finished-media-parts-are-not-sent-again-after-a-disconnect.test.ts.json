@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 media store: after a disconnect the parts ask answers the parts the store holds and signs only the rest; completion before the last part is refused and the upload stays open."
+}

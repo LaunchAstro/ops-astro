@@ -419,6 +419,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
      select business_id, gen_random_uuid(), id, 1480, created_by_actor_id, created_by_person_id
        from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  // U89: the journey uploads no media. One started upload on the seeded media review.
+  'public.review_media_assets': `insert into public.review_media_assets
+       (business_id, id, review_id, planned_revision_id, kind, declared_type, declared_bytes,
+        declared_digest, object_key, upload_id, created_by_actor_id, created_by_person_id)
+     select business_id, gen_random_uuid(), id, gen_random_uuid(), 'video', 'video/mp4', 4,
+            'sha256:' || repeat('0', 64), 'seed', 'seed', opened_by_actor_id, opened_by_person_id
+       from public.reviews where business_id = $1 order by id limit 1 returning 1`,
   // C35: the journey lands no picture. One stored object of four bytes, as the storage seam
   // writes one.
   'public.storage_objects': `insert into public.storage_objects

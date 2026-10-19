@@ -234,6 +234,19 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     asked_by_actor_id: randomUUID(),
     asked_by_person_id: randomUUID(),
   },
+  // U89: the journey uploads no media; one started upload.
+  'public.review_media_assets': {
+    review_id: randomUUID(),
+    planned_revision_id: randomUUID(),
+    kind: 'video',
+    declared_type: 'video/mp4',
+    declared_bytes: 4,
+    declared_digest: `sha256:${'0'.repeat(64)}`,
+    object_key: 'seed',
+    upload_id: 'seed',
+    created_by_actor_id: randomUUID(),
+    created_by_person_id: randomUUID(),
+  },
   // C35: the journey lands no picture; one stored object of four bytes.
   'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
   // C80: nothing the journey does asks a revert.
