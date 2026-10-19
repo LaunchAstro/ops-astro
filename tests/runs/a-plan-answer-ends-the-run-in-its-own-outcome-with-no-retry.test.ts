@@ -5,8 +5,9 @@
 // ends it `plan_unavailable`, and signing in again (401) ends it `cancelled`,
 // each with its own code. Custody is asked once and never again: no retry, no
 // saved pause, the old lease calls nothing more after a worker restart and
-// the clock moving on. Only a person's `task.restart` starts a fresh attempt,
-// and the stopped one keeps its row.
+// the clock moving on. Only a person starts a fresh attempt, today by
+// `task.cancel` then `task.restart` (a direct restart of the stopped lineage
+// is R10's, #1719), and the stopped one keeps its row.
 //
 // The seam: no deployment registers the plan's task operation yet (#1971), so
 // the replay operation is declared with the plan's own nothing-happened list
@@ -153,7 +154,7 @@ it('the plan codes count only where the operation declares them: elsewhere held 
   ]);
 });
 
-it("a person's task.restart after the plan stop starts a fresh attempt; the stopped one keeps its row", async () => {
+it("a person's task.cancel then task.restart after the plan stop starts a fresh attempt; the stopped one keeps its row", async () => {
   const work = await endsOnceWith(
     'SUBSCRIPTION_PLAN_UNAVAILABLE',
     named('plan_unavailable', 'SUBSCRIPTION_PLAN_UNAVAILABLE'),
