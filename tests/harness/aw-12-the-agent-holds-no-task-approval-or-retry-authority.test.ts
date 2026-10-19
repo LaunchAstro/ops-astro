@@ -176,10 +176,15 @@ it('A7 the retry owner: a failed turn is sent once, the agent never sends it aga
   const sent = world.provider.seen.length;
   world.provider.mode('unavailable');
   const first = await seam.worker.applyOnce(seam.taskId);
+  // The agent's own retry, the same attempt computed again, and the worker's next pass.
+  const [failed] = agent.seen;
+  if (failed === undefined) throw new Error('the agent never computed');
+  const retried = await agent.runner.compute(failed);
   await seam.worker.applyOnce(seam.taskId);
   world.provider.mode('answer');
   expect(first).not.toHaveProperty('handedBack');
-  expect(world.provider.seen.length - sent, 'one send, no retry').toBe(1);
+  expect(retried.outcome).not.toBe('success');
+  expect(world.provider.seen.length - sent, 'one send, every retry refused unsent').toBe(1);
   const calls = await rows<{ state: string; sent: boolean }>(
     s,
     `select state, started_at is not null as sent from public.model_calls
