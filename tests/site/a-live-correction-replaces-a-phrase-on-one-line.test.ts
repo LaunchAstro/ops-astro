@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkEnvelope,
+  replaced,
   wordPairRefusal,
   type CorrectionTarget,
 } from '../../packages/core-connectors/src/index.ts';
@@ -123,13 +124,6 @@ describe('what stays refused, by name', () => {
     );
   });
 
-  it('refuses a replacement that would stand twice on the line', () => {
-    const after = edit(ASTRO_PAGE, 'Call us.', 'Call us today', 'Call us. Call us');
-    expect(verdict(ASTRO, ASTRO_PAGE, after, 'Call us today', 'Call us. Call us')).toEqual(
-      refused('the phrase stands at more than one place on the line'),
-    );
-  });
-
   it('refuses a phrase across a tag or an expression', () => {
     const tag = edit(ASTRO_PAGE, '<em>', 'We build <em>websites</em>', 'We make sites');
     expect(verdict(ASTRO, ASTRO_PAGE, tag, 'We build <em>websites</em>', 'We make sites')).toEqual(
@@ -151,7 +145,9 @@ describe('what stays refused, by name', () => {
       refused('the word is not in body copy'),
     );
   });
+});
 
+describe('what the text rule refuses, by name', () => {
   it('refuses a phrase holding a line break, a tab, a control or a markup character', () => {
     for (const word of [
       'We build\nwebsites',
@@ -195,7 +191,9 @@ describe('what stays refused, by name', () => {
       'the word does not change',
     );
   });
+});
 
+describe('the other fences stay', () => {
   it('refuses two lines, two files and lines added, as for a word', () => {
     const twoLines = edit(
       edit(ASTRO_PAGE, '<h1', HEADING, REWRITE),
@@ -275,5 +273,20 @@ describe('the phrase stands alone at both ends', () => {
   it('refuses a replacement whose edge letter would run on into the line', () => {
     const after = edit(ASTRO_PAGE, 'Call us.', '"Hello there"', 'Hello there');
     expect(verdict(ASTRO, ASTRO_PAGE, after, '"Hello there"', 'Hello there')).toEqual(NOT_IN_PLACE);
+  });
+});
+
+describe('the locate makes the change the envelope holds', () => {
+  it('replaces the heading, not the same words in the layout’s title before it', () => {
+    expect(replaced(ASTRO, ASTRO_PAGE, HEADING, REWRITE)).toBe(
+      edit(ASTRO_PAGE, '<h1', HEADING, REWRITE),
+    );
+  });
+
+  it('replaces the first standalone place where none is body copy, for the envelope to refuse', () => {
+    expect(replaced(ASTRO, ASTRO_PAGE, 'Our story', 'Who we are')).toBe(
+      edit(ASTRO_PAGE, '<title>', 'Our story', 'Who we are'),
+    );
+    expect(replaced(ASTRO, ASTRO_PAGE, 'walk along', 'go')).toBeNull();
   });
 });

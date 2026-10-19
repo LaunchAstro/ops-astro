@@ -21,7 +21,7 @@ import type { Member } from '../commands/fixture.ts';
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 isolation: DATABASE_URL is unset, so nothing ran.');
 
-// Letters only, so it can be the replacement word (#1693: a request is one word for one word).
+// Letters only, so it can stand alone as the replacement (#1693, #1987).
 const CANARY = `canary${randomUUID()
   .replaceAll('-', '')
   .replaceAll(/\d/gu, (digit) => 'ghijklmnop'.charAt(Number(digit)))}`;
