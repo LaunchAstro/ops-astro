@@ -2,9 +2,9 @@
 //
 // C80's revert ask, `live_correction.revert` (design rule A3): the configured
 // approver asks, once, that a live correction be reverted. It is judged as the
-// approval is (`live-corrections.ts`): a staff caller, the correction locked
-// for update at its party under the caller's gate grant, the requester refused
-// first, then the approver setting share-locked and read, then the state, and
+// approval is (`live-correction-decide.ts`): a staff caller, the correction
+// locked for update at its party under the caller's gate grant, the requester
+// refused first unless single-operator mode admits them (R5), then the approver setting share-locked and read, then the state, and
 // the gate grant read again after those waits. The ask is one row whose id the
 // worker's revert step later names; nothing here calls a provider or a model.
 //
@@ -26,6 +26,7 @@ import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { standsAfterWaits } from './live-correction-standing.ts';
+import { singleOperatorStands } from './live-correction-decide.ts';
 
 type RevertRequest = CommandRequest & { readonly command: 'live_correction.revert' };
 
@@ -72,7 +73,12 @@ export async function askLiveRevert(
   const gate = { subjects: subjectsOf(session), collection: GATE_COLLECTION, action: 'decide' };
   const correction = await lockCoveredCorrection(tx, request.correctionId, gate);
   if (correction === undefined) return refused(NOT_VISIBLE);
-  if (correction.requestedByPersonId === session.personId) return refused(SELF);
+  // R5, owner question (a): the requester asks only on their own single-operator approval, while
+  // the mode still stands under its row lock.
+  const self = correction.requestedByPersonId === session.personId;
+  if (self && !(correction.singleOperatorSelfApproval && (await singleOperatorStands(tx)))) {
+    return refused(SELF);
+  }
   const approver = await lockConfiguredApprover(tx);
   if (approver === undefined || !(await isActiveMember(tx, approver))) {
     return refused(UNCONFIGURED);
