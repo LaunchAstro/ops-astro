@@ -2,13 +2,14 @@
 //
 // #1666: in a chat opened on no task that has created tasks, the `page` field
 // says so (`{"created":true}`), and every provider whose adapter writes the
-// whole chat (Ollama, OpenRouter) tells the model an edit changes a task this
+// whole chat (Ollama, OpenRouter, the ChatGPT plan) tells the model an edit changes a task this
 // chat created, which the person picks on the card. The model is never told
 // which, nor any task's id or title. A chat on a task keeps its open-task
 // words; a chat on neither is offered a create only.
 
 import { describe, expect, it } from 'vitest';
 import {
+  chatgptPlanAdapter,
   conversationInstructions,
   ollamaAdapter,
   openrouterRequest,
@@ -20,14 +21,16 @@ const TASK_ID = '5c0ffee0-0000-4000-8000-000000000001';
 
 /** The system message each provider sends for these fields. */
 function systems(fields: Readonly<Record<string, string>>): readonly string[] {
-  return [ollamaAdapter(fields).body, openrouterRequest(fields).body].map((body) => {
+  const chats = [ollamaAdapter(fields).body, openrouterRequest(fields).body].map((body) => {
     const { messages } = JSON.parse(body) as { messages: { role: string; content: string }[] };
     return messages.find((message) => message.role === 'system')?.content ?? '';
   });
+  const { instructions } = JSON.parse(chatgptPlanAdapter(fields).body) as { instructions: string };
+  return [...chats, instructions];
 }
 
 describe('every provider’s prompt for a chat that created tasks', () => {
-  it('both providers tell the model the chat created tasks the person picks on the card, and never says a task is open', () => {
+  it('every provider tells the model the chat created tasks the person picks on the card, and never says a task is open', () => {
     for (const system of systems({ page: CREATED, message: 'Make that Friday' })) {
       expect(system).toContain('This chat has created tasks the person can change from here.');
       expect(system).toContain('"edit" to change a task this chat created');
@@ -38,7 +41,7 @@ describe('every provider’s prompt for a chat that created tasks', () => {
     }
   });
 
-  it('a chat on a task keeps its open-task words, word for word, in both providers', () => {
+  it('a chat on a task keeps its open-task words, word for word, in every provider', () => {
     const page = JSON.stringify({ task: TASK_ID, title: 'Spring brief' });
     for (const system of systems({ page, message: 'Rename it' })) {
       expect(system).toBe(conversationInstructions({ kind: 'task', title: 'Spring brief' }));

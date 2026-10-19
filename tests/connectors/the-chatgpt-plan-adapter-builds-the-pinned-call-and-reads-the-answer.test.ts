@@ -41,7 +41,7 @@ describe('the adapter', () => {
       method: 'POST',
       body: chatgptPlanBody({
         model: 'gpt-6.1-sol',
-        instructions: conversationInstructions('About page hours'),
+        instructions: conversationInstructions({ kind: 'task', title: 'About page hours' }),
         input: [
           { role: 'user', content: 'Can you fix the hours?' },
           { role: 'assistant', content: 'Which hours?' },

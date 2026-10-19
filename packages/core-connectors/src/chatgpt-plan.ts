@@ -18,8 +18,8 @@
 // custody's folded completed response, read for its words and, apart, for the
 // model's calls.
 
-import { conversationInstructions } from './conversation-prompt.ts';
-import { earlierTurns, pageTitle } from './ollama.ts';
+import { conversationInstructions, promptPage } from './conversation-prompt.ts';
+import { earlierTurns } from './ollama.ts';
 import {
   readModelId,
   type AdapterRequest,
@@ -143,7 +143,7 @@ export function chatgptPlanAdapter(
     ),
     { role: 'user', content: values['message'] ?? '' },
   ];
-  const instructions = conversationInstructions(pageTitle(values['page']));
+  const instructions = conversationInstructions(promptPage(values['page']));
   return {
     path: CHATGPT_PLAN_PATH,
     method: 'POST',
