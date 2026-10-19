@@ -18,10 +18,12 @@ export interface CaptureLease {
 export type CaptureRefusal = { readonly code: 'NOT_FOUND' | 'CAPTURE_NOT_CLAIMABLE' };
 
 /**
- * Claim a revision's captures for the lease, all widths at once. The rows are locked first; then
- * each must be requested, or claimed under a lease no longer live at the instant read after that
- * lock wait. A second worker waits on the rows and then finds them claimed under a live lease, so
- * one claim wins. A revision of a review on another task is not found.
+ * Claim a revision's captures not yet landed for the lease, all at once. The rows are locked
+ * first; then each must be requested, or claimed under a lease no longer live at the instant read
+ * after that lock wait. A second worker waits on the rows and then finds them claimed under a live
+ * lease, so one claim wins. A width landed before its lease ended stays landed, and a later lease
+ * claims the rest. A revision with nothing left to land is not claimable; one of a review on
+ * another task is not found.
  */
 export async function claimCaptures(
   tx: TenantQuery,
@@ -38,23 +40,29 @@ export async function claimCaptures(
     [tx.businessId, revisionId, lease.taskId],
   );
   if (locked.length === 0) return { code: 'NOT_FOUND' };
-  const rows = await tx.query<{ readonly width: CaptureWidth; readonly claimable: boolean }>(
-    `select k.width,
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly width: CaptureWidth;
+    readonly claimable: boolean;
+  }>(
+    `select k.id, k.width,
             k.state = 'requested' or (k.state = 'claimed' and not exists (
               select 1 from public.leases l
                where l.business_id = k.business_id and l.id = k.lease_id
                  and l.state = 'live' and l.expires_at > clock_timestamp())) as claimable
        from public.review_captures k
-      where k.business_id = $1 and k.id = any($2::uuid[])
+      where k.business_id = $1 and k.id = any($2::uuid[]) and k.state <> 'landed'
       order by k.width`,
     [tx.businessId, locked.map((row) => row.id)],
   );
-  if (!rows.every((row) => row.claimable)) return { code: 'CAPTURE_NOT_CLAIMABLE' };
+  if (rows.length === 0 || !rows.every((row) => row.claimable)) {
+    return { code: 'CAPTURE_NOT_CLAIMABLE' };
+  }
   await tx.query(
     `update public.review_captures
         set state = 'claimed', lease_id = $3, fence = $4, updated_at = now()
       where business_id = $1 and id = any($2::uuid[])`,
-    [tx.businessId, locked.map((row) => row.id), lease.leaseId, lease.fence],
+    [tx.businessId, rows.map((row) => row.id), lease.leaseId, lease.fence],
   );
   return { widths: rows.map((row) => row.width) };
 }
