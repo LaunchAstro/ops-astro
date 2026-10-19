@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 the land's lease: a land under an expired lease, a later lease that never claimed, another task's live lease or for another business's capture is refused (DELEGATION_NOT_LIVE, LEASE_NOT_OWNED, CAPTURE_NOT_CLAIMED, NOT_FOUND) and stores nothing."
+}
