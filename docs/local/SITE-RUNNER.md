@@ -130,7 +130,11 @@ that site is the business's own (`reviewPool`, TR-P-1). A runner configured
 for a client's site captures nothing, and no other page is reachable until
 the pool's reviews are recorded (#2018). A refused page lands nothing and
 its lease goes back `failed` with the fence's code. A queue the captures
-cannot read fails the pass and pings no heartbeat, as the corrections' does.
+cannot read fails the pass and pings no heartbeat, as the corrections' does,
+and so does a claim refused or never answered: it logs its code, lands
+nothing and hands the lease back `failed`. The captures are spare work, so
+they never keep a pass healthy: when the locate and the corrections both
+failed, the pass fails however the captures went.
 Only codes are printed or reported, never a path or a credential.
 
 Finding the review grants nothing: the API judges the lease, its fence and
