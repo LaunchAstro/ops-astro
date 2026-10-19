@@ -73,8 +73,16 @@ interface Pinner {
   readonly delegation?: Delegation;
 }
 
-/** The anchor, or its refusal: a malformed revision id names no revision, as a foreign one. */
+/**
+ * The anchor, or its refusal: a revision id left out is the caller's to send, and a malformed
+ * one names no revision, as a foreign one.
+ */
 function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | HandlerOutcome {
+  if (typeof sent['revisionId'] !== 'string') {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['revisionId'], ['Send revisionId as an identifier.']),
+    );
+  }
   const parsed = parseAnchor(sent);
   if (parsed.ok) return parsed.anchor;
   const [name = 'selector'] = parsed.names;
