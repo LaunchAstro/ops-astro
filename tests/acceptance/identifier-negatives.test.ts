@@ -823,6 +823,18 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { changeRequestId, decision: 'approve' },
         fabricated: { changeRequestId: randomUUID(), decision: 'approve' },
       });
+      // #2117: the worker's own live lease, naming bravo's request or a made-up one.
+      const own = await w.pickUp(w.h.world.agent, 'an agent lease a change request is named under');
+      const agent: Presenter = {
+        kind: 'agent',
+        identity: w.h.world.agent,
+        credential: own.credential,
+      };
+      const lease = { leaseId: own.leaseId, fence: own.fence };
+      await refuses('review.make_change_task', 'changeRequestId', agent, 'NOT_FOUND', {
+        foreign: { ...lease, changeRequestId },
+        fabricated: { ...lease, changeRequestId: randomUUID() },
+      });
     },
     120_000,
   );

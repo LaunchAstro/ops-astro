@@ -825,7 +825,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too, and so does the worker's own stop
       // (#1623 R1), with a code it may end on; the helper's handback by its credential.
-      // C35's claim and land go by the lease, a revision named beside it.
+      // C35's claim and land go by the lease, a revision named beside it. C57's task
+      // making (#2117) names its task through the lease as well.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -837,6 +838,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'run.end',
         'review.capture_claim',
         'review.capture_land',
+        'review.make_change_task',
       ].includes(declaration.name)
         ? {
             ...probe,
