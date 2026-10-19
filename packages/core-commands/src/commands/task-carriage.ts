@@ -117,9 +117,9 @@ export function taskHandoff(
         if (!(await recordSend(database, businessId, callId, accept))) {
           return { ok: false, code: 'DECISION_STALE' };
         }
-        return await holdSend<undefined>(
+        return await holdSend<null>(
           async (work) =>
-            await database.withBusiness(businessId, async (tx) => await work(tx, undefined)),
+            await database.withBusiness(businessId, async (tx) => await work(tx, null)),
           async (tx) => await judgeTask(tx, asked, { runner }),
           heardAt,
         );
