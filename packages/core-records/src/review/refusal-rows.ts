@@ -16,4 +16,22 @@ export const REVIEW_ROWS = [
     meaning: "The revision's capture is asked already",
     source: 'C35, the review record',
   },
+  {
+    code: 'CAPTURE_NOT_CLAIMABLE',
+    status: 409,
+    meaning: 'Another live lease holds the capture, or it has landed',
+    source: 'C35, the capture claim',
+  },
+  {
+    code: 'CAPTURE_NOT_CLAIMED',
+    status: 409,
+    meaning: 'The capture is not claimed by the lease and fence that land it',
+    source: 'C35, the capture land',
+  },
+  {
+    code: 'PICTURE_TOO_LARGE',
+    status: 422,
+    meaning: 'The picture is past the storage cap',
+    source: 'C35, the storage seam',
+  },
 ] as const;

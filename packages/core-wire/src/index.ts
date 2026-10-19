@@ -268,4 +268,4 @@ export type {
   Unavailable,
 } from './cost-views.ts';
 // What the review reads answer (C35, #2011).
-export type { ReviewCaptureView, ReviewReadResult } from './views-review.ts';
+export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from './views-review.ts';
