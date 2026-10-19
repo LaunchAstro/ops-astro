@@ -208,7 +208,8 @@ export async function fieldsOf(
 /**
  * A turn's priced answer as the broker settles it (#2091): one whose calls
  * are not this turn's to make (`answerCallsKept`) is held as malformed, so
- * the runner never sees any of them and no tool runs.
+ * the runner never sees any of them and no tool runs. One too deep to digest
+ * settles priced instead, and its turn ends `TURN_MALFORMED` (#1900).
  */
 export function keptTurnAnswer<S extends { readonly kind: string; readonly answer?: ModelAnswer }>(
   settlement: S,
@@ -217,6 +218,8 @@ export function keptTurnAnswer<S extends { readonly kind: string; readonly answe
   if (settlement.kind !== 'priced' || request.turn === undefined) return settlement;
   const turn = readTurn(request.turn);
   const calls = settlement.answer?.toolCalls ?? [];
+  // Too deep to digest: it settles priced and its turn ends TURN_MALFORMED, no call run (S1900-6).
+  if (nestsTooDeep(calls, ANSWER_DEPTH)) return settlement;
   return turn !== undefined && answerCallsKept(turn, calls)
     ? settlement
     : { kind: 'unknown', ...ANSWER_MALFORMED };
