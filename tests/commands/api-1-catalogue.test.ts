@@ -58,8 +58,13 @@ function catalogueMatchesCode(): void {
     const { rows, failures } = real();
     expect(failures).toEqual([]);
     expect(rows.map((row) => row.command)).toEqual(COMMAND_SURFACE.map((one) => one.name));
-    // `handlers.ts` and the team chat and wayfinder blocks it spreads in.
-    const handlers = ['handlers.ts', 'chat-handlers.ts', 'handlers-wayfinder.ts']
+    // `handlers.ts` and the team chat, wayfinder and live correction blocks it spreads in.
+    const handlers = [
+      'handlers.ts',
+      'chat-handlers.ts',
+      'handlers-wayfinder.ts',
+      'live-correction-handlers.ts',
+    ]
       .map((file) => readFileSync(`packages/core-commands/src/commands/${file}`, 'utf8'))
       .join('\n');
     for (const row of rows.filter((one) => one.kind === 'write')) {
