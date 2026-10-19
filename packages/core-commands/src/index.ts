@@ -50,6 +50,16 @@ export {
   type OccurrenceRun,
   type ReadOccurrenceAuthority,
 } from './commands/occurrence-run.ts';
+// C57 (#2017): the review shepherd's worker path and a person's approval of one send, never a
+// command yet (no API route, no CLI).
+export {
+  approveShepherdSendAsPerson,
+  runReviewShepherd,
+  shepherdBody,
+  type ShepherdApproveOutcome,
+  type ShepherdRunOutcome,
+  type ShepherdRunRequest,
+} from './commands/review-shepherd.ts';
 // C52-A's dispatch hands the worker's occurrence to AW-01 J's write.
 export { occurrenceRunStarter } from './commands/automation-run.ts';
 // The API's interval pass that claims due occurrences and dispatches them (#1318).
