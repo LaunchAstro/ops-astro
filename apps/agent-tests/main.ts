@@ -3,7 +3,9 @@
 // The agent test commands (#1626 R11), on the replay fake:
 //   node apps/agent-tests/main.ts <set> [--out <file>]
 //     runs the named set (`cases.ts`) and writes its results file, by
-//     default under `agent-test-results/`; exits 1 when a case fails.
+//     default under `agent-test-results/`, never over one already there
+//     (a saved review stays with the results it reviewed); exits 1 when a
+//     case fails.
 //   node apps/agent-tests/main.ts review <results file> <review file>
 //     saves Astra's review beside the results file, as
 //     `<results>.astra-review.md`, never over one already saved.
@@ -56,7 +58,14 @@ async function runNamed(name: string | undefined, args: readonly string[]): Prom
   if (out === undefined) refuse('--out needs a file');
   const results = await runSet(set);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, `${JSON.stringify(results, null, 2)}\n`);
+  try {
+    writeFileSync(out, `${JSON.stringify(results, null, 2)}\n`, { flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      refuse(`a results file is already at ${out}`);
+    }
+    throw error;
+  }
   process.stdout.write(
     `${set.name}: ${String(results.passed)} passed, ${String(results.failed)} failed; ${out}\n`,
   );
