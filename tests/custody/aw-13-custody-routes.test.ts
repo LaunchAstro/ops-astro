@@ -179,11 +179,16 @@ it('AW-13 custody expiry route: DELETE and GET only on the destination’s own r
     outbound: { ok: false, fault: 'bad_path' },
   });
   // Methods custody never sends, whatever the route: refused before any answer.
-  for (const method of ['PUT', 'PATCH', 'delete', 'Delete', 'OPTIONS', 'CONNECT', '']) {
+  for (const method of ['PUT', 'delete', 'Delete', 'OPTIONS', 'CONNECT', '']) {
     // oxlint-disable-next-line no-await-in-loop
     const outcome = await dispatch(method, '/api/public/traces');
     expect(outcome, method).toMatchObject({ kind: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
   }
+  // A PATCH goes only on a catalogued route that names its body; this destination has none.
+  expect(await dispatch('PATCH', '/api/public/traces')).toMatchObject({
+    kind: 'answered',
+    outbound: { ok: false, fault: 'bad_path' },
+  });
   expect(seen).toHaveLength(0);
 });
 
