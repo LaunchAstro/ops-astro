@@ -16,6 +16,7 @@
 // Which task it works on is the delegation's answer, read from
 // `session.capabilities`, never chosen here.
 
+import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
@@ -155,9 +156,9 @@ async function ask(
       entry['purpose'] === SYNTHETIC_STEP.kind,
   );
   if (work === undefined) return { idle: { taskId } };
-  // The pickup names its reservation, so a pickup asked again by any pass replays.
-  const reservationId = String(work['reservationId']);
-  return { reservationId: work['reservationId'], operationId: `pickup:${reservationId}` };
+  // Its own per pass, never the reservation's: a second process naming the same
+  // pickup would replay the first's answer and hold its lease (T3f).
+  return { reservationId: work['reservationId'], operationId: randomUUID() };
 }
 
 /** The pickup, under the identity it was first asked with. */
