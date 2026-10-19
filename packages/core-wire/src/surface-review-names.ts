@@ -5,6 +5,13 @@
 
 /**
  * A person, or an agent on that person's credential, opens a review and asks a capture of a
- * revision; the review is read with its revisions and captures.
+ * revision; a worker claims the capture and lands it under its lease; the review, with its
+ * revisions and captures, and a landed picture are read.
  */
-export type ReviewCommandName = 'review.open' | 'review.capture' | 'review.read';
+export type ReviewCommandName =
+  | 'review.open'
+  | 'review.capture'
+  | 'review.capture_claim'
+  | 'review.capture_land'
+  | 'review.read'
+  | 'review.picture';

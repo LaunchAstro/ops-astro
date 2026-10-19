@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5: the review commands' data effects (C35, #2011), spread into `COMMAND_EFFECTS`.
-// Each writes rows that hold a task's id, so each is `client-data`: the first-client gate
-// refuses them while readiness is false.
+// Each writes rows that hold a task's id, so each is `client-data`, and the land takes a
+// page capture in as well: the first-client gate refuses them while readiness is false.
 
 import type { CommandName } from './command-names.ts';
 import { client, writing, type DataEffects } from './data-effects-types.ts';
@@ -12,5 +12,11 @@ export const REVIEW_EFFECTS: {
 } = {
   'review.open': writing(client('review_revisions', 'reviews')),
   'review.capture': writing(client('review_captures')),
+  'review.capture_claim': writing(client('review_captures')),
+  'review.capture_land': {
+    ...writing(client('review_captures', 'storage_objects')),
+    intake: ['page-capture'],
+  },
   'review.read': writing([]),
+  'review.picture': writing([]),
 };
