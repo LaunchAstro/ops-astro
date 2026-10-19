@@ -326,8 +326,6 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         );
         return personCell(ada, name, { grantId: rows[0]?.id }, null);
       }
-      case 'review.make_change_task':
-        return await changeTaskCell();
       case 'delegation.revoke': {
         const p = await pickUpBy(ada, await freshAgent(), 'work whose delegation is revoked');
         return personCell(ada, name, { delegationId: p.delegationId }, null);
@@ -375,7 +373,10 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return { ...agentCell(agent, 'run.end', body, p.credential, 'RUN_ENDED'), retained: true };
   }
 
-  /** AW-11's two, the take and the stop on an agent's own login; every other operation as `applied` builds it. */
+  /**
+   * AW-11's two, the take and the stop on an agent's own login, and C57's task making on a
+   * review's task; every other operation as `applied` builds it.
+   */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
       ? await childCell(declaration.name)
@@ -383,7 +384,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         ? await ownTake()
         : declaration.name === 'run.end'
           ? await endedCell()
-          : await applied(declaration);
+          : declaration.name === 'review.make_change_task'
+            ? await changeTaskCell()
+            : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
