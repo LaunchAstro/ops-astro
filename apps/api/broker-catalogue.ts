@@ -4,10 +4,16 @@
 // root registers them (AW-01): in code and reviewed, never configured. The
 // outside provider (#1508) adds OpenRouter's paid conversation operation and
 // its adapter beside any of them, only where `OPS_OUTSIDE_PROVIDER` is
-// `openrouter` (`outside-provider.ts`).
+// `openrouter` (`outside-provider.ts`). The carried deployment with the owner's
+// plan route set (#2091) adds the agent's turn on the plan and its adapter,
+// under the plan's own provider key, so the route stays the plan's.
 
 import {
   catalogue,
+  CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_PROVIDER,
+  CHATGPT_PLAN_TURN,
+  chatgptPlanTurnAdapter,
   readReplayLookup,
   CONVERSATION_ANSWER,
   LOCAL_GPT_COMPOSE,
@@ -70,19 +76,41 @@ const OUTSIDE_ADAPTER: ProviderAdapter = {
   bodyLimit: OPENROUTER_BODY_LIMIT,
 };
 
-/** The install's operations and adapters, with OpenRouter's where the outside provider is on. */
+/**
+ * The agent's turn on the owner's plan and its one adapter. It is the only
+ * operation on the plan's provider key, since the broker finds an adapter by
+ * that key: the plan's conversation operation, beside it, would need one
+ * adapter for both.
+ */
+const PLAN_OPERATIONS = catalogue([CHATGPT_PLAN_TURN]);
+const PLAN_ADAPTER: ProviderAdapter = {
+  build: chatgptPlanTurnAdapter,
+  price: () => 0,
+  bodyLimit: CHATGPT_PLAN_BODY_LIMIT,
+};
+
+/**
+ * The install's operations and adapters, with OpenRouter's where the outside
+ * provider is on, and the plan's turn only where the carried deployment has
+ * the plan route.
+ */
 export function catalogueOf(
   provider: AgentProvider,
   outside: boolean,
+  plan = false,
 ): {
   readonly operations: ReadonlyMap<string, ModelOperation>;
   readonly providers: ReadonlyMap<string, ProviderAdapter>;
 } {
-  const operations: ReadonlyMap<string, ModelOperation> = OPERATIONS[provider];
-  const providers: ReadonlyMap<string, ProviderAdapter> = PROVIDERS[provider];
-  if (!outside) return { operations, providers };
-  return {
-    operations: new Map([...operations, ...OUTSIDE_OPERATIONS]),
-    providers: new Map([...providers, [OPENROUTER_PROVIDER, OUTSIDE_ADAPTER]]),
-  };
+  const operations = new Map<string, ModelOperation>(OPERATIONS[provider]);
+  const providers = new Map<string, ProviderAdapter>(PROVIDERS[provider]);
+  if (outside) {
+    for (const [key, operation] of OUTSIDE_OPERATIONS) operations.set(key, operation);
+    providers.set(OPENROUTER_PROVIDER, OUTSIDE_ADAPTER);
+  }
+  if (plan && provider === 'ollama') {
+    for (const [key, operation] of PLAN_OPERATIONS) operations.set(key, operation);
+    providers.set(CHATGPT_PLAN_PROVIDER, PLAN_ADAPTER);
+  }
+  return { operations, providers };
 }

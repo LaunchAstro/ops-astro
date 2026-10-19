@@ -5,7 +5,7 @@
 // `function_call`, with words beside it or without, is no answer this turn
 // takes. The reader gives back nothing, which settlement holds as malformed,
 // and no call ever reaches the runner. Words alone are the answer, with no
-// tool calls.
+// tool calls (an absent `toolCalls` is none).
 
 import { describe, expect, it } from 'vitest';
 import { readChatgptPlanTurnAnswer } from '../../packages/core-connectors/src/index.ts';
@@ -24,7 +24,6 @@ describe('a text-only turn answer', () => {
   it('is the words alone, with no tool calls', () => {
     expect(readChatgptPlanTurnAnswer(completed(['Open 8 to 5', ' on weekdays.']))).toStrictEqual({
       text: 'Open 8 to 5 on weekdays.',
-      toolCalls: [],
       model: 'gpt-6.1-sol',
       usage: { inputUnits: 12, outputUnits: 34 },
       providerCode: null,
