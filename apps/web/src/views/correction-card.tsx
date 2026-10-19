@@ -3,26 +3,24 @@
 // C80 (P30): the sidebar's correction desks and card, drawn above the
 // drawer's transcript beside its allowance line.
 //
-// The door asks for a one-word change through the host's port and says a
-// refusal in plain words; without the host's site read there is no door, but
-// the desks are still drawn from the business's list. Each card says what was
-// asked and where it stands, as `live_correction.read` last answered. It
-// publishes nothing itself: its decision controls are a person's Launch and
-// Decline, through `live_correction.decide` (Launch sends `approve`), on a
-// correction still waiting for one. A publish follows that decision on the
-// server, never a press here. A published or reverted card opens its
-// receipts. Every value is drawn as text.
+// The door asks for a one-word change on the host's task and says a refusal
+// in plain words; without the host's task there is no door, but the desks are
+// still drawn from the business's list. Each card says what was asked and
+// where it stands, as `live_correction.read` last answered. It publishes
+// nothing itself: its decision controls are a person's Launch and Decline,
+// through `live_correction.decide` (Launch sends `approve`), on a correction
+// still waiting for one. Launch is drawn only while the version's check holds
+// (`use-launch-clock.ts`). A publish follows that decision on the server,
+// never a press here. A published or reverted card opens its receipts. Every
+// value is drawn as text.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { CorrectionReceiptView } from '../../../../packages/core-wire/src/index.ts';
-import { STATE_WORDS, type CorrectionAsk, type ProposePort } from '../assistant/correction.ts';
-import {
-  desksOf,
-  requestPort,
-  type Correction,
-  type Locate,
-} from '../assistant/correction-desks.ts';
+import { stateWords, type CorrectionAsk, type ProposePort } from '../assistant/correction.ts';
+import { desksOf, type Correction } from '../assistant/correction-desks.ts';
+import { taskCorrectionPort } from '../assistant/locate.ts';
 import { useCorrections, type Corrections } from '../assistant/use-corrections.ts';
+import { useLaunchClock } from '../assistant/use-launch-clock.ts';
 import type { OperationsClient } from '../operations/client.ts';
 
 const DECISIONS = [
@@ -31,14 +29,16 @@ const DECISIONS = [
   ['reject', 'Decline'],
 ] as const;
 
-/** A person's approve and decline, the card's only controls. */
+/** A person's approve and decline, the card's only controls; approve only while the check holds. */
 function Decisions(props: {
   readonly busy: boolean;
+  readonly launchable: boolean;
   readonly onDecide: (decision: 'approve' | 'reject') => void;
 }): ReactElement {
+  const offered = DECISIONS.filter(([decision]) => decision !== 'approve' || props.launchable);
   return (
     <div className="aip__plan-act">
-      {DECISIONS.map(([decision, words]) => (
+      {offered.map(([decision, words]) => (
         <button
           key={decision}
           type="button"
@@ -112,9 +112,12 @@ export function CorrectionCard(props: {
   readonly busy: boolean;
   readonly onDecide: (decision: 'approve' | 'reject') => void;
   readonly onReceipts: () => void;
+  /** Read the correction again: the card's clock calls it. */
+  readonly onReread: () => void;
 }): ReactElement {
   const { correction, busy, onDecide } = props;
   const { ask } = correction;
+  const { launchable, checking } = useLaunchClock(correction, props.onReread);
   const decidable = correction.state === 'requested' && correction.versionId !== null;
   const receipted = correction.state === 'published' || correction.state === 'reverted';
   return (
@@ -129,15 +132,20 @@ export function CorrectionCard(props: {
         {`${ask.page} page: “${ask.word}” becomes “${ask.replacement}”.`}
       </p>
       <p className="aip__plan-meta" data-correction-words="">
-        {STATE_WORDS[correction.state]}
+        {stateWords(correction.state, correction.reason)}
         {correction.approver === null ? '' : ` Decided by ${correction.approver}.`}
       </p>
+      {checking ? (
+        <p className="aip__plan-meta" data-correction-checking="">
+          Checking the page again…
+        </p>
+      ) : null}
       {correction.refusal === null ? null : (
         <p className="aip__plan-meta aip__plan-refused" role="alert">
           {correction.refusal}
         </p>
       )}
-      {decidable ? <Decisions busy={busy} onDecide={onDecide} /> : null}
+      {decidable ? <Decisions busy={busy} launchable={launchable} onDecide={onDecide} /> : null}
       {receipted ? (
         <Receipts receipts={correction.receipts} busy={busy} onOpen={props.onReceipts} />
       ) : null}
@@ -239,6 +247,9 @@ export function SidebarCorrections(props: {
               onReceipts={() => {
                 corrections.openReceipts(correction.correctionId);
               }}
+              onReread={() => {
+                corrections.reread(correction.correctionId);
+              }}
             />
           ))}
         </section>
@@ -249,11 +260,11 @@ export function SidebarCorrections(props: {
 
 /** What the agent sidebar's host hands in for corrections (`assistant.tsx`). */
 export interface CorrectionHost {
-  /** The site read that finds a correction's file (`Locate`); without it no door is drawn. */
-  readonly locate?: Locate;
+  /** The task a correction is asked on; without one no door is drawn. */
+  readonly taskId?: string | undefined;
 }
 
-/** The allowance line, the correction desks, and the door where the host hands in the site read. */
+/** The allowance line, the correction desks, and the door where the host hands in a task. */
 export const besideAllowance = (
   allowance: ReactElement,
   host: CorrectionHost & {
@@ -266,7 +277,7 @@ export const besideAllowance = (
     <SidebarCorrections
       client={host.client}
       grantKey={host.grantKey}
-      propose={host.locate === undefined ? undefined : requestPort(host.client, host.locate)}
+      propose={host.taskId === undefined ? undefined : taskCorrectionPort(host.client, host.taskId)}
     />
   </>
 );

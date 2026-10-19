@@ -50,6 +50,11 @@ function correctionReads(route: Route): Promise<void> {
     const corrections = [item('c-1', 'requested'), item('c-2', 'live')];
     return route.fulfill({ json: { ok: true, corrections } });
   }
+  // The waiting card offers Launch once a read's check holds; the card reads it at 10 s.
+  if (path.endsWith('/live_correction/read')) {
+    const correction = { ...item('c-1', 'requested'), verifiedForMs: 600_000, refusal: null };
+    return route.fulfill({ json: { ok: true, correction } });
+  }
   if (path.endsWith('/live_correction/receipts')) {
     return route.fulfill({ json: { ok: true, correctionId: 'c-2', receipts: [RECEIPT] } });
   }

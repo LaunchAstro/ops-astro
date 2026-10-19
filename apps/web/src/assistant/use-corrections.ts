@@ -10,6 +10,12 @@
 // it answered, so a refused or unanswered decision draws the state and version
 // the read answers now; its refusal is said in the same plain words.
 //
+// **When it was read.** Each read's answer is stamped with `performance.now()`
+// as the read was sent (`readAt`), beside how long its version's check holds
+// (`verifiedForMs`), so the card times its Approve from the read and never
+// from the wall clock, and a slow answer grants no extra time. The card reads
+// again through `reread`.
+//
 // **Keyed on business and grant.** Everything is held under the business it
 // was asked in (`client.businessKey`) and the grant it was asked under (the
 // view's `grantKey`: business, person and session), and every answer lands
@@ -24,7 +30,6 @@
 
 import { useEffect, useState } from 'react';
 import type {
-  CorrectionListItem,
   LiveCorrectionListResult,
   LiveCorrectionReadResult,
   LiveCorrectionReceiptsResult,
@@ -33,6 +38,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { settle, type Failure, type Settlement } from '../records/use-command.ts';
 import { cardState, refusalWords, type CorrectionAsk, type ProposePort } from './correction.ts';
 import type { Correction } from './correction-desks.ts';
+import { withListed } from './correction-list.ts';
 import { useOrder, type Order } from './correction-order.ts';
 
 export interface Corrections {
@@ -46,6 +52,8 @@ export interface Corrections {
   readonly request?: (ask: CorrectionAsk) => void;
   readonly decide: (correctionId: string, decision: 'approve' | 'reject') => void;
   readonly openReceipts: (correctionId: string) => void;
+  /** Read the correction again, under the business and grant it is held under. */
+  readonly reread: (correctionId: string) => void;
 }
 
 /** How often an approved or accepted card reads its correction again. */
@@ -93,8 +101,9 @@ const failureWords = (failed: Failure): string => refusalWords(failedCode(failed
 
 /**
  * The correction's decision as `live_correction.read` answers it now, under
- * `key`; false where the read failed, its failure then the card's refusal.
- * `lands` says whether its answer may still land; an overtaken one is dropped.
+ * `key`; false where the read failed, its failure then the card's refusal. The
+ * answer is timed from when the read was sent, so a slow answer grants no extra
+ * time. `lands` says whether its answer may still land; an overtaken one is dropped.
  */
 async function readInto(
   client: OperationsClient,
@@ -103,6 +112,7 @@ async function readInto(
   correctionId: string,
   lands: () => boolean,
 ): Promise<boolean> {
+  const sentAt = performance.now();
   const settled = settle(
     await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
   );
@@ -111,8 +121,16 @@ async function readInto(
     amend(key, correctionId, { refusal: failureWords(settled) });
     return false;
   }
-  const { state, approver, versionId } = settled.value.correction;
-  amend(key, correctionId, { state: cardState(state), approver, versionId, refusal: null });
+  const { state, approver, versionId, verifiedForMs, refusal } = settled.value.correction;
+  amend(key, correctionId, {
+    state: cardState(state),
+    approver,
+    versionId,
+    verifiedForMs: Number.isFinite(verifiedForMs) && verifiedForMs > 0 ? verifiedForMs : 0,
+    readAt: sentAt,
+    reason: typeof refusal === 'string' ? refusal : null,
+    refusal: null,
+  });
   return true;
 }
 
@@ -124,25 +142,6 @@ function tracked(change: Change, key: string, work: Promise<void>): void {
   });
 }
 
-/** Where a listed correction stands, as the list answered it. */
-const standing = (item: CorrectionListItem): Partial<Correction> => ({
-  state: cardState(item.state),
-  approver: item.approver,
-  versionId: item.versionId,
-  refusal: null,
-});
-
-/** A listed correction as its card holds it; the page is named by its address. */
-const listed = (item: CorrectionListItem): Correction => ({
-  correctionId: item.correctionId,
-  ask: { page: item.pageUrl, word: item.word, replacement: item.replacement },
-  state: cardState(item.state),
-  approver: item.approver,
-  versionId: item.versionId,
-  refusal: null,
-  receipts: null,
-});
-
 /** A correction just asked for, before its first read answers. */
 const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   correctionId,
@@ -150,21 +149,12 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   state: 'requested',
   approver: null,
   versionId: null,
+  verifiedForMs: 0,
+  readAt: null,
+  reason: null,
   refusal: null,
   receipts: null,
 });
-
-/** The desk with `items` as listed: a card it holds takes the listed state, a new one is added. */
-const withListed = (desk: Held, items: readonly CorrectionListItem[]): Held => {
-  const byId = new Map(items.map((item) => [item.correctionId, item]));
-  const held = desk.list.map((each) => {
-    const item = byId.get(each.correctionId);
-    return item === undefined ? each : { ...each, ...standing(item) };
-  });
-  const known = new Set(desk.list.map((each) => each.correctionId));
-  const fresh = items.filter((item) => !known.has(item.correctionId)).map((item) => listed(item));
-  return { ...desk, listRefusal: null, list: [...held, ...fresh] };
-};
 
 /** The key a desk is held under: the business, then the grant on top. */
 const deskKey = (business: string, grantKey: string | undefined): string =>
@@ -187,7 +177,7 @@ function useListed(client: OperationsClient, at: string, change: Change, order: 
         return;
       }
       const landing = items.filter((item) => order.lands(at, item.correctionId, nth));
-      change(at, (desk) => withListed(desk, landing));
+      change(at, (desk) => ({ ...desk, listRefusal: null, list: withListed(desk.list, landing) }));
     };
     void listing();
     // Read each time the desk is drawn; `change` and `order` only set state, so the first serve.
@@ -290,8 +280,7 @@ export function useCorrections(
     decide: (id, decision) => {
       tracked(change, at, decide(at, id, decision));
     },
-    openReceipts: (id) => {
-      tracked(change, at, receiptsInto(client, amend, at, id));
-    },
+    openReceipts: (id) => tracked(change, at, receiptsInto(client, amend, at, id)),
+    reread: (id) => void read(at, id),
   };
 }

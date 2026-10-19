@@ -8,6 +8,7 @@
 // and the person's approve is the button "Launch". The server's decision
 // stays `approve`.
 
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FOLLOW_MS } from '../../apps/web/src/assistant/use-corrections.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -40,9 +41,15 @@ const RECEIPT = {
 
 /**
  * One business's API: the list answers `listed`, each read of c-1 takes the
- * next state in `states` (the last repeating), and every call is kept.
+ * next state in `states` (the last repeating) with a check good for
+ * `verifiedForMs`, and every call is kept.
  */
-function api(businessKey: string, listed: readonly string[], states: readonly string[] = []) {
+function api(
+  businessKey: string,
+  listed: readonly string[],
+  states: readonly string[] = [],
+  verifiedForMs = 60_000,
+) {
   const calls: { path: string; body: Record<string, unknown> }[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -61,7 +68,7 @@ function api(businessKey: string, listed: readonly string[], states: readonly st
     }
     if (path === '/live_correction/read') {
       const correction = { correctionId: 'c-1', state, approver: 'Grace Hopper', versionId: V1 };
-      return Promise.resolve(json({ ok: true, correction }));
+      return Promise.resolve(json({ ok: true, correction: { ...correction, verifiedForMs } }));
     }
     if (path === '/live_correction/receipts') {
       return Promise.resolve(json({ ok: true, correctionId: 'c-1', receipts: [RECEIPT] }));
@@ -73,6 +80,16 @@ function api(businessKey: string, listed: readonly string[], states: readonly st
   const sent = (path: string) => calls.filter((call) => call.path === path);
   return { client, sent };
 }
+
+/** Move the fake clocks on by `ms` a second at a time, letting React draw each answer as it lands. */
+const stepped = async (ms: number): Promise<void> => {
+  for (let left = ms; left > 0; left -= 1000) {
+    // oxlint-disable-next-line no-await-in-loop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(Math.min(1000, left));
+    });
+  }
+};
 
 afterEach(unmountAll);
 
@@ -134,11 +151,19 @@ describe('an approved card follows its correction until a final state', () => {
     expect(sent('/live_correction/read')).toHaveLength(reads);
   });
 
-  it('never follows a card waiting for a decision or at a final state', async () => {
-    const { client, sent } = api('alpha', ['requested', 'live', 'failed', 'rejected']);
+  it('never follows a waiting card; it reads it only to renew Launch’s check', async () => {
+    // The waiting card is read once its (absent) check has lapsed, at 10 s; each read's
+    // check holds 20 s, so the next renewal is at 30 s, and nothing in between.
+    const { client, sent } = api('alpha', ['requested', 'live', 'failed', 'rejected'], [], 20_000);
     await mount(<SidebarCorrections client={client} />);
-    await vi.advanceTimersByTimeAsync(FOLLOW_MS * 5);
-    expect(sent('/live_correction/read')).toHaveLength(0);
+    await stepped(FOLLOW_MS * 5);
+    expect(sent('/live_correction/read').map((call) => call.body)).toStrictEqual([
+      { correctionId: 'c-1' },
+    ]);
+    await stepped(16_000);
+    expect(sent('/live_correction/read')).toHaveLength(2);
+    await stepped(18_000);
+    expect(sent('/live_correction/read')).toHaveLength(2);
   });
 
   it('stops following once the drawer is gone', async () => {
@@ -182,8 +207,12 @@ describe('a published card shows its receipts', () => {
 
 describe('the button reads Launch', () => {
   it('a waiting card offers Launch and Decline, and Launch sends approve on its version', async () => {
-    const { client, sent } = api('alpha', ['requested'], ['approved']);
+    // The listed card offers Launch once a read's check holds: the card reads it at 10 s.
+    vi.useFakeTimers();
+    const { client, sent } = api('alpha', ['requested'], ['requested', 'approved']);
     const view = await mount(<SidebarCorrections client={client} />);
+    await vi.advanceTimersByTimeAsync(10_000);
+    vi.useRealTimers();
     await tick();
     expect(controls(view)).toStrictEqual(['Launch', 'Decline']);
     await view.click('[data-correction-decide="approve"]');
