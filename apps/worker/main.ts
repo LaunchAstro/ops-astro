@@ -22,6 +22,7 @@
 import { httpTransport, shownAddress, unredirected, type Transport } from '../cli/client.ts';
 import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
 import { REPLAY_TURN } from '../../packages/core-connectors/src/index.ts';
+import { AGENT_MODEL_CALL_LIMIT } from '../../packages/core-wire/src/index.ts';
 import { agentRunner } from './agent-runner.ts';
 import { agentSignIn } from './sign-in.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
@@ -134,7 +135,8 @@ async function signedInWorker(
     businessKey: env['OPS_ASTRO_BUSINESS'] as string,
     credential: signedIn,
     delegation: env['OPS_ASTRO_DELEGATION'] as string,
-    reporter: SYNTHETIC_USAGE,
+    // The plan holds its compute's ceiling too, every turn at its maximum, so its reviewed successor fits.
+    reporter: { ...SYNTHETIC_USAGE, compute: AGENT_MODEL_CALL_LIMIT * REPLAY_TURN.maximumMinor },
     // An accepted plan is computed by the agent, its turns the API's replay turn (#1717 R8b).
     runner: agentRunner({ operation: REPLAY_TURN.key }),
   });

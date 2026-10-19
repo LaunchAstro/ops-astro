@@ -57,7 +57,7 @@ export async function proposeStep(
   call: Call,
   mine: Proposer,
   step: { readonly kind: string },
-  reporter: Pick<UsageReporter, 'estimate'>,
+  reporter: Pick<UsageReporter, 'estimate' | 'compute'>,
   queued: Queued,
 ): Promise<Proposed> {
   mine.running ??= proposeAlone(call, mine, step, reporter, queued).finally(() => {
@@ -106,7 +106,7 @@ async function proposeAlone(
   call: Call,
   mine: Proposer,
   step: { readonly kind: string },
-  reporter: Pick<UsageReporter, 'estimate'>,
+  reporter: Pick<UsageReporter, 'estimate' | 'compute'>,
   queued: Queued,
 ): Promise<Proposed> {
   const capabilities = await call('session.capabilities', {});
@@ -128,7 +128,7 @@ async function proposeAlone(
       recordId,
       expectedRevision: task?.revision,
       purpose: step.kind,
-      maximumMinor: reporter.estimate(step),
+      maximumMinor: reporter.estimate(step) + (reporter.compute ?? 0),
       currency: 'AUD',
       payload: {
         change: 'a team-only comment; this demonstration changes nothing outside the app',
