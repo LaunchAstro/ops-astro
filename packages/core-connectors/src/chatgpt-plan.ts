@@ -214,8 +214,9 @@ export const CHATGPT_PLAN_CONVERSATION: ModelOperationDeclaration = {
   maxResponseBytes: CHATGPT_PLAN_ANSWER_BYTES,
   maximumMinor: 0,
   settlesAt: 'completed',
-  // The plan's refusals before any work: a capability it lacks, the sign-in, this account.
-  nothingHappened: ['http_400', 'http_401', 'http_403'],
+  // None: a plan answer reaches the broker only once its request is written, when the plan
+  // may have run it, so custody holds every ending short of a completed response (#1926).
+  nothingHappened: [],
   billed: false,
   concurrency: 1,
 };
