@@ -9,7 +9,7 @@
 // it. The read is the team's, so the client never reaches this page; what a client sees of a
 // pin is the task's client projection.
 
-import { useState, type ReactElement } from 'react';
+import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Card, Chip, Empty, ListRow, SectionHead, sectionIndex } from '@launchastro/ui';
 import type {
   ReviewReadResult,
@@ -17,6 +17,7 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
+import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { CapturePane } from './CapturePane.tsx';
 import { PinForm } from './PinForm.tsx';
@@ -131,7 +132,7 @@ type WidthProps = WorkspaceProps & {
   readonly name: string;
   readonly numbered: readonly (readonly [number, Pin])[];
   readonly marked: Marked | null;
-  readonly mark: (marked: Marked | null) => void;
+  readonly mark: Dispatch<SetStateAction<Marked | null>>;
 };
 
 /** The revision before beside the one under review, at one width; only the latter takes a spot. */
@@ -177,8 +178,9 @@ function AtWidth(props: WidthProps): ReactElement {
           revisionId={after.revisionId}
           width={width}
           spot={props.marked.spot}
-          onPinned={() => {
-            props.mark(null);
+          onPinned={(spot) => {
+            // Only this pin's own spot: the person may have moved on to another one.
+            props.mark((now) => (now?.spot === spot ? null : now));
             props.reload();
           }}
           onCancel={() => {
@@ -255,16 +257,19 @@ export function ReviewWorkspaceScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly reviewId: string;
+  /** No topic reaches a review, so it re-reads on the tab's floor: a revoked grant clears it. */
+  readonly rollup?: RollupFloor;
 }): ReactElement {
   const read = useRead<ReviewReadResult>({
     grantKey: props.grantKey,
     run: async () =>
       await props.client.read<ReviewReadResult>('review.read', { reviewId: props.reviewId }),
     deps: [props.client, props.reviewId],
+    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
   });
   return (
     <div className="secs" data-screen="review-workspace">
-      <RecordState state={read.state} subject="review" onRetry={read.reload}>
+      <RecordState state={read.state} subject="review" onRetry={read.reload} keep>
         {(answer) => (
           <Workspace
             client={props.client}
