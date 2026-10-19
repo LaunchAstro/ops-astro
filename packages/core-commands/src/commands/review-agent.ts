@@ -56,7 +56,7 @@ const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease
         picture: request['picture'],
         observation: request['observation'],
       },
-      { claimant: 'agent', holderActorId: session.actorId, delegationId: delegation.id },
+      { claimant: 'agent', holderActorId: session.actorId, delegation },
     ),
 });
 
