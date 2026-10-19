@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8b, Sol S2092-1: the shipped worker's agent spends from the plan's envelope as it computes, and the reviewed successor it hands back still fits that envelope, so the person's launch is accepted and the effect applied."
+}
