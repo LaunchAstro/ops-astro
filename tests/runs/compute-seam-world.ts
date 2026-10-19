@@ -110,6 +110,8 @@ export interface Seam {
   readonly lineageId: string;
   readonly log: Sent[];
   readonly worker: ReturnType<typeof createWorker>;
+  /** What the worker was made with: a second worker made with it shares its delegation. */
+  readonly options: WorkerOptions;
   /** The work as the pickup answered it: the plan's lease, fence and credential. */
   readonly work: () => Work;
 }
@@ -143,22 +145,7 @@ export async function acceptedPlan(
   runner?: Scripted['runner'] | StepRunner,
   broker?: ModelBroker,
 ): Promise<Seam> {
-  await retirePickups();
-  const taskId = await createTask(s, `${title} ${randomUUID()}`);
-  const [business] = await rows<{ key: string }>(
-    s,
-    'select key from public.businesses where id = $1',
-    [s.business],
-  );
-  const log: Sent[] = [];
-  const options = {
-    transport: transportOver(door(undefined, broker), log),
-    businessKey: String(business?.key),
-    credential: await tokenFor(s.agent.subject),
-    delegation: await delegationFor(taskId),
-    reporter: SYNTHETIC_USAGE,
-    ...(runner === undefined ? {} : { runner }),
-  } as WorkerOptions;
+  const { taskId, log, options } = await unproposed(title, runner, broker);
   const worker = createWorker(options);
   const proposed = await worker.proposeOnce();
   if (!('proposed' in proposed)) throw new Error(`setup: propose ${JSON.stringify(proposed)}`);
@@ -179,7 +166,40 @@ export async function acceptedPlan(
       picked: picked.detail,
     };
   };
-  return { taskId, planVersionId: gate.version_id, lineageId: gate.lineage_id, log, worker, work };
+  return {
+    taskId,
+    planVersionId: gate.version_id,
+    lineageId: gate.lineage_id,
+    log,
+    worker,
+    options,
+    work,
+  };
+}
+
+/** A fresh task and the options a worker on it is made with, nothing proposed yet. */
+export async function unproposed(
+  title: string,
+  runner?: Scripted['runner'] | StepRunner,
+  broker?: ModelBroker,
+): Promise<{ readonly taskId: string; readonly log: Sent[]; readonly options: WorkerOptions }> {
+  await retirePickups();
+  const taskId = await createTask(s, `${title} ${randomUUID()}`);
+  const [business] = await rows<{ key: string }>(
+    s,
+    'select key from public.businesses where id = $1',
+    [s.business],
+  );
+  const log: Sent[] = [];
+  const options = {
+    transport: transportOver(door(undefined, broker), log),
+    businessKey: String(business?.key),
+    credential: await tokenFor(s.agent.subject),
+    delegation: await delegationFor(taskId),
+    reporter: SYNTHETIC_USAGE,
+    ...(runner === undefined ? {} : { runner }),
+  } as WorkerOptions;
+  return { taskId, log, options };
 }
 
 /** Person decisions recorded on the task's lineages. */
