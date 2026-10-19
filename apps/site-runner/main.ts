@@ -22,7 +22,7 @@ import { paced, ping } from '../worker/heartbeat.ts';
 import { pinnedTransport, systemResolver } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import { connect, type BusinessId, type Database } from '../../packages/core-records/src/index.ts';
-import { queueClaims, type AgentCall } from './claims.ts';
+import { QueueUnread, queueClaims, type AgentCall } from './claims.ts';
 import { holderRefuses } from './configured.ts';
 import { locatePass } from './locate.ts';
 import { createSiteRunner, FOLLOW_EVERY_MS, type Claim, type Passed } from './runner.ts';
@@ -150,20 +150,26 @@ export const passFor =
 /**
  * One pass: the locate, then the claims, each on its own. A part that fails logs its fault's name
  * and the other still runs; only when every part failed does the pass fail, so the heartbeat
- * goes quiet.
+ * goes quiet. A queue the claims could not read fails the pass whatever the locate did: a
+ * runner that can no longer read its work never reads as healthy.
  */
 export async function bothParts({ locate, claims }: Parts): Promise<readonly Passed[]> {
   const faults: unknown[] = [];
+  let unread: QueueUnread | undefined;
   const run = async (part: string, work: () => Promise<readonly Passed[]>) =>
     await work().catch((fault: unknown) => {
       faults.push(fault);
-      console.error(
-        `site-runner: the ${part} failed: ${fault instanceof Error ? fault.name : 'fault'}`,
-      );
+      // `passes` prints it, with the refusal's code.
+      if (fault instanceof QueueUnread) unread = fault;
+      else
+        console.error(
+          `site-runner: the ${part} failed: ${fault instanceof Error ? fault.name : 'fault'}`,
+        );
       return [];
     });
   const located = await run('locate', locate);
   const claimed = claims === undefined ? [] : await run('claims', claims);
+  if (unread !== undefined) throw unread;
   if (faults.length === (claims === undefined ? 1 : 2)) throw faults[0];
   return [...located, ...claimed];
 }
@@ -178,14 +184,20 @@ export interface Passes {
 
 /**
  * A pass every interval until `stopping` aborts. Each pass logs one line per
- * correction and then pings the heartbeat; a failed pass logs its fault's name
- * and pings nothing, so a broken runner goes quiet as a stopped one does.
+ * correction and then pings the heartbeat; a failed pass logs its fault's name,
+ * or a refused queue's code, and pings nothing, so a broken runner goes quiet
+ * as a stopped one does.
  */
 export async function passes({ pass, ping: beat, sleep: wait, stopping }: Passes): Promise<void> {
   while (!stopping.aborted) {
     // oxlint-disable-next-line no-await-in-loop -- one pass at a time
     const passed = await pass().catch((fault: unknown) => {
-      console.error(`site-runner: a pass failed: ${fault instanceof Error ? fault.name : 'fault'}`);
+      const name = fault instanceof Error ? fault.name : 'fault';
+      const line =
+        fault instanceof QueueUnread && fault.code !== undefined
+          ? `the queue was refused: ${fault.code}`
+          : `a pass failed: ${name}`;
+      console.error(`site-runner: ${line}`);
       return null;
     });
     for (const { correctionId, outcome } of passed ?? []) console.log(`${correctionId} ${outcome}`);

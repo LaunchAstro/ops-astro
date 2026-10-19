@@ -15,7 +15,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { isBusinessId, isUuid } from '../../packages/core-records/src/index.ts';
-import { heartbeatEvery } from '../worker/heartbeat.ts';
+import { heartbeatEvery, UNREACHABLE } from '../worker/heartbeat.ts';
 import type { ConfiguredSite } from './configured.ts';
 
 export const SETTINGS = 'SITE_RUNNER_SETTINGS';
@@ -152,11 +152,17 @@ export function settingsFrom(env: Readonly<Record<string, string | undefined>>):
   if (locate !== '' && locate !== '1') return 'SITE_RUNNER_LOCATE_ONLY is not 1';
   const every = heartbeatEvery(env);
   if (typeof every === 'string') return every;
+  // Unset or empty, nothing is pinged. The ping refuses any address off this
+  // rule without a word, so a runner given one would never ping.
+  const heartbeat = env['SITE_RUNNER_HEARTBEAT_URL'] ?? '';
+  const watcher = URL.parse(heartbeat);
+  if (heartbeat !== '' && (watcher?.protocol !== 'https:' || UNREACHABLE.test(watcher.hostname)))
+    return 'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine';
   const settings = Object.fromEntries(REQUIRED.map((name) => [name, value(name)]));
   return {
     ...(settings as Readonly<Record<(typeof REQUIRED)[number], string>>),
     providerKey: env['SUPABASE_PUBLISHABLE_KEY'] ?? '',
-    heartbeat: env['SITE_RUNNER_HEARTBEAT_URL'],
+    heartbeat: heartbeat === '' ? undefined : heartbeat,
     heartbeatEvery: every,
     pages: site.pages.map((page) => page.pageUrl),
     site,

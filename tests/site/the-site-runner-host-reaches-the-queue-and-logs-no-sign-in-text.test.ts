@@ -5,8 +5,9 @@
 // loopback. The API answers as the agent envelope does before a pickup: only
 // the operations in `BEFORE_PICKUP` are reached, and every other one is
 // refused `DELEGATION_EXCLUDES_OPERATION`. A signed-in host reaches the queue
-// and asks nothing a pickup has not delegated; a sign-in refusal that echoes
-// the password leaves no trace of it in what the host prints.
+// and asks nothing a pickup has not delegated; a sign-in refusal, or a queue
+// refused or faulted with an answer that echoes the password, leaves no trace
+// of it in what the host prints.
 
 import { spawn } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -42,13 +43,23 @@ async function listen(server: Server): Promise<string> {
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
+interface Reply {
+  readonly status: number;
+  readonly body: object;
+}
+
+const EMPTY: Reply = { status: 200, body: { ok: true, detail: { queue: [] } } };
+
 const json = (response: ServerResponse, status: number, body: object): void => {
   response.writeHead(status, { 'content-type': 'application/json' });
   response.end(JSON.stringify(body));
 };
 
-/** The agent API before a pickup: `BEFORE_PICKUP` answers, anything else undelegated is refused. */
-function agentApi(asked: string[], queued: () => void): Server {
+/**
+ * The agent API before a pickup: `task.queue` answers `queue`, the rest of
+ * `BEFORE_PICKUP` answers, anything else undelegated is refused.
+ */
+function agentApi(asked: string[], queued: () => void, queue: Reply): Server {
   return createServer((request, response) => {
     const path = request.url ?? '';
     asked.push(path);
@@ -60,7 +71,8 @@ function agentApi(asked: string[], queued: () => void): Server {
       json(response, 403, { refused: true, code, names: [command], fixes: [] });
       return;
     }
-    json(response, 200, { ok: true, detail: { queue: [] } });
+    const reply = command === 'task.queue' ? queue : EMPTY;
+    json(response, reply.status, reply.body);
     if (command === 'task.queue') queued();
   });
 }
@@ -104,10 +116,11 @@ function settingsIn(folder: string, api: string, gotrue: string): string {
 }
 
 /**
- * The host run against `token` as the sign-in answer, until the API is asked
- * for the queue (then SIGTERM, as `launchctl bootout` sends) or it exits.
+ * The host run against `token` as the sign-in answer and `queue` as the
+ * queue's, until the API is asked for the queue (then SIGTERM, as `launchctl
+ * bootout` sends) or it exits.
  */
-async function host(token: { readonly status: number; readonly body: object }): Promise<Hosted> {
+async function host(token: Reply, queue: Reply = EMPTY): Promise<Hosted> {
   const asked: string[] = [];
   const stopping = new AbortController();
   const gotrue = createServer((request, response) => {
@@ -117,7 +130,7 @@ async function host(token: { readonly status: number; readonly body: object }): 
   });
   const folder = mkdtempSync(join(tmpdir(), 'site-runner-main-'));
   closing.push(() => rmSync(folder, { recursive: true, force: true }));
-  const api = await listen(agentApi(asked, () => stopping.abort()));
+  const api = await listen(agentApi(asked, () => stopping.abort(), queue));
   const settingsFile = settingsIn(folder, api, await listen(gotrue));
   const child = spawn(process.execPath, ['apps/site-runner/main.ts'], {
     env: { PATH: process.env['PATH'] ?? '', SITE_RUNNER_SETTINGS: settingsFile },
@@ -159,5 +172,34 @@ describe('the site runner host, launched as launchd launches it', () => {
       printed: 'site-runner: sign-in refused\n',
     });
     expect(hosted.asked.some((path) => path.startsWith('/api/'))).toBe(false);
+  }, 120_000);
+});
+
+describe('the site runner host, its queue refused or faulted', () => {
+  it('prints the code alone when the queue is refused or faulted with the password echoed', async () => {
+    const signedIn: Reply = {
+      status: 200,
+      body: { access_token: 'fixture-bearer', expires_in: 3600, token_type: 'bearer' },
+    };
+    const echoed = `the session for site-runner@example.com (${PASSWORD}) has expired`;
+    const refused = await host(signedIn, {
+      status: 401,
+      body: { refused: true, code: 'AUTH_SESSION_EXPIRED', message: echoed, fixes: [echoed] },
+    });
+    const faulted = await host(signedIn, { status: 500, body: { error: echoed } });
+    // The fixture has no database, so the locate's fault is named first.
+    const located = '(?:site-runner: the locate failed: [A-Za-z]+\\n)*';
+    expect(refused.code).toBe(0);
+    expect(refused.printed).toMatch(
+      new RegExp(`^${located}site-runner: the queue was refused: AUTH_SESSION_EXPIRED\\n$`, 'u'),
+    );
+    expect(faulted.code).toBe(0);
+    expect(faulted.printed).toMatch(
+      new RegExp(`^${located}site-runner: a pass failed: QueueFault\\n$`, 'u'),
+    );
+    for (const { asked } of [refused, faulted])
+      expect(asked.filter((path) => path.startsWith('/api/'))).toEqual([
+        expect.stringMatching(/\/task\/queue$/u),
+      ]);
   }, 120_000);
 });
