@@ -18,6 +18,8 @@
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { seedForeignReview } from './c35-bodies.ts';
+import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -677,22 +679,12 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.review,
     async () => {
-      // A review of bravo's, written as its open writes it, and fabricated ids: each pair
-      // answers alike. A media review names no page, so no site of bravo's is needed.
-      const { world } = w.h;
-      const [reviewId, revisionId] = [randomUUID(), randomUUID()];
-      const by = [w.foreign.admin.actorId, w.foreign.admin.personId];
-      await world.db.admin.execute(
-        `insert into public.reviews
-           (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
-         values ($1, $2, $3, 'media', $4, $5)`,
-        [world.bravo, reviewId, w.foreign.task.id, ...by],
-      );
-      await world.db.admin.execute(
-        `insert into public.review_revisions
-           (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
-         values ($1, $2, $3, 1, 'sha256:0', $4, $5)`,
-        [world.bravo, revisionId, reviewId, ...by],
+      // A review of bravo's and fabricated ids: each pair answers alike.
+      const { reviewId, revisionId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
       );
       await refuses('review.capture', 'revisionId', ada, 'NOT_FOUND', {
         foreign: { revisionId },
@@ -702,7 +694,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { reviewId },
         fabricated: { reviewId: randomUUID() },
       });
-      const page = { pageUrl: C80_REQUEST.pageUrl, path: C80_REQUEST.path, sourceRevision: 'r' };
+      const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
       await refuses('review.open', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...page, taskId: w.foreign.task.id },
         fabricated: { ...page, taskId: randomUUID() },
