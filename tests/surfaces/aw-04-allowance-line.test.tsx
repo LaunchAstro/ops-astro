@@ -36,8 +36,9 @@ function recorder(answer: (body: Readonly<Record<string, unknown>>) => unknown):
   const asked: Asked[] = [];
   const client = {
     read: async (name: string, body: Readonly<Record<string, unknown>>) => {
-      // The model picker's read (CS-7.30) is its own suite's; nothing here is about it.
-      if (name === 'conversation.models') {
+      // The model picker's read (CS-7.30) and the correction desks' list (C80) are
+      // their own suites'; nothing here is about them.
+      if (name === 'conversation.models' || name === 'live_correction.list') {
         return await Promise.resolve({ unavailable: true, because: 'not asked here' });
       }
       asked.push({ name, body });
