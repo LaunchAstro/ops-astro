@@ -40,7 +40,8 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     collection: REVIEW_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'target',
-    untargetedIdentifiers: ['taskId'],
+    // #2120: the live correction a revision names is its own operand, not a correction target.
+    untargetedIdentifiers: ['taskId', 'correctionId'],
     agent: 'delegated',
   }),
   declare('review.capture', 'write', {

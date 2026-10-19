@@ -538,7 +538,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
   'review.decide': ['reviewId'],
-  'review.open': ['taskId'],
+  'review.open': ['taskId', 'correctionId'],
   'review.pin_comment': ['revisionId'],
   'review.record_astra_review': ['reviewId'],
   'map.chart': [],
