@@ -24,7 +24,8 @@ it must and leaves out what it must not. A command exits 1 when a case fails.
 ## The results file
 
 By default `agent-test-results/<set>-<time>.json` (not committed); `--out
-<file>` names another. It records the set, the model it is written for
+<file>` names another. A run never writes over a results file already there,
+so a saved review stays with the results it reviewed. It records the set, the model it is written for
 (`target`), the provider, and for each case the model its answers named, its
 outcome and end code, the code it expected, whether it passed, its turns and
 its usage. The set's usage is the sum of its cases'.
