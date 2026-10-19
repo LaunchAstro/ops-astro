@@ -178,8 +178,10 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
       adding,
       async () => await w.decide(w.ben, opened),
     );
+    // The review's covered lock (`lockCoveredReview`): its grant CTE first, the text the
+    // activity view keeps of a statement longer than 1 KB.
     expect(
-      waited.some((query) => /public\.reviews c/u.test(query)),
+      waited.some((query) => /^\s*with recursive effective as/u.test(query)),
       waited.join(' | '),
     ).toBe(true);
     expect(codeOf(answer as never)).toBe('VERSION_STALE');
