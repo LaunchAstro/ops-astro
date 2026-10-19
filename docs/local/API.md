@@ -1642,7 +1642,10 @@ same transaction. Under its locks, before it writes anything, it refuses
 model call `reserved`, `dispatched` or `liability_unknown`, or has a marked
 step its own observation has not settled: none of those is a success. A
 dispatched step whose observation settled it (`settled`, its cost priced) is
-known, and hands back its success.
+known, and hands back its success. A launched step dispatched and never
+observed hands back too (INB-1): its hold stays whole as an unknown liability
+for a person, the launcher's item is owed, and the attempt's outcome is
+`unknown_provider_outcome / LIABILITY_UNKNOWN`, never a success.
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the

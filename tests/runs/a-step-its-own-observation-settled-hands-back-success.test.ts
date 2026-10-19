@@ -12,6 +12,10 @@
 // step whose outcome stayed `unknown` (what a person's write-off leaves), and a
 // legacy `observed` mark with no dispatch behind it, as an import leaves one.
 //
+// A launched step whose effect was made and never observed hands back (INB-1,
+// `tests/commands/inbox-raising.test.ts`): its hold stays whole for a person,
+// and its outcome is recorded unknown, never a success.
+//
 // The race of the same observation and handback on separate backends is
 // `tests/runtime/observe-counts-the-holds-calls.test.ts`.
 
@@ -76,6 +80,26 @@ it("a completed handback after the attempt's own settled observation writes one 
     actual: String(COMMENT_COST),
     attempt_state: 'settled',
     envelope_actual: String(COMMENT_COST),
+  });
+});
+
+it('a launched step applied and never observed hands back, its outcome unknown and never a success', async () => {
+  const w = await work();
+  await applied(w);
+
+  const handed = await handBack(w);
+
+  expect(codeOf(handed), 'the handback commits').toBe('applied');
+  const after = await footprintOf(w);
+  expect(after.outcomes).toEqual([
+    { outcome: 'unknown_provider_outcome', end_code: 'LIABILITY_UNKNOWN' },
+  ]);
+  expect(after.reports).toHaveLength(1);
+  expect(after.money, 'the hold stays whole for a person').toMatchObject({
+    state: 'held',
+    actual: null,
+    attempt_state: 'liability_unknown',
+    observed: false,
   });
 });
 
