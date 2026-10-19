@@ -258,6 +258,9 @@ export const DECLARED: Readonly<
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
   'settings.set_single_operator': { carry: 'not carried', plant: 'a business setting' },
   'live_correction.record_review': { carry: 'not carried', plant: 'needs a requested correction' },
+  // C35: a review is opened at the old task's client and its bound page; a duplicate carries none.
+  'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
+  'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
