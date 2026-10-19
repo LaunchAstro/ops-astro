@@ -3,7 +3,8 @@
 // #1623 R3, the answer digest's depth bound (finding S1900-6). A turn's answer
 // is digested at its settlement and again when a later turn binds it. Tool
 // calls nested past the bound have no digest, judged from the value's own list
-// rather than the call stack, so no depth of provider or agent input throws; a
+// rather than the call stack, and a value with no canonical form (a non-finite
+// number) has none either, so no provider or agent input throws; a
 // shallow answer keeps the digest it always had.
 
 import { expect, it } from 'vitest';
@@ -23,4 +24,9 @@ it('tool calls just past the bound have no digest; at the bound they keep the ca
   expect(answerDigest('Reading.', kept as never)).toBe(
     payloadDigest({ v: 1, text: 'Reading.', toolCalls: kept }),
   );
+});
+
+it('tool calls holding a value with no canonical form have no digest, and nothing throws', () => {
+  const unbounded = JSON.parse('{"taskId":1e999}') as unknown;
+  expect(answerDigest('Reading.', calls(unbounded) as never)).toBeUndefined();
 });
