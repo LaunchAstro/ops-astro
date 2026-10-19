@@ -8,7 +8,8 @@
 // with `git rev-parse main` and the file at a commit with its real blob,
 // base64 as the provider sends it. The pass pins the correction `requested`
 // at that commit, and the digests the test computes from `git show` are the
-// ones stored.
+// ones stored. A sentence of the page is pinned as a phrase the same way
+// (#1987).
 /* eslint-disable max-lines-per-function -- the pass and what git shows are read in one place */
 
 import { execFileSync } from 'node:child_process';
@@ -21,7 +22,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { locatePass } from '../../apps/site-runner/locate.ts';
 import { custodySites, siteDestinations } from '../../apps/site-runner/sites.ts';
-import { contentDigest, versionDigestOf } from '../../packages/core-connectors/src/index.ts';
+import {
+  contentDigest,
+  versionDigestOf,
+  type CorrectionTarget,
+} from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { ASTRO_FILE, ASTRO_PAGE } from './c80-sites.ts';
@@ -120,6 +125,62 @@ async function custodyOnServed() {
   });
 }
 
+/** One locate pass through custody against the served source host. */
+async function locateOnServed() {
+  const custody = await custodyOnServed();
+  try {
+    const site = configuredSite();
+    const ports = custodySites(
+      {
+        custody,
+        resolve: () => Promise.resolve(['140.82.112.6']),
+        capture: {
+          pool: { agencyPages: [], otherPages: [], closedPoolReviews: [] },
+          resolve: () => Promise.resolve(['93.184.216.34']),
+          transport: () => Promise.resolve({ kind: 'failed' }),
+        },
+        wait: () => Promise.resolve(),
+        now: Date.now,
+      },
+      site,
+    ).locate();
+    const business = w.world.business as BusinessId;
+    return await locatePass({ db: w.world.db.app, business, site, ports });
+  } finally {
+    await custody.stop();
+  }
+}
+
+/** The version digest the locate must store for `target` changed in the file at `head`. */
+async function expectPinned(id: string, target: CorrectionTarget, from: string, to: string) {
+  const head = git('rev-parse', 'main').trim();
+  const before = git('show', `main:${ASTRO_FILE}`);
+  const after = before.replace(from, to);
+  expect(after).not.toBe(before);
+  const [{ seam } = { seam: '' }] = await w.world.db.admin.execute<{ readonly seam: string }>(
+    'select seam from public.live_corrections where id = $1',
+    [id],
+  );
+  const preImageDigest = contentDigest(before);
+  const row = await rowOf(id);
+  expect(row).toMatchObject({
+    state: 'requested',
+    base_revision: head,
+    pre_image_digest: preImageDigest,
+    version_digest: versionDigestOf({
+      target,
+      change: { files: [{ path: ASTRO_FILE, before, after }] },
+      preImageDigest,
+      baseRevision: head,
+      pageUrl: ASTRO_PAGE,
+      seam,
+    }),
+    check_failures: 0,
+  });
+  expect(row.version_id).toMatch(/^[0-9a-f-]{36}$/u);
+  expect(row.verified_at).not.toBeNull();
+}
+
 describe.skipIf(serverUrl === undefined)(
   'the runner pins the version of the file at the head commit',
   () => {
@@ -130,31 +191,7 @@ describe.skipIf(serverUrl === undefined)(
         word: target.word,
         replacement: target.replacement,
       });
-      const custody = await custodyOnServed();
-      try {
-        const site = configuredSite();
-        const ports = custodySites(
-          {
-            custody,
-            resolve: () => Promise.resolve(['140.82.112.6']),
-            capture: {
-              pool: { agencyPages: [], otherPages: [], closedPoolReviews: [] },
-              resolve: () => Promise.resolve(['93.184.216.34']),
-              transport: () => Promise.resolve({ kind: 'failed' }),
-            },
-            wait: () => Promise.resolve(),
-            now: Date.now,
-          },
-          site,
-        ).locate();
-        const business = w.world.business as BusinessId;
-
-        expect(await locatePass({ db: w.world.db.app, business, site, ports })).toEqual([
-          { correctionId: id, outcome: 'requested' },
-        ]);
-      } finally {
-        await custody.stop();
-      }
+      expect(await locateOnServed()).toEqual([{ correctionId: id, outcome: 'requested' }]);
 
       const head = git('rev-parse', 'main').trim();
       expect(asked).toEqual([
@@ -186,6 +223,15 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect(row.version_id).toMatch(/^[0-9a-f-]{36}$/u);
       expect(row.verified_at).not.toBeNull();
+    });
+
+    it('pins a sentence of the About page as a phrase, at the head, its digests as git shows them', async () => {
+      await noneWaiting();
+      const word = 'We exist to chart the course';
+      const replacement = 'We are here to chart the course';
+      const id = await requestOn(ASTRO_PAGE, { word, replacement });
+      expect(await locateOnServed()).toEqual([{ correctionId: id, outcome: 'requested' }]);
+      await expectPinned(id, { path: ASTRO_FILE, word, replacement }, word, replacement);
     });
   },
 );

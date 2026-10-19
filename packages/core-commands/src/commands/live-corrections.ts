@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C80's `live correction requested` (the permissions table of #765). The request names the task,
-// the page and the two words (#1693): a word pair that is not one word for one other is refused
-// with nothing stored, and the page is resolved on the task's own site in the insert. It is stored
-// `locating`: the site runner pins the version from the file itself, so no caller supplies a
-// revision, a file or a digest, and nothing stores the file's text. The approval is
-// `live-correction-decide.ts`. Each write reads its authority again after its last lock wait
-// (`live-correction-standing.ts`); an agent's request is `live-correction-agent.ts`.
+// the page and the two texts (#1693): a pair that is not one phrase or sentence on one line for
+// another (#1987) is refused with nothing stored, and the page is resolved on the task's own site
+// in the insert. It is stored `locating`: the site runner pins the version from the file itself,
+// so no caller supplies a revision, a file or a digest, and nothing stores the file's text. The
+// approval is `live-correction-decide.ts`. Each write reads its authority again after its last
+// lock wait (`live-correction-standing.ts`); an agent's request is `live-correction-agent.ts`.
 //
 // Refusals carry fixed text only: no word, path, page or content reaches a refused caller.
 
@@ -34,7 +34,7 @@ export { decideLiveCorrection } from './live-correction-decide.ts';
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
 
 const ENVELOPE_FIXES: readonly string[] = [
-  'A live correction is one word for one word, on one line of the one target file.',
+  'A live correction is one phrase or sentence on one line, in the one target file.',
 ];
 const UNCONFIGURED = refuseCommand(
   'APPROVER_NOT_CONFIGURED',

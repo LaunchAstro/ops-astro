@@ -48,7 +48,7 @@ export async function pinFromBefore(
   if (row.version_id !== null && row.version_digest !== null)
     return { versionId: row.version_id, versionDigest: row.version_digest };
   const target = { path: row.target_path, word: row.word, replacement: row.replacement };
-  const after = replaced(before, row.word, row.replacement) ?? AFTER;
+  const after = replaced(row.target_path, before, row.word, row.replacement) ?? AFTER;
   const preImageDigest = contentDigest(before);
   const versionDigest = versionDigestOf({
     target,

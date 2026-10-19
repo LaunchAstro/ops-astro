@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1987: the person's door and the agent's request store a phrase request locating with the texts as sent, the agent's replay answers the same correction, and a phrase over two lines is refused with nothing stored."
+}

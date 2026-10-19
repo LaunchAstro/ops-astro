@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2094 (S2094-4): the phrase cleanup suite drops only the database its own child made, so another suite's database of the same name shape made while it runs is kept."
+}

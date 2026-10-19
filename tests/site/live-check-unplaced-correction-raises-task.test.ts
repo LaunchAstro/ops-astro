@@ -216,11 +216,31 @@ it('a publish answered with another page as live takes no place and raises a rec
   }).toEqual({ outcome: 'accepted', raised: 1, placed: false });
 });
 
-it('a word longer than the place search takes no place and raises a recovery task', async () => {
+it('a word longer than the place search is refused before the send, past the envelope’s bound', async () => {
   const word = 'a'.repeat(5000);
   const target = { path: 'src/pages/about.astro', word, replacement: 'b'.repeat(5000) };
-  const result = await publishAndObserve(target, `<p>${word}</p>\n`, `<p>${word}</p>`, {
-    corrected: `<p>${'b'.repeat(5000)}</p>`,
+  const job = approvedJob(target, `<p>${word}</p>\n`);
+  expect(checkEnvelope(job.change, target)).toMatchObject({
+    ok: false,
+    reason: 'the phrase is longer than 200 characters',
   });
-  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+  let sent = 0;
+  const outcome = await publishCorrection(job, {
+    readBack: async () => ({ state: 'absent' }),
+    readSource: async () => ({
+      kind: 'ok',
+      value: { content: `<p>${word}</p>\n`, revision: 'abc123' },
+    }),
+    cancellation: async () => 'none',
+    publish: async () => {
+      sent += 1;
+      return { kind: 'ok', value: published };
+    },
+    raiseTask: async () => {},
+    capture: async () => ({ ok: true, value: { text: word, url: published.liveUrl } }),
+  });
+  expect({ outcome, sent }).toEqual({
+    outcome: { state: 'refused', code: 'CHANGE_ENVELOPE_EXCEEDED' },
+    sent: 0,
+  });
 });

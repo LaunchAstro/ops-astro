@@ -83,8 +83,7 @@ export const STATE_WORDS: Readonly<Record<CardState, string>> = {
 };
 
 const REFUSALS: Readonly<Record<string, string>> = {
-  CHANGE_ENVELOPE_EXCEEDED:
-    'Only one word for one word, on one line of one page, can be asked for.',
+  CHANGE_ENVELOPE_EXCEEDED: 'Only one phrase or sentence on one line of one page can be asked for.',
   FIELD_VALUE_INVALID: 'Name the page, the word and the word it becomes.',
   NOT_FOUND: 'That page, task or correction is not one you can reach here.',
   SCOPE_NOT_GRANTED: 'You do not hold the grant to ask for or decide a change to this site.',

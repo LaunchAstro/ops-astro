@@ -9,7 +9,7 @@ export const LIVE_CORRECTION_ROWS = [
   {
     code: 'CHANGE_ENVELOPE_EXCEEDED',
     status: 422,
-    meaning: 'The change is more than one word on one line of one file',
+    meaning: 'The change is more than one phrase or sentence on one line of one file',
     source: 'C80, release decision 3.2',
   },
   {

@@ -21,7 +21,7 @@ import type { Member } from '../commands/fixture.ts';
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 isolation: DATABASE_URL is unset, so nothing ran.');
 
-// Letters only, so it can be the replacement word (#1693: a request is one word for one word).
+// Letters only, so it can stand alone as the replacement (#1693, #1987).
 const CANARY = `canary${randomUUID()
   .replaceAll('-', '')
   .replaceAll(/\d/gu, (digit) => 'ghijklmnop'.charAt(Number(digit)))}`;
@@ -169,7 +169,8 @@ describe.skipIf(serverUrl === undefined)('C80 canary', () => {
       const stored = await w.request(w.ava, { replacement: CANARY });
       expect(codeOf(stored)).toBe('not-a-refusal');
       expect(JSON.stringify(stored)).not.toContain(CANARY);
-      const refusedEnvelope = await w.request(w.ava, { replacement: `${CANARY}-changed` });
+      // Over two lines, so the envelope refuses it whatever the phrase rule admits (#1987).
+      const refusedEnvelope = await w.request(w.ava, { replacement: `${CANARY}\nchanged` });
       expect(codeOf(refusedEnvelope)).toBe('CHANGE_ENVELOPE_EXCEEDED');
       expect(JSON.stringify(refusedEnvelope)).not.toContain(CANARY);
       const refusedScope = await w.approve(w.dee, foreign.correctionId, foreign.versionId);

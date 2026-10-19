@@ -136,15 +136,13 @@ describe('the About correction on the real site bytes', () => {
 const refused = (reason: string) => ({ ok: false, code: 'CHANGE_ENVELOPE_EXCEEDED', reason });
 
 describe('what the envelope refuses on the real bytes', () => {
-  it('refuses a second word, named as two words or as more than the one word', async () => {
+  it('holds a phrase named as such, and refuses a change wider than the phrase named', async () => {
     const twoWords = { path: PATH, word: 'walk alongside', replacement: 'go beside' };
     const asked = changeOf(SOURCE.replace('walk alongside', 'go beside'), twoWords);
-    expect(checkEnvelope(asked.change, asked.target)).toEqual(
-      refused('the correction is not one word for one word'),
-    );
+    expect(checkEnvelope(asked.change, asked.target)).toMatchObject({ ok: true });
     const widened = changeOf(SOURCE.replace('walk alongside you', 'walk beside us'));
     expect(checkEnvelope(widened.change, widened.target)).toEqual(
-      refused('not the one word replaced in place'),
+      refused('not one phrase or sentence on one line replaced in place'),
     );
     const at = ports();
     expect(await publishCorrection(jobOf(widened.change.files[0]?.after ?? ''), at)).toEqual({

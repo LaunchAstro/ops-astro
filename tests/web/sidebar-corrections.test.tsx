@@ -151,7 +151,7 @@ describe('the request door', () => {
     const view = await mount(<SidebarCorrections client={client} propose={refused.port} />);
     await askFor(view, ABOUT);
     const said = view.find('[data-correction-refusal]')?.textContent ?? '';
-    expect(said).toMatch(/one word for one word/iu);
+    expect(said).toMatch(/one phrase or sentence on one line/iu);
     expect(view.text()).not.toContain('CHANGE_ENVELOPE_EXCEEDED');
     expect(view.find('[data-correction-card]')).toBeNull();
   });
