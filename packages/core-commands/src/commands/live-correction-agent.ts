@@ -10,6 +10,7 @@ import { ownersOwn, readPage } from '../../../core-custody/src/index.ts';
 import { checkAuthority, RUN_COLLECTION, taskClient } from '../../../core-records/src/index.ts';
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTaskSpine } from './context.ts';
+import { lockedClientOf } from './tasks-party.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
 import {
@@ -76,7 +77,8 @@ async function withinDelegation(
  * insert and holds the task `for share` until commit, so the client read here
  * is the party it stored, whatever the task held before the site lock's wait.
  * A task with a client was judged at that client's grant; a task this cannot
- * read is refused. A replay asks it as well.
+ * read is refused. A replay asks it after its audit event's chain wait
+ * (`replayOwnWork`).
  */
 async function ownWorkRefusal(
   tx: TenantQuery,
@@ -131,10 +133,12 @@ async function storeAsAgent(
  * A replay's answer under the delegation presented now: the refusal, or
  * undefined when the stored receipt may go back. A replay carries the same
  * body (`OPERATION_ID_REUSED` refuses another), so it names the stored
- * request's task and party, and the request's own checks are asked again,
- * its own-work check included. A later delegation for another task or client,
- * or a task that is no longer the owner's own work, gets the refusal, never
- * the receipt.
+ * request's task, and the request's own checks are asked again. A later
+ * delegation for another task or client gets the refusal, never the receipt;
+ * the own-work check is asked last (`replayOwnWork`). The task is then held
+ * `for share` to commit, before the replay's audit event as every task write
+ * takes its task before the audit chain, so a client set while the replay
+ * waits waits for it, and `replayOwnWork` reads one client.
  */
 export async function replayRefusal(
   tx: TenantQuery,
@@ -142,7 +146,25 @@ export async function replayRefusal(
   delegation: Delegation,
 ): Promise<CommandRefusal | undefined> {
   const within = await withinDelegation(tx, sent, delegation);
-  return 'refusal' in within ? within.refusal : await ownWorkRefusal(tx, within);
+  if ('refusal' in within) return within.refusal;
+  await lockedClientOf(tx, (await readTaskSpine(tx)).taskTypeId, within.taskId);
+  return undefined;
+}
+
+/**
+ * A released replay's own-work check, asked after its audit event's chain
+ * wait (`Entry.lastCheck`) under the delegation presented then, on the task
+ * `replayRefusal` holds: the grant and the own-work check read one client,
+ * and a task that is no longer the owner's own work gets the refusal, never
+ * the receipt.
+ */
+export async function replayOwnWork(
+  tx: TenantQuery,
+  sent: Readonly<Record<string, unknown>>,
+  delegation: Delegation,
+): Promise<CommandRefusal | undefined> {
+  const operands = await withinDelegation(tx, sent, delegation);
+  return 'refusal' in operands ? operands.refusal : await ownWorkRefusal(tx, operands);
 }
 
 /** `live_correction.request`'s agent row: replayed only to a delegation that could make it now. */

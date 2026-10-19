@@ -4,13 +4,17 @@
 // wait, at the model call's admission and at the agent's correction request
 // on the business's own site, each race run on a connection of its own. A
 // client set, or a write by someone other than the owner, committed during
-// the wait is seen after it and refused, with nothing sent or stored.
+// the wait is seen after it and refused, with nothing sent or stored. A replay
+// holds its task from before its audit-chain wait, so a client set meanwhile
+// waits for the replay.
 
 import { describe, expect, it } from 'vitest';
+import { advisoryLock } from '../../packages/core-records/src/index.ts';
 import { codeOf } from '../commands/agent-fixture.ts';
-import { held, seenWaiting } from '../site/party-site-races.ts';
+import { held, seenWaiting, type Held } from '../site/party-site-races.ts';
 import {
   ask,
+  ownBody,
   requestOwn,
   sends,
   serverUrl,
@@ -114,3 +118,71 @@ describe.skipIf(serverUrl === undefined)('at the agent’s request on our own si
     expect(await storedOn(picked.taskId)).toBe(0);
   }, 120_000);
 });
+
+describe.skipIf(serverUrl === undefined)('at a replay of the agent’s request', () => {
+  it('gets no stored receipt back from a replay that waited on the audit chain while an agent wrote', async () => {
+    const picked = await workedBy('owner', 'Our about page, replay during audit wait');
+    const body = ownBody(picked);
+    expect(codeOf(await requestOwn(picked, body))).toBe('not-a-refusal');
+    const holding = held(w, async (tx) => {
+      await advisoryLock(tx, tx.businessId.toLowerCase());
+    });
+    await holding.ready;
+    const request = requestOwn(picked, body);
+    let waited = false;
+    try {
+      waited = await seenWaiting(w, /insert into audit_events/u);
+      await wrote(picked.taskId, w.world.agentActorId);
+    } finally {
+      holding.release();
+      await holding.done;
+    }
+    expect(waited).toBe(true);
+    const replayed = await request;
+    expect(codeOf(await requestOwn(picked))).toBe('CORRECTION_NOT_OWN_WORK');
+    expect(codeOf(replayed)).toBe('CORRECTION_NOT_OWN_WORK');
+  }, 120_000);
+});
+
+describe.skipIf(serverUrl === undefined)(
+  'at a replay of the agent’s request, holding its task',
+  () => {
+    it('keeps a client set during the replay’s audit-chain wait waiting, and answers as the task stood', async () => {
+      const picked = await workedBy('owner', 'Our about page, client during replay wait');
+      const body = ownBody(picked);
+      expect(codeOf(await requestOwn(picked, body))).toBe('not-a-refusal');
+      const holding = held(w, async (tx) => {
+        await advisoryLock(tx, tx.businessId.toLowerCase());
+      });
+      await holding.ready;
+      const request = requestOwn(picked, body);
+      let setting: Held<unknown> | undefined;
+      let waited = false;
+      let setWaited = false;
+      try {
+        waited = await seenWaiting(w, /insert into audit_events/u);
+        setting = held(
+          w,
+          async (tx) =>
+            await tx.query(
+              `update public.records set uuid_7 = $2::uuid,
+                data = data || jsonb_build_object('client', $2::text)
+            where business_id = $1 and id = $3`,
+              [tx.businessId, w.partyA, picked.taskId],
+            ),
+        );
+        setWaited = await seenWaiting(w, /update public\.records set uuid_7/u);
+      } finally {
+        holding.release();
+        await holding.done;
+      }
+      expect(waited).toBe(true);
+      const replayed = await request;
+      await setting?.ready;
+      setting?.release();
+      await setting?.done;
+      expect(setWaited).toBe(true);
+      expect(codeOf(replayed)).toBe('not-a-refusal');
+    }, 120_000);
+  },
+);

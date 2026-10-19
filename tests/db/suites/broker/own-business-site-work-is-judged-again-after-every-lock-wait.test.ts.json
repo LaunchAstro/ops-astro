@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": true,
-  "why": "R6 part 2: a client set during the admission's task wait, a non-owner write committed while the admission waits on the run, and a non-owner write committed while the agent's own-site request waits on the task or on the agent's own standing are each seen after the wait and refused, with nothing sent or stored."
+  "why": "R6 part 2: a client set during the admission's task wait, a non-owner write committed while the admission waits on the run, and a non-owner write committed while the agent's own-site request waits on the task or on the agent's own standing are each seen after the wait and refused, with nothing sent or stored; a replay that waited on the audit chain while an agent wrote gets the refusal, never the receipt; a client set during a replay's audit-chain wait waits for the replay, which answers as the task stood."
 }
