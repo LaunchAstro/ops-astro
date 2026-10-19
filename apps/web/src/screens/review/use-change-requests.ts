@@ -37,14 +37,17 @@ export interface ChangeRequestModel {
 }
 
 interface Drawn extends Omit<ChangeRequestModel, 'decide' | 'file'> {
-  /** The business and review the state was read in. */
+  /** The client, business and review the state was read in. */
   readonly scope: string;
+  /** Which entry into that scope it is: every write and read is tagged with it. */
+  readonly visit: number;
 }
 
 type Write = (operationId: string) => Promise<CallResult<CommandOutcome>>;
 
-const blank = (scope: string): Drawn => ({
+const blank = (scope: string, visit: number): Drawn => ({
   scope,
+  visit,
   load: { kind: 'loading' },
   canDecide: false,
   busy: null,
@@ -76,52 +79,72 @@ function noteOf(result: CallResult<CommandOutcome>): string | null {
   return isRefusal(result) && waitsOnLocalModel(result.code) ? AGENT_WAIT : settled.because;
 }
 
-/** The state drawn for `scope`, cleared with its intents the moment the scope changes. */
+const clients = new WeakMap<DockClient, number>();
+let lastClient = 0;
+
+/** One number per client object: another person's session is another client, so another scope. */
+function clientKey(client: DockClient): number {
+  const known = clients.get(client);
+  if (known !== undefined) return known;
+  lastClient += 1;
+  clients.set(client, lastClient);
+  return lastClient;
+}
+
+/**
+ * The state drawn for `scope`, cleared with its intents the moment the scope changes. Each
+ * scope entered is a new visit, so a return to an earlier review is not the visit it left.
+ */
 function useScoped(scope: string) {
-  const [drawn, setDrawn] = useState<Drawn>(() => blank(scope));
-  const latest = useRef({ scope, read: 0 });
-  latest.current.scope = scope;
+  const [drawn, setDrawn] = useState<Drawn>(() => blank(scope, 0));
+  const visit = drawn.scope === scope ? drawn.visit : drawn.visit + 1;
+  const latest = useRef({ visit, read: 0 });
+  latest.current.visit = visit;
   const intents = useRef(new Map<string, string>());
   if (drawn.scope !== scope) {
     intents.current = new Map();
-    setDrawn(blank(scope));
+    setDrawn(blank(scope, visit));
   }
-  const update = useCallback((asked: string, change: Partial<Drawn>) => {
-    if (latest.current.scope === asked)
-      setDrawn((state) => (state.scope === asked ? { ...state, ...change } : state));
+  const update = useCallback((asked: number, change: Partial<Drawn>) => {
+    if (latest.current.visit === asked)
+      setDrawn((state) => (state.visit === asked ? { ...state, ...change } : state));
   }, []);
-  return { current: drawn.scope === scope ? drawn : blank(scope), latest, intents, update };
+  return { current: drawn.visit === visit ? drawn : blank(scope, visit), latest, intents, update };
 }
 
 export function useChangeRequests(client: DockClient, reviewId: string): ChangeRequestModel {
-  const scope = `${client.businessKey}\u0000${reviewId}`;
+  const scope = `${String(clientKey(client))}\u0000${client.businessKey}\u0000${reviewId}`;
   const { current, latest, intents, update } = useScoped(scope);
+  const { visit } = current;
 
   const reread = useCallback(async () => {
     // A write answered after the panel moved on reads nothing, so it cannot drop the new read.
-    if (latest.current.scope !== scope) return;
+    if (latest.current.visit !== visit) return;
     const read = (latest.current.read += 1);
     const load = await readLoad(client, reviewId);
-    if (latest.current.read === read) update(scope, { load });
-  }, [client, reviewId, scope, update]);
+    if (latest.current.read === read) update(visit, { load });
+  }, [client, reviewId, visit, latest, update]);
 
   useEffect(() => {
     void reread();
-    void readCanDecide(client).then((canDecide) => update(scope, { canDecide }));
-  }, [client, scope, reread, update]);
+    void readCanDecide(client).then((canDecide) => update(visit, { canDecide }));
+  }, [client, visit, reread, update]);
 
   const send = useCallback(
     async (intent: string, busy: string, write: Write) => {
       if (current.busy !== null) return;
-      const operationId = intents.current.get(intent) ?? client.newOperationId();
-      intents.current.set(intent, operationId);
-      update(scope, { busy, note: null });
+      // This visit's intents: a later visit's map is never written by this write.
+      const held = intents.current;
+      const operationId = held.get(intent) ?? client.newOperationId();
+      held.set(intent, operationId);
+      update(visit, { busy, note: null });
       const result = await write(operationId);
-      if (!('unavailable' in result)) intents.current.delete(intent);
-      update(scope, { busy: null, note: noteOf(result) });
+      if (!('unavailable' in result)) held.delete(intent);
+      if (latest.current.visit !== visit) return;
+      update(visit, { busy: null, note: noteOf(result) });
       await reread();
     },
-    [client, current.busy, reread, scope, update],
+    [client, current.busy, intents, latest, reread, visit, update],
   );
 
   const decide = (changeRequestId: string, decision: 'approve' | 'refuse'): void => {
