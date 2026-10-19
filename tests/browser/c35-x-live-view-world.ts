@@ -148,8 +148,10 @@ export async function stopWorld(): Promise<void> {
 export interface Watched {
   readonly context: BrowserContext;
   readonly page: Page;
-  /** What the product's own code wrote to the console, or threw. */
+  /** Everything the product's page wrote to the console, or threw. */
   readonly productSaid: string[];
+  /** The product's errors and warnings, bar the proof server's own dev client. */
+  readonly productErred: string[];
   /** Every request the product's own page made. */
   readonly productAsked: string[];
   readonly popups: number[];
@@ -191,14 +193,22 @@ function watch(context: BrowserContext, page: Page): Watched {
     context,
     page,
     productSaid: [],
+    productErred: [],
     productAsked: [],
     popups: [],
     downloads: [],
   };
   page.on('console', (message) => {
-    if (message.location().url.startsWith(PRODUCT)) watched.productSaid.push(message.text());
+    const from = message.location().url;
+    if (!from.startsWith(PRODUCT)) return;
+    watched.productSaid.push(message.text());
+    const loud = message.type() === 'error' || message.type() === 'warning';
+    if (loud && !from.startsWith(`${PRODUCT}/@vite/`)) watched.productErred.push(message.text());
   });
-  page.on('pageerror', (error) => watched.productSaid.push(`${error.message}\n${error.stack}`));
+  page.on('pageerror', (error) => {
+    watched.productSaid.push(`${error.message}\n${error.stack}`);
+    watched.productErred.push(error.message);
+  });
   page.on('request', (request) => {
     if (request.frame() === page.mainFrame()) watched.productAsked.push(request.url());
   });

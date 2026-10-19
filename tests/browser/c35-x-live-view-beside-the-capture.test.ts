@@ -177,7 +177,7 @@ describe('C35-X a malformed or foreign postMessage is ignored', () => {
       await expect.poll(async () => await sent(frameAt(watched.page, '/malformed'))).toBe('1');
       expect(await phase(watched.page)).toBe('waiting');
       await watched.page.waitForSelector('[data-live-view="fallback"]', { timeout: 4500 });
-      expect(watched.productSaid).toEqual([]);
+      expect(watched.productErred).toEqual([]);
     } finally {
       await watched.context.close();
     }
@@ -222,7 +222,7 @@ describe('C35-X hostile frame', () => {
         expect(result[feature], feature).toBe(false);
       }
       expect(await phase(watched.page)).toBe('live');
-      expect(watched.productSaid).toEqual([]);
+      expect(watched.productErred).toEqual([]);
     } finally {
       await watched.context.close();
     }
@@ -264,7 +264,10 @@ describe('C35-X the product never fetches or proxies a client page', () => {
     try {
       await watched.page.waitForSelector('[data-live-view="live"]', { timeout: 3000 });
       for (const asked of watched.productAsked) expect(new URL(asked).origin).toBe(PRODUCT);
-      expect(watched.productAsked.some((asked) => asked.includes('site.test'))).toBe(false);
+      // Only the product page's own address names the site: nothing fetches it.
+      expect(watched.productAsked.filter((asked) => asked.includes('site.test'))).toEqual([
+        watched.page.url(),
+      ]);
     } finally {
       await watched.context.close();
     }

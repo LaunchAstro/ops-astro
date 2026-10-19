@@ -11,7 +11,10 @@ import { LiveFrame } from '../../apps/web/src/screens/projects/review-live-frame
 const query = new URLSearchParams(location.search);
 const page = query.get('page') ?? '';
 const sibling = query.get('sibling');
-const capture = query.get('capture') === '0' ? null : <img alt="Capture at 1480" src="" />;
+const capture =
+  query.get('capture') === '0' ? null : (
+    <img alt="Capture at 1480" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
+  );
 
 function Proof(): ReactElement {
   const [revision, setRevision] = useState(1);
