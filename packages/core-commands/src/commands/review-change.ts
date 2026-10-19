@@ -5,7 +5,8 @@
 // refuses it, `proposal:decide` there. The door asks each key at the holder (`prepare.ts`),
 // the review is locked and judged again in the statement, and the key is read once more after
 // the last lock wait, so a grant revoked while the write waited keeps nothing. A decision is a
-// person's alone: the surface never offers it to an agent. Neither makes a task (#2117).
+// person's alone: the surface never offers it to an agent, and the handler refuses an agent
+// key itself. Neither makes a task (#2117).
 //
 // Filing a client's pin from an agent is a model reading the client's words, which reaches no
 // model while no local one exists (C60, owner line 72): the agent is refused
@@ -63,6 +64,12 @@ const WAITS_ON_A_LOCAL_MODEL = refuseCommand(
     'This pin is a client’s words, and an agent’s filing would be a model reading them: it waits on a local model.',
     'A person files the change request from the pin meanwhile, with their own words.',
   ],
+);
+
+const ONLY_A_PERSON_DECIDES = refuseCommand(
+  'SCOPE_NOT_GRANTED',
+  [],
+  ['Only a person decides a change request, signed in as themselves.'],
 );
 
 const OUT_OF_PURPOSE = refuseCommand(
@@ -136,6 +143,8 @@ export async function decideChange(
   context: CommandContext,
   request: Of<'review.decide_change'>,
 ): Promise<HandlerOutcome> {
+  // A person's alone: the door keeps every agent credential off this row, and so does this.
+  if (context.session.credentialScope !== undefined) return refused(ONLY_A_PERSON_DECIDES);
   if (typeof request.changeRequestId !== 'string') return MISSING('changeRequestId');
   if (!isUuid(request.changeRequestId)) return refused(refuseNotFound());
   const { decision } = request;
