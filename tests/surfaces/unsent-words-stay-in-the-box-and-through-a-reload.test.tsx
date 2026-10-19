@@ -4,10 +4,11 @@
 // A failed chat send's words, held where the person left them: in the box
 // after a send with no answer, in the tab after page and dock sends both fail,
 // and through a reload after Edit took refused words back into the box. The
-// stored words stay with the sign-in that wrote them. Copied from the
-// reviewer's proofs on #1892.
+// stored words stay with the sign-in that wrote them, and words sent again
+// unchanged while their Resend is still out start no second send. Copied from
+// the reviewer's proofs on #1892.
 import { act } from 'react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { TeamScreen } from '../../apps/web/src/screens/Team.tsx';
 import { ChatOutbox } from '../../apps/web/src/screens/team/outbox.ts';
 import type { StorageLike } from '../../apps/web/src/session/storage-slot.ts';
@@ -43,13 +44,16 @@ async function screen(api: ReturnType<typeof server>, kept: StorageLike) {
   await until(() => m.all('.tmc__conv .msg').length > 0);
   return m;
 }
-async function send(m: Mounted, words: string) {
-  await m.type('.composer input', words);
+async function submit(m: Mounted) {
   await act(() => {
     m.find('form.composer')!.dispatchEvent(
       new Event('submit', { bubbles: true, cancelable: true }),
     );
   });
+}
+async function send(m: Mounted, words: string) {
+  await m.type('.composer input', words);
+  await submit(m);
   await until(() => m.find('[role="alert"]') !== null);
 }
 
@@ -119,4 +123,35 @@ it('a Resend refused after no answer gives its words back to the list, Edit and 
   await m.type('.composer input', '');
   expect(m.all('[data-unsent-words]').map((el) => el.textContent)).toContain(WORDS);
   expect(m.find('[data-unsent-edit]')).not.toBeNull();
+});
+
+it('words sent again unchanged while their Resend is still out start no second send', async () => {
+  const api = server();
+  const mutate = api.client.mutate.bind(api.client);
+  let sends = 0;
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.spyOn(api.client, 'mutate').mockImplementation(async (...args) => {
+    if (args[0] === 'chat.send_direct') {
+      sends += 1;
+      if (sends === 2) await blocked;
+    }
+    return mutate(...args);
+  });
+  api.state.unanswered = 'before';
+  const m = await screen(api, storage());
+  await send(m, WORDS);
+  api.state.unanswered = null;
+  await m.click('[data-unsent-resend]');
+  await until(() => m.find('[data-unsent="sending"]') !== null);
+  try {
+    await submit(m);
+    expect(sends).toBe(2);
+  } finally {
+    release();
+    await until(() => m.find('[data-unsent]') === null);
+  }
+  expect(api.posted.size).toBe(1);
 });
