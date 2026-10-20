@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A plan conversation reopened shows the model kept with it, and a switch of
-// model after the first question is marked in the transcript (#2175).
+// model after the first question is marked in the transcript, only once the
+// server has kept it (#2175).
 
 /* eslint-disable require-await -- Sol's proof's client double, kept as written */
 import { afterEach, expect, it } from 'vitest';
@@ -18,7 +19,7 @@ afterEach(() => {
   sessionStorage.clear();
 });
 // oxlint-disable-next-line max-lines-per-function -- the proof's client double, kept as written
-async function view(kept: boolean) {
+async function view(kept: boolean, refuseSwitch = false) {
   if (kept)
     sessionStorage.setItem(
       'ops-astro:drawer-tabs:sol2194',
@@ -49,15 +50,23 @@ async function view(kept: boolean) {
         };
       return { unavailable: true, because: 'not used in this proof' };
     },
-    mutate: async () => ({
-      ok: true,
-      value: {
-        recordId: '',
-        revision: 0,
-        detail: { conversationId: ID },
-        reply: { answered: true, body: 'A local answer.', cites: [] },
-      },
-    }),
+    mutate: async (name: string) =>
+      refuseSwitch && name === 'conversation.set_model'
+        ? {
+            refused: true,
+            code: 'FIELD_VALUE_INVALID',
+            names: ['model'],
+            fixes: ['Model no longer offered.'],
+          }
+        : {
+            ok: true,
+            value: {
+              recordId: '',
+              revision: 0,
+              detail: { conversationId: ID },
+              reply: { answered: true, body: 'A local answer.', cites: [] },
+            },
+          },
   } as unknown as OperationsClient;
   const page = track(
     await mount(
@@ -86,4 +95,17 @@ it('switching an existing conversation to the plan marks the transcript', async 
   await page.choose('[data-assistant="model"]', PLAN);
   await settle();
   expect(page.find('[role="log"]')?.textContent).toContain(PLAN);
+});
+
+it('a refused model switch never claims subsequent questions use it', async () => {
+  const page = await view(false, true);
+  await page.type('[data-assistant="input"]', 'A local question');
+  await press(page, '[data-assistant="input"]', 'Enter');
+  await settle();
+  await page.choose('[data-assistant="model"]', PLAN);
+  await settle();
+  expect(page.find('[role="log"]')?.textContent).toContain('FIELD_VALUE_INVALID');
+  expect(page.find('[role="log"]')?.textContent).not.toContain(
+    `Switched to ${PLAN}. Questions from here go to it.`,
+  );
 });
