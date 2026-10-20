@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { isUuid, isRecord, type StorageLike } from '../../session/storage-slot.ts';
 import { taskTimerKey } from '../../session/token.ts';
-import type { TimerBinding, TimerHold, TimerCustody } from './task-timer.ts';
+import type { TimerBinding, TimerCustody, TimerHold } from './task-timer-types.ts';
 
 function bindingFrom(value: unknown): TimerBinding | null | undefined {
   if (value === null) return null;
@@ -52,9 +52,10 @@ function attemptFrom(value: unknown): TimerHold['attempt'] | undefined {
     operationId,
     status: knownRefusal ? 'refused' : 'unknown',
     because: knownRefusal
-      ? 'This timer operation was refused before reload. Retry checks the current permission.'
+      ? 'This timer operation was refused before reload. Retry sends it again as a new request.'
       : 'The previous timer answer was not retained. Retry the same operation.',
     uncertain: !knownRefusal,
+    refusal: knownRefusal,
     entryId,
   };
 }
@@ -97,6 +98,7 @@ export function timerCustody(storage: StorageLike | null, owner: string): TimerC
   }
   return {
     restored,
+    durable: storage !== null,
     write: (hold) => {
       if (storage === null) return 'memory-only';
       try {
