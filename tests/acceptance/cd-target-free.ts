@@ -5,6 +5,7 @@
 // on its own.
 
 import { randomUUID } from 'node:crypto';
+import { poolReviewBody } from './role-case-gate-bodies.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -136,6 +137,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
     { item: 'tested-backups', evidence: 'https://evidence.example/settings/operations/' },
   ],
   ['operations.change_installation_mode', { mode: 'real' }],
+  ['operations.record_capture_pool_review', poolReviewBody()],
   ['inbox.read', {}],
   ['inbox.count', {}],
   ['inbox.unattended', {}],
