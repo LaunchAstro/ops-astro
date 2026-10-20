@@ -6,13 +6,16 @@
 // opens one window per session; `changed` writes the password on that session
 // and settles the window, auditing once, only on that write's own 200.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { grantTo } from '../commands/fixture.ts';
 import {
   alpha,
   auditsOf,
   begin,
   changed,
   db,
+  door,
   factorVerified,
   issuer,
   linkMinted,
@@ -207,3 +210,36 @@ describe('changed, refused or repeated', () => {
     expect(await windowsOf(token)).toStrictEqual([{ settled: true, reset_settled: true }]);
   });
 });
+
+withProvider(
+  'an admitted external client with a live share can reset their own password',
+  async () => {
+    const person = await personIn(alpha);
+    const personId = person.people.get(alpha)!;
+    await db.app.withBusiness(alpha, async (tx) => {
+      const [actor] = await tx.query<{ id: string }>(
+        'select id::text from public.actors where business_id = $1 and person_id = $2',
+        [alpha, personId],
+      );
+      await grantTo(
+        tx,
+        {
+          personId,
+          actorId: actor!.id,
+          presented: { provider: 'supabase', subject: person.subject },
+        },
+        'read',
+        { kind: 'record', id: randomUUID() },
+      );
+      await tx.query(
+        'update public.memberships set active = false, ended_at = clock_timestamp() where business_id = $1 and person_id = $2',
+        [alpha, personId],
+      );
+    });
+    expect(await door(await signIn(person), 'alpha')).toBe('served');
+    await linkMinted(person);
+    const recovery = await linkSession(person);
+    expect(await begin(recovery)).toStrictEqual({ status: 200, body: {} });
+  },
+  120_000,
+);

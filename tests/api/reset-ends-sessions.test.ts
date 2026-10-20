@@ -156,3 +156,30 @@ async function onlyFreshSession(token: string, business: 'alpha' | 'bravo'): Pro
   expect(answer.body['sessions']).toHaveLength(1);
   expect(answer.body).toMatchObject({ sessions: [{ sessionId: sessionOf(token), current: true }] });
 }
+
+withProvider(
+  'a settled recovery session cannot leave a provider-deleted session authorised in either business',
+  async () => {
+    const person = await personIn(alpha, bravo);
+    await linkMinted(person);
+    const recovery = await linkSession(person);
+    expect((await begin(recovery)).status).toBe(200);
+    expect((await changed(recovery, 'sol-first-password-1656')).status).toBe(200);
+    await delay(1100);
+    const fresh = await signIn(person, 'sol-first-password-1656');
+    expect(await door(fresh, 'alpha')).toBe('served');
+    expect(await door(fresh, 'bravo')).toBe('served');
+    // A caller can retain the recovery bearer instead of performing browser logout.
+    expect((await writePassword(recovery, 'sol-second-password-1656')).status).toBe(200);
+    const gone = await fetch(`${process.env['RESET_AUTH_URL']}/user`, {
+      headers: { authorization: `Bearer ${fresh}` },
+    });
+    expect(gone.status).toBe(403);
+    expect(((await gone.json()) as { error_code: string }).error_code).toBe('session_not_found');
+    expect(await Promise.all([door(fresh, 'alpha'), door(fresh, 'bravo')])).toStrictEqual([
+      'AUTH_SESSION_EXPIRED',
+      'AUTH_SESSION_EXPIRED',
+    ]);
+  },
+  120_000,
+);
