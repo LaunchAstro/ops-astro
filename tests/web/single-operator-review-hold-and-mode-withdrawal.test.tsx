@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable require-await, max-lines-per-function -- Sol's proofs kept as written: async stand-in fetches, one world. */
 //
 // Sol's proofs on #2201 (round 1, S2201-1 to S2201-3), assertions unchanged:
 // the missing-review hold on Launch outlives a page-check reread and a failed

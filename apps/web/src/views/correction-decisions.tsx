@@ -5,10 +5,13 @@
 // through `live_correction.decide`; Launch only while the version's check
 // holds. #1781 adds the business's single-operator mode beside it, and a
 // Launch the server refused for a missing Astra review stays drawn but
-// disabled until the card reads its correction again; the reason is the
-// card's refusal line. The server stays the control.
+// disabled, with that reason, while the card shows the same version: no read
+// says the review was recorded since, so a reread, a failed read or a list
+// read keeps it, and a new version or a fresh drawer drops it. The server
+// stays the control.
 
 import type { ReactElement } from 'react';
+import { refusalWords } from '../assistant/correction.ts';
 import type { Correction } from '../assistant/correction-desks.ts';
 
 const DECISIONS = [
@@ -60,12 +63,21 @@ export function Decisions(props: {
   );
 }
 
-/** The card's two notes: the page being checked again, and the last refusal. */
+/** Launch is held: the server refused it for a missing Astra review of the version shown. */
+export const reviewHeld = (correction: Correction): boolean =>
+  correction.reviewMissingFor !== null && correction.reviewMissingFor === correction.versionId;
+
+const HELD_WORDS = refusalWords('ASTRA_REVIEW_MISSING');
+
+/** The card's notes: the page being checked again, why Launch is held, and the last refusal. */
 export function Notes(props: {
   readonly checking: boolean;
   readonly correction: Correction;
 }): ReactElement {
-  const { refusal, launchHeld } = props.correction;
+  const held = reviewHeld(props.correction);
+  // The hold's reason is drawn once, beside a later refusal that says something else.
+  const { refusal } = props.correction;
+  const other = refusal === null || (held && refusal === HELD_WORDS) ? null : refusal;
   return (
     <>
       {props.checking ? (
@@ -73,13 +85,14 @@ export function Notes(props: {
           Checking the page again…
         </p>
       ) : null}
-      {refusal === null ? null : (
-        <p
-          className="aip__plan-meta aip__plan-refused"
-          role="alert"
-          data-correction-launch-held={launchHeld ? '' : undefined}
-        >
-          {refusal}
+      {held ? (
+        <p className="aip__plan-meta aip__plan-refused" role="alert" data-correction-launch-held="">
+          {HELD_WORDS}
+        </p>
+      ) : null}
+      {other === null ? null : (
+        <p className="aip__plan-meta aip__plan-refused" role="alert">
+          {other}
         </p>
       )}
     </>
