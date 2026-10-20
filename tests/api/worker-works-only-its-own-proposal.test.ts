@@ -28,6 +28,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -73,6 +74,7 @@ describe.skipIf(serverUrl === undefined)('the worker works only its own proposal
       credential: agentToken,
       delegation,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
 
   /** A new task and the agent's delegation scoped to it, nothing proposed yet. */

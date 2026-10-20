@@ -18,7 +18,7 @@ import { mintDelegation } from '../../packages/core-records/src/authority/delega
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { readIdentity } from '../../apps/api/identity.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
-import { createWorker, EFFECT_BODY } from '../../apps/worker/worker.ts';
+import { createWorker, EFFECT_BODY, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { ProviderFault, SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { launchThrough } from '../support/launch-worker.ts';
 import {
@@ -30,6 +30,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -60,6 +61,18 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
   const asPerson = async (name: Name, body: object): Promise<Answer> =>
     await post(api, `/api/b/${BUSINESS_KEY}${pathOf(name)}`, body, authorised(personToken));
 
+  /** The worker these cases run, on `delegation`; `more` replaces its transport or provider. */
+  const workerOn = (delegation: string, more: Partial<WorkerOptions> = {}) =>
+    createWorker({
+      transport,
+      businessKey: BUSINESS_KEY,
+      credential: agentToken,
+      delegation,
+      reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
+      ...more,
+    });
+
   async function approvedWork() {
     const created = await asPerson('task.create', {
       operationId: randomUUID(),
@@ -80,13 +93,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
       if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
       return minted.value.credential;
     });
-    const worker = createWorker({
-      transport,
-      businessKey: BUSINESS_KEY,
-      credential: agentToken,
-      delegation: credential,
-      reporter: SYNTHETIC_USAGE,
-    });
+    const worker = workerOn(credential);
     const proposed = await worker.proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
     const read = await asPerson('task.read', { recordId: taskId });
@@ -193,13 +200,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
       }
       return await transport(path, body, bearer, delegation);
     };
-    const worker = createWorker({
-      transport: lostObservation,
-      businessKey: BUSINESS_KEY,
-      credential: agentToken,
-      delegation: credential,
-      reporter: SYNTHETIC_USAGE,
-    });
+    const worker = workerOn(credential, { transport: lostObservation });
     const first = await worker.applyOnce(taskId);
     expect(
       (await comments(taskId)).filter((comment) => comment['body'] === EFFECT_BODY),
@@ -226,13 +227,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
       }
       return response;
     };
-    const worker = createWorker({
-      transport: lostPickup,
-      businessKey: BUSINESS_KEY,
-      credential: agentToken,
-      delegation: credential,
-      reporter: SYNTHETIC_USAGE,
-    });
+    const worker = workerOn(credential, { transport: lostPickup });
     const first = await worker.applyOnce(taskId);
     const resumed = 'applied' in first ? first : await worker.applyOnce(taskId);
     expect(resumed).toHaveProperty('applied');
@@ -247,12 +242,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
   it('an uncertain provider call keeps the full hold until its effect is proved absent', async () => {
     const { taskId, credential } = await approvedWork();
     let providerEffects = 0;
-    const worker = createWorker({
-      transport,
-      businessKey: BUSINESS_KEY,
-      credential: agentToken,
-      delegation: credential,
-      reporter: SYNTHETIC_USAGE,
+    const worker = workerOn(credential, {
       provider: {
         call: async () => {
           providerEffects += 1;

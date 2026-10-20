@@ -42,6 +42,7 @@ import { insertLogin } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { launchThrough, type HandedBack } from '../support/launch-worker.ts';
 import { sharedKeySetUrl } from '../support/sign-in.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -235,6 +236,7 @@ export const workerAt = (
     credential: agent.token,
     delegation,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
   });
 
 /** The owner's Launch decision D, as `task.decide` answered it. */

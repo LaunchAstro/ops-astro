@@ -1676,8 +1676,9 @@ come back under the catalogue's names; one outside that table, with arguments
 other than its tool's operands exactly, or under an id used twice, makes the
 answer malformed, so a written one is held as unknown and no tool runs. An uncarried Ollama install, or a carried one with no plan route,
 does not catalogue it (`OPERATION_NOT_CATALOGUED`), and an install with no
-broker refuses the turn; either way the attempt ends there. A test may hand the
-synthetic runner, which computes nothing. A success hands the work back as its
+broker refuses the turn; either way the attempt ends there. The worker has no
+runner of its own: a test that is not about the compute hands one that
+computes nothing. A success hands the work back as its
 successor (outcome `handedBack`, with the successor's gate and version), and
 the next pass after a person's accept picks up the launch and applies it. Any
 other end (outcome `ended`, with its outcome and code) hands nothing back: the
