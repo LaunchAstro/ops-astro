@@ -85,6 +85,55 @@ const htmlOf = (token) => {
   return found;
 };
 
+// A path as Git prints it, unquoted: Git wraps a path holding a quote, a
+// backslash, a control or a non-ASCII byte in double quotes, C escapes and
+// octal bytes inside (core.quotePath).
+const ESCAPED = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+const unquoted = (text) => {
+  const quoted = /^"((?:[^"\\]|\\(?:[0-3][0-7]{2}|[abtnvfr"\\]))*)"$/u.exec(text)?.[1];
+  if (quoted === undefined) return text;
+  const bytes = [];
+  for (const [, octal, letter, plain] of quoted.matchAll(/\\([0-7]{3})|\\(.)|([^\\]+)/gu)) {
+    if (octal) bytes.push(Number.parseInt(octal, 8));
+    else if (letter) bytes.push(ESCAPED[letter]);
+    else bytes.push(...Buffer.from(plain, 'utf8'));
+  }
+  return Buffer.from(bytes).toString('utf8');
+};
+
+// A line a pasted checkpoint lists is Git's, not a claim, only when Git holds
+// it: a changed file, or a commit in the range under its own subject.
+const listedBy = ({ paths = [], commits = [] }) => {
+  const changed = new Set(paths);
+  return (line) => {
+    if (!line.startsWith('    ')) return false;
+    const text = line.slice(4);
+    const commit = /^(?<sha>[0-9a-f]{7,40}) (?<subject>.+)$/u.exec(text)?.groups;
+    return (
+      changed.has(unquoted(text)) ||
+      (commit !== undefined &&
+        commits.some((c) => c.sha.startsWith(commit.sha) && c.subject === commit.subject))
+    );
+  };
+};
+
+/** The prose shown, and the same with a pasted checkpoint's listed lines left out. */
+const textsOf = (tokens, prose, git) => {
+  const listed = listedBy(git);
+  const pasted = tokens.filter(
+    (t) => t.type === 'fence' && t.content.startsWith('Review checkpoint\n'),
+  );
+  const claims = prose.map((text) =>
+    pasted.some((t) => t.content === text)
+      ? text
+          .split('\n')
+          .filter((line) => !listed(line))
+          .join('\n')
+      : text,
+  );
+  return { prose: prose.join('\n'), claims: claims.join('\n') };
+};
+
 /**
  * The body as GitHub renders it.
  *  - stated: every counted `Code review:` and `Security review:` field;
@@ -93,11 +142,14 @@ const htmlOf = (token) => {
  *  - deferrals: every counted `Review deferral:` value and its exact source line;
  *  - buried: every other line that is written or shown as a review field;
  *  - html: every HTML node that is not only a comment, its first 40 characters;
- *  - prose: the text shown, code included, comments left out.
+ *  - prose: the text shown, code included, comments left out;
+ *  - claims: that prose without the lines a pasted review checkpoint lists
+ *    that Git holds: `paths` the change's files, `commits` its range as
+ *    `{ sha, subject }`.
  * A field counts only as a plain line of a top-level paragraph, at the
  * margin, where the paragraph's shown lines are its source lines one for one.
  */
-export const readBody = (body) => {
+export const readBody = (body, git = {}) => {
   const source = body.replaceAll(/\r\n?/gu, '\n');
   const lines = source.split('\n');
   const tokens = md.parse(source, {});
@@ -144,7 +196,7 @@ export const readBody = (body) => {
     if (named !== undefined && !counted.has(i)) buried.push(`line ${i + 1}: ${fieldKey(named)}`);
   }
   const snips = html.map((h) => h.trim().slice(0, 40));
-  return { ...read, buried: [...new Set(buried)], html: snips, prose: prose.join('\n') };
+  return { ...read, ...textsOf(tokens, prose, git), buried: [...new Set(buried)], html: snips };
 };
 
 /**
