@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "review.list across crossings: another business, another client in the same business and a person with no review key each list nothing foreign, refusals included."
+}
