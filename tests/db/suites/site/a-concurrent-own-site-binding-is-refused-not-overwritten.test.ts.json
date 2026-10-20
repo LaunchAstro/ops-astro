@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The own-site binding step under concurrency: another connection binding the business's own site to other providers after the step's check and before its write is refused by the step with nothing written, so the step never overwrites a binding it did not see, against a real database."
+}
