@@ -432,3 +432,83 @@ test("the REVB1SL01S34 proof's two made-up logins pass as those strings alone", 
   ])
     assert.deepEqual(addressRules(`${name}@${host}`, 'blob'), ['contributor-address'], host);
 });
+
+// Assembled at run time, as above. The approved address is one of the local
+// slice's synthetic logins; the unlisted one ends in it after punctuation a
+// local part may carry.
+const approvedLocal = ['ada', '@', 'alpha.local'].join('');
+const unlistedLocal = ['ops!', approvedLocal].join('');
+
+for (const [where, place, finding] of [
+  [
+    'a blob',
+    ({ repo }, address) => writeFileSync(join(repo, 'contact.md'), `Write to ${address}.\n`),
+    /contact\.md \[contributor-address\]/u,
+  ],
+  [
+    'a path',
+    ({ repo }, address) => {
+      mkdirSync(join(repo, address));
+      writeFileSync(join(repo, address, 'readme.md'), 'A neutral note.\n');
+    },
+    /<withheld-path> \[contributor-address\]/u,
+  ],
+  [
+    'a commit identity',
+    ({ git }, address) => git('config', 'user.email', address),
+    /metadata \[unlisted-commit-identity\]/u,
+  ],
+])
+  test(`an unlisted address ending in an approved one is refused in ${where}, and the approved one passes`, () => {
+    fixture((context) => {
+      place(context, unlistedLocal);
+      const result = context.scan('--range', `${context.root}..${context.commit()}`);
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, finding);
+      assert.ok(
+        !`${result.stdout}${result.stderr}`.includes(unlistedLocal),
+        'the value is never echoed',
+      );
+    });
+    fixture((context) => {
+      place(context, approvedLocal);
+      const result = context.scan('--range', `${context.root}..${context.commit()}`);
+      assert.equal(result.status, 0, result.stderr);
+    });
+  });
+
+test('an approved address counts only as a whole address, at either end', () => {
+  const touching = [
+    ...[..."!#$&'*/=?^`{|}~"].map((mark) => `ops${mark}${approvedLocal}`),
+    `josé${approvedLocal}`,
+    `ops@${approvedLocal}`,
+    `${approvedLocal}-ops`,
+    `${approvedLocal}.ops`,
+    `${approvedLocal}9`,
+  ];
+  for (const text of touching)
+    assert.deepEqual(addressRules(text, 'blob'), ['contributor-address'], text);
+  const delimited = ['<>', "''", '""', '``', '()', ' .', '**'].map(
+    ([open, close]) => `${open}${approvedLocal}${close}`,
+  );
+  for (const text of delimited) assert.deepEqual(addressRules(text, 'blob'), [], text);
+});
+
+test('only a closed quote, repeated emphasis or a URL authority frames an approved address', () => {
+  const framed = [
+    `'${approvedLocal}, the first sign-in'`,
+    `**${approvedLocal}**`,
+    `postgresql://${approvedLocal}/db`,
+  ];
+  for (const text of framed) assert.deepEqual(addressRules(text, 'blob'), [], text);
+  const unframed = [`'${approvedLocal} is not closed`, `**${approvedLocal}`, `x//${approvedLocal}`];
+  for (const text of unframed)
+    assert.deepEqual(addressRules(text, 'blob'), ['contributor-address'], text);
+});
+
+test('an address code builds at run time, or a bare host, is not a written address', () => {
+  for (const text of ['`scan-${nonce}@alpha.local`', "'@alpha.local'", '`@agency.example`'])
+    assert.deepEqual(addressRules(text, 'blob'), [], text);
+  const literal = ['${x}ops', 'alpha.local'].join('@');
+  assert.deepEqual(addressRules(literal, 'blob'), ['contributor-address'], literal);
+});
