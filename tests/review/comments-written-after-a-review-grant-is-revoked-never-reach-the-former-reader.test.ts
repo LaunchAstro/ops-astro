@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- Sol's proof, one revocation read top to bottom */
 //
 // Sol's proof for S2237-2 (PR #2237, round 1), kept as Sol wrote it but for this header and the
 // database guard: a client comment written after the reader's review and task read grants are

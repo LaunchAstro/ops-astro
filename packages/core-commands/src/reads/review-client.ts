@@ -8,10 +8,13 @@
 // projection (`commentsFor`, external), the one `task.read` gives a client, so an internal
 // pin or a team comment is absent from the rows, not cut from them. A caller holding
 // `review:read` nowhere, or an agent's key, is refused `SCOPE_NOT_GRANTED` and learns nothing.
+// The grant is judged again after the last read (`stillCovered`), so a review whose grant was
+// revoked while its comments were read is left out whole.
 
 import {
   holdsAnywhere,
   readClientReviews,
+  stillCovered,
   REVIEW_COLLECTION,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -77,7 +80,13 @@ export const CLIENT_REVIEW_READS: {
           changeRequests: row.changeRequests.filter((request) => shown.has(request.commentId)),
         });
       }
-      return { ok: true, reviews };
+      // The grant again, after the last read: one revoked meanwhile keeps nothing read since.
+      const covered = await stillCovered(
+        tx,
+        covering,
+        reviews.map((review) => review.reviewId),
+      );
+      return { ok: true, reviews: reviews.filter((review) => covered.has(review.reviewId)) };
     },
   },
 };

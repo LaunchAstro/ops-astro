@@ -105,3 +105,22 @@ async function changeRequestsOf(
   }
   return byReview;
 }
+
+/**
+ * Which of `reviewIds` the caller's grant still covers, judged at this statement's own instant.
+ * Asked after the read's last statement, so a grant revoked or expired while the comments were
+ * read covers nothing written since (S2237-2).
+ */
+export async function stillCovered(
+  tx: TenantQuery,
+  covering: Covering,
+  reviewIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `${EFFECTIVE_AT}
+     select c.id from public.reviews c
+      where c.business_id = $1 and c.id = any($6::uuid[]) and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), reviewIds],
+  );
+  return new Set(rows.map((row) => row.id));
+}
