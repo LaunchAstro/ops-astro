@@ -64,3 +64,13 @@ export function useModels(
     ? held
     : { models: NONE, chosen: null };
 }
+
+/** A tab reopened with no choice of its own shows the model its conversation kept (#2175). */
+export const keptChoice = <C extends { readonly model: string | null }>(
+  chats: readonly C[],
+  open: C | undefined,
+  chosen: string | null,
+): readonly C[] =>
+  chats.map((each) =>
+    each === open && each.model === null && chosen !== null ? { ...each, model: chosen } : each,
+  );

@@ -65,25 +65,18 @@ export const told = <T extends Noted>(chat: T, line: AssistantMessage, after?: s
 });
 
 /**
- * Tab `chat` on `model` (#2175): a change after its first question is marked in
- * the transcript, so the lines after it are read as the new model's.
+ * Tab `chat` with its change to `model` marked in the transcript (#2175), once
+ * the server kept it, so the lines after it are read as the new model's.
  */
-export const switched = <T extends Noted & { readonly model: string | null }>(
-  chat: T,
-  model: string,
-): T =>
-  chat.model === model || !chat.messages.some((message) => message.role === 'user')
-    ? { ...chat, model }
-    : {
-        ...chat,
-        model,
-        messages: [
-          ...chat.messages,
-          {
-            id: `model-${String(chat.messages.length)}`,
-            role: 'note',
-            body: `Switched to ${model}. Questions from here go to it.`,
-            cites: [],
-          },
-        ],
-      };
+export const switched = <T extends Noted>(chat: T, model: string): T => ({
+  ...chat,
+  messages: [
+    ...chat.messages,
+    {
+      id: `model-${String(chat.messages.length)}`,
+      role: 'note',
+      body: `Switched to ${model}. Questions from here go to it.`,
+      cites: [],
+    },
+  ],
+});

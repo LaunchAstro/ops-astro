@@ -41,6 +41,8 @@ import {
   ask,
   asking,
   chooseModel,
+  markSwitch,
+  switching,
   fresh,
   rename,
   select,
@@ -56,7 +58,7 @@ import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
-import { useModels } from '../assistant/models.ts';
+import { keptChoice, useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import { withPieces } from '../assistant/writing.ts';
 import type {
@@ -197,11 +199,15 @@ function useWrites(
   readonly addPage: (key: string) => void;
   readonly chooseModel: (key: string, model: string) => void;
 } {
-  const written = (key: string, write: (conversationId: string) => Sent): void => {
+  const written = (
+    key: string,
+    write: (conversationId: string) => Sent,
+    kept: () => void = () => {},
+  ): void => {
     // A tab kept or reopened was started elsewhere: its conversation is known.
     const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
     const turn = (sender.starts.get(key) ?? known).then(async (id) => {
-      if (id !== null) await sender.report(key, write(id));
+      if (id !== null && (await sender.report(key, write(id)))) kept();
       return id;
     });
     sender.starts.set(key, turn);
@@ -220,8 +226,11 @@ function useWrites(
       written(key, (conversationId) => setScope(props.client, conversationId, page));
     },
     chooseModel: (key, model) => {
+      const mark = switching(store.chat(key), model);
       store.update((current) => chooseModel(current, key, model));
-      written(key, (conversationId) => setModel(props.client, conversationId, model));
+      // Marked only once the server kept it: a refusal says why instead.
+      const kept = () => mark && store.update((current) => markSwitch(current, key, model));
+      written(key, (conversationId) => setModel(props.client, conversationId, model), kept);
     },
   };
 }
@@ -238,16 +247,6 @@ const answering =
       store.update((current) => asking(current, key, -1));
     }
   };
-
-/** A tab reopened with no choice of its own shows the model its conversation kept (#2175). */
-const keptChoice = <C extends { readonly model: string | null }>(
-  chats: readonly C[],
-  open: C | undefined,
-  chosen: string | null,
-): readonly C[] =>
-  chats.map((each) =>
-    each === open && each.model === null && chosen !== null ? { ...each, model: chosen } : each,
-  );
 
 export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
