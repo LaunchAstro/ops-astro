@@ -3521,6 +3521,23 @@ capture stands with "Live view isn't set up for this site" and a link to the
 staged page. The product never fetches, rewrites or proxies the page, the
 live view stores nothing, and no pin or approval binds to it.
 
+A pin made on the live view (#2120) is still `review.pin_comment` on the
+captured revision and width, with `liveViewport`, the frame's width. It is
+kept on that capture only when `liveViewport` is the capture's width, the
+revision is the review's newest with that width's capture landed (read after
+the review's lock), and the selector is a media fragment alone: a quote would
+be the live page's text, not the capture's. Otherwise it is refused
+`FIELD_VALUE_INVALID` naming `liveViewport`, `selector` or `revisionId`, the
+last with the ask for a fresh capture, and keeps nothing. `review.decide`
+takes only the review, the recorded digest and the response; any other field
+is `COMMAND_BODY_INVALID`.
+
+`review.open` may name `correctionId`, the live correction whose published
+page the new revision captures: one on the review's own task, page and file
+whose receipts the opener reads, else `NOT_FOUND` naming `correctionId`.
+`review.read` returns each revision's `correctionId` (null for none); the
+workspace reads that correction's Receipt through `live_correction.receipts`.
+
 ### The client record and grants on Settings ▸ Access (C32)
 
 `client.create` takes `{ operationId, name }` under `record:write`, never an

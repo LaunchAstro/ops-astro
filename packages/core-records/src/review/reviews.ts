@@ -133,6 +133,8 @@ export async function openPageReview(
     readonly path: string;
     readonly sourceRevision: string;
     readonly writer: ReviewWriter;
+    /** The live correction whose published page this revision captures; its caller judged it. */
+    readonly correctionId?: string | null;
   },
 ): Promise<{ readonly review: Review; readonly revision: Revision } | ReviewRefusal> {
   const holder = await holderOfTask(tx, input.taskId);
@@ -140,7 +142,7 @@ export async function openPageReview(
   const page = { partyId: holder.partyId, pageUrl: input.pageUrl, path: input.path };
   if (!(await holdBoundPage(tx, page))) return { code: 'PAGE_OUTSIDE_HOLDER_SITE' };
   const review = await lockPageReview(tx, { ...input, partyId: holder.partyId });
-  const revision = await addRevision(tx, review, input.sourceRevision, input.writer);
+  const revision = await addRevision(tx, review, input);
   return { review: { ...review, revisionCount: revision.number }, revision };
 }
 
@@ -189,9 +191,13 @@ async function lockPageReview(
 async function addRevision(
   tx: TenantQuery,
   review: Review,
-  sourceRevision: string,
-  writer: ReviewWriter,
+  input: {
+    readonly sourceRevision: string;
+    readonly writer: ReviewWriter;
+    readonly correctionId?: string | null;
+  },
 ): Promise<Revision> {
+  const { sourceRevision, writer } = input;
   const number = review.revisionCount + 1;
   const revision: Revision = {
     id: randomUUID(),
@@ -202,8 +208,8 @@ async function addRevision(
   await tx.query(
     `insert into public.review_revisions
        (business_id, id, review_id, number, digest, source_revision, created_by_actor_id,
-        created_by_person_id, delegation_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        created_by_person_id, delegation_id, correction_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       tx.businessId,
       revision.id,
@@ -214,6 +220,7 @@ async function addRevision(
       writer.actorId,
       writer.personId,
       writer.delegationId,
+      input.correctionId ?? null,
     ],
   );
   await tx.query(
