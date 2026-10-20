@@ -79,6 +79,11 @@ for (const [network, prefix] of [
   ['64:ff9b::', 96],
   ['64:ff9b:1::', 48],
   ['100::', 64],
+  // Not globally reachable (IANA special-purpose registry): the dummy prefix,
+  // the documentation range and SRv6 segment identifiers.
+  ['100:0:0:1::', 64],
+  ['3fff::', 20],
+  ['5f00::', 16],
   ['2001::', 23],
   ['2001:db8::', 32],
   ['2002::', 16],
@@ -90,6 +95,12 @@ for (const [network, prefix] of [
   DENIED_V6.addSubnet(network, prefix, 'ipv6');
 }
 
+// The only IPv6 space allocated for global unicast (IANA's address space
+// registry): everything outside 2000::/3 is reserved, local or multicast, so it
+// is denied whole rather than range by range.
+const GLOBAL_V6 = new BlockList();
+GLOBAL_V6.addSubnet('2000::', 3, 'ipv6');
+
 /** The family a checked address is connected to by, as a transport request carries it. */
 export const familyOf = (address: string): 4 | 6 => (isIP(address) === 6 ? 6 : 4);
 
@@ -97,7 +108,8 @@ export const familyOf = (address: string): 4 | 6 => (isIP(address) === 6 ? 6 : 4
 export function isDeniedAddress(address: string): boolean {
   const family = isIP(address);
   if (family === 0) return true;
-  return family === 4 ? DENIED_V4.check(address, 'ipv4') : DENIED_V6.check(address, 'ipv6');
+  if (family === 4) return DENIED_V4.check(address, 'ipv4');
+  return !GLOBAL_V6.check(address, 'ipv6') || DENIED_V6.check(address, 'ipv6');
 }
 
 function flatten(headers: Record<string, string | string[] | undefined>): Record<string, string> {

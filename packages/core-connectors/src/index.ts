@@ -128,6 +128,7 @@ export {
   type ProviderValue,
 } from './call.ts';
 export {
+  familyOf,
   isDeniedAddress,
   pinnedTransport,
   systemResolver,

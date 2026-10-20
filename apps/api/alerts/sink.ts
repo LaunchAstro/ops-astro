@@ -17,8 +17,9 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
-// What a sink off the machine cannot be: the watcher's own rule.
-import { UNREACHABLE } from '../../worker/heartbeat.ts';
+import { dsnTransport } from './dsn-transport.ts';
+
+export { dsnTransport, type Carriage } from './dsn-transport.ts';
 
 export type Frame = { filename: string; lineno: number; in_app: true };
 
@@ -196,41 +197,6 @@ export function alertEvent(
 ): SinkEvent {
   const message = { formatted: plainAlert(kind, where).text };
   return { ...base('warning', kind, where, release, id), message };
-}
-
-const NOT_A_DSN =
-  'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
-
-/**
- * The sink's store endpoint, from its DSN. The key travels in the auth header
- * only, over https, to a public address, and never after a redirect; a
- * malformed or private DSN is refused by the setting's name, never echoed.
- */
-export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transport {
-  const url = URL.parse(dsn);
-  const project = url?.pathname.replaceAll('/', '') ?? '';
-  if (
-    url === null ||
-    url.protocol !== 'https:' ||
-    UNREACHABLE.test(url.hostname) ||
-    url.username === '' ||
-    !/^\d+$/u.test(project)
-  ) {
-    throw new Error(NOT_A_DSN);
-  }
-  const store = `${url.protocol}//${url.host}/api/${project}/store/`;
-  const auth = `Sentry sentry_version=7, sentry_client=ops-astro/1, sentry_key=${url.username}`;
-  return async (event) => {
-    const response = await fetcher(store, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
-      body: JSON.stringify(event),
-      redirect: 'manual',
-      // A hung sink is a sink that is down: give up, the watcher reports it.
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`the error sink answered ${response.status}`);
-  };
 }
 
 /**
