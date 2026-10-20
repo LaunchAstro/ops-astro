@@ -9,8 +9,9 @@
 // list, flagged and still open, and a carry still to come says so. A first revision shows no
 // before. A click on a landed
 // capture of the revision under review marks a spot, and the form beneath pins a comment on
-// it. The read is the team's, so the client never reaches this page; what a client sees of a
-// pin is the task's client projection.
+// it. The live view of the bound page stands beside each capture under review, and the
+// review's change requests sit under the pin list. The read is the team's, so the client
+// never reaches this page; what a client sees of a pin is the task's client projection.
 
 import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Card, Chip, Empty, ListRow, SectionHead, sectionIndex } from '@launchastro/ui';
@@ -21,8 +22,11 @@ import type {
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
+import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
+import { LiveFrame } from '../projects/review-live-frame.tsx';
 import { CapturePane } from './CapturePane.tsx';
+import { ChangeRequestDock } from './ChangeRequests.tsx';
 import { PinForm } from './PinForm.tsx';
 import { drawnPins, PinList, type Numbered } from './PinList.tsx';
 import type { Spot } from './review-geometry.ts';
@@ -134,6 +138,7 @@ interface WorkspaceProps {
   readonly grantKey: string;
   readonly review: Review;
   readonly reload: () => void;
+  readonly navigate: (path: string) => void;
 }
 
 type WidthProps = WorkspaceProps & {
@@ -167,12 +172,23 @@ function Panes(props: WidthProps & { readonly after: Revision }): ReactElement {
         : {})}
     />
   );
+  // The revision under review stands beside the page as it is now.
+  const underReview =
+    review.pageUrl === null ? (
+      pane(props.after, 'Under review', true)
+    ) : (
+      <LiveFrame
+        pageUrl={review.pageUrl}
+        loadKey={props.after.revisionId}
+        capture={pane(props.after, 'Under review', true)}
+      />
+    );
   return review.before === null ? (
-    pane(props.after, 'Under review', true)
+    underReview
   ) : (
     <div className="statrow statrow--2">
       {pane(review.before, 'Before', false)}
-      {pane(props.after, 'Under review', true)}
+      {underReview}
     </div>
   );
 }
@@ -234,6 +250,13 @@ function Workspace(props: WorkspaceProps): ReactElement {
         />
       ))}
       <PinList review={props.review} numbered={numbered} />
+      <ChangeRequestDock
+        client={props.client}
+        reviewId={props.review.reviewId}
+        onOpenTask={(taskId) => {
+          props.navigate(pathTo('agency:task-detail', { key: taskId }));
+        }}
+      />
     </>
   );
 }
@@ -244,6 +267,8 @@ export function ReviewWorkspaceScreen(props: {
   readonly reviewId: string;
   /** No topic reaches a review, so it re-reads on the tab's floor: a revoked grant clears it. */
   readonly rollup?: RollupFloor;
+  /** Goes to an address inside the application: a made change request's task. */
+  readonly navigate: (path: string) => void;
 }): ReactElement {
   const read = useRead<ReviewReadResult>({
     grantKey: props.grantKey,
@@ -261,6 +286,7 @@ export function ReviewWorkspaceScreen(props: {
             grantKey={props.grantKey}
             review={answer.review}
             reload={read.reload}
+            navigate={props.navigate}
           />
         )}
       </RecordState>

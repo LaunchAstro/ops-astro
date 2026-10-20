@@ -211,6 +211,7 @@ export const SCREENS: {
       grantKey={context.grantKey}
       reviewId={context.params.review}
       rollup={tabRollupFloor()}
+      navigate={context.navigate}
     />
   ),
   'agency:task-unnamed': () => <TaskUnnamed />,
