@@ -116,19 +116,24 @@ export class GraduationDrafts {
   }
 
   /**
-   * The filing under `draftId` answered: filed, or refused as a filing already
-   * made, its draft is spent and the form starts over. Refused because the
-   * draft was already filed with other values, the form keeps what is typed
-   * under a new draft. Any other refusal keeps it, and so does a newer draft.
+   * The filing of `sent` answered: filed, or refused as a filing already made,
+   * its draft is spent, and the form starts over if it still holds what was
+   * sent. A form changed since the send, or refused because the draft was
+   * already filed with other values, keeps what is typed under a new draft.
+   * Any other refusal keeps it, and so does a newer draft.
    */
-  settleFiling(clientId: string, draftId: string, settled: Settlement): void {
+  settleFiling(clientId: string, sent: MandateDraft, settled: Settlement): void {
     const refusal = settled.kind === 'failed' ? settled.refusal : null;
-    const made = refusal?.code === 'TRANSITION_NOT_PERMITTED';
+    const spent = settled.kind === 'ok' || refusal?.code === 'TRANSITION_NOT_PERMITTED';
     const changed = refusal?.code === 'FIELD_VALUE_INVALID' && refusal.names.includes('draftId');
     const slot = this.slotOf(clientId);
-    if (slot.mandate.draftId !== draftId) return;
-    if (settled.kind === 'ok' || made) this.#put(clientId, { ...slot, mandate: BLANK });
-    else if (changed) this.#put(clientId, { ...slot, mandate: { ...slot.mandate, draftId: null } });
+    if (slot.mandate.draftId !== sent.draftId) return;
+    const same = (Object.keys(BLANK) as (keyof MandateDraft)[]).every(
+      (key) => slot.mandate[key] === sent[key],
+    );
+    if (spent && same) this.#put(clientId, { ...slot, mandate: BLANK });
+    else if (spent || changed)
+      this.#put(clientId, { ...slot, mandate: { ...slot.mandate, draftId: null } });
   }
 
   /** Opens the promotion form on `classId`, empty, or closes it with null. */
@@ -211,15 +216,17 @@ export function useOpenPromotion(drafts: GraduationDrafts, clientId: string): Pr
 
 /**
  * The client's standing approval form: its draft, how it changes, and how it
- * files, under the draft's id, clearing the draft once that filing is spent.
+ * files, under the draft's id, clearing the draft once that filing is spent
+ * unless the form changed since it was sent.
  */
 export function useMandateDraft(drafts: GraduationDrafts, clientId: string, send: Send) {
   const draft = slotIn(useDrafts(drafts), clientId).mandate;
   const edit = (change: MandateEdit): void => drafts.editMandate(clientId, change);
   const file = (mandate: MandateFiling, done: () => void): void => {
     const draftId = drafts.draftIdOf(clientId);
+    const sent = drafts.slotOf(clientId).mandate;
     send('mandate.file', { clientId, ...mandate, draftId }, undefined, (settled) => {
-      drafts.settleFiling(clientId, draftId, settled);
+      drafts.settleFiling(clientId, sent, settled);
       if (settled.kind === 'ok') done();
     });
   };
