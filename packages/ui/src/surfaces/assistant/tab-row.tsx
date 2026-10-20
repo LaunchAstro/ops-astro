@@ -59,8 +59,9 @@ function Renaming(props: {
         setValue(event.target.value);
       }}
       onKeyDown={(event) => {
-        // Enter that commits an IME word belongs to the composition, not the rename.
-        if (event.nativeEvent.isComposing) return;
+        // Enter that commits an IME word belongs to the composition, not the
+        // rename: while composing, or reported as key 229 as Safari does.
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === 'Enter') finish(value, 'key');
         if (event.key === 'Escape') finish(null, 'key');
       }}
