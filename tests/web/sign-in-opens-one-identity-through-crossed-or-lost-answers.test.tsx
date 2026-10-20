@@ -165,7 +165,7 @@ async function lostAnswerThenRetryAsAda(step: 'password grant' | 'cookie trade')
 
 async function lostProbeWhileFormChanged() {
   const probe = deferred();
-  const { fetcher: base } = world();
+  const { fetcher: base, ended } = world();
   const fetcher: typeof fetch = async (input, init) =>
     String(input).endsWith('/session/person') ? await probe.promise : await base(input, init);
   const { view, opened, submit } = await page(fetcher);
@@ -176,7 +176,9 @@ async function lostProbeWhileFormChanged() {
     probe.lose();
     await settle();
   });
-  expect(opened).toEqual([{ ...MIA, sessionId: 'mia-half' }]);
+  expect(opened, 'the unanswered sign-in opens nobody').toEqual([]);
+  expect(view.find('[role="alert"]'), 'the page says the sign-in failed').not.toBeNull();
+  expect([...new Set(ended)], 'the cookie ended is the submitted one').toEqual(['mia-half']);
   await view.unmount();
 }
 
@@ -209,7 +211,7 @@ describe('sign-in opens one identity through crossed or lost answers', () => {
   );
 
   it(
-    'a lost second-factor probe answer opens Mia, as submitted, though the form was changed to Ada meanwhile',
+    "a lost second-factor probe answer opens nobody and ends Mia's sign-in, as submitted, though the form was changed to Ada",
     lostProbeWhileFormChanged,
   );
 
