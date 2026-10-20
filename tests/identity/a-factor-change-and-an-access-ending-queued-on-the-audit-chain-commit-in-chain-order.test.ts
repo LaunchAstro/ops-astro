@@ -110,14 +110,14 @@ async function chainHeld(): Promise<{ readonly chain: Held; readonly fixture: nu
 }
 
 /** What the act and the ending left, the act's event placed against the ending's. */
-async function left(act: string, person: string, operationId: string) {
+async function left(act: string, person: string, subject: string, operationId: string) {
   const [owner] = await db.admin.execute<{ readonly id: string }>(
     `select id::text from public.actors where business_id = $1 and person_id = $2::uuid`,
     [business, person],
   );
   const actEvent = await place('actor_id', owner?.id ?? '', `account.factor_${act}`);
   const endEvent = await place('operation_id', operationId, 'access.end');
-  const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+  const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person, subject));
   return {
     actOutcome: actEvent?.outcome,
     actBeforeEnding: (actEvent?.seq ?? 0) < (endEvent?.seq ?? 0),
@@ -174,9 +174,9 @@ it.each([
       expect({ ...answers, removed: removed.length }).toMatchObject({
         act: actFirst ? 'answered' : 'AUTH_ACCESS_ENDED',
         ending: 'answered',
-        removed: act === 'remove' && actFirst ? 1 : 0,
+        removed: (act === 'remove' && actFirst) || (act === 'enrol' && !actFirst) ? 1 : 0,
       });
-      expect(await left(act, person, operationId)).toEqual({
+      expect(await left(act, person, asked.presented.subject, operationId)).toEqual({
         actOutcome: actFirst ? 'applied' : 'refused',
         actBeforeEnding: actFirst,
         status: { enrol: actFirst ? 'unverified' : 'none', remove: actFirst ? 'none' : 'verified' }[

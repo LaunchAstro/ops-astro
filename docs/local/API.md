@@ -3240,8 +3240,11 @@ advisory lock, `second-factor-subject:` and its subject's digest), then the
 person's own row (`for no key update`), so two tabs enrolling at once queue.
 An enrolment replaces only the unverified factor it started from: one recorded
 after it started (another tab's) stays the factor the first code completes, and
-this one is refused `VERSION_STALE`, its provider factor reported as an
-`account.factor_orphaned` event. One live factor remains. Two businesses
+this one is refused `VERSION_STALE`. One live factor remains. A factor the
+provider issued to an enrolment refused here, by its record or for its answer,
+is held removed for the login and removed there, never one the login holds
+verified; an `account.factor_orphaned` event names it only if the provider
+will not remove it. Two businesses
 completing enrolments for one login at once queue too: the later is refused
 `FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
 is removed there, best effort, so the login holds one verified factor.

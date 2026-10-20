@@ -140,6 +140,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       await db.app.withBusiness(world.id, async (tx) => {
         const factor = await recordFactorEnrolled(tx, {
           personId: world.owner.person,
+          subject: owner,
           provider: 'supabase',
           providerFactorId: randomUUID(),
         });

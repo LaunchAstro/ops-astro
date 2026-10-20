@@ -162,8 +162,15 @@ export const act = async (
 ): Promise<Answer> =>
   await call(via ?? api, personPath('alpha', `/account/factor/${name}`), body, bearer(token));
 
-export const factorOf = async (personId: string | null): ReturnType<typeof liveFactor> =>
-  await world.db.app.withBusiness(world.alpha, async (tx) => await liveFactor(tx, personId ?? ''));
+/** The live factor of `holder`'s person held by `holder`'s own login. */
+export const factorOf = async (holder: {
+  readonly personId: string | null;
+  readonly presented: { readonly subject: string };
+}): ReturnType<typeof liveFactor> =>
+  await world.db.app.withBusiness(
+    world.alpha,
+    async (tx) => await liveFactor(tx, holder.personId ?? '', holder.presented.subject),
+  );
 
 /** A row of the audit chain, as the cases compare it. */
 export interface AuditOutcome {

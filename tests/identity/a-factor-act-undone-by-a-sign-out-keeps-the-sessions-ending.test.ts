@@ -67,6 +67,7 @@ it('a verify that loses to a factor verified elsewhere, its session signed out d
   const own = await db.app.withBusiness(business, (tx) =>
     recordFactorEnrolled(tx, {
       personId: person,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     }),
@@ -75,6 +76,7 @@ it('a verify that loses to a factor verified elsewhere, its session signed out d
   const theirs = await db.app.withBusiness(elsewhere.business, (tx) =>
     recordFactorEnrolled(tx, {
       personId: elsewhere.person,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     }),
@@ -113,8 +115,8 @@ it('a verify that loses to a factor verified elsewhere, its session signed out d
     }
     const result = await acting;
     const [mine, yours] = await Promise.all([
-      db.app.withBusiness(business, (tx) => liveFactor(tx, person)),
-      db.app.withBusiness(elsewhere.business, (tx) => liveFactor(tx, elsewhere.person)),
+      db.app.withBusiness(business, (tx) => liveFactor(tx, person, subject)),
+      db.app.withBusiness(elsewhere.business, (tx) => liveFactor(tx, elsewhere.person, subject)),
     ]);
     expect({
       result,
@@ -195,7 +197,9 @@ it('an enrolment refused for a reset opened during its factor lock wait leaves t
     const after = await db.app.withBusiness(business, (tx) =>
       resolveLogin(tx, asked.presented, 'enrolling'),
     );
-    const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+    const live = await db.app.withBusiness(business, (tx) =>
+      liveFactor(tx, person, asked.presented.subject),
+    );
     expect({ result, marks: marked?.marks, after, factor: live?.status ?? 'none' }).toMatchObject({
       result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
       marks: 1,

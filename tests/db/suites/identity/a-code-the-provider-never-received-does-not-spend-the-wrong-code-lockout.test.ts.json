@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a code the provider never received does not spend the wrong code lockout"
+}

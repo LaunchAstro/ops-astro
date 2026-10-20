@@ -68,7 +68,7 @@ describe.skipIf(serverUrl === undefined)(
         expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
         expect(answer.body['names']).toEqual([fault]);
         expect(JSON.stringify(answer.body)).not.toContain(CANARY);
-        expect(await factorOf(world.noah.personId)).toBeUndefined();
+        expect(await factorOf(world.noah)).toBeUndefined();
         expect((await eventsFor('account.factor_enrol')).at(-1)).toEqual({
           outcome: 'refused',
           refusal_code: 'PROVIDER_ANSWER_INVALID',
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(Date.now() - started).toBeLessThan(3000);
       expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
       expect(answer.body['names']).toEqual(['slow']);
-      expect(await factorOf(world.noah.personId)).toBeUndefined();
+      expect(await factorOf(world.noah)).toBeUndefined();
     });
 
     it('C59 hostile provider: a malformed answer during verification leaves the factor as it was', async () => {
@@ -95,7 +95,7 @@ describe.skipIf(serverUrl === undefined)(
       replies['POST /factors/factor-one/verify'] = json(200, { access_token: 7 });
       const answer = await act('verify', token, { code: '123456' });
       expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
-      expect(await factorOf(world.noah.personId)).toMatchObject({ status: 'unverified' });
+      expect(await factorOf(world.noah)).toMatchObject({ status: 'unverified' });
     });
 
     it('C59 hostile provider: a provider served under a path is called under that path', async () => {
@@ -110,24 +110,28 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'C59 a person’s own second factor, through the API',
   () => {
-    it('C59 hostile provider: an issued factor whose QR is not SVG is refused, and the factor left there is reported', async () => {
+    it('C59 hostile provider: an issued factor whose QR is not SVG is refused, and the factor left there is removed', async () => {
       replies['POST /factors'] = json(200, {
         ...GOOD_ENROL,
         totp: { qr_code: 'data:text/html,<script>alert(1)</script>', secret: CANARY, uri: 'x' },
+      });
+      // GoTrue lists the factor it has just issued as unverified.
+      replies['GET /user'] = json(200, {
+        id: 'user-one',
+        factors: [{ id: 'factor-one', factor_type: 'totp', status: 'unverified' }],
       });
       const orphanedBefore = (await eventsFor('account.factor_orphaned')).length;
       const answer = await act('enrol', await fresh(clientD));
       expect(answer.status).toBe(502);
       expect(answer.body['names']).toEqual(['malformed']);
       expect(JSON.stringify(answer.body)).not.toContain(CANARY);
-      expect(await factorOf(clientD.personId)).toBeUndefined();
+      expect(await factorOf(clientD)).toBeUndefined();
       expect((await eventsFor('account.factor_enrol')).at(-1)).toEqual({
         outcome: 'refused',
         refusal_code: 'PROVIDER_ANSWER_INVALID',
       });
-      expect((await eventsFor('account.factor_orphaned')).slice(orphanedBefore)).toEqual([
-        { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
-      ]);
+      expect(seen.map((request) => request.route)).toContain('DELETE /factors/factor-one');
+      expect((await eventsFor('account.factor_orphaned')).slice(orphanedBefore)).toEqual([]);
     });
   },
 );
@@ -198,12 +202,12 @@ describe.skipIf(serverUrl === undefined)(
   'C59 a person’s own second factor, through the API',
   () => {
     it('C59 isolation: another business, another client and a delegated agent never reach a factor', async () => {
-      const before = await factorOf(world.mia.personId);
+      const before = await factorOf(world.mia);
       // Mia has none left after the change above; give her one again to aim at.
       const token = await fresh(world.mia);
       expect((await act('enrol', token)).status).toBe(200);
       expect((await act('verify', token, { code: '123456' })).status).toBe(200);
-      const target = await factorOf(world.mia.personId);
+      const target = await factorOf(world.mia);
       expect(target).toMatchObject({ status: 'verified' });
       expect(before).toBeUndefined();
       seen = [];
@@ -234,7 +238,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(agent.status).toBe(404);
 
       expect(seen).toEqual([]);
-      expect(await factorOf(world.mia.personId)).toEqual(target);
+      expect(await factorOf(world.mia)).toEqual(target);
     });
   },
 );

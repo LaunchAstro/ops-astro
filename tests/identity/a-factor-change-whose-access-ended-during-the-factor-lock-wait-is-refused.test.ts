@@ -113,7 +113,7 @@ async function duringFactorLockWait(
 /** What the act left: the person's live factor, the login's factor anywhere, its applied events. */
 async function left(person: string, subject: string, command: string): Promise<unknown> {
   const factor = await db.app.withBusiness(business, async (tx) => ({
-    status: (await liveFactor(tx, person))?.status ?? 'none',
+    status: (await liveFactor(tx, person, subject))?.status ?? 'none',
     heldByLogin: await loginHasVerifiedFactor(tx, subject),
   }));
   const [events] = await db.admin.execute<{ readonly applied: number }>(
@@ -139,7 +139,8 @@ it.each(['enrol', 'verify', 'remove'] as const)(
       left: await left(person, asked.presented.subject, `account.factor_${act}`),
     }).toMatchObject({
       result: { refused: true, code: 'AUTH_ACCESS_ENDED' },
-      removed: [],
+      // A refused enrolment's issued factor goes at the provider; nothing else does.
+      removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       left: {
         status: act === 'enrol' ? 'none' : 'verified',
         heldByLogin: act !== 'enrol',
@@ -171,10 +172,11 @@ it('a factor removal is kept when, during its factor lock wait, the same login l
   });
 });
 
-/** An unverified enrolment of `person` in the transaction's business. */
-const enrolled = async (tx: TenantQuery, person: string) =>
+/** An unverified enrolment of `person`, by the login `subject`, in the transaction's business. */
+const enrolled = async (tx: TenantQuery, person: string, subject: string) =>
   await recordFactorEnrolled(tx, {
     personId: person,
+    subject,
     provider: 'supabase',
     providerFactorId: `factor-${randomUUID()}`,
   });
@@ -183,7 +185,7 @@ it('a factor verify whose losing enrolment was undone by its access ending remov
   const { caller: asked, person } = await factorCaller(db, business, false);
   const { subject } = asked.presented;
   const elsewhere = await standingElsewhere(db, subject);
-  await db.app.withBusiness(business, async (tx) => await enrolled(tx, person));
+  await db.app.withBusiness(business, async (tx) => await enrolled(tx, person, subject));
   const removed: string[] = [];
   let factorLock: Held | undefined;
   const to: FactorProvider = {
@@ -193,12 +195,9 @@ it('a factor verify whose losing enrolment was undone by its access ending remov
     // the factor lock is held, so that step parks on it.
     verify: async (token, factorId, code) => {
       await db.app.withBusiness(elsewhere.business, async (tx) => {
-        const factor = await enrolled(tx, elsewhere.person);
-        await recordFactorVerified(tx, {
-          personId: elsewhere.person,
-          factorId: factor.id,
-          subject,
-        });
+        const factor = await enrolled(tx, elsewhere.person, subject);
+        const { person: holder } = elsewhere;
+        await recordFactorVerified(tx, { personId: holder, factorId: factor.id, subject });
       });
       factorLock = await hold(db.appUrl, business, async (tx) => {
         await advisoryLock(tx, factorLockKey(subject));
@@ -219,7 +218,8 @@ it('a factor verify whose losing enrolment was undone by its access ending remov
     expect({
       result: await verifying,
       removed,
-      status: (await db.app.withBusiness(business, (tx) => liveFactor(tx, person)))?.status,
+      status: (await db.app.withBusiness(business, (tx) => liveFactor(tx, person, subject)))
+        ?.status,
     }).toMatchObject({
       result: { refused: true, code: 'AUTH_ACCESS_ENDED' },
       removed: [],
