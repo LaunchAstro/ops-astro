@@ -131,11 +131,10 @@ export async function holdLease(
 
 /**
  * After the capture rows' lock wait and then the audit chain's, taken here as the envelope's
- * last wait (so lands of one revision also run one at a time), at a fresh instant: the lease is
- * still the caller's, live and current, a person's own write on the task still stands, and an
- * agent's delegating person still holds the write its call was checked for
- * (`checkDelegatedAuthority` judges grants as its statement runs). The refusal, or `null` when
- * the write may go ahead.
+ * last wait, at a fresh instant: the lease is still the caller's, live and current, a person's
+ * own write on the task still stands, and an agent's delegating person still holds the write
+ * its call was checked for (`checkDelegatedAuthority` judges grants as its statement runs).
+ * The refusal, or `null` when the write may go ahead.
  */
 export async function stillHeld(
   tx: TenantQuery,
