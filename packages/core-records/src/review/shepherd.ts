@@ -50,8 +50,8 @@ export async function holdShepherdRun(
 /**
  * The occurrence's activation share-locked (an occurrence row never changes once written), then
  * the clock read in the same statement: the lease must be live at it, the activation enabled on
- * the occurrence's version and its standing approval unrevoked. Asked again just before the
- * walk-through writes, after every lock it waited on, where it waits on nothing more: this
+ * the occurrence's version and its standing approval unrevoked. Asked again after the
+ * walk-through's last write, after every lock it waited on, where it waits on nothing more: this
  * transaction already holds the lease and the activation.
  */
 export async function shepherdRunStands(

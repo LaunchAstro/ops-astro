@@ -59,9 +59,9 @@ export function shepherdBody(open: number, revision: number): string {
 
 /**
  * One occurrence's walk-through of one review, in the caller's transaction: the lease and the
- * occurrence's standing approval are held first, judged again after the last lock wait, and
- * every write follows under them. A replayed
- * occurrence answers its first send. A review of the business's own site has no client to tell.
+ * occurrence's standing approval are held first, every write follows under them, and both are
+ * judged again after the last write, which a lapse rolls back. A replayed occurrence answers
+ * its first send. A review of the business's own site has no client to tell.
  */
 export async function runReviewShepherd(
   tx: TenantQuery,
@@ -86,17 +86,10 @@ export async function runReviewShepherd(
   if (pending.open === 0) return { kind: 'nothing_pending' };
   const recipients = await shepherdRecipients(tx, pending.taskId, pending.partyId);
   if (recipients.length === 0) return { kind: 'no_recipients' };
-  // The writes wait on the task's foreign key and on the audit chain, and a lease can run out in
-  // either wait. So both locks are taken here (the last waits) and the lease judged again after
-  // them: a lapsed one writes nothing.
-  const task = await tx.query(
-    'select id from public.records where business_id = $1 and id = $2 for key share',
-    [tx.businessId, pending.taskId],
-  );
-  if (task.length === 0) return { kind: 'refused', code: 'NOT_FOUND' };
-  await advisoryLock(tx, tx.businessId.toLowerCase());
-  const lapsed = await shepherdRunStands(tx, request.occurrenceId, request.lease.leaseId);
-  if (lapsed !== undefined) return { kind: 'refused', code: lapsed };
+  // A lease can run out in any lock wait the writes hit (a foreign key's parent, a trigger's
+  // row, the audit chain). So they go under a savepoint and the lease is judged after the last
+  // of them, where nothing is left to wait on: a lapsed one rolls them back and commits nothing.
+  await tx.query('savepoint review_shepherd_raise');
   const send = await writeShepherdSend(tx, {
     occurrenceId: request.occurrenceId,
     reviewId: request.reviewId,
@@ -107,6 +100,11 @@ export async function runReviewShepherd(
     workerActorId: request.lease.workerActorId,
   });
   await auditRaise(tx, request, pending.taskId, send);
+  const lapsed = await shepherdRunStands(tx, request.occurrenceId, request.lease.leaseId);
+  if (lapsed !== undefined) {
+    await tx.query('rollback to savepoint review_shepherd_raise');
+    return { kind: 'refused', code: lapsed };
+  }
   return raised(send, recipients.length);
 }
 
