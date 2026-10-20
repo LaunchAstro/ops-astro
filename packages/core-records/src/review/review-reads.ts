@@ -186,6 +186,8 @@ export interface ReviewSummary {
   readonly pageUrl: string | null;
   readonly path: string | null;
   readonly revisionCount: number;
+  /** The latest revision approved on its exact digest, waiting for a decision, or none yet. */
+  readonly latest: 'approved' | 'undecided' | null;
   readonly updatedAt: string;
 }
 
@@ -204,11 +206,20 @@ export async function listCoveredReviews(
     readonly page_url: string | null;
     readonly path: string | null;
     readonly revision_count: number;
+    readonly latest_id: string | null;
+    readonly approved: boolean;
     readonly updated_at: Date;
   }>(
     `${EFFECTIVE_AT}
-     select c.id, c.task_id, c.kind, c.page_url, c.path, c.revision_count, c.updated_at
+     select c.id, c.task_id, c.kind, c.page_url, c.path, c.revision_count, c.updated_at,
+            v.id as latest_id,
+            exists (select 1 from public.review_decisions d
+                     where d.business_id = c.business_id and d.revision_id = v.id
+                       and d.digest = v.digest) as approved
        from public.reviews c
+       left join lateral (select r.id, r.digest from public.review_revisions r
+                           where r.business_id = c.business_id and r.review_id = c.id
+                           order by r.number desc limit 1) v on true
       where c.business_id = $1 and ${COVERED}
       order by c.updated_at desc, c.id
       limit ${REVIEW_LIST_LIMIT}`,
@@ -221,6 +232,7 @@ export async function listCoveredReviews(
     pageUrl: row.page_url,
     path: row.path,
     revisionCount: row.revision_count,
+    latest: row.latest_id === null ? null : row.approved ? 'approved' : 'undecided',
     updatedAt: new Date(row.updated_at).toISOString(),
   }));
 }

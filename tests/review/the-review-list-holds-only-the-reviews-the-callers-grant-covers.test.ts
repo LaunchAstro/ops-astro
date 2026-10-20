@@ -49,6 +49,7 @@ describe.skipIf(serverUrl === undefined)('review.list', () => {
       pageUrl: B_PAGE,
       path: B_FILE,
       revisionCount: 1,
+      latest: 'undecided',
     });
 
     // Another client in the same business: dee's party B grant lists B's review alone.
