@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Good to go (#2233): one tap approves the exact version, assigns the agent and launches its run in one transaction; a business with no cap draws on the AUD 50 default written at its first approval; a hold past the cap, a client's task, another person's agent and a missing agent are refused writing nothing; a person of another business is refused NOT_FOUND and that business's cap is never touched"
+}
