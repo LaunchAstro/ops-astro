@@ -200,6 +200,7 @@ const OPERANDS = {
   'live_correction.list': {},
   'live_correction.receipts': { correctionId: 'c' },
   'review.read': { reviewId: 'r' },
+  'review.list': {},
   'review.picture': { pictureId: 'r' },
   'review.client_list': {},
   'privacy.draft_breach_notices': {

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What the review reads answer (C35, #2011): one review with its revisions and their captures
-// by width, and what changed at each width since the revision before (#2105); and one landed
-// picture's bytes, base64.
+// by width, and what changed at each width since the revision before (#2105); one landed
+// picture's bytes, base64; and the list of reviews the caller reads.
 
-import type { CaptureWidth, ReviewPicture, ReviewView } from '../../core-records/src/index.ts';
+import type {
+  CaptureWidth,
+  ReviewPicture,
+  ReviewSummary,
+  ReviewView,
+} from '../../core-records/src/index.ts';
 
 export type { CaptureView as ReviewCaptureView } from '../../core-records/src/index.ts';
 
@@ -36,4 +41,10 @@ export interface ReviewReadResult {
 export interface ReviewPictureResult {
   readonly ok: true;
   readonly picture: ReviewPicture;
+}
+
+/** The Reviews page's rows: the business's reviews the caller's grant covers. */
+export interface ReviewListResult {
+  readonly ok: true;
+  readonly reviews: readonly ReviewSummary[];
 }

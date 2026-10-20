@@ -177,3 +177,50 @@ export async function readCoveredPicture(
     body: Buffer.from(stored.body).toString('base64'),
   };
 }
+
+/** One row of the Reviews page: a review the caller's grant covers, without its revisions. */
+export interface ReviewSummary {
+  readonly reviewId: string;
+  readonly taskId: string;
+  readonly kind: 'page' | 'media';
+  readonly pageUrl: string | null;
+  readonly path: string | null;
+  readonly revisionCount: number;
+  readonly updatedAt: string;
+}
+
+/** The most rows the Reviews page reads at once. */
+export const REVIEW_LIST_LIMIT = 200;
+
+/** The business's reviews the caller's grant covers, newest change first, filtered in the query. */
+export async function listCoveredReviews(
+  tx: TenantQuery,
+  covering: Covering,
+): Promise<readonly ReviewSummary[]> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly task_id: string;
+    readonly kind: 'page' | 'media';
+    readonly page_url: string | null;
+    readonly path: string | null;
+    readonly revision_count: number;
+    readonly updated_at: Date;
+  }>(
+    `${EFFECTIVE_AT}
+     select c.id, c.task_id, c.kind, c.page_url, c.path, c.revision_count, c.updated_at
+       from public.reviews c
+      where c.business_id = $1 and ${COVERED}
+      order by c.updated_at desc, c.id
+      limit ${REVIEW_LIST_LIMIT}`,
+    [tx.businessId, ...coveringParameters(covering)],
+  );
+  return rows.map((row) => ({
+    reviewId: row.id,
+    taskId: row.task_id,
+    kind: row.kind,
+    pageUrl: row.page_url,
+    path: row.path,
+    revisionCount: row.revision_count,
+    updatedAt: new Date(row.updated_at).toISOString(),
+  }));
+}

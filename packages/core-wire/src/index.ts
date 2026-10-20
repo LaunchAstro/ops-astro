@@ -293,6 +293,7 @@ export {
 export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';
 export type {
   ReviewCaptureView,
+  ReviewListResult,
   ReviewPictureResult,
   ReviewReadResult,
   WidthDifference,
