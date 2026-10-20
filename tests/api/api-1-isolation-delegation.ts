@@ -7,6 +7,7 @@
 // api-1-isolation.test.ts's describe, so it shares that file's world. Made-up
 // names only.
 
+/* eslint-disable max-lines -- one body per agent command, and its own-claim control beside them */
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';

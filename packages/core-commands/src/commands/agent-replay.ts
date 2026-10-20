@@ -30,7 +30,7 @@ import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
 import { replayOwnWork, replayRefusal } from './live-correction-agent.ts';
 import { presentedCredential } from './tasks-take-launch.ts';
-import { keptRead, type DefinitionReadOperands } from './definition-read-agent.ts';
+import { replayDefinitionRead } from './definition-read-replay.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -289,36 +289,4 @@ async function replaySettledHandback(
     scope: held.purposeScope,
   });
   return decision.ok ? undefined : decision.refusal;
-}
-
-/**
- * A pinned read's replay (#1904): always an answer or a refusal, never the
- * stored row, which holds no text. The call is authorised as a fresh one and
- * its read runs again under `workJudged` on the stored lease, fence, step and
- * run, never the body's, then the final lease check (`definition-read-agent.ts`).
- * It writes no ledger row, copy or event.
- */
-async function replayDefinitionRead<O extends object>(
-  tx: TenantQuery,
-  call: AgentCall,
-  operation: TypedOperation<O>,
-  stored: CommandHandle,
-  verified: VerifiedSubject,
-): Promise<CommandResult> {
-  const again = keptRead(stored.detail);
-  if (again === undefined) throw new Error('definition.read: a stored read without its lease');
-  const authorised = await authorise(tx, call, operation);
-  if ('refusal' in authorised) return authorised.refusal;
-  const operands: DefinitionReadOperands = { ...again, again };
-  const judged = { call, presented: verified, authority: operation.authority };
-  const outcome = await workJudged(
-    tx,
-    judged,
-    // The row's own serve, which reads `again` in place of a fresh read.
-    async () => await authorised.run(operands as unknown as O),
-    operation.final,
-  );
-  if ('ended' in outcome) return outcome.ended;
-  if (isRefused(outcome)) return outcome.refusal;
-  return { command: call.request.command, ...outcome };
 }

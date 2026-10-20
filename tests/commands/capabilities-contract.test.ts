@@ -29,6 +29,7 @@ import {
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { enrol, type Member } from './fixture.ts';
 import { COMMAND_SURFACE, READS, pathOf } from '../../packages/core-wire/src/surface.ts';
+import { probeOperands } from '../acceptance/role-case-fixed-bodies.ts';
 
 // Like the other database files, these cases skip without a database
 // rather than fail in beforeAll (the CI local checks job has none).
@@ -155,14 +156,7 @@ describe.skipIf(serverUrl === undefined)(
                 fields: [],
               }
             : {}),
-          ...(declaration.name === 'definition.read'
-            ? {
-                leaseId: randomUUID(),
-                fence: 1,
-                stepId: randomUUID(),
-                path: 'skills/brief/SKILL.md',
-              }
-            : {}),
+          ...(declaration.name === 'definition.read' ? probeOperands('definition.read') : {}),
           ...AW_11_OPERANDS[declaration.name],
         });
         answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });

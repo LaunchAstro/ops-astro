@@ -36,3 +36,12 @@ export const MODEL_CALL_EFFECTS: DataEffects = writing(
   ],
   [{ provider: 'model', forClient: false }],
 );
+
+/** The worker's run commands, by name. */
+export const RUN_COMMAND_EFFECTS: {
+  readonly [Name in 'model.call' | 'run.end' | 'definition.read']: DataEffects;
+} = {
+  'model.call': MODEL_CALL_EFFECTS,
+  'run.end': RUN_END_EFFECTS,
+  'definition.read': DEFINITION_READ_EFFECTS,
+};

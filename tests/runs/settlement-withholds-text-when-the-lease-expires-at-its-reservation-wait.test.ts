@@ -3,6 +3,7 @@
 // Proof by Sol (GPT-6.1-Sol), review of #1940 at f00e5a4d71, finding S1940-2;
 // assertions unchanged.
 
+/* eslint-disable max-lines-per-function -- a reviewer's proof, kept whole */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { serverUrl } from '../acceptance/world.ts';
 import { settle } from '../../packages/core-custody/src/broker-settle.ts';

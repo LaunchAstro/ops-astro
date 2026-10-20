@@ -72,9 +72,8 @@ import { DEFINITION_READ, type RowKeeping } from './definition-read-agent.ts';
 interface AgentOperationRow<O extends object> extends RowKeeping {
   /**
    * The identifier fields a read takes, from its person row (`READ_CATALOGUE`),
-   * so the two entries refuse the same stray field in the same words. Any
-   * other is refused before the operands. Absent on a
-   * command, whose identifiers its own operands and handler read.
+   * so the two entries refuse the same stray field in the same words. Any other
+   * is refused before the operands; a command, which reads its own, has none.
    */
   readonly identifiers?: readonly string[];
   /** The operands read before any authority, after the system-owned fields. */
@@ -109,8 +108,7 @@ interface AgentOperationRow<O extends object> extends RowKeeping {
  * - `purpose`, `read` on the delegation's own purpose record;
  * - `record`, the operation's own collection and action on the task the call
  *   is about, found where `subjectTask` says, and served on that task;
- * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
- * no `serve` at all;
+ * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has no `serve` at all;
  * - `helper`, AW-11's handback: the presented child credential itself, which
  *   the runtime binds to the helper's own login, under no resolved delegation;
  * - `business`, the operation's own key over the whole business, which a
@@ -199,8 +197,7 @@ const NONE = (): NoOperands => ({});
  * `String(["<sibling>"])` is the sibling's id: checking the agent's own task
  * for a non-string while `serve` acted on the id the value prints as would let
  * an agent comment on and read a sibling task. Absent stays absent: it is
- * checked on the
- * delegation's own task and names nothing to serve.
+ * checked on the delegation's own task and names nothing to serve.
  */
 function recordIdOperand(
   refusal: (request: AgentRequest) => CommandRefusal | undefined,
