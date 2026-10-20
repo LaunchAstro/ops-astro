@@ -7,9 +7,8 @@
 // numbers every pin as the panes do. Pins carried onto the revision under review (#2140) draw
 // there by their carried anchor; a lost one draws nowhere under review and sits first in the
 // list, flagged and still open, and a carry still to come says so. A first revision shows no
-// before. A click on a landed
-// capture of the revision under review marks a spot, and the form beneath pins a comment on
-// it. The live view of the bound page stands beside each capture under review, and the
+// before. A click on a landed capture of the revision under review marks a spot, and the form
+// beneath pins a comment on it. The live view of the bound page stands beside each capture under review, and the
 // review's change requests sit under the pin list. The read is the team's, so the client
 // never reaches this page; what a client sees of a pin is the task's client projection.
 
@@ -23,6 +22,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { pathTo } from '../../routes.ts';
+import type { TaskPanelHost } from '../task/panel-host.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { LiveFrame } from '../projects/review-live-frame.tsx';
 import { CapturePane } from './CapturePane.tsx';
@@ -138,7 +138,7 @@ interface WorkspaceProps {
   readonly grantKey: string;
   readonly review: Review;
   readonly reload: () => void;
-  readonly navigate: (path: string) => void;
+  readonly onOpenTask: (taskId: string) => void;
 }
 
 type WidthProps = WorkspaceProps & {
@@ -253,9 +253,8 @@ function Workspace(props: WorkspaceProps): ReactElement {
       <ChangeRequestDock
         client={props.client}
         reviewId={props.review.reviewId}
-        onOpenTask={(taskId) => {
-          props.navigate(pathTo('agency:task-detail', { key: taskId }));
-        }}
+        onOpenTask={props.onOpenTask}
+        changes={props.review}
       />
     </>
   );
@@ -267,8 +266,10 @@ export function ReviewWorkspaceScreen(props: {
   readonly reviewId: string;
   /** No topic reaches a review, so it re-reads on the tab's floor: a revoked grant clears it. */
   readonly rollup?: RollupFloor;
-  /** Goes to an address inside the application: a made change request's task. */
+  /** Goes to an address inside the application. */
   readonly navigate: (path: string) => void;
+  /** The app's task door: a made change request's task opens there, else on its page. */
+  readonly taskPanel?: Pick<TaskPanelHost, 'open'>;
 }): ReactElement {
   const read = useRead<ReviewReadResult>({
     grantKey: props.grantKey,
@@ -286,7 +287,11 @@ export function ReviewWorkspaceScreen(props: {
             grantKey={props.grantKey}
             review={answer.review}
             reload={read.reload}
-            navigate={props.navigate}
+            onOpenTask={(taskId) => {
+              if (props.taskPanel === undefined) {
+                props.navigate(pathTo('agency:task-detail', { key: taskId }));
+              } else props.taskPanel.open(taskId, 'open');
+            }}
           />
         )}
       </RecordState>
