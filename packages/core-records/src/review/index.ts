@@ -6,6 +6,7 @@
 export * from './reviews.ts';
 export * from './captures.ts';
 export * from './review-reads.ts';
+export * from './client-reviews.ts';
 export * from './storage.ts';
 export * from './pins.ts';
 export * from './change-requests.ts';

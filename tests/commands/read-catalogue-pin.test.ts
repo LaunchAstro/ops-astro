@@ -9,8 +9,7 @@
 // read off the read's row, with the row's spine, subject and authority mode pinned beside them.
 // The refusal order is pinned by `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
-// This suite moves the database counter by zero, so it is a unit suite and
-// must not be named in `tests/db/named-suites.json`.
+// It moves the database counter by zero: a unit suite, never in `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
@@ -55,6 +54,7 @@ const PINNED_IDENTIFIERS = {
   'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': ['incidentId'],
+  'review.client_list': [],
   'review.picture': ['pictureId'],
   'review.read': ['reviewId'],
   'secret.list': [],
@@ -250,6 +250,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // C35's review, which none of these bodies carries.
   'review.read': unsent('reviewId', 'Send reviewId as the review.'),
   'review.picture': unsent('pictureId', 'Send pictureId as the landed picture.'),
+  'review.client_list': BODIES.map(() => null),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),

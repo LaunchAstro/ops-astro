@@ -111,6 +111,8 @@ export const READ_NAMES = [
   'review.read',
   // One landed capture's picture bytes (C35), under the same grant as its review.
   'review.picture',
+  // A client's own reviews in the client projection (PROTO-GAPS row 7), under `review:read`.
+  'review.client_list',
   // The business's team invitations (C39-T), under `access:share` on the server.
   'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.

@@ -32,6 +32,7 @@ import { MapsScreen } from './screens/Maps.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
 import { ReviewWorkspaceScreen } from './screens/review/ReviewWorkspace.tsx';
+import { ClientReviewsScreen } from './screens/review/ClientReviews.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
@@ -217,6 +218,9 @@ export const SCREENS: {
       reviewId={context.params.review}
       rollup={tabRollupFloor()}
     />
+  ),
+  'portal:reviews': (context) => (
+    <ClientReviewsScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:task-unnamed': () => <TaskUnnamed />,
   'agency:todos': (context) => (

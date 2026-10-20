@@ -8,9 +8,8 @@
 // The names are in `field_defs`, written per business at install time, so the check reads the
 // installed model and not a list in a module, which is why T1e put the classification in the data.
 //
-// It is also what settles the count. The contract names nine commands and the split is titled
-// after them; the seeded task type names ten owning operations. Nine is not enough for the model
-// that landed, and this is where that stops being an argument and becomes a failing test.
+// It also settles the count: the contract names nine commands, the seeded task type ten owning
+// operations. Nine is not enough for the model that landed; here that becomes a failing test.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -121,6 +120,7 @@ const DECLARED_READS = [
   'preference.read',
   'preset.plan',
   'privacy.draft_breach_notices',
+  'review.client_list',
   'review.picture',
   'review.read',
   'secret.list',

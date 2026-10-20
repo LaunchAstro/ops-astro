@@ -35,8 +35,9 @@ export function drawContent(props: {
   readonly open: OpenContext;
 }): ReactElement {
   const { match, at } = props;
-  // A manifest page with no screen yet: sign-in first, then the grant check.
-  if (match === null && at !== null) {
+  // A manifest page with no screen yet, or one naming a client the session holds no grant
+  // on, whatever it draws: sign-in first, then the grant check.
+  if (at !== null && (match === null || props.refused)) {
     if (!props.signedIn) return props.signIn;
     return props.refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
   }
