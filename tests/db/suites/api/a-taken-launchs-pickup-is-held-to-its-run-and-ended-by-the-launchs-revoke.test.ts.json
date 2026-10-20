@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "the real worker's pickup credential under a taken launch is refused a task update, stops answering a correction once the owner revokes the launch, and is refused on another (client's) task, by another agent and on the owner's own login"
+}
