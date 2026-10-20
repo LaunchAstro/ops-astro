@@ -64,19 +64,28 @@ export const told = <T extends Noted>(chat: T, line: AssistantMessage, after?: s
   ],
 });
 
+/** The question lines tab `chat` has so far: a switch chosen now is marked after them. */
+export const askedSoFar = (chat: Noted | undefined): string[] =>
+  chat?.messages.filter((one) => one.role === 'user').map((one) => one.id) ?? [];
+
 /**
  * Tab `chat` with its change to `model` marked in the transcript (#2175), once
- * the server kept it, so the lines after it are read as the new model's.
+ * the server kept it, so the lines after it are read as the new model's. It goes
+ * before the first question asked since the choice (one not in `earlier`), as
+ * that question waited for the switch and went to the new model.
  */
-export const switched = <T extends Noted>(chat: T, model: string): T => ({
-  ...chat,
-  messages: [
-    ...chat.messages,
-    {
-      id: `model-${String(chat.messages.length)}`,
-      role: 'note',
-      body: `Switched to ${model}. Questions from here go to it.`,
-      cites: [],
-    },
-  ],
-});
+export const switched = <T extends Noted>(
+  chat: T,
+  model: string,
+  earlier: readonly string[],
+): T => {
+  const since = chat.messages.findIndex((one) => one.role === 'user' && !earlier.includes(one.id));
+  const at = since === -1 ? chat.messages.length : since;
+  const line: AssistantMessage = {
+    id: `model-${String(chat.messages.length)}`,
+    role: 'note',
+    body: `Switched to ${model}. Questions from here go to it.`,
+    cites: [],
+  };
+  return { ...chat, messages: [...chat.messages.slice(0, at), line, ...chat.messages.slice(at)] };
+};
