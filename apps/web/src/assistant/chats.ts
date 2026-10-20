@@ -22,7 +22,7 @@ import type {
   AssistantPage,
   PlanCardState,
 } from '@launchastro/ui';
-import { noted, told, type Noted } from './page-note.ts';
+import { noted, switched, told, type Noted } from './page-note.ts';
 import type { ScopeInput } from './subject.ts';
 
 export type StandingScope = Pick<ScopeInput, 'client' | 'task'>;
@@ -137,8 +137,9 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
   return selecting({ ...state, chats }, chats[Math.max(0, at - 1)]?.key ?? '');
 }
 
+/** The tab's model; a change after its first question is marked in the transcript (#2175). */
 export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
-  change(state, key, (chat) => ({ ...chat, model }));
+  change(state, key, (chat) => switched(chat, model));
 
 /** The page in scope; a second one replaces the first, and its note with it (`page-note.ts`). */
 export const addPage = (state: AssistantState, key: string, page: AssistantPage): AssistantState =>

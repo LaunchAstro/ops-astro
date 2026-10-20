@@ -102,6 +102,8 @@ interface Question {
   readonly context: Context;
   /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
   readonly model: string | undefined | null;
+  /** The install's conversation provider, which an id two providers share is first read against. */
+  readonly provider: string;
   /** The page task the conversation is on, as read with the context. */
   readonly page: string | null;
   /** Who wrote the asked message and each earlier person turn read. */
@@ -147,6 +149,7 @@ async function questionOf(
   const context = await contextOf(tx, session, { ...asked, body }, page);
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
+    provider,
     scope: {
       id: asked.conversationId,
       businessId: tx.businessId,
@@ -182,7 +185,7 @@ async function answerOnce(
     await withSession(database, businessId, presented, (tx, now) => replyTo(tx, now, asked));
   const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
-  const operation = operationFor(question.model);
+  const operation = operationFor(question.model, question.provider);
   const paid =
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question })

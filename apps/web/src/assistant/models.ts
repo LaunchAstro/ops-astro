@@ -8,7 +8,9 @@
 // answer is kept with the client and conversation it was read for, so another
 // tab's models are never drawn here; a refused or unavailable read offers
 // nothing. Models the answer names as unavailable (#2175) follow the offered
-// ones with their reason in words, for the picker to show and never offer.
+// ones with their reason in words, for the picker to show and never offer. The
+// conversation's kept choice comes with them, so a reopened tab shows the
+// model its next question goes to.
 
 import { useEffect, useState } from 'react';
 import type { ConversationModelsResult } from '../../../../packages/core-wire/src/index.ts';
@@ -19,6 +21,8 @@ interface Held {
   readonly client: OperationsClient;
   readonly conversationId: string | null;
   readonly models: readonly ModelChoice[];
+  /** The model kept with the conversation, or null: the default. */
+  readonly chosen: string | null;
 }
 
 const NONE: readonly ModelChoice[] = [];
@@ -26,7 +30,7 @@ const NONE: readonly ModelChoice[] = [];
 export function useModels(
   client: OperationsClient,
   conversationId: string | null,
-): readonly ModelChoice[] {
+): { readonly models: readonly ModelChoice[]; readonly chosen: string | null } {
   const [held, setHeld] = useState<Held | null>(null);
   useEffect(() => {
     let current = true;
@@ -48,12 +52,15 @@ export function useModels(
             })),
           ]
         : NONE;
-      setHeld({ client, conversationId, models });
+      const chosen = typeof value?.chosen === 'string' ? value.chosen : null;
+      setHeld({ client, conversationId, models, chosen });
     };
     void load();
     return () => {
       current = false;
     };
   }, [client, conversationId]);
-  return held?.client === client && held.conversationId === conversationId ? held.models : NONE;
+  return held?.client === client && held.conversationId === conversationId
+    ? held
+    : { models: NONE, chosen: null };
 }

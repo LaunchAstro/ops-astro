@@ -10,9 +10,11 @@
 
 import {
   CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_PROVIDER,
   CONVERSATION_ANSWER,
   CONVERSATION_MODELS,
   conversationOperationOf,
+  OPENROUTER_PROVIDER,
 } from '../../../core-connectors/src/index.ts';
 import type { ModelCallResult, PaidSeams } from '../../../core-custody/src/index.ts';
 import { subjectsOf, withSession } from '../../../core-records/src/index.ts';
@@ -48,10 +50,20 @@ const REPLY_LIMIT = 20_000;
 export const usableReply = (text: string): boolean =>
   bounded(text, REPLY_LIMIT) && storableText(text);
 
-/** The operation the conversation's model answers on: a paid model's provider has its own. */
-export function operationFor(model: string | undefined | null): string {
-  const provider = CONVERSATION_MODELS.find((one) => one.id === model)?.provider;
-  return provider === undefined ? CONVERSATION_ANSWER.key : conversationOperationOf(provider);
+/**
+ * The operation the conversation's model answers on: a paid or plan model's
+ * provider has its own. An id two providers share (the laptop's GPT runner and
+ * the plan both name `gpt-6.1-sol`) is the install's own model where `provider`
+ * runs it, else the other provider's.
+ */
+export function operationFor(model: string | undefined | null, provider?: string): string {
+  const named = CONVERSATION_MODELS.filter((one) => one.id === model);
+  const own = named.find((one) => one.provider === provider);
+  const other = named.find(
+    (one) => one.provider === OPENROUTER_PROVIDER || one.provider === CHATGPT_PLAN_PROVIDER,
+  );
+  const chosen = own ?? other ?? named[0];
+  return chosen === undefined ? CONVERSATION_ANSWER.key : conversationOperationOf(chosen.provider);
 }
 
 /**
