@@ -239,7 +239,8 @@ export async function answer(
 
 /** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
-  if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // By the sign-in screen's own mark: the password reset draws in the same card.
+  if (document.querySelector('[data-screen="sign-in"]') !== null) return 'the sign-in form';
   // main.tsx draws one bare paragraph when it cannot reach the server.
   const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
   if (bare.includes('cannot reach its server')) return 'the server error';

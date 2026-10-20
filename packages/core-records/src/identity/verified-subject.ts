@@ -48,3 +48,25 @@ export interface VerifiedSubject {
    */
   readonly sessionId?: string;
 }
+
+/**
+ * What the provider says of a session now: still there, gone (signed out, or
+ * deleted by a password write), or no answer. The door asks only when a
+ * password reset could outlive the session (`ops.reset_write_open`).
+ */
+export type SessionProbe = () => Promise<'live' | 'gone' | 'unknown'>;
+
+/**
+ * Each verified subject's probe, attached by the verifier that holds its
+ * token, so the token never travels with the subject. A subject with none
+ * (a copy, or one no verifier made) cannot be asked, and is refused.
+ */
+const probes = new WeakMap<VerifiedSubject, SessionProbe>();
+
+export function attachSessionProbe(subject: VerifiedSubject, probe: SessionProbe): VerifiedSubject {
+  probes.set(subject, probe);
+  return subject;
+}
+
+export const sessionProbeOf = (subject: VerifiedSubject): SessionProbe | undefined =>
+  probes.get(subject);

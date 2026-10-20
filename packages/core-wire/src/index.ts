@@ -29,6 +29,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The password reset's three routes, beside the surface's prefixes.
+export { PASSWORD_RESET_PATHS } from './paths.ts';
 // The key a map's structural writes serialise on, which the envelope asks about.
 export { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 // A currency's minor digits, the ISO 4217 table the server and the browser share.

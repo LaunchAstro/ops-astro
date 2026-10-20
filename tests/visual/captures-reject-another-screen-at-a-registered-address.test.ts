@@ -3,7 +3,9 @@
 // A built page's capture counts only when the address drew that page: the
 // app's own shell, under the route's own title. Another of the app's screens
 // served at the address (the component gallery at /projects/), or a document
-// that is not the app at all, is a wrong screen, never the page. The browser
+// that is not the app at all, is a wrong screen, never the page. A page drawn
+// in the sign-in form's card (the password reset) is not the sign-in form;
+// the sign-in screen itself at that address is. The browser
 // is a stand-in: each document is drawn in jsdom and read by the same
 // functions the capture runs in Chromium.
 
@@ -37,8 +39,8 @@ afterEach(() => {
   dom = undefined;
 });
 
-/** What the Projects board's capture reports when `html` is what /projects/ drew. */
-async function projectsCapturedFrom(html: string) {
+/** What `page`'s capture reports when `html` is what its address drew. */
+async function capturedFrom(page: string, html: string) {
   dom = new JSDOM(html) as typeof dom;
   vi.stubGlobal('document', dom?.window.document);
   const out = mkdtempSync(join(tmpdir(), 'wrong-screen-capture-'));
@@ -51,13 +53,20 @@ async function projectsCapturedFrom(html: string) {
       widths: [390],
       themes: ['light'],
       out,
-      pages: ['agency:projects-board'],
+      pages: [page],
     });
     return shot;
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
 }
+
+/** What the Projects board's capture reports when `html` is what /projects/ drew. */
+const projectsCapturedFrom = (html: string) => capturedFrom('agency:projects-board', html);
+
+/** A screen drawn in the sign-in form's card, as `data-screen` names it. */
+const card = (screen: string): string =>
+  `<main class="signin" data-screen="${screen}"><form class="signin__form card"></form></main>`;
 
 it('the Projects board drawn under its own title counts as the page', async () => {
   const shot = await projectsCapturedFrom(shell('Projects', '<table></table>'));
@@ -76,4 +85,14 @@ it('a document that is not the app, at the Projects address, is a wrong screen',
     '<div id="app"><section class="gallery"><h2>Buttons</h2></section></div>',
   );
   expect(shot?.wrongScreen).toBe('drew a document that is not the app, not the page');
+});
+
+it('the password reset, drawn in the sign-in card under its own title, counts as the page', async () => {
+  const shot = await capturedFrom('agency:reset', shell('Reset your password', card('reset')));
+  expect(shot?.wrongScreen).toBeUndefined();
+});
+
+it('the sign-in form drawn at the reset address is a wrong screen', async () => {
+  const shot = await capturedFrom('agency:reset', shell('Reset your password', card('sign-in')));
+  expect(shot?.wrongScreen).toBe('drew the sign-in form, not the page');
 });

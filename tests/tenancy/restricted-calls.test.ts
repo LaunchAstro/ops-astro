@@ -57,6 +57,7 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { DROPPED_TABLES } from './restricted-calls-reset.ts';
 import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
 import { describeLiveCorrectionLowsRoundTwo } from '../site/live-correction-lows-2.ts';
 import { describeLiveCorrectionSolRoundOne } from '../site/live-correction-lows-sol.ts';
@@ -592,13 +593,6 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
-  // C40B: nothing on the journey asks for a password reset, so one token for the
-  // business's first login is written here.
-  'public.password_reset_tokens': `insert into public.password_reset_tokens
-       (business_id, id, login_id, token_hash, expires_at)
-     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'),
-            now() + interval '30 minutes'
-       from public.logins where business_id = $1 order by id limit 1 returning 1`,
   // Automations (C33): the journey releases and fires none. Each row is made
   // from the one before, so the order here is the order of the chain.
   'public.automation_definitions': `insert into public.automation_definitions
@@ -824,10 +818,13 @@ const DEFINERS: readonly string[] = [
   'model_route_room(text,integer)',
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
+  'ops.password_reset_request(text,text)',
   'ops.record_tested_restore()',
+  'ops.recovery_link_consume(text,timestamp with time zone,timestamp with time zone)',
+  'ops.recovery_sessions_end(uuid)',
+  'ops.recovery_subject_business(text)',
   'ops_carry_may_join(text)',
   'ops_carry_ring(uuid,uuid,uuid,uuid)',
-  'password_reset_token_find(text)',
   'planned_runs_origin_is_approved()',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
@@ -881,8 +878,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         .filter((name) => name.endsWith('.sql'))
         .toSorted(),
     );
+    // Every table the contract names, less those a later migration dropped.
     expect(tables.map((table) => table.qualified)).toStrictEqual(
-      Object.keys(APPLICATION_GRANTS).toSorted(),
+      Object.keys(APPLICATION_GRANTS)
+        .filter((table) => DROPPED_TABLES[table] === undefined)
+        .toSorted(),
     );
     expect(tables.filter((table) => table.kind !== 'r')).toStrictEqual([]);
     for (const table of tables.filter((each) => each.tenant)) {
@@ -1087,7 +1087,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Thirteen, each for a named reason. The map read models' four (WF-1) and the
+  // Fifteen, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -1098,9 +1098,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The reset token lookup (20261005144947, C40B) is the reset's one read
-  // across businesses, made with no business: two ids for a hash exactly one business holds,
-  // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
+  // The password reset's three (20261013223000) reach rows that name no business, made with
+  // no business, and only the application group runs them: a request counted and recorded
+  // under its limits, a minted recovery link consumed, and the first business a login is
+  // mapped in, one id. The pickup path (SL11-30,
   // 20261004040200) is the one way a lease is written, in the caller's own business
   // (tests/db/take-lease-path.test.ts). The live-elsewhere check (C59) answers one boolean
   // for a login of the caller's own business, never a subject. The occurrence run's origin
@@ -1111,7 +1112,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly seventeen, each with its search path pinned', () => {
+    it('are exactly the declared definers, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -1192,13 +1193,20 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(lookup?.firedBy).toStrictEqual([]);
   });
 
-  it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {
-    const lookup = functions.find((fn) => fn.signature === 'password_reset_token_find(text)');
-    expect(lookup?.definer).toBe(true);
-    expect(lookup?.trigger).toBe(false);
-    expect(lookup?.argumentTypes).toStrictEqual(['text']);
-    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
-    expect(lookup?.firedBy).toStrictEqual([]);
+  // 20261013223000: the password reset's three definers, each fired by nothing.
+  it.each([
+    ['ops.password_reset_request(text,text)', ['search_path=pg_catalog']],
+    [
+      'ops.recovery_link_consume(text,timestamp with time zone,timestamp with time zone)',
+      ['search_path=pg_catalog'],
+    ],
+    ['ops.recovery_subject_business(text)', ['search_path=pg_catalog, public', 'row_security=off']],
+    ['ops.recovery_sessions_end(uuid)', ['search_path=pg_catalog', 'row_security=off']],
+  ])("the password reset's definer %s pins its search path", (signature, config) => {
+    const fn = functions.find((each) => each.definer && each.signature === signature);
+    expect(fn?.trigger).toBe(false);
+    expect(fn?.config).toStrictEqual(config);
+    expect(fn?.firedBy).toStrictEqual([]);
   });
 
   describe('the sixth security definer function', () => {

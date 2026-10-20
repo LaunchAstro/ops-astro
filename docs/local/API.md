@@ -3283,65 +3283,99 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
-`POST /api/password/set` with `{ token, password }` sets a new
-password with a reset link's one-time token (C40, ORCH77-C40B,
-`setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
-businesses and the broker; `main()` does not mount it yet). No provider
-session is read, trusted, opened or answered: the token is the authority, and
-no cookie or bearer is read or set. A token is 32 random bytes, base64url,
-kept only as its SHA-256 in `password_reset_tokens` (20261005144947), for one
-login of one business, good for 30 minutes and spent once. The reset asks
-for one is C40 P2. The token is found by `password_reset_token_find`, a
-narrow security definer function the application group alone runs (the
-business and the token's id for a hash exactly one business holds), then
-read in its own business. A login with a live verified second factor in any
-business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
-carries: refused before anything is spent, so the token stays live and the
-password and every session stay as they were; support resets it. A fault
-reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
-login the token's own business no longer admits is 401 `RESET_LINK_INVALID`
-(read before the locks and not again, a decided risk: a person deactivated
-there in that moment still resets). Then,
-under C59's login lock (the one a factor's verification takes) and the token's
-row lock, the token is read again at that moment: spent or past its life is
-401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
-`RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
-login is spent and the reset's window opens (`ops.subject_resets`,
-20261005144947), under the login's session-ending key, so a write that read
-one of its sessions live commits first (C52-A): every session of the login, in
-every business, is ended up to
-the moment the window settles, and until then up to five minutes on. The
-password is set at the provider through custody under the catalogued
-`auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
-held by custody alone, whose `auth` destination lists that route and takes no
-POST, `post: false`; the answer must name the same user). In each business
-the login is mapped in, one transaction, holding the login's session-ending
-keys first, ends the sessions seen there, so a factor change there that holds
-them commits first (C52-A). Last,
-whatever happened, one transaction in the token's business, holding the login's
-session-ending keys first, settles the window
-(`clock_timestamp()`; a sign-in after it is served) and, only when the
-password was set and every business's ending committed, audits
-`account.password_changed` there, once, as the person that business maps. The
-other businesses keep their ended sessions (`ended_sessions`) and no audit
-row, so a failure anywhere, in any business's ending, at the provider or in
-that last transaction, audits nothing anywhere (ORCH81 C40AUDIT).
+### Password reset
 
-The answer is 200 `{ passwordSet: true }`. A token that is not live
-(unknown, out of shape, spent, past its 30 minutes, of a login no business
-maps) is 401 `RESET_LINK_INVALID`. A password outside 12 to 72 bytes is
-400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
-password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
-`RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
-password and the other is 401. A password the provider refuses itself (its
-422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
-token is spent, so choose a different password and ask for a new link. Any
-other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
-failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
-ends every session of the login again, a sign-in made while the provider was
-asked included, even when the database fails before the window settles, and
-audits nothing. Answers carry a code alone; nothing is
-logged. No limit holds the route's rate yet.
+A forgotten password is reset on the login provider's one-time recovery
+session (`apps/api/password-reset.ts`, mounted by `composeApi` always, outside
+the business prefix). The page sends the new password to the API's `changed`,
+which writes it at the provider on the person's own recovery session, never
+with an admin key. The password passes through that one route on its way to
+the provider; no table, log, answer or audit row holds it. Answers carry a
+code alone, and nothing is logged.
+
+`POST /api/password/reset` with `{ email }` asks for a link and needs no
+sign-in. It is 202 `{}` for every body: any address, known or unknown, inside
+its limits or over them, a body too large or not an address at all. Every
+request runs the same statement, `ops.password_reset_request(address,
+caller)` (20261013223000), a security definer function that takes advisory
+locks on the address's SHA-256 and then the caller's, held to commit, counts
+the hour's requests for each and records one only with room: 3 per address
+and 10 per caller. The caller is the first `x-forwarded-for` address, kept
+only as its digest. The M5 unit mails the link from the recorded row.
+
+The mailed link is `/reset#token_hash=<hash>`. The page (`apps/web/src/screens/Reset.tsx`)
+reads the fragment once and clears it before any request, then opens the
+provider's recovery session (`POST /verify`) and calls, with that session's
+bearer:
+
+| Route                                     | Answer   | Refusals                                                                          |
+| ----------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `POST /api/password/begin`                | 200 `{}` | 401 `RESET_LINK_INVALID`, 403 `RESET_NEEDS_SUPPORT`                               |
+| `POST /api/password/changed` `{password}` | 200 `{}` | 401 `RESET_LINK_INVALID`, 409 `RESET_NOT_CONFIRMED`, 422 `RESET_PASSWORD_REFUSED` |
+
+Both take only a recovery session (`recoveryBearer`, with the ordinary
+verifier's signature and issuer checks): `aal1`, an `amr` of exactly one
+`otp` entry no more than 10 minutes old, and a `session_id`.
+Anything else is 401 `RESET_LINK_INVALID`.
+
+`begin`, in one transaction under the login's factor lock, answers a session
+that already has a window with that window (200 while open, 401 once
+settled). Otherwise it reads the provider's `GET /user` on the bearer and
+consumes one recovery link the unit recorded for the login
+(`ops.recovery_link_consume`): minted inside the link's life, no later than
+the session's sign-in, and still the provider's latest mailed link, its
+`recovery_sent_at` the one the unit recorded at the mint. The provider keeps
+one such link a login and tells a recovery session from a sign-in link's in
+nothing else, so a sign-in link minted since, and its session, is 401. A login
+mapped live in no business (as an active member, or as an external party on
+a live share with no business grant, the rule sign-in admits by) is 401; one
+with a verified authenticator in any
+business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
+(`ops.subject_resets`) and records it against the session's digest
+(`ops.recovery_resets`). From that commit every session of the login, in
+every business, is refused up to the window's bound (five minutes), the
+reset's own session included, so a page that fails after the password write
+leaves no old session usable. While the window is unsettled, its recovery
+session, refreshed or not, can still write a password at the provider for as
+long as the provider keeps it, which deletes the login's other sessions there.
+Until a later reset of the login settles (whose own write deleted that
+session), the door asks the provider
+`GET /user` on the bearer of any session first signed in after the bound
+(`ops.reset_write_open`). Deleted is ended for good (GoTrue's 403
+`session_not_found`); no answer is refused that once. The carriage join, with
+no provider to ask, refuses such a session.
+
+`changed` takes the new password and finds the session's open window with at
+least 30 seconds before its bound, and the first business the login is mapped
+in live, with the person mapped there. Without either it is 401 and writes
+nothing. It writes the password
+itself on the same bearer, the provider's `PUT /user`, from its own origin,
+following no redirect; no admin key, and the password is kept, logged and
+answered nowhere. That write's own 200 naming the login is the one
+confirmation: with no password, or any other answer, it is 409
+`RESET_NOT_CONFIRMED` and the window is left to its bound, and a password the
+provider refuses is 422 `RESET_PASSWORD_REFUSED`, the window kept for another
+try. Then it signs the login out everywhere at the provider on the same
+bearer (`POST /logout?scope=global`, 204, or GoTrue's 403 `session_not_found`
+for a session already gone), the recovery session's own included, so a bearer
+kept past the page writes nothing after the settle; a write then would delete
+a later session that nothing asks the provider about. Not confirmed, it is
+409 `RESET_NOT_CONFIRMED` and the window is left to its bound. Otherwise, in
+the database clock's next whole second, the window
+settles once and `account.password_reset` is audited once, as the person
+found before the write, in that business, with a digest alone, even when the
+mapping ended while the write was out. A retry settles nothing and audits
+nothing. A sign-in after the settle
+is served.
+
+The page then sends the person to sign in; it signs nothing out itself. A session
+of the same login that the tab still held, which the window ended, is
+forgotten first, so sign-in asks for the new password; another login's
+session in the tab is left alone. Every
+browser call uses `redirect: 'error'`, and a provider answer counts only from
+the provider's origin (`apps/web/src/session/recovery.ts`). 503
+`RESET_UNAVAILABLE` is the provider's keys or its user out of reach;
+`RESET_FAULT` is anything else failing.
 
 ## The operations view and privacy incidents (C55)
 

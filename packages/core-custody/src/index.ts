@@ -36,7 +36,6 @@ export { custodySenderSource, type DomainRead } from './email-sender-custody.ts'
 export { stopAtBudget, stopWords, type BudgetStopped } from './broker-wait.ts';
 export { recordStop, retireAttempt, type StoppedAs } from './broker-stop.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
-export { setLoginPassword, type LoginPasswordSet } from './broker-login-password.ts';
 export {
   ENROL_PATH,
   INVITATION_SEND_ACTS,

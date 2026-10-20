@@ -34,10 +34,12 @@ import type { Context } from 'hono';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
+  attachSessionProbe,
   type Assurance,
   type VerifiedSubject,
 } from '../../../packages/core-records/src/index.ts';
 import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
+import { sessionLive } from './provider-user.ts';
 import { bearerOf, presentsCredential, sessionCookieOf } from './session.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
@@ -56,6 +58,8 @@ export interface SupabaseVerifierOptions {
   readonly onRefusal?: (refusal: KeySetRefusal) => void;
   /** The time in whole seconds, injected for tests; the clock otherwise. */
   readonly now?: () => number;
+  /** The hosted provider's publishable key, for the session probe's `apikey`: public. */
+  readonly providerKey?: string;
 }
 
 /**
@@ -102,8 +106,17 @@ export function keySetUrlFor(named: string, issuer: string): string | undefined 
   return LOOPBACK.test(named) && LOOPBACK.test(issuer) ? named : undefined;
 }
 
-export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
-  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+/**
+ * A token's signature, `exp`, audience and issuer checked against the
+ * provider's published keys: its claims, `'expired'`, `'unavailable'` when
+ * the key set could not be reached to check it, or nothing.
+ */
+export type TokenCheck = (
+  token: string,
+) => Promise<Readonly<Record<string, unknown>> | 'expired' | 'unavailable' | undefined>;
+
+/** The check both verifiers share: this one, and the password reset's `recoveryBearer`. */
+export function createTokenCheck(options: SupabaseVerifierOptions): TokenCheck {
   // Whether the latest key set fetch failed to reach the provider, rather than
   // bringing back a set this refused for what it held.
   let unreached = false;
@@ -117,6 +130,21 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
       options.onRefusal?.(refusal);
     },
   });
+  return async (token) => {
+    // ES256 pinned, the key chosen by `kid` from the published set, and only
+    // a signature that verified can be reported as expired (`jwks.ts`).
+    const verdict = await verifyToken(token);
+    if (verdict.outcome === 'expired') return 'expired';
+    if (verdict.outcome === 'refused') {
+      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
+    }
+    return verdict.claims;
+  };
+}
+
+export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  const check = createTokenCheck(options);
 
   return async function verifySupabaseToken(
     request: Context['req'],
@@ -126,15 +154,11 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const token = bearerOf(request) ?? sessionCookieOf(request);
     if (token === undefined) return presentsCredential(request) ? undefined : 'absent';
 
-    // ES256 pinned, the key chosen by `kid` from the published set, and only
-    // a signature that verified can be reported as expired (`jwks.ts`).
-    const verdict = await verifyToken(token);
-    if (verdict.outcome === 'expired') return 'expired';
-    if (verdict.outcome === 'refused') {
-      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
-    }
+    const verdict = await check(token);
+    if (typeof verdict !== 'object') return verdict;
+    const claims = verdict;
 
-    const subject = verdict.claims['sub'];
+    const subject = claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
     // `sub` crosses, and beside it how strongly the provider says the caller
@@ -142,12 +166,17 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // `user_metadata` are the provider's business and carry no authority here:
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
-    const assurance = assuranceOf(verdict.claims);
+    const assurance = assuranceOf(claims);
     if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
-    const sessionId = sessionIdOf(verdict.claims);
-    return sessionId === undefined
-      ? { provider: SUPABASE_PROVIDER, subject, assurance }
-      : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
+    const sessionId = sessionIdOf(claims);
+    if (sessionId === undefined) return { provider: SUPABASE_PROVIDER, subject, assurance };
+    // Asked by the door only while a reset's late password write could
+    // delete this session at the provider (`sessionRefusal`).
+    const probe = { issuer: options.issuer, providerKey: options.providerKey ?? '' };
+    return attachSessionProbe(
+      { provider: SUPABASE_PROVIDER, subject, assurance, sessionId },
+      async () => await sessionLive(probe, token, subject),
+    );
   };
 }
 
@@ -158,7 +187,7 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
  * crafted value; a token with none is served as before and simply has no
  * session to list or end here.
  */
-function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
+export function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
   const value = claims['session_id'];
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : undefined;
 }

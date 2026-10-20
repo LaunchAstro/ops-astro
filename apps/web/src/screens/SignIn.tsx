@@ -238,6 +238,9 @@ export function SignIn(props: SignInProps): ReactElement {
                 {busy ? 'Signing in…' : 'Sign in'}
               </button>
             </div>
+            <p>
+              <a href={pathTo('agency:reset')}>Forgot password</a>
+            </p>
           </>
         ) : (
           <CodeStep step={step} />

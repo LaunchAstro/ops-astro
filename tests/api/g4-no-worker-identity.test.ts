@@ -46,6 +46,11 @@ const OTHERS = [
   'POST /api/b/:businessKey/account/sessions/sign-out',
   // C39-T: an invitation accepted, signed out, on its one-time link's token alone.
   'POST /api/enrol',
+  // A forgotten password, signed out: a link asked for by address, and the
+  // provider's recovery session beginning and settling its reset.
+  'POST /api/password/begin',
+  'POST /api/password/changed',
+  'POST /api/password/reset',
   'POST /api/session',
   'POST /api/session/end',
 ];

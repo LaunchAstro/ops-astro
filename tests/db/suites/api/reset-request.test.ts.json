@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reset request answers every address alike, and 3 per address and 10 per caller hold against requests at once"
+}

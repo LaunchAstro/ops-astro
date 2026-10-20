@@ -1,35 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
-// The upgrade drill: `pnpm verify:upgrade-drill [--from <version>] [--base <commit>]`.
-//
-// It builds its own starting point and never touches an installation's data:
-// a throwaway database on the local server, migrated to an older version and
-// seeded there through the product's own commands, then upgraded to the head
-// with the application stopped, then compared row for row. Every row that
-// existed before the upgrade must still exist after it with the same values.
-// A column a migration adds is not compared, because it holds no value the
-// installation stored; a row a migration adds is counted and allowed. A row
-// changed or lost, or a table gone, fails the drill. The report names tables
-// and counts and never a row's content.
-//
-// A migration that changes rows on purpose declares it beside itself; a change
-// beyond its declaration, or a declared one that did not happen, fails the
-// drill (`upgrade-drill-changes.mjs`).
-//
-// The first drill was run by hand before slice one landed (0023 through 0031,
-// 217 records identical) and its script was never committed; 0023 is the
-// default for that reason. CI runs it from the base branch's newest migration
-// whenever a pull request adds one (.github/workflows/ci.yml, `database
-// conformance`), naming the base commit. The seed runs the older version's own
-// commands, from a checkout of the commit whose newest migration is --from: the
-// head's commands may need tables the older schema has not got.
-//
-// "The application stopped" is the supported upgrade (scripts/db-migrate.mjs):
-// the seed's pool is closed before the runner starts, and the runner refuses
-// if any other session is still connected.
-//
-// Exit 0 when every row is unchanged, 1 when the drill fails, 2 when it is
-// refused before building anything. `--json` adds the result as a last line.
+// `pnpm verify:upgrade-drill [--from <version>] [--base <commit>] [--json]`.
+// Its own throwaway database is seeded through the older commit's product.
+// The application stops before upgrade, enforced by the migration runner.
+// Atomic upgrade is proved and rolled back before owner-visible boundary snapshots.
+// Row changes name columns and predicates; drops name empty tables. New rows
+// and columns are allowed. Undeclared changes and unused declarations fail.
+// Exit 0 for pass, 1 for failure, 2 for refusal. --json prints the final result.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +18,7 @@ import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { Failure, baseCommit, seed } from './upgrade-drill-seed.mjs';
 import * as changes from './upgrade-drill-changes.mjs';
+import { proveAtomicUpgrade } from './upgrade-drill-atomic.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LEDGER = 'ops.schema_migrations';
@@ -158,8 +135,7 @@ function serverUrl() {
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
 /**
- * Every ordinary table and its rows as `jsonb` text, read as the owner. Given
- * the snapshot before, a table's rows are read without the columns added since.
+ * Owner-readable rows as `jsonb` text, without columns added since `before`.
  */
 async function snapshot(admin, before) {
   const tables = await admin.execute(
@@ -186,21 +162,47 @@ async function snapshot(admin, before) {
 }
 
 /**
- * The upgrade itself, the application stopped: the declarations of the
- * migrations it applies are read and their rows picked first, then every
- * migration is applied and the snapshots compared.
+ * Compare undeclared batches and each declared migration at their own boundaries.
+ * A table created during the upgrade therefore exists before its declared drop,
+ * and a later declaration cannot excuse an earlier undeclared change.
  */
 async function upgrade(db, directory, all, at, before) {
-  const declarations = changes.readDeclarations(directory, all.slice(at + 1), before, Refused);
-  await changes.declaredRows(db.admin, declarations);
-  const { applied } = await applyMigrations(db.admin, all);
-  const differences = changes.compare(before, await snapshot(db.admin, before), declarations);
-  const declared = declarations.map(({ migration, table, columns, rows }) => ({
-    migration,
-    table,
-    columns,
-    rows,
-  }));
+  await proveAtomicUpgrade(db.admin, all);
+  const boundaries = new Set([all.length - 1]);
+  for (let index = at + 1; index < all.length; index += 1) {
+    if (changes.hasDeclarations(directory, all[index].version)) {
+      if (index - 1 > at) boundaries.add(index - 1);
+      boundaries.add(index);
+    }
+  }
+  const applied = [];
+  const differences = [];
+  const declared = [];
+  const droppedTables = new Set();
+  let previous = at;
+  for (const boundary of [...boundaries].toSorted((a, b) => a - b)) {
+    const declarations = changes.readDeclarations(
+      directory,
+      all.slice(previous + 1, boundary + 1),
+      before,
+      Refused,
+      droppedTables,
+    );
+    // oxlint-disable-next-line no-await-in-loop -- each declaration sees its migration's before state
+    await changes.declaredRows(db.admin, declarations);
+    // oxlint-disable-next-line no-await-in-loop -- apply the ordered batch before comparing it
+    const outcome = await applyMigrations(db.admin, all.slice(0, boundary + 1));
+    applied.push(...outcome.applied);
+    // oxlint-disable-next-line no-await-in-loop -- compare the batch, omitting newly added columns
+    const after = await snapshot(db.admin, before);
+    differences.push(...changes.compare(before, after, declarations));
+    declared.push(...declarations.map((one) => changes.resultOf(one)));
+    if (boundary !== all.length - 1) {
+      // oxlint-disable-next-line no-await-in-loop -- the next boundary needs all columns' actual values
+      before = await snapshot(db.admin);
+    }
+    previous = boundary;
+  }
   return { applied, differences, declared };
 }
 
@@ -241,7 +243,7 @@ async function drill({ url, from, directory, base }) {
     const { applied, differences, declared } = await upgrade(db, directory, all, at, before);
     say(`upgraded ${start} -> ${to}: applied ${applied.join(', ')}`);
     return {
-      ok: differences.length === 0 && declared.every((one) => one.rows > 0),
+      ok: differences.length === 0 && declared.every((one) => changes.fulfilled(one)),
       from: start,
       to,
       applied,
@@ -285,7 +287,7 @@ try {
     result.ok
       ? `passed: ${result.rows} rows in ${result.tables} tables unchanged from ${result.from} to ${result.to}`
       : `FAILED: ${result.differences.length} table(s) changed and ` +
-          `${result.declared.filter((d) => d.rows === 0).length} declared change(s) missing ` +
+          `${result.declared.filter((d) => !changes.fulfilled(d)).length} declared change(s) missing ` +
           `from ${result.from} to ${result.to}`,
   );
   if (values.json) console.log(JSON.stringify(result));

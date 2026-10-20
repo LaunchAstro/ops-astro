@@ -2,7 +2,9 @@
 //
 // The upgrade drill's declared changes (`upgrade-drill.mjs`): a migration that
 // changes existing rows on purpose lists them in `migrations/<version>.changes.json`,
-// beside itself, as `{ table, columns, where }`. This module reads those lists,
+// beside itself, as `{ table, columns, where }`. An empty table drop instead
+// uses `{ table, drop: true }`, completed only when that table disappears.
+// This module reads those lists,
 // picks each one's rows before the upgrade, and compares the snapshots with them:
 // a changed row is excused only where a declaration of a migration this upgrade
 // applied picked it, read before the upgrade, and the row after differs from it
@@ -17,11 +19,27 @@ const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 
 const NAME = /^[a-z_][a-z0-9_]*$/u;
 
+/** Whether a migration carries a declaration requiring its own snapshot boundary. */
+export const hasDeclarations = (directory, version) =>
+  existsSync(join(directory, `${version}.changes.json`));
+
+/** A drop grants no exemption for stored rows or for a declaration that was not used. */
+function dropDeclaration({ version, one, before, droppedTables, refuse }) {
+  if (one.drop !== true || Object.keys(one).some((key) => !['table', 'drop'].includes(key)))
+    refuse('drop declaration must contain only table and drop: true');
+  if (droppedTables.has(one.table)) refuse(`duplicate drop declaration for ${one.table}`);
+  const held = before.get(one.table);
+  if (held === undefined) refuse(`no table ${one.table} before the upgrade`);
+  if (held.rows.length > 0) refuse(`drop declaration requires an empty table: ${one.table}`);
+  droppedTables.add(one.table);
+  return { migration: version, table: one.table, drop: true, rows: 0, dropped: false };
+}
+
 /**
  * The declarations of the migrations an upgrade applies, each checked against
  * the snapshot before it: a table and columns it holds, and a predicate.
  */
-export function readDeclarations(directory, applying, before, Refused) {
+export function readDeclarations(directory, applying, before, Refused, droppedTables = new Set()) {
   const declarations = [];
   for (const { version } of applying) {
     const file = join(directory, `${version}.changes.json`);
@@ -40,6 +58,10 @@ export function readDeclarations(directory, applying, before, Refused) {
       const [schema, relname, extra] = String(one?.table ?? '').split('.');
       if (extra !== undefined || !NAME.test(schema ?? '') || !NAME.test(relname ?? ''))
         refuse('a table is not schema.name');
+      if (Object.hasOwn(one, 'drop')) {
+        declarations.push(dropDeclaration({ version, one, before, droppedTables, refuse }));
+        continue;
+      }
       const held = before.get(one.table)?.columns;
       if (held === undefined) refuse(`no table ${one.table} before the upgrade`);
       if (!Array.isArray(one.columns) || one.columns.length === 0)
@@ -71,6 +93,7 @@ export function readDeclarations(directory, applying, before, Refused) {
  */
 export async function declaredRows(admin, declarations) {
   for (const declaration of declarations) {
+    if (declaration.drop === true) continue;
     // oxlint-disable-next-line no-await-in-loop
     const rows = await admin.transaction(
       async (execute) => {
@@ -120,7 +143,9 @@ export function compare(before, after, declarations = []) {
   for (const [table, { rows }] of before) {
     const now = after.get(table);
     if (now === undefined) {
-      differences.push({ table, changedOrLost: rows.length, added: 0, gone: true });
+      const drop = declarations.find((one) => one.table === table && one.drop === true);
+      if (drop !== undefined && rows.length === 0) drop.dropped = true;
+      else differences.push({ table, changedOrLost: rows.length, added: 0, gone: true });
       continue;
     }
     const waiting = new Map();
@@ -131,7 +156,9 @@ export function compare(before, after, declarations = []) {
       if (count > 0) waiting.set(row, count - 1);
       else unmatched.push(row);
     }
-    const mine = declarations.filter((declaration) => declaration.table === table);
+    const mine = declarations.filter(
+      (declaration) => declaration.table === table && declaration.drop !== true,
+    );
     let changedOrLost = 0;
     for (const [row, count] of waiting) {
       for (let n = 0; n < count; n += 1) {
@@ -144,10 +171,30 @@ export function compare(before, after, declarations = []) {
   return differences;
 }
 
+/** Row changes require changed rows; an empty drop requires its separate completion state. */
+export const fulfilled = (declaration) =>
+  declaration.drop === true
+    ? declaration.dropped === true && declaration.rows === 0
+    : declaration.rows > 0;
+
+/** Preserve the declaration variant and its completion state in the CLI result. */
+export const resultOf = (declaration) => {
+  const { migration, table, rows } = declaration;
+  return declaration.drop === true
+    ? { migration, table, drop: true, rows, dropped: declaration.dropped }
+    : { migration, table, columns: declaration.columns, rows };
+};
+
+function report(declaration) {
+  const { migration, table, rows } = declaration;
+  if (declaration.drop === true)
+    return fulfilled(declaration)
+      ? `${migration}: ${table}: declared empty table dropped, 0 rows lost`
+      : `${migration}: declared drop of ${table} did not happen`;
+  return rows === 0
+    ? `${migration}: declared change to ${table} did not happen`
+    : `${migration}: ${table}, ${rows} declared row${rows === 1 ? '' : 's'} changed (${declaration.columns.join(', ')})`;
+}
+
 /** One line per declaration: how many rows it excused, or that its change did not happen. */
-export const declaredReport = (declared) =>
-  declared.map((d) =>
-    d.rows === 0
-      ? `${d.migration}: declared change to ${d.table} did not happen`
-      : `${d.migration}: ${d.table}, ${d.rows} declared row${d.rows === 1 ? '' : 's'} changed (${d.columns.join(', ')})`,
-  );
+export const declaredReport = (declared) => declared.map((one) => report(one));

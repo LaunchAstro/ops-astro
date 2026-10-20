@@ -7,6 +7,7 @@
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { OCCURRENCE_ROLE, PART_GRANTS, PART_UPDATES } from './restricted-calls-cases.ts';
+import { RESET_GRANTS, RESET_UPDATES } from './restricted-calls-reset.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
@@ -16,11 +17,13 @@ import { OCCURRENCE_ROLE, PART_GRANTS, PART_UPDATES } from './restricted-calls-c
 const COLUMN_UPDATES: readonly {
   readonly table: string;
   readonly from: string;
+  /** The first migration the table is gone from, when one dropped it. */
+  readonly until?: string;
   readonly columns: readonly string[];
 }[] = [
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
-  // C40B and C39-T: a reset or an enrolment token is spent by `spent_at` alone.
-  { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
+  ...RESET_UPDATES,
+  // C39-T: an enrolment token is spent by `spent_at` alone, on its accept.
   { table: 'public.enrolment_tokens', from: '20261013053949', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
   {
@@ -74,7 +77,11 @@ const reached = (at: string, from: string): boolean =>
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return COLUMN_UPDATES.filter((grant) => at === undefined || reached(at, grant.from))
+  return COLUMN_UPDATES.filter((grant) =>
+    at === undefined
+      ? grant.until === undefined
+      : reached(at, grant.from) && (grant.until === undefined || !reached(at, grant.until)),
+  )
     .flatMap((grant) => grant.columns.map((column) => `${grant.table}.${column}`))
     .toSorted();
 }
@@ -135,19 +142,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
-  // C40 (20261005144947): a reset in flight; the application opens one and settles it.
-  ...[
-    ['INSERT', 'id'],
-    ['INSERT', 'subject_digest'],
-    ['SELECT', 'id'],
-    ['SELECT', 'open_until'],
-    ['SELECT', 'settled_at'],
-    ['SELECT', 'subject_digest'],
-    ['UPDATE', 'settled_at'],
-  ].map(([act, column]) => ({
-    from: '20261005144947',
-    line: `ops_astro_app ${act} ops.subject_resets.${column}`,
-  })),
+  ...RESET_GRANTS,
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).

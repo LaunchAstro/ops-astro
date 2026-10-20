@@ -63,6 +63,7 @@ interface DrillResult {
   readonly tables: number;
   readonly rows: number;
   readonly differences: readonly Difference[];
+  readonly declared: readonly { readonly table: string; readonly rows: number }[];
 }
 
 interface Run {
@@ -101,7 +102,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
 
 function upgradeDrillCases1() {
   it('upgrades a database seeded at 0023 to the head with every row unchanged', () => {
-    const { status, result } = drill('0023');
+    const { status, result, output } = drill('0023');
     expect(result?.differences).toStrictEqual([]);
     expect(result?.ok).toBe(true);
     expect(status).toBe(0);
@@ -113,6 +114,17 @@ function upgradeDrillCases1() {
     // A drill over an empty database would pass by comparing nothing.
     expect(result?.rows).toBeGreaterThan(20);
     expect(result?.tables).toBeGreaterThan(5);
+    expect(result?.declared).toContainEqual(
+      expect.objectContaining({
+        table: 'public.password_reset_tokens',
+        drop: true,
+        rows: 0,
+        dropped: true,
+      }),
+    );
+    expect(output).toContain(
+      'public.password_reset_tokens: declared empty table dropped, 0 rows lost',
+    );
   }, 180_000);
 
   it('turns red when a migration changes one existing row, and names the table', () => {
