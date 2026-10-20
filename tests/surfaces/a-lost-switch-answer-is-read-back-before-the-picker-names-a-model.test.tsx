@@ -73,3 +73,45 @@ it('a lost switch answer never shows the old model while questions go to the new
   expect(questions.at(-1)?.model).toBe(PLAN);
   expect((page.find('[data-assistant="model"]') as HTMLSelectElement).value).toBe(PLAN);
 });
+
+it('a lost switch answer the server did not keep shows the old model, which questions still go to', async () => {
+  const questions: { body: string; model: string }[] = [];
+  const client = {
+    read: async (name: string) =>
+      name === 'conversation.models'
+        ? {
+            ok: true,
+            value: {
+              ok: true,
+              chosen: LOCAL,
+              models: [
+                { id: LOCAL, provider: 'ollama', reach: 'local', ceilingMinor: 0 },
+                { id: PLAN, provider: 'chatgpt_plan', reach: 'cloud', ceilingMinor: 0 },
+              ],
+            },
+          }
+        : { unavailable: true, because: 'not used here' },
+    mutate: async (name: string, body: Record<string, unknown>) => {
+      // The write never reached the server, and its answer is lost.
+      if (name === 'conversation.set_model')
+        return { unavailable: true, because: 'The connection closed before the response arrived.' };
+      if (name === 'conversation.start' || name === 'conversation.message')
+        questions.push({ body: String(body['body']), model: LOCAL });
+      return { ok: true, value: { recordId: '', revision: 0, detail: { conversationId: ID } } };
+    },
+  } as unknown as OperationsClient;
+  const page = track(
+    await mount(
+      <AssistantView client={client} route="agency:settings" here="/settings" entry={null} />,
+    ),
+  );
+  await settle();
+  await page.choose('[data-assistant="model"]', LOCAL);
+  await ask(page, 'First local question');
+  await page.choose('[data-assistant="model"]', PLAN);
+  await settle();
+  await ask(page, 'Still local after the lost answer');
+  expect(questions.at(-1)?.model).toBe(LOCAL);
+  expect((page.find('[data-assistant="model"]') as HTMLSelectElement).value).toBe(LOCAL);
+  expect(page.find('[role="log"]')?.textContent).not.toContain(`Switched to ${PLAN}`);
+});
