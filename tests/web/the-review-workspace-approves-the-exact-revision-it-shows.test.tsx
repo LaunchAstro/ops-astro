@@ -35,23 +35,15 @@ const approvedBy = (revision: Revision, personId: string, self: boolean): Revisi
   },
 });
 
-/** Revision 1 approved by Mia, a second person; revision 2, new, undecided. */
-const DECIDED: Review = {
-  ok: true,
-  review: {
-    ...REVIEW.review,
-    revisions: [approvedBy(first, 'p-mia', false), second],
-    before: approvedBy(first, 'p-mia', false),
-    after: second,
-  },
-};
+/** The made-up review: revision 1 approved by Mia, a second person; revision 2, new, undecided. */
+const DECIDED: Review = REVIEW;
 
 /** The same review once revision 2 is approved by Nathan in single-operator mode. */
 const APPROVED: Review = {
   ok: true,
   review: {
     ...DECIDED.review,
-    revisions: [approvedBy(first, 'p-mia', false), approvedBy(second, 'p-nathan', true)],
+    revisions: [first, approvedBy(second, 'p-nathan', true)],
     after: approvedBy(second, 'p-nathan', true),
   },
 };
@@ -136,7 +128,7 @@ const settled = async () => {
 
 async function drawn(world: World) {
   const { client, sent } = clientFor(world);
-  let refresh: () => void = nothing;
+  const refreshes: (() => void)[] = [];
   const view = await mount(
     <ReviewWorkspaceScreen
       client={client}
@@ -144,7 +136,7 @@ async function drawn(world: World) {
       reviewId={REVIEW_ID}
       rollup={{
         follow: (run) => {
-          refresh = run;
+          refreshes.push(run);
           return () => {};
         },
       }}
@@ -153,7 +145,13 @@ async function drawn(world: World) {
   await settled();
   const decides = () => sent.filter((each) => each.path.endsWith('/review/decide'));
   const reads = () => sent.filter((each) => each.path.endsWith('/review/read')).length;
-  return { view, sent, decides, reads, refresh: () => act(() => Promise.resolve(refresh())) };
+  const refresh = async () => {
+    await act(async () => {
+      for (const run of refreshes) run();
+      await Promise.resolve();
+    });
+  };
+  return { view, sent, decides, reads, refresh };
 }
 
 const person = (decide: World['decide'], read: unknown = DECIDED): World => ({
