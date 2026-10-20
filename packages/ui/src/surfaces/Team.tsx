@@ -35,8 +35,9 @@ import {
   type GroupThread,
   type TeamConversation,
   type Teammate,
+  type Unsent,
 } from '../state/team.ts';
-import { Conversation } from './TeamConversation.tsx';
+import { Conversation, type Waiting } from './TeamConversation.tsx';
 import { Mine } from './TeamAvailability.tsx';
 import { GroupHead, GroupList } from './TeamGroups.tsx';
 import { Strip, type TeamWork } from './TeamStrip.tsx';
@@ -54,6 +55,12 @@ export interface TeamConversations {
   /** The group conversations the reader is a member of, as the comment read returned them (C71-G). */
   readonly groups: readonly GroupThread[];
   readonly onGroup: (action: GroupAction) => void;
+  /** Every send the server has not taken, each under its conversation (#1339). */
+  readonly unsent: readonly Unsent[];
+  /** Send an unanswered message again under its first operation id. */
+  readonly onResend: (id: string) => void;
+  /** Let an unsent message go. */
+  readonly onDiscard: (id: string) => void;
   /** The conversation the address asked for (a notification's door), opened first when present. */
   readonly asked?: Selected;
 }
@@ -100,6 +107,13 @@ function sendTo(talk: TeamConversations, group: GroupThread): ((body: string) =>
   };
 }
 
+/** One conversation's unsent words, and what the reader may do with them. */
+const waitingIn = (talk: TeamConversations, id: string): Waiting => ({
+  unsent: talk.unsent.filter((one) => one.to === id),
+  onResend: talk.onResend,
+  onDiscard: talk.onDiscard,
+});
+
 function OpenConversation(props: {
   readonly talk: TeamConversations;
   readonly me: string;
@@ -129,6 +143,7 @@ function OpenConversation(props: {
         onSend={(body) => {
           talk.onSend(person.personId, body);
         }}
+        waiting={waitingIn(talk, person.personId)}
       />
     );
   }
@@ -143,6 +158,7 @@ function OpenConversation(props: {
         me={me}
         onRead={group.left ? null : onRead}
         onSend={sendTo(talk, group)}
+        waiting={waitingIn(talk, group.id)}
       />
     </>
   );

@@ -74,6 +74,19 @@ export interface GroupThread extends Readable {
   readonly left: boolean;
 }
 
+/**
+ * Words the server has not taken (#1339): on their way, refused, or sent with
+ * no answer. They wait under their conversation, never as a message, until the
+ * server takes them or the reader lets them go; the composer may hold them too.
+ */
+export interface Unsent {
+  readonly id: string;
+  /** The conversation's key, as `Conversation` takes it: a teammate's person id or a group's id. */
+  readonly to: string;
+  readonly body: string;
+  readonly state: 'sending' | 'refused' | 'unanswered';
+}
+
 /** Either kind of conversation: the thread, the unread and the marker treat them alike. */
 export type TeamConversation = DirectThread | GroupThread;
 

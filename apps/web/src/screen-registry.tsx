@@ -161,6 +161,7 @@ export const SCREENS: {
     <TeamScreen
       client={context.client}
       grantKey={context.grantKey}
+      storage={context.storage}
       {...(context.address === undefined ? {} : { address: context.address })}
     />
   ),

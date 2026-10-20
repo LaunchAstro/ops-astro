@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the web outbox resends an unanswered chat.send_direct under its first operation id; the operations register must replay it so the message posts once, and a new id posts again (#1339)"
+}
