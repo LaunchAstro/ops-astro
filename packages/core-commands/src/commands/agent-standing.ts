@@ -13,7 +13,8 @@
 // session's ending keys, shared (`sessionEndedHeld`). Then it reads each again,
 // the delegation a take hands over (`handsOver`), which the take already
 // holds `for share` from its own judgement (`launch-take.ts`), and the
-// delegating person's grants, asked again as `authorise` asked them.
+// delegating person's grants, asked again as `authorise` asked them, except
+// for a retained stop.
 //
 // The grants are read, not held: `grant.revoke` takes its grant before the
 // task (`LOCK_ORDER`), and this runs after the handler's task lock. Its audit
@@ -127,6 +128,8 @@ async function agentStanding(
   ) {
     return refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
   }
+  // A retained stop answers to its delegation alone: it retires its own work.
+  if (retained) return undefined;
   const reach = await checkDelegatedAuthority(tx, asked.delegation, asked.request);
   return reach.ok ? undefined : reach.refusal;
 }
