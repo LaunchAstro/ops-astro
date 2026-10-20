@@ -9,7 +9,8 @@
 // (`credential-scope.ts`): every credential is an agent's. The keys are judged
 // under the business's access lock, which access.end takes too, so an issue
 // either sees the ending and is refused or lands before it and is revoked by
-// it. Its expiry is at most `CREDENTIAL_MAX_DAYS` out, judged on the database
+// it. They are asked again after the last wait, the audit chain's, so a grant
+// that runs out there mints nothing. Its expiry is at most `CREDENTIAL_MAX_DAYS` out, judged on the database
 // clock that stamps `issued_at`. The secret is in the issue answer alone: the
 // register keeps the answer with the credential nulled (`envelope.ts`), and
 // the issuer's replay of the same operation derives it again while the
@@ -129,14 +130,19 @@ export async function issueCredential(
     scope: keys,
     expiresAt,
   });
-  return applied(issued.credentialId, null, {
-    credentialId: issued.credentialId,
-    agentActorId: issued.agentActorId,
-    scope: keys,
-    expiresAt: expiresAt.toISOString(),
-    // In the clear only in this answer; the register keeps it nulled.
-    credential: issued.credential,
-  });
+  return {
+    ...applied(issued.credentialId, null, {
+      credentialId: issued.credentialId,
+      agentActorId: issued.agentActorId,
+      scope: keys,
+      expiresAt: expiresAt.toISOString(),
+      // In the clear only in this answer; the register keeps it nulled.
+      credential: issued.credential,
+    }),
+    // The keys asked again after the last wait, the audit chain's: a grant
+    // that ran out while the issue waited there mints nothing.
+    lastCheck: async () => await refuseScope(tx, session, keys),
+  };
 }
 
 export async function revokeCredential(
@@ -184,22 +190,18 @@ export async function replayIssue(
 ): Promise<CommandHandle | CommandRefusal> {
   const named = stored.detail['credentialId'];
   const held = typeof named === 'string' ? await lockAgentCredential(tx, named) : undefined;
-  if (
-    held === undefined ||
-    held.issuedByPersonId !== session.personId ||
-    held.revokedAt !== null ||
-    // On the database's clock, read after the row's lock wait.
-    held.expiresAt.getTime() <= (await databaseClock(tx, 'clock_timestamp()'))
-  ) {
+  if (held === undefined || held.issuedByPersonId !== session.personId || held.revokedAt !== null) {
     return stored;
   }
-  // The session and the keys asked again after the last wait, the audit
-  // chain's key, its ending keys held to commit after it (`ending-keys.ts`):
-  // no secret for a signed-out caller. The secret again is an issue again:
-  // its keys judged as an issue's are, under the access lock, against the
-  // issuer's grants as they stand after that wait, so a grant that ran out
-  // while it waited refuses the replay.
+  // The expiry, the session and the keys asked again after the last wait, the
+  // audit chain's key, its ending keys held to commit after it
+  // (`ending-keys.ts`): no secret for a credential that ran out or a
+  // signed-out caller. The expiry is on the database's clock, read after that
+  // wait. The secret again is an issue again: its keys judged as an issue's
+  // are, under the access lock, against the issuer's grants as they stand
+  // after that wait, so a grant that ran out while it waited refuses the replay.
   await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (held.expiresAt.getTime() <= (await databaseClock(tx, 'clock_timestamp()'))) return stored;
   if (await sessionEndedSince(tx, session)) {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
   }

@@ -573,7 +573,10 @@ async function refusedAtCommit(
 ): Promise<CommandRefusal | undefined> {
   if (isRefused(outcome) && outcome.retains !== true) return undefined;
   if (isRefused(outcome) || outcome.endsOwnAccess !== true) {
-    return await standsNow(tx, session, request, declaration, standing, asked);
+    return (
+      (await standsNow(tx, session, request, declaration, standing, asked)) ??
+      (isRefused(outcome) ? undefined : await outcome.lastCheck?.())
+    );
   }
   return standing.presented === undefined ? undefined : await signedOut(tx, session);
 }

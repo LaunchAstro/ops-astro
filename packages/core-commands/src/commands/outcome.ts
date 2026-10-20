@@ -102,9 +102,10 @@ export interface Applied {
    */
   readonly handsOver?: string;
   /**
-   * A judgement the agent path asks last, after its own standing waits
-   * (`agent-standing.ts`): what the handler read before them may have changed
-   * while they waited. A refusal rolls the work back. Set by the handler.
+   * A judgement either entry asks last, after its own standing waits (the
+   * agent's `agent-standing.ts`, the person's `refusedAtCommit`): what the
+   * handler read before them may have changed while they waited. A refusal
+   * rolls the work back. Set by the handler.
    */
   readonly lastCheck?: () => Promise<CommandRefusal | undefined>;
 }

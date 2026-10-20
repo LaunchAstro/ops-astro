@@ -11,6 +11,7 @@ import { hold, waitingOn } from '../support/lock-waits.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one world, the case that shares it
 describe.skipIf(serverUrl === undefined)('an agent write after its audit chain wait', () => {
   let world: AgentWorld;
   beforeAll(async () => {
