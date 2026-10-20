@@ -53,7 +53,7 @@ const readThenDraft = (sent: Sent) =>
     ? words(`Drafted the change: "${FULL}"`)
     : toolCallReply('task_read', JSON.stringify({ taskId: 'task-1' }));
 
-it('sends each turn of the sol set to the plan on its own model, and records what the plan answered', async () => {
+it('sends each turn of the harder set to the plan on its own model, and records what the plan answered', async () => {
   world.reply = readThenDraft;
   const before = world.sent.length;
   const results = await runPlanSet(SOL, world.custody);

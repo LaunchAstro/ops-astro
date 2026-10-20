@@ -129,6 +129,16 @@ describe.each([
     const done = run(at.home, set, at.out);
     expect(existsSync(at.start)).toBe(false);
     expect(done.stderr).not.toMatch(/owner/u);
+    expect(done.status, done.stderr).toBe(1);
+    const results = JSON.parse(readFileSync(at.out, 'utf8')) as {
+      provider: string;
+      cases: { endCode: string; model: string | null }[];
+    };
+    expect(results.provider).toBe('chatgpt_plan');
+    expect(results.cases.length).toBeGreaterThan(0);
+    for (const one of results.cases) {
+      expect(one).toMatchObject({ endCode: 'CUSTODY_NOT_ADMITTED', model: null });
+    }
     const again = run(at.home, set, join(at.home, 'again.json'));
     expect(again.status).toBe(2);
     expect(existsSync(join(at.home, 'again.json'))).toBe(false);
