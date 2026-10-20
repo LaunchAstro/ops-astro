@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// U89's media store records (#2038, migration 20261019160000): a media
+// U89's media store records (#2038, migration 20261020052900): a media
 // review is a review (`kind = 'media'`, one per task) whose revisions carry
 // an asset in place of page captures, and a revision's digest is its asset's.
 //
