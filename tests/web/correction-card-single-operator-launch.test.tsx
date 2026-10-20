@@ -127,3 +127,29 @@ describe('a Launch refused for a missing Astra review', () => {
     expect(view.find('[data-correction-launch-held]')).toBeNull();
   });
 });
+
+describe('the mode is its reader’s', () => {
+  it('a person switch draws no earlier person’s mode', async () => {
+    const api: { mode: boolean | 403; decide: 'ok' } = { mode: true, decide: 'ok' };
+    const { client } = alpha(api);
+    const at = (grantKey: string) => (
+      <SidebarCorrections
+        client={client}
+        propose={taskCorrectionPort(client, TASK_A)}
+        grantKey={grantKey}
+        readsMode
+      />
+    );
+    const view = await mount(at('alpha:ada:0'));
+    await askFor(view, ABOUT);
+    await tick();
+    expect(modeLine(view)).toMatch(/is on/iu);
+    // Bo is refused the settings read: Ada's answer is not his to see.
+    api.mode = 403;
+    await view.render(at('alpha:bo:0'));
+    await askFor(view, ABOUT);
+    await tick();
+    expect(view.find('[data-correction-decide="approve"]')).not.toBeNull();
+    expect(modeLine(view)).toBeNull();
+  });
+});
