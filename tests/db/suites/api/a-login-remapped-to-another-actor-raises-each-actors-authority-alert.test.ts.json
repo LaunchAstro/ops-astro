@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a login remapped to another actor sends the same operation id again; the register treats the two actors apart, and each actor's applied change raises its own authority alert"
+}

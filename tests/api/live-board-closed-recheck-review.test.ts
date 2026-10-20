@@ -36,7 +36,6 @@ it('a board recheck cannot write resync after its stream aborts', async () => {
   let reachCalls = 0;
   const running = followBoard(stream, topics, { businessId, personId, recheckMs: 5 }, {
     joinedAs: () => Promise.resolve(personId),
-    reads: () => Promise.resolve(false),
     shown: () => Promise.resolve('inbox'),
     reach: async () => {
       reachCalls += 1;

@@ -22,8 +22,8 @@
 // session is past its 12-hour absolute limit (C58, `pastAbsoluteLimit`): it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
 // `Verified` and `jwks.ts`). A token checked while the provider's key set
-// cannot be reached is neither: it returns `'unavailable'`, which the boundary
-// answers as an outage, not a refusal.
+// cannot be reached or read is neither: it returns `'unavailable'`, which the
+// boundary answers as an outage, not a refusal.
 //
 // **It verifies; it does not decode.** `jwks.ts` checks the ES256 signature,
 // `exp`, audience and issuer against the provider's published keys. There is no
@@ -104,16 +104,15 @@ export function keySetUrlFor(named: string, issuer: string): string | undefined 
 
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
-  // Whether the latest key set fetch failed to reach the provider, rather than
-  // bringing back a set this refused for what it held.
-  let unreached = false;
+  // Whether the latest refused key set fetch was an outage (see `OUTAGE`).
+  let outage = false;
   const verifyToken = createKeySetVerifier({
     keySetUrl: options.keySetUrl,
     issuer: options.issuer,
     audience: SUPABASE_AUDIENCE,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     onRefusal: (refusal) => {
-      unreached = UNREACHED.has(refusal.reason);
+      outage = OUTAGE.has(refusal.reason);
       options.onRefusal?.(refusal);
     },
   });
@@ -131,7 +130,7 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const verdict = await verifyToken(token);
     if (verdict.outcome === 'expired') return 'expired';
     if (verdict.outcome === 'refused') {
-      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
+      return verdict.reason === 'key_set_unavailable' && outage ? 'unavailable' : undefined;
     }
 
     const subject = verdict.claims['sub'];
@@ -216,11 +215,26 @@ function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
 }
 
 /**
- * The key set fetches that never reached a set: an outage. A set the provider
- * did send and this refused (too large, the wrong shape, private material) is
- * refused like the token it was asked to check.
+ * The key set fetches that brought back no set a key could be read from: an
+ * outage, which says nothing about the token. Unreached, timed out, a status
+ * other than 200, too large, or not a key set (an HTML page, a body that is
+ * not JSON, an empty list) all leave it unchecked. A set that publishes
+ * private key material is refused like the token it was asked to check:
+ * anyone holding that key could have signed it.
+ *
+ * The flag that records which, the latest refused fetch's, is read only when
+ * `jwks.ts` answers `key_set_unavailable`, which it does only while no
+ * fetched set is fresh. A set is cached longer than the cooldown between
+ * fetches (`KEY_SET_CACHE_MS` over `KEY_SET_COOLDOWN_MS`), so a fresh set
+ * always lapses into a refetch, and the latest fetch is then one refused.
  */
-const UNREACHED: ReadonlySet<KeySetRefusal['reason']> = new Set(['network', 'timeout', 'status']);
+const OUTAGE: ReadonlySet<KeySetRefusal['reason']> = new Set([
+  'network',
+  'timeout',
+  'status',
+  'too_large',
+  'shape',
+]);
 
 /**
  * GoTrue's `amr` method that begins a product session: a password sign-in.
