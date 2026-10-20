@@ -30,7 +30,12 @@ const drawn = async (review: ReviewReadResult) => {
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const view = await mount(
-    <ReviewWorkspaceScreen client={client} grantKey="alpha:member" reviewId={REVIEW_ID} />,
+    <ReviewWorkspaceScreen
+      client={client}
+      grantKey="alpha:member"
+      reviewId={REVIEW_ID}
+      navigate={() => {}}
+    />,
   );
   await tick();
   await tick();

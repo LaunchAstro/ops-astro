@@ -45,7 +45,12 @@ function seeded(review: unknown, pin: (count: number) => Response = () => json({
 const drawn = async (review: unknown, pin?: (count: number) => Response) => {
   const { client, sent } = seeded(review, pin);
   const view = await mount(
-    <ReviewWorkspaceScreen client={client} grantKey="alpha:member" reviewId={REVIEW_ID} />,
+    <ReviewWorkspaceScreen
+      client={client}
+      grantKey="alpha:member"
+      reviewId={REVIEW_ID}
+      navigate={() => {}}
+    />,
   );
   await tick();
   await tick();
@@ -91,7 +96,7 @@ it('pins on the marked spot once, the retry after a lost answer under the same a
   picture.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 370, clientY: 100 }));
   await tick();
   expect(view.find('[data-capture-picture="1480"] [data-pin-marked]')).not.toBeNull();
-  await view.type('textarea', 'Tighten this line');
+  await view.type('form textarea', 'Tighten this line');
   await view.click('form button[type="submit"]');
   await tick();
   await view.click('form button[type="submit"]');
