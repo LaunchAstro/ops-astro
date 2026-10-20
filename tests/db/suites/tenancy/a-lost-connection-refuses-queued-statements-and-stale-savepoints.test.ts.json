@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1774: statements queued when a backend ends are all refused, and a stale savepoint never writes into the next business's session"
+}
