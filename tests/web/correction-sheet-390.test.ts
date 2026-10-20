@@ -9,6 +9,8 @@
 // window, nothing scrolls sideways, and the dark sheet paints differently from
 // the light one. The made-up API answers no correction reads, so this test
 // answers them: one waiting correction and one published with a receipt.
+// #1781: the waiting card's single-operator line, and a Launch the server
+// refused for a missing Astra review, held with its reason, fit there too.
 
 import type { Page, Route } from 'playwright';
 import { describe, expect, it } from 'vitest';
@@ -61,6 +63,20 @@ function correctionReads(route: Route): Promise<void> {
   return route.fallback();
 }
 
+/** The correction reads, the business in single-operator mode, and a Launch refused for review. */
+function singleOperatorReads(route: Route): Promise<void> {
+  const path = new URL(route.request().url()).pathname;
+  if (path.endsWith('/settings/read')) {
+    const row = { key: 'single_operator_mode', value: true, valueType: 'boolean', revision: 2 };
+    return route.fulfill({ json: { ok: true, settings: [row] } });
+  }
+  if (path.endsWith('/live_correction/decide')) {
+    const json = { refused: true, code: 'ASTRA_REVIEW_MISSING', names: [], fixes: [] };
+    return route.fulfill({ status: 409, json });
+  }
+  return correctionReads(route);
+}
+
 interface Box {
   readonly left: number;
   readonly right: number;
@@ -98,12 +114,21 @@ const PARTS = [
   '[data-correction-receipts]',
 ];
 
+const HELD_PARTS = [
+  '[data-correction-state="requested"] [data-correction-single-operator]',
+  '[data-correction-state="requested"] [data-correction-launch-held]',
+  '[data-correction-state="requested"] [data-correction-decide="approve"]',
+];
+
 /** One line per part: inside the sheet and the window, tall enough to press; and the ground. */
-async function measure(page: Page): Promise<{ lines: string[]; ground: string }> {
+async function measure(
+  page: Page,
+  parts: readonly string[] = PARTS,
+): Promise<{ lines: string[]; ground: string }> {
   const lines: string[] = [];
-  for (const selector of PARTS) {
+  for (const selector of parts) {
     await page.locator(selector).scrollIntoViewIfNeeded();
-    const { sheet, found } = await page.evaluate(boxes, PARTS);
+    const { sheet, found } = await page.evaluate(boxes, parts);
     const box = found[selector] ?? null;
     const inside =
       box !== null &&
@@ -118,7 +143,7 @@ async function measure(page: Page): Promise<{ lines: string[]; ground: string }>
     );
   }
   lines.push(`overflow ${String(overflowOf(await page.evaluate(scrollMetrics)))}`);
-  const { ground } = await page.evaluate(boxes, PARTS);
+  const { ground } = await page.evaluate(boxes, parts);
   return { lines, ground };
 }
 
@@ -151,5 +176,35 @@ describe('the correction cards at 390 in both themes', () => {
     ]);
     expect(seen.map((one) => one.launch)).toStrictEqual(['Launch', 'Launch']);
     expect(seen[0]?.ground).not.toBe(seen[1]?.ground);
+  }, 300_000);
+});
+
+describe('the single-operator Launch control at 390 in both themes', () => {
+  it('the single-operator line and a Launch held for Astra’s review sit inside the sheet, light and dark', async () => {
+    const seen: { theme: string; lines: string[]; disabled: boolean }[] = [];
+    await onDockSides([WIDTH], ['light', 'dark'], async ({ side, packet, app, theme }) => {
+      await side.context.route('**/api/b/**', singleOperatorReads);
+      const page = await load(
+        side,
+        packet,
+        new URL(addressOf('agency:projects-board', { key: 'T-1' }) ?? '/', app).href,
+      );
+      try {
+        await page.locator(TAB).click();
+        await page.locator('[data-correction-single-operator]').waitFor();
+        await page.locator('[data-correction-decide="approve"]').click();
+        await page.locator('[data-correction-launch-held]').waitFor();
+        const disabled = await page.locator('[data-correction-decide="approve"]').isDisabled();
+        seen.push({ theme, disabled, ...(await measure(page, HELD_PARTS)) });
+      } finally {
+        await page.close();
+      }
+    });
+    const want = [...HELD_PARTS.map((part) => `${part}: inside, pressable`), 'overflow 0'];
+    expect(seen.map(({ theme, lines }) => [theme, lines])).toStrictEqual([
+      ['light', want],
+      ['dark', want],
+    ]);
+    expect(seen.map((one) => one.disabled)).toStrictEqual([true, true]);
   }, 300_000);
 });

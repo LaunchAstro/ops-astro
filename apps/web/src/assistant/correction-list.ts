@@ -19,6 +19,7 @@ const standing = (held: Correction, item: CorrectionListItem): Correction => ({
   approver: item.approver,
   versionId: item.versionId,
   refusal: null,
+  launchHeld: false,
   ...(item.versionId === held.versionId ? {} : { verifiedForMs: 0, readAt: null }),
 });
 
@@ -33,6 +34,7 @@ const listed = (item: CorrectionListItem): Correction => ({
   readAt: null,
   reason: null,
   refusal: null,
+  launchHeld: false,
   receipts: null,
 });
 

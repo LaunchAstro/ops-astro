@@ -100,7 +100,10 @@ export function CapabilityBanner(props: {
   const missing = answered
     ? [
         { grant: SPEND_DECIDE, rows: 'the four-eyes threshold' },
-        { grant: SETTINGS_MANAGE, rows: 'client sign-off and the two windows' },
+        {
+          grant: SETTINGS_MANAGE,
+          rows: 'client sign-off, the two windows and single-operator mode',
+        },
       ].filter((need) => !holds(state.value.grants, need.grant))
     : [];
   return (

@@ -117,6 +117,7 @@ async function readInto(
   correctionId: string,
   lands: () => boolean,
   said: string | null,
+  held = false,
 ): Promise<boolean> {
   const sentAt = performance.now();
   const settled = settle(
@@ -136,6 +137,7 @@ async function readInto(
     readAt: sentAt,
     reason: typeof refusal === 'string' ? refusal : null,
     refusal: said,
+    launchHeld: held,
   });
   return true;
 }
@@ -159,6 +161,7 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   readAt: null,
   reason: null,
   refusal: null,
+  launchHeld: false,
   receipts: null,
 });
 
@@ -236,9 +239,9 @@ async function receiptsInto(
 /** `readInto`, in `order`: an answer overtaken by a newer one already landed is dropped. */
 const orderedRead =
   (client: OperationsClient, amend: Amend, order: Order) =>
-  (key: string, id: string, said: string | null = null): Promise<boolean> => {
+  (key: string, id: string, said: string | null = null, held = false): Promise<boolean> => {
     const nth = order.next();
-    return readInto(client, amend, key, id, () => order.lands(key, id, nth), said);
+    return readInto(client, amend, key, id, () => order.lands(key, id, nth), said, held);
   };
 
 export function useCorrections(
@@ -268,7 +271,9 @@ export function useCorrections(
     const settled = settle(
       await client.mutate('live_correction.decide', { correctionId: id, versionId, decision }),
     );
-    await read(key, id, settled.kind === 'ok' ? null : failureWords(settled));
+    // A Launch refused for a missing Astra review stays held until a read without it.
+    const reviewHeld = settled.kind !== 'ok' && failedCode(settled) === 'ASTRA_REVIEW_MISSING';
+    await read(key, id, settled.kind === 'ok' ? null : failureWords(settled), reviewHeld);
   };
   return {
     list: mine.list,

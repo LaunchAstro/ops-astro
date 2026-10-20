@@ -92,6 +92,8 @@ const REFUSALS: Readonly<Record<string, string>> = {
   APPROVER_NOT_CONFIGURED: 'No approver is named for site changes yet. An administrator names one.',
   APPROVER_NOT_CONFIGURED_ONE: 'Only the configured approver decides a site change.',
   SELF_APPROVAL_REFUSED: 'A second person decides a change you asked for.',
+  ASTRA_REVIEW_MISSING:
+    'Astra has not reviewed this version yet. The business’s first single-operator Launch waits for that review.',
   GATE_ALREADY_DECIDED: 'This change is decided already.',
   VERSION_STALE: 'The change moved since it was read. It is read again; decide once more.',
   DELEGATION_NARROWED: 'This agent may no longer ask for site changes.',

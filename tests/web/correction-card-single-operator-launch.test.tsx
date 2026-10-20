@@ -3,7 +3,8 @@
 //
 // #1781: the correction card's Launch control says whether the business is in
 // single-operator mode, from the `single_operator_mode` row `settings.read`
-// answers, and says nothing of it when the read is refused. When the server
+// answers where the host asks for it, and says nothing of it when the read is
+// refused. When the server
 // refuses a Launch with `ASTRA_REVIEW_MISSING` (the first single-operator
 // Launch has no Astra review of this version), Launch stays on the card,
 // disabled, with that reason in plain words. The server is still the control:
@@ -11,16 +12,11 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { taskCorrectionPort } from '../../apps/web/src/assistant/locate.ts';
 import { SidebarCorrections } from '../../apps/web/src/views/correction-card.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
-import {
-  ABOUT,
-  CHECK_HOLDS_MS,
-  V1,
-  askFor,
-  mockPropose,
-  refusal,
-} from './sidebar-corrections-support.tsx';
+import { ABOUT, CHECK_HOLDS_MS, V1, askFor, refusal } from './sidebar-corrections-support.tsx';
+import { TASK_A } from './sidebar-corrections-support.tsx';
 import { tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
@@ -42,6 +38,10 @@ function alpha(api: Api) {
       if (api.mode === 403) return Promise.resolve(refusal('SCOPE_NOT_GRANTED', 403));
       const row = { key: 'single_operator_mode', value: api.mode, valueType: 'boolean' };
       return Promise.resolve(json({ ok: true, settings: [{ ...row, revision: 2 }] }));
+    }
+    if (path === '/live_correction/request') {
+      const detail = { correctionId: 'mock-correction-1', state: 'locating' };
+      return Promise.resolve(json({ recordId: 'mock-correction-1', revision: 1, detail }));
     }
     if (path === '/live_correction/decide') {
       return Promise.resolve(
@@ -72,7 +72,12 @@ function alpha(api: Api) {
 async function drawn(api: Api) {
   const { client, paths } = alpha(api);
   const view = await mount(
-    <SidebarCorrections client={client} propose={mockPropose().port} grantKey="alpha:ada:0" />,
+    <SidebarCorrections
+      client={client}
+      propose={taskCorrectionPort(client, TASK_A)}
+      grantKey="alpha:ada:0"
+      readsMode
+    />,
   );
   await askFor(view, ABOUT);
   await tick();

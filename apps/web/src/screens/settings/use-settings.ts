@@ -63,6 +63,7 @@ import {
   SESSION_CAPABILITIES,
   SETTINGS_READ,
   holds,
+  plainly,
   rowsInHand,
   settingOf,
 } from './reads.ts';
@@ -144,7 +145,8 @@ export function useSettings(
     prompt === null && failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
       ? failure.refusal.fixes.join(' ')
       : null;
-  const because = complaint ?? stepUp ?? failure?.because ?? null;
+  const plain = failure?.kind === 'failed' ? plainly(failure.refusal.code, failure.because) : null;
+  const because = complaint ?? stepUp ?? plain ?? failure?.because ?? null;
 
   const read = settings.state;
   const caps = capabilities.state;
