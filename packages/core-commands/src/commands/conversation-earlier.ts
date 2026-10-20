@@ -6,12 +6,11 @@
 // runner's request bytes, and none at or after the history cut (#1666).
 
 import { LOCAL_GPT_BODY_LIMIT, localGptAdapter } from '../../../core-connectors/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Asked } from './conversation-owner.ts';
 
 export const EARLIER_COUNT = 10;
 export const EARLIER_LIMIT = 8_000;
-
-type Asked = { readonly conversationId: string; readonly messageId: string };
 
 /** Whether the whole GPT request, as the adapter writes it, fits the runner's body limit. */
 const fits = (fields: Readonly<Record<string, string>>): boolean =>
@@ -44,13 +43,31 @@ interface EarlierRow {
   readonly author: string;
 }
 
+/**
+ * The earlier messages, or undefined when the session does not own the
+ * conversation (#1483). The owner is asked in the statement that reads the
+ * messages, and one statement reads one snapshot, so the owner cannot change
+ * between the check and the read; an owner changed first is refused. No row
+ * lock: the exchange reads this before it locks the conversation, so a read
+ * never waits behind a message write, a model pick or a purge.
+ */
 export async function earlierRows(
   tx: TenantQuery,
+  session: Session,
   asked: Asked,
   cut: string | null,
-): Promise<readonly EarlierRow[]> {
-  return await tx.query<EarlierRow>(
+): Promise<readonly EarlierRow[] | undefined> {
+  const rows = await tx.query<{
+    readonly role: string | null;
+    readonly body: string;
+    readonly author: string;
+  }>(
     `select role, body, author from (
+       select 1 as owned from conversations c
+         join conversation_messages a on a.business_id = c.business_id and a.conversation_id = c.id
+        where c.business_id = $1 and c.id = $2 and a.id = $3
+          and c.owner_actor_id = $6 and c.body_purged_at is null) owner
+     left join lateral (
        select m.role, m.body, m.created_at, m.id, m.author_actor_id::text as author
          from conversation_messages m
          join conversation_messages a
@@ -70,8 +87,10 @@ export async function earlierRows(
              where r.business_id = m.business_id and r.conversation_id = m.conversation_id
                and r.answers_message_id = m.id))
         order by m.created_at desc, m.id desc
-        limit $4) last
-      order by created_at, id`,
-    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT, cut],
+        limit $4) last on true
+      order by last.created_at, last.id`,
+    [tx.businessId, asked.conversationId, asked.messageId, EARLIER_COUNT, cut, session.actorId],
   );
+  if (rows.length === 0) return undefined;
+  return rows.flatMap(({ role, body, author }) => (role === null ? [] : [{ role, body, author }]));
 }

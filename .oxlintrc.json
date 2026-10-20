@@ -257,6 +257,12 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": [
+        "tests/api/a-conversations-owner-is-held-from-its-check-through-the-earlier-messages-read.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
       "files": ["tests/ci/staging-no-production-data-guard.test.ts"],
       "rules": {
         "no-await-in-loop": "off",
