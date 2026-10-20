@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a reopen from the status select lands in the unstarted state the task read lists first when two share a position, read back through the real command envelope"
+}
