@@ -2,9 +2,9 @@
 //
 // C35 (#2013, TR-P-1): while the pool's reviews are open the runner captures the agency's own
 // catalogued pages and nothing else. A review of a client's page, its capture approved and on
-// the queue, is refused by the fence: no request reaches the client's site, no browser opens,
-// no picture is stored and no width lands, and the lease is handed back failed with the
-// fence's code. The pool itself holds the configured site's pages only when that site is the
+// the queue, is refused by the fence while no closed review is recorded (#2018): no request
+// reaches the client's site, no browser opens, no picture is stored and no width lands, and the
+// lease is handed back failed with the fence's code. The pool itself holds the configured site's pages only when that site is the
 // business's own: a runner configured for a client's site captures none of them.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -71,7 +71,7 @@ describe.skipIf(serverUrl === undefined)('C35 the runner and a client’s page',
     const captured = await capturePass(w, { call, transport, browserAt });
 
     expect(captured).toStrictEqual([
-      { taskId: reviewed.taskId, outcome: 'CAPTURE_HOST_NOT_CATALOGUED' },
+      { taskId: reviewed.taskId, outcome: 'CAPTURE_POOL_REVIEWS_OPEN' },
     ]);
     expect(transport.asked).toStrictEqual([]);
     expect(opened).toStrictEqual([]);
@@ -82,7 +82,7 @@ describe.skipIf(serverUrl === undefined)('C35 the runner and a client’s page',
     const handback = call.sent.find((one) => one.verb === 'task.handback');
     expect(handback?.body).toMatchObject({
       outcome: 'failed',
-      report: { capture: 'CAPTURE_HOST_NOT_CATALOGUED' },
+      report: { capture: 'CAPTURE_POOL_REVIEWS_OPEN' },
     });
   }, 60_000);
 });

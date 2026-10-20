@@ -812,7 +812,9 @@ agent's. The gate is the installation's, so the grant counts only in the
 business that operates it (`ops.installation.operator_business_id`); the same
 key in another business on the installation is refused `SCOPE_NOT_GRANTED`.
 Each takes the installation's row lock before it checks that, so a refusal
-writes nothing.
+writes nothing. A closed review of the capture pool
+(`operations.record_capture_pool_review`, C35 #2018) is recorded the same
+way, under the same grant in the same business.
 
 ## Agent credentials (API-2)
 
