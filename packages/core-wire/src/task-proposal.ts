@@ -16,6 +16,18 @@
 // words after it, bad JSON or a value out of range gives no proposal, and the
 // body stays exactly as written. Nothing here writes: the person's click on the
 // drawn card is the only write (`apps/web/src/assistant/proposals.ts`).
+//
+// A third action, `site_change` (#1988, `site-plan.ts`), plays back a change
+// to one of the bound pages the reader is given, and reads as a create
+// carrying the plan.
+
+import {
+  planSection,
+  SITE_CHANGE_KEYS,
+  sitePlanOf,
+  type SitePageView,
+  type SitePlan,
+} from './site-plan.ts';
 
 export const PROPOSAL_TITLE_LIMIT = 200;
 export const PROPOSAL_DESCRIPTION_LIMIT = 4000;
@@ -33,6 +45,8 @@ export type TaskProposal = (
       readonly action: 'create';
       readonly title: string;
       readonly description: string | null;
+      /** A site change's plan (#1988): the description is its section. */
+      readonly site?: SitePlan;
     }
   | {
       readonly action: 'edit';
@@ -96,9 +110,23 @@ function parsed(json: string): unknown {
   }
 }
 
-function proposalOf(value: unknown): TaskProposal | null {
+/** A whole site change block on a bound page, as the create it asks for. */
+function siteChangeOf(
+  fields: Record<string, unknown>,
+  pages: readonly SitePageView[],
+): TaskProposal | null {
+  const { title, estimate } = fields;
+  if (Object.keys(fields).some((key) => !SITE_CHANGE_KEYS.has(key))) return null;
+  if (!titled(title) || !isMinutes(estimate)) return null;
+  const site = sitePlanOf(fields, pages);
+  if (site === null) return null;
+  return { action: 'create', title, description: planSection(site, estimate), estimate, site };
+}
+
+function proposalOf(value: unknown, pages: readonly SitePageView[]): TaskProposal | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const fields = value as Record<string, unknown>;
+  if (fields['action'] === 'site_change') return siteChangeOf(fields, pages);
   if (Object.keys(fields).some((key) => !KEYS.has(key))) return null;
   const { action, title, description } = fields;
   const plan = planOf(fields);
@@ -115,15 +143,19 @@ function proposalOf(value: unknown): TaskProposal | null {
   return null;
 }
 
-/** The reply's words and the proposal its closing block names, or the body as written. */
-export function readProposal(body: string): ProposalRead {
+/**
+ * The reply's words and the proposal its closing block names, or the body as
+ * written. `pages` are the bound pages the model was given: a site change
+ * naming any other is no proposal.
+ */
+export function readProposal(body: string, pages: readonly SitePageView[] = []): ProposalRead {
   const none = { words: body, proposal: null };
   const closing = CLOSING.exec(body);
   if (closing === null) return none;
   const words = body.slice(0, closing.index);
   // A second block anywhere before the closing one makes neither a proposal.
   if (OPENING.test(words)) return none;
-  const proposal = proposalOf(parsed(closing[1] ?? ''));
+  const proposal = proposalOf(parsed(closing[1] ?? ''), pages);
   return proposal === null ? none : { words: words.trimEnd(), proposal };
 }
 

@@ -8,6 +8,8 @@
 // A reservation's attempt view (OW-108.1) moved here for the same cap.
 // Types only, like `views.ts`.
 
+import type { SitePageView } from './site-plan.ts';
+
 export interface TaskLedgerView {
   /** Open one first, then the closed ones, newest first. Empty before any approval. */
   readonly envelopes: readonly EnvelopeView[];
@@ -152,6 +154,8 @@ export interface ConversationReadResult {
   readonly wrapUp: WrapUpView | null;
   /** Every version, newest first. */
   readonly wrapUpHistory: readonly { readonly version: number; readonly writtenAt: string }[];
+  /** The bound pages a site change card may name (#1988), as the reader's `run:write` reaches them now. */
+  readonly sitePages?: readonly SitePageView[];
 }
 
 /** One gate waiting on a person: `gate.pending`'s row (MP-6-1). */
