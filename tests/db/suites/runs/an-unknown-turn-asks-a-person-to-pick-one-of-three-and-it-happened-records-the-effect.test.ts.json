@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1738 (U103's AW-10 outcomes on the new runner): an agent turn whose outcome nobody can prove is the story the Agent pane asks the owner to pick one of three outcomes on; 'it happened' records the call as the effect at its maximum with the owner's name and the worker makes no second turn, and 'nothing happened' releases the hold and the agentRunner resumes the work to review."
+}
