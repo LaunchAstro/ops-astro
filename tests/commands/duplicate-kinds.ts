@@ -262,6 +262,9 @@ export const DECLARED: Readonly<
   'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
   'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
   'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
+  // C57: a change request is filed from a client pin and decided; a duplicate carries none.
+  'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
+  'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
