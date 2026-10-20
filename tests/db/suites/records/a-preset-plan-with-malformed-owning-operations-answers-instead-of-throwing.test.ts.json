@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a preset plan whose owning operations are an object is answered by the read, not thrown"
+}
