@@ -17,6 +17,7 @@ import {
   type OpenRouteId,
   type ParamsOf,
   type RouteMatch,
+  pathTo,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
 import { tabRollupFloor } from './data/rollup-floor.ts';
@@ -191,6 +192,9 @@ export const SCREENS: {
       client={context.client}
       grantKey={context.grantKey}
       taskKey={context.params.key}
+      onOpenReview={(review: string) => {
+        context.navigate(pathTo('agency:review-workspace', { review }));
+      }}
       {...(context.taskPanel === undefined
         ? {}
         : {

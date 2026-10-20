@@ -25,6 +25,7 @@ import { pathTo } from '../../routes.ts';
 import type { TaskPanelHost } from '../task/panel-host.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { LiveFrame } from '../projects/review-live-frame.tsx';
+import { CaptureAgain } from './CaptureAgain.tsx';
 import { CapturePane } from './CapturePane.tsx';
 import { ChangeRequestDock } from './ChangeRequests.tsx';
 import { PinForm } from './PinForm.tsx';
@@ -237,6 +238,7 @@ function Workspace(props: WorkspaceProps): ReactElement {
   return (
     <>
       <RevisionBar review={props.review} />
+      <CaptureAgain client={props.client} review={props.review} onAsked={props.reload} />
       {WIDTHS.map(({ width, name }, at) => (
         <AtWidth
           key={width}

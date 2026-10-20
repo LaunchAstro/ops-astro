@@ -25,28 +25,29 @@ function clientWith(read: ReviewReadResult, lose: (path: string, at: number) => 
     origin: '',
     businessKey: 'alpha',
     signedIn: true,
-    fetch: async (url, init) => {
-      const path = String(url);
-      const body = JSON.parse(String(init?.body ?? '{}'));
-      if (path.endsWith('/review/read')) {
-        sent.push({ path: 'read', body });
-        return json(read);
-      }
-      if (path.endsWith('/review/picture')) return json(pictureOf(body.pictureId));
-      const name = path.endsWith('/review/open')
-        ? 'open'
-        : path.endsWith('/review/capture')
-          ? 'capture'
-          : undefined;
-      if (name === undefined) throw new Error(`Unexpected ${path}`);
-      sent.push({ path: name, body });
-      if (lose(name, sent.filter((each) => each.path === name).length)) {
-        throw new TypeError('network down');
-      }
-      return name === 'open'
-        ? json({ recordId: REVIEW_ID, revision: 3, detail: { revisionId: NEXT, number: 3 } })
-        : json({ recordId: REVIEW_ID, revision: 3, detail: { widths: [1480, 390] } });
-    },
+    fetch: (url, init) =>
+      Promise.resolve().then(() => {
+        const path = String(url);
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        if (path.endsWith('/review/read')) {
+          sent.push({ path: 'read', body });
+          return json(read);
+        }
+        if (path.endsWith('/review/picture')) return json(pictureOf(body.pictureId));
+        const name = path.endsWith('/review/open')
+          ? 'open'
+          : path.endsWith('/review/capture')
+            ? 'capture'
+            : undefined;
+        if (name === undefined) throw new Error(`Unexpected ${path}`);
+        sent.push({ path: name, body });
+        if (lose(name, sent.filter((each) => each.path === name).length)) {
+          throw new TypeError('network down');
+        }
+        return name === 'open'
+          ? json({ recordId: REVIEW_ID, revision: 3, detail: { revisionId: NEXT, number: 3 } })
+          : json({ recordId: REVIEW_ID, revision: 3, detail: { widths: [1480, 390] } });
+      }),
   });
   return { client, sent };
 }
@@ -66,10 +67,13 @@ async function workspace(client: OperationsClient) {
 it('a revision with no capture asked asks its own captures', async () => {
   const after = { ...REVIEW.review.after!, captures: [] };
   const fresh = { ...REVIEW, review: { ...REVIEW.review, after, revisions: [after] } };
-  const { client, sent } = clientWith({ ...fresh, review: { ...fresh.review, before: null } }, () => false);
+  const { client, sent } = clientWith(
+    { ...fresh, review: { ...fresh.review, before: null } },
+    () => false,
+  );
   const view = await workspace(client);
   const before = reads(sent);
-  await view.click('[data-capture-again]');
+  await view.click('[data-capture-again] button');
   await tick();
   expect(writes(sent)).toStrictEqual([
     { path: 'capture', body: { revisionId: after.revisionId, operationId: expect.any(String) } },
@@ -81,7 +85,7 @@ it('a revision asked already opens the next revision of the same page and asks i
   const { client, sent } = clientWith(REVIEW, () => false);
   const view = await workspace(client);
   const before = reads(sent);
-  await view.click('[data-capture-again]');
+  await view.click('[data-capture-again] button');
   await tick();
   const [open, capture] = writes(sent);
   expect(writes(sent)).toHaveLength(2);
@@ -101,9 +105,9 @@ it('a revision asked already opens the next revision of the same page and asks i
 it('a retry after a lost capture answer resends the same open and capture attempts', async () => {
   const { client, sent } = clientWith(REVIEW, (name, at) => name === 'capture' && at === 1);
   const view = await workspace(client);
-  await view.click('[data-capture-again]');
+  await view.click('[data-capture-again] button');
   await tick();
-  await view.click('[data-capture-again]');
+  await view.click('[data-capture-again] button');
   await tick();
   const [open1, capture1, open2, capture2] = writes(sent);
   expect(writes(sent)).toHaveLength(4);

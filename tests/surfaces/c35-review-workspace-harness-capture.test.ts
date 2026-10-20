@@ -88,6 +88,8 @@ async function workspaceDrawn(at: At, width: number, theme: string): Promise<voi
       'Anchor lost',
     );
     expect(await shown.locator('[data-difference="1480"] ins').textContent()).toBe('e-');
+    // PROTO-GAPS row 4: the revision under review was asked, so the press opens the next one.
+    expect(await shown.locator('[data-capture-again] button').textContent()).toBe('Capture again');
     expect(await shown.locator('[data-screen="review-workspace"] [style]').count()).toBe(0);
   } finally {
     await side.context.close();
