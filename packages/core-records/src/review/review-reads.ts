@@ -65,24 +65,7 @@ export async function readCoveredReview(
     [tx.businessId, ...coveringParameters(covering), reviewId],
   );
   if (review === undefined) return undefined;
-  const revisions = await tx.query<{
-    readonly id: string;
-    readonly number: number;
-    readonly digest: string;
-  }>(
-    `select id, number, digest from public.review_revisions
-      where business_id = $1 and review_id = $2 order by number`,
-    [tx.businessId, reviewId],
-  );
-  const captures = await capturesOf(tx, reviewId);
-  const decisions = await decisionsOf(tx, reviewId);
-  const views = revisions.map((revision) => ({
-    revisionId: revision.id,
-    number: revision.number,
-    digest: revision.digest,
-    captures: captures.get(revision.id) ?? [],
-    decision: decisions.get(revision.id) ?? null,
-  }));
+  const views = await revisionsOf(tx, reviewId);
   const held = { reviewId, taskId: review.task_id };
   return {
     reviewId,
@@ -97,6 +80,28 @@ export async function readCoveredReview(
     pins: await readPins(tx, held),
     ...(await readCarried(tx, held, views.at(-1) ?? null)),
   };
+}
+
+/** The review's revisions in number order, each with its captures and its decision. */
+async function revisionsOf(tx: TenantQuery, reviewId: string): Promise<RevisionView[]> {
+  const revisions = await tx.query<{
+    readonly id: string;
+    readonly number: number;
+    readonly digest: string;
+  }>(
+    `select id, number, digest from public.review_revisions
+      where business_id = $1 and review_id = $2 order by number`,
+    [tx.businessId, reviewId],
+  );
+  const captures = await capturesOf(tx, reviewId);
+  const decisions = await decisionsOf(tx, reviewId);
+  return revisions.map((revision) => ({
+    revisionId: revision.id,
+    number: revision.number,
+    digest: revision.digest,
+    captures: captures.get(revision.id) ?? [],
+    decision: decisions.get(revision.id) ?? null,
+  }));
 }
 
 /** Every capture of the review's revisions, widest first, by the revision it is of. */
