@@ -19,6 +19,7 @@ it('Revoke delegation waits for confirmation before sending', async () => {
     fetch: (input) => {
       const path = String(input);
       if (path.endsWith('/access/read')) return Promise.resolve(json(access([ADA, MIA])));
+      if (path.endsWith('/session/capabilities')) return Promise.resolve(json({ grants: [] }));
       sent.push(path);
       return Promise.resolve(json({ recordId: 'r', revision: 1 }));
     },

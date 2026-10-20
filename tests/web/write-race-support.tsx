@@ -48,6 +48,8 @@ export function raceServer(
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const path = pathOf(String(url));
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+    // Settings > Access reads what the session holds; no extra section is drawn.
+    if (path.endsWith('/session/capabilities')) return Promise.resolve(json({ grants: [] }));
     if (path.endsWith('/read')) {
       const read = apply(path, body);
       return Promise.resolve(json(read.body, read.status));

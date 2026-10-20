@@ -17,9 +17,12 @@
 // `access.revoke` ends one grant, by the id the read lists, once confirmed;
 // `access.end` ends a person's access in one act (their login, every session
 // and their grants), sent only once it is confirmed; `delegation.revoke` ends
-// an agent's, by its delegation. After each, the list is read again: the
-// preview on the page is always the server's, never this screen's guess.
-// A refusal is shown in the server's words and changes nothing on the page.
+// an agent's, by its delegation, also once confirmed. After each, the list is
+// read again: the preview on the page is always the server's, never this
+// screen's guess. A refusal is shown in the server's words and changes nothing
+// on the page. The last of these writes whose answer was lost goes again under
+// its operation id only when the same act is pressed again, so the server
+// replays what it stored; any other act, or a known answer, ends it.
 //
 // C39-T's: "Invite a team member" sends `invitation.create` under
 // `access:share`, drawn only when `session.capabilities` says the session
@@ -37,17 +40,24 @@
 // (`access/credential.tsx`). A business or person switch answers that read
 // loading, so the section goes and its secret and what it made go with it.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type { SubmitResult } from '../records/submit.ts';
+import { settle } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type {
   AccessReadResult,
   CapabilitiesResult,
   PersonView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import {
+  ConfirmEnd,
+  ConfirmRevokeDelegation,
+  ConfirmRevokeGrant,
+  GiveAccess,
+  type Revoking,
+} from './access/acts.tsx';
 import { AgentCredential, holdsCredentialWrite } from './access/credential.tsx';
 import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx';
 import { Invitations, type InvitationAct } from './access/invitations.tsx';
@@ -60,21 +70,36 @@ export interface AccessScreenProps {
   readonly grantKey: string;
 }
 
-const revokeWith =
-  (client: OperationsClient, act: Act) =>
-  (agent: AccessReadResult['agents'][number]): void => {
-    void act(
-      () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
-      `Revoked the delegation for ${agent.purpose}.`,
-    );
+type Agent = AccessReadResult['agents'][number];
+
+type ListCommand =
+  'delegation.revoke' | 'access.grant' | 'access.end' | 'access.revoke' | 'client.set_privacy';
+
+/** Sends one list write: under the lost write's id when it is the same act, else a new one. */
+type Send = (
+  command: ListCommand,
+  body: Readonly<Record<string, unknown>>,
+) => Promise<SubmitResult>;
+
+/** The list writes' sender, holding the last write whose answer was lost. */
+function useHeldSend(client: OperationsClient): Send {
+  const held = useRef<{ readonly act: string; readonly id: string } | null>(null);
+  return async (command, body) => {
+    const words = JSON.stringify([command, body]);
+    const id = held.current?.act === words ? held.current.id : client.newOperationId();
+    held.current = { act: words, id };
+    const answer = await client.mutate(command, body, { operationId: id });
+    if (settle(answer).kind !== 'unknown') held.current = null;
+    return answer;
   };
+}
 
 const giveWith =
-  (client: OperationsClient, act: Act) =>
+  (send: Send, act: Act) =>
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    void act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    void act(() => send('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
 
 const inviteWith =
@@ -96,28 +121,49 @@ const actOnInvitationWith =
   };
 
 /**
- * The two acts that wait on a confirmation before anything is sent: ending a
- * person's access (`access.end`) and revoking one grant (`access.revoke`).
+ * The three acts that wait on a confirmation before anything is sent: ending a
+ * person's access (`access.end`), revoking one grant (`access.revoke`) and
+ * revoking an agent's delegation (`delegation.revoke`).
  */
-function usePending(client: OperationsClient, act: Act) {
+function usePending(send: Send, act: Act) {
   const [ending, setEnding] = useState<PersonView | null>(null);
   const [revoking, setRevoking] = useState<Revoking | null>(null);
+  const [delegation, setDelegation] = useState<Agent | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
     void act(
-      () => client.mutate('access.end', { holderId: person.personId }),
+      () => send('access.end', { holderId: person.personId }),
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
   const revokeGrant = ({ person, grant }: Revoking): void => {
     setRevoking(null);
     void act(
-      () => client.mutate('access.revoke', { grantId: grant.grantId }),
+      () => send('access.revoke', { grantId: grant.grantId }),
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
   };
+  const revokeDelegation = (agent: Agent): void => {
+    setDelegation(null);
+    void act(
+      () => send('delegation.revoke', { delegationId: agent.delegationId }),
+      `Revoked the delegation for ${agent.purpose}.`,
+    );
+  };
+  // A confirmation whose delegation a reread no longer lists closes.
+  const listed = (result: AccessReadResult): Agent | null =>
+    result.agents.some((agent) => agent.delegationId === delegation?.delegationId)
+      ? delegation
+      : null;
   const confirmations = (result: AccessReadResult): ReactElement => (
     <>
+      {listed(result) === null || delegation === null ? null : (
+        <ConfirmRevokeDelegation
+          agent={delegation}
+          onKeep={() => setDelegation(null)}
+          onRevoke={() => revokeDelegation(delegation)}
+        />
+      )}
       {revoking === null ? null : (
         <ConfirmRevokeGrant
           revoking={revoking}
@@ -137,7 +183,7 @@ function usePending(client: OperationsClient, act: Act) {
   );
   const onRevokeGrant = (person: PersonView, grant: Revoking['grant']): void =>
     setRevoking({ person, grant });
-  return { confirmations, onEnd: setEnding, onRevokeGrant };
+  return { confirmations, onEnd: setEnding, onRevokeGrant, onRevokeDelegation: setDelegation };
 }
 
 function AccessLists(props: {
@@ -148,7 +194,8 @@ function AccessLists(props: {
   readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
-  const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
+  const send = useHeldSend(client);
+  const { confirmations, onEnd, onRevokeGrant, onRevokeDelegation } = usePending(send, act);
   const clients = result.clientRecords;
   const lists = { clients, onEnd, onRevokeGrant };
   return (
@@ -161,21 +208,18 @@ function AccessLists(props: {
           {confirmations(result)}
           <People id="team" title="Team" people={result.team} {...lists} />
           <People id="clients" title="Clients" people={result.clients} {...lists} />
-          <Agents result={result} onRevoke={revokeWith(client, act)} />
+          <Agents result={result} onRevoke={onRevokeDelegation} />
         </div>
       </section>
       <section className="sec">
-        <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+        <GiveAccess result={result} busy={props.busy} onGive={giveWith(send, act)} />
       </section>
       <section className="sec">
         <ClientPrivacy
           result={result}
           busy={props.busy}
           onSet={(body, name) =>
-            act(
-              () => client.mutate('client.set_privacy', body),
-              `Saved ${name}'s privacy settings.`,
-            )
+            act(() => send('client.set_privacy', body), `Saved ${name}'s privacy settings.`)
           }
         />
       </section>
