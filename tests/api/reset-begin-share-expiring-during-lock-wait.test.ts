@@ -62,6 +62,19 @@ async function grant(
     return answer.value;
   });
 }
+/** Whether a session is seen waiting on an advisory lock within a second. */
+async function advisoryLockWaited() {
+  for (let i = 0; i < 100; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    const [row] = await db.admin.execute<{ waiting: boolean }>(`select exists (
+        select 1 from pg_locks where locktype = 'advisory' and not granted
+        and database = (select oid from pg_database where datname = current_database())) as waiting`);
+    if (row?.waiting) return true;
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    await delay(10);
+  }
+  return false;
+}
 async function shareExpiringDuringTheWait() {
   const c = await client();
   const expiresAt = new Date(Date.now() + 2200);
@@ -97,20 +110,7 @@ async function shareExpiringDuringTheWait() {
     providerSentAt: sentAt,
   });
   try {
-    let waiting = false;
-    for (let i = 0; i < 100; i++) {
-      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-      const [row] = await db.admin.execute<{ waiting: boolean }>(`select exists (
-        select 1 from pg_locks where locktype = 'advisory' and not granted
-        and database = (select oid from pg_database where datname = current_database())) as waiting`);
-      if (row?.waiting) {
-        waiting = true;
-        break;
-      }
-      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-      await delay(10);
-    }
-    expect(waiting).toBe(true);
+    expect(await advisoryLockWaited()).toBe(true);
     await delay(Math.max(0, expiresAt.getTime() - Date.now()) + 100);
   } finally {
     unlock();
