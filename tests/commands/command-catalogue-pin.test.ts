@@ -378,6 +378,29 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-commands.ts', async (original) => ({
+  ...(await original<object>()),
+  openReview: recorder('openReview'),
+  askReviewCapture: recorder('askReviewCapture'),
+}));
+vi.mock('../../packages/core-commands/src/commands/review-captures.ts', async (original) => ({
+  ...(await original<object>()),
+  claimCaptureAsPerson: recorder('claimCaptureAsPerson'),
+  landCaptureAsPerson: recorder('landCaptureAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/review-change.ts', async (original) => ({
+  ...(await original<object>()),
+  proposeChange: recorder('proposeChange'),
+  decideChange: recorder('decideChange'),
+}));
+vi.mock('../../packages/core-commands/src/commands/review-change-task.ts', async (original) => ({
+  ...(await original<object>()),
+  makeChangeTaskAsPerson: recorder('makeChangeTaskAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
+  ...(await original<object>()),
+  pinComment: recorder('pinComment'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -465,6 +488,9 @@ const PINNED_RUNTIME_SHAPED = {
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
   'run.end': 'leaseId',
+  'review.capture_claim': 'leaseId',
+  'review.capture_land': 'leaseId',
+  'review.make_change_task': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -513,6 +539,14 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'live_correction.record_review': ['correctionId'],
   'live_correction.request': ['taskId'],
   'live_correction.revert': ['correctionId'],
+  'review.capture': ['revisionId'],
+  'review.capture_claim': ['leaseId', 'revisionId'],
+  'review.capture_land': ['leaseId', 'revisionId'],
+  'review.decide_change': ['changeRequestId'],
+  'review.make_change_task': ['leaseId', 'changeRequestId'],
+  'review.open': ['taskId'],
+  'review.pin_comment': ['revisionId'],
+  'review.propose_change': ['commentId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -670,6 +704,16 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.set_data_class',
   'privacy.set_overseas_service',
   'record.create',
+  'review.capture',
+  'review.capture_claim',
+  'review.capture_land',
+  'review.decide_change',
+  'review.make_change_task',
+  'review.open',
+  'review.picture',
+  'review.pin_comment',
+  'review.propose_change',
+  'review.read',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -731,6 +775,13 @@ const PINNED_AGENT_SURFACE = [
   'live_correction.request',
   'model.call',
   'onboarding.step_result',
+  'review.capture',
+  'review.capture_claim',
+  'review.capture_land',
+  'review.make_change_task',
+  'review.open',
+  'review.pin_comment',
+  'review.propose_change',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1011,6 +1062,44 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'settings.set_single_operator', operationId: 'op', value: true },
   { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
+    command: 'review.open',
+    operationId: 'op',
+    taskId: 't',
+    pageUrl: 'u',
+    path: 'p',
+    sourceRevision: 'r',
+  },
+  { command: 'review.capture', operationId: 'op', revisionId: 'v' },
+  { command: 'review.capture_claim', operationId: 'op', leaseId: 'l', fence: 1, revisionId: 'v' },
+  {
+    command: 'review.capture_land',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 1,
+    revisionId: 'v',
+    width: 390,
+    picture: 'AA==',
+    observation: {},
+  },
+  {
+    command: 'review.pin_comment',
+    operationId: 'op',
+    revisionId: 'v',
+    width: 1480,
+    selector: [],
+    body: 'b',
+    audience: 'internal',
+  },
+  { command: 'review.propose_change', operationId: 'op', commentId: 'c', text: 't' },
+  { command: 'review.decide_change', operationId: 'op', changeRequestId: 'c', decision: 'approve' },
+  {
+    command: 'review.make_change_task',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 1,
+    changeRequestId: 'c',
+  },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -1212,6 +1301,14 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'live_correction.revert': ['askLiveRevert', 'request'],
   'live_correction.record_review': ['recordReview', 'request'],
   'settings.set_single_operator': ['setSingleOperator', 'request'],
+  'review.open': ['openReview', 'request'],
+  'review.capture': ['askReviewCapture', 'request'],
+  'review.capture_claim': ['claimCaptureAsPerson', 'request'],
+  'review.capture_land': ['landCaptureAsPerson', 'request'],
+  'review.pin_comment': ['pinComment', 'request'],
+  'review.propose_change': ['proposeChange', 'request'],
+  'review.decide_change': ['decideChange', 'request'],
+  'review.make_change_task': ['makeChangeTaskAsPerson', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
@@ -1311,13 +1408,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-nine from an expected revision', () => {
+  it('exempts the same one hundred and forty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-seven, three of them before a pickup', () => {
+  it('lets an agent reach the same twenty-eight, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

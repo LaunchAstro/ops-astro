@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C57: the change-request table refuses any decided row without its deciding person and time, through the application role's granted UPDATE (#2122 round 1)."
+}

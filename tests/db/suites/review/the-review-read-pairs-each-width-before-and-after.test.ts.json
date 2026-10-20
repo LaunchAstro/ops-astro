@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 before and after: review.read pairs the latest revision's captures with the previous revision's at both widths; a first revision has no before."
+}
