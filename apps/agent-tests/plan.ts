@@ -15,7 +15,7 @@
 // file. The plan's usage limit ends a case waiting on the plan's allowance.
 
 import { closeSync, constants, fstatSync, mkdtempSync, openSync, readFileSync } from 'node:fs';
-import { rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -128,12 +128,34 @@ export function ownerStarted(home: string, set: string): string | undefined {
     (line as Record<string, unknown>)['set'] === set &&
     (line as Record<string, unknown>)['date'] === today();
   if (!fits) return `the owner has not started this run: the start line is not for ${set} today`;
-  try {
-    unlinkSync(file);
-  } catch {
+  if (!claimed(file, text))
     return 'the owner has not started this run: the start line was already used';
-  }
   return undefined;
+}
+
+/**
+ * Takes away the start line judged, and only that one. It is renamed aside at
+ * once, so one run alone holds it, and kept only when its words are still
+ * the ones judged. A line written since, say for another set, is put back,
+ * unless a newer one is already there.
+ */
+function claimed(file: string, text: string): boolean {
+  const aside = `${file}.${String(process.pid)}`;
+  try {
+    renameSync(file, aside);
+  } catch {
+    return false;
+  }
+  const same = ownersLine(aside) === text;
+  if (!same) {
+    try {
+      linkSync(aside, file);
+    } catch {
+      // A newer line is there already: it stays, and this older one goes.
+    }
+  }
+  unlinkSync(aside);
+  return same;
 }
 
 /** A set on the owner's plan: custody started on the plan's token file and origin, then stopped. */
