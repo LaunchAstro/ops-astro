@@ -20,13 +20,11 @@
 // replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
 // names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
 // `none`. Each business passes on its own, again each `SWEEP_INTERVAL_MS`
-// after it succeeds. A request waits on the pass in flight, since an instance
-// may be frozen once it answers, but for at most `RECOVERY_WAIT_MS`: the pass
-// runs on a connection of its own, so a pass stalled on a lock holds neither
-// the runtime connection nor any request past that bound (#1411). A request
-// served beside a pass is what another instance's request already is;
-// instances that pass at once meet on the pass's own row locks. `server.ts`
-// runs the same pass only where there is no function.
+// after it succeeds. A request waits on the pass in flight until it ends: an
+// instance may be frozen once it answers, and a pass frozen in a transaction
+// keeps its row locks (#2240). So a lock wait past `RECOVERY_WAIT_MS` rolls the
+// pass's transaction back, and the pass runs on a connection of its own (#1411).
+// `server.ts` runs the same pass only where there is no function.
 //
 // **Every session closes once idle (#1530).** The runtime pool, the pass's,
 // the outbox and the lookup login keep no session state, and each closes a
@@ -65,6 +63,7 @@ import {
   connect,
   connectAsAdmin,
   connectOutbox,
+  type Database,
   RUNTIME_IDLE_SECONDS,
 } from '../../packages/core-records/src/index.ts';
 import {
@@ -160,16 +159,18 @@ async function answered(
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
-/** The longest a request waits on the reconciliation pass in flight. */
+/** The longest one statement of the reconciliation pass waits on a lock. */
 export const RECOVERY_WAIT_MS = 2_000;
 
-/** Wait for `work` or `ms`, whichever ends first; the timer keeps nothing running. */
-async function within(work: Promise<void>, ms: number): Promise<void> {
-  const bound = new Promise<void>((resolve) => {
-    setTimeout(resolve, ms).unref();
-  });
-  await Promise.race([work, bound]);
-}
+/** `database`, its transactions rolled back once a lock wait passes `ms`. */
+const lockWaitsWithin = (database: Database, ms: number): Database => ({
+  ...database,
+  withBusiness: async (businessId, run) =>
+    await database.withBusiness(businessId, async (tx) => {
+      await tx.query(`select set_config('lock_timeout', $1, true)`, [`${String(ms)}ms`]);
+      return await run(tx);
+    }),
+});
 
 /** The most instances the limits split across with at least one of each. */
 const INSTANCES_MOST = Math.min(
@@ -210,7 +211,7 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request while it runs, each for up to `RECOVERY_WAIT_MS`.
+ * awaited by every request to its end, each lock wait bounded by `RECOVERY_WAIT_MS`.
  * It opens its own connection at its first statement, so a pass waiting on a
  * lock leaves the runtime one to the requests. A business passes on its own, so a key
  * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
@@ -228,7 +229,7 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  const database = connect(databaseUrl, { source: 'runtime' });
+  const database = lockWaitsWithin(connect(databaseUrl, { source: 'runtime' }), RECOVERY_WAIT_MS);
   const due = new Map<string, number>();
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
@@ -247,7 +248,6 @@ function recoveryPass(
       else console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
-  // Every request waits on the pass in flight, until it ends or its bound passes.
   return async (): Promise<void> => {
     const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
     if (running === undefined && owed.length > 0) {
@@ -255,7 +255,7 @@ function recoveryPass(
         running = undefined;
       });
     }
-    if (running !== undefined) await within(running, RECOVERY_WAIT_MS);
+    if (running !== undefined) await running;
   };
 }
 

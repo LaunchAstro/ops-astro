@@ -388,9 +388,16 @@ not "Reconnecting" (where hosted pages get a live channel is #1242). It owns rec
 before a request it runs the reconciliation pass for each business
 `RECOVERY_BUSINESS_KEYS` names, which a named environment (`OPS_ENVIRONMENT`)
 must set, if only to `none`. The pass runs on a connection of its own, and a
-request waits on the pass in flight for at most `RECOVERY_WAIT_MS` (2 s), so a
-pass stalled on a lock holds no request past that
+request waits on the pass in flight until it ends, since an instance may be
+frozen once it answers and a pass frozen in its transaction holds its row locks
+(#2240,
+`tests/api/the-hosted-function-answers-only-once-its-recovery-pass-holds-no-transaction.test.ts`).
+Each of the pass's statements waits at most `RECOVERY_WAIT_MS` (2 s) on a lock
+and then rolls its transaction back, so a pass stalled on a lock holds no
+request much past that
 (`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`).
+The function's logins end a transaction left idle 60 s
+(`idle_in_transaction_session_timeout`, set by `scripts/ops/staging-logins.ts`).
 Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a
 migrate window drains
 (`tests/api/the-hosted-functions-database-sessions-close-once-idle.test.ts`). It has no admin login. It reads the business key

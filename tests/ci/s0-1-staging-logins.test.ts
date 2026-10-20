@@ -240,6 +240,20 @@ const existing = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+describe('S0-1 staging logins: a transaction left idle on a Vercel login ends (#2240)', () => {
+  it("sets each Vercel login to end a transaction idle 60 s, and leaves the M5's session logins alone", () => {
+    for (const step of ['before-reset', 'after-reset'] as const) {
+      const addresses = loginAddresses(admin(STAGING), STAGING, step, () => 'pw');
+      const statements = statementsFor(step, addresses);
+      for (const { login } of addresses) {
+        const guard = `alter role ${login.role} set idle_in_transaction_session_timeout = '60s'`;
+        if (login.port === 6543) expect(statements).toContain(guard);
+        else expect(statements).not.toContain(guard);
+      }
+    }
+  });
+});
+
 describe('S0-1 staging logins: a login already there with more than its one group is refused', () => {
   it('passes a login holding its own group only, or no login yet', () => {
     expect(loginsBeyondTheirGroup([existing()])).toBeUndefined();
