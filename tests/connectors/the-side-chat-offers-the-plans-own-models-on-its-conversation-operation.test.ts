@@ -40,7 +40,7 @@ const carried = (routes: readonly object[]): Record<string, string> => ({
 });
 
 // oxlint-disable-next-line max-lines-per-function -- the list, the route, the catalogue and the M5's check
-describe('#2175 the plan models in the side chat', () => {
+describe('the plan models in the side chat', () => {
   it('lists exactly the route’s admit list, cloud, unpriced and for internal work only', () => {
     const plan = CONVERSATION_MODELS.filter((model) => model.provider === CHATGPT_PLAN_PROVIDER);
     expect(plan.map((model) => model.id)).toStrictEqual([...CHATGPT_PLAN_MODELS]);

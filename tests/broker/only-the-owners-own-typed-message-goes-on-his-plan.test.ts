@@ -133,7 +133,7 @@ interface Read {
 }
 
 // oxlint-disable-next-line max-lines-per-function -- one world, P4 each way and the plan's words
-describe.skipIf(serverUrl === undefined)("#2175 the owner's typed message on his plan", () => {
+describe.skipIf(serverUrl === undefined)("the owner's typed message on his plan", () => {
   let w: ConversationWorld;
   let custody: PlanCustody;
   let broker: Omit<Broker, 'audit'>;
