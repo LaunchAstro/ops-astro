@@ -14,6 +14,7 @@ import type { Caller } from './cast.ts';
 import type { Answer } from './world.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { makeTaskBody } from './c57b-bodies.ts';
+import { decisionBody } from './c35-x-seeds.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -99,23 +100,8 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   if (name === 'review.propose_change' || name === 'review.decide_change') {
     return await changeBody(context, name, detail['revisionId']);
   }
-  if (name === 'review.record_astra_review') {
-    return {
-      body: {
-        reviewId: detail['reviewId'],
-        digest: detail['digest'],
-        verdict: 'approve',
-        review: 'Astra: as asked',
-      },
-    };
-  }
-  if (name === 'review.decide') {
-    // The admin decides a revision another member wrote: their own is R5's case alone.
-    if (context.reviseAsAnother === undefined) {
-      return { exception: 'this harness writes no second revision (C35-X)' };
-    }
-    const next = await context.reviseAsAnother(open.body);
-    return { body: { reviewId: detail['reviewId'], digest: next.digest, response: 'approve' } };
+  if (name === 'review.decide' || name === 'review.record_astra_review') {
+    return await decisionBody(name, context, open.body, detail);
   }
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }

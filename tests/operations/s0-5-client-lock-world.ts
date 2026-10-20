@@ -138,15 +138,11 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
         join public.live_corrections c on c.business_id = t.business_id and c.id = t.correction_id
         group by c.task_id`,
       `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
-        from public.review_revisions t
-        join public.reviews r on r.business_id = t.business_id and r.id = t.review_id
-        group by r.task_id`,
-      `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
         from public.review_captures t
         join public.review_revisions v on v.business_id = t.business_id and v.id = t.revision_id
         join public.reviews r on r.business_id = v.business_id and r.id = v.review_id
         group by r.task_id`,
-      ...['review_decisions', 'review_astra_reviews'].map(
+      ...['review_revisions', 'review_decisions', 'review_astra_reviews'].map(
         (table) => `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text))
           from public.${table} t
           join public.reviews r on r.business_id = t.business_id and r.id = t.review_id
