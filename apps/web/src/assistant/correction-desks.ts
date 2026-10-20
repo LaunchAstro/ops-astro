@@ -26,6 +26,8 @@ export interface Correction {
   readonly reason: string | null;
   /** The last read's or decision's refusal, in the server's words. */
   readonly refusal: string | null;
+  /** That refusal was a Launch refused for a missing Astra review: Launch is held with it. */
+  readonly launchHeld: boolean;
   /** Its receipts, newest first, once a person opened them; null until then. */
   readonly receipts: readonly CorrectionReceiptView[] | null;
 }

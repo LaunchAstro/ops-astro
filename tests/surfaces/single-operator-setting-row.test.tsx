@@ -27,6 +27,36 @@ interface World {
   readonly at: string[];
 }
 
+const SECOND_OPERATOR = {
+  refused: true,
+  code: 'SINGLE_OPERATOR_REFUSED',
+  names: ['value'],
+  fixes: ['Single-operator mode is on only while the business has one operator.'],
+};
+
+/** The mode's row as `settings.read` answers it. */
+const modeRow = (state: World): Record<string, unknown> => ({
+  key: 'single_operator_mode',
+  value: state.value,
+  valueType: 'boolean',
+  updatedAt: '2026-10-18T05:00:00.000Z',
+  updatedByActorId: 'actor-ada',
+  revision: state.revision,
+});
+
+/** `settings.set_single_operator` as the server answers it: written, or refused. */
+function switched(state: World, body: Record<string, unknown>): Response {
+  state.writes.push(body);
+  if (state.next === 'second-operator') return json(SECOND_OPERATOR, 409);
+  state.value = body['value'] === true;
+  state.revision += 1;
+  return json({
+    recordId: 'single-operator',
+    revision: state.revision,
+    detail: { value: state.value, revision: state.revision },
+  });
+}
+
 function world(start: Partial<World> = {}) {
   const legacy = fourEyesWorld({ value: 500, revision: 7 });
   const state: World = {
@@ -38,53 +68,17 @@ function world(start: Partial<World> = {}) {
     at: [],
     ...start,
   };
+  const grants = (): unknown[] =>
+    state.manage ? [{ collection: 'settings', action: 'manage' }] : [];
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const at = input instanceof Request ? input.url : String(input);
     state.at.push(at);
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p-ada',
-        businessKey: 'alpha',
-        grants: state.manage ? [{ collection: 'settings', action: 'manage' }] : [],
-      });
+      return json({ ok: true, personId: 'p-ada', businessKey: 'alpha', grants: grants() });
     }
-    if (at.endsWith('/settings/read')) {
-      return json({
-        ok: true,
-        settings: [
-          {
-            key: 'single_operator_mode',
-            value: state.value,
-            valueType: 'boolean',
-            updatedAt: '2026-10-18T05:00:00.000Z',
-            updatedByActorId: 'actor-ada',
-            revision: state.revision,
-          },
-        ],
-      });
-    }
+    if (at.endsWith('/settings/read')) return json({ ok: true, settings: [modeRow(state)] });
     if (at.endsWith('/settings/set_single_operator')) {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      state.writes.push(body);
-      if (state.next === 'second-operator') {
-        return json(
-          {
-            refused: true,
-            code: 'SINGLE_OPERATOR_REFUSED',
-            names: ['value'],
-            fixes: ['Single-operator mode is on only while the business has one operator.'],
-          },
-          409,
-        );
-      }
-      state.value = body['value'] === true;
-      state.revision += 1;
-      return json({
-        recordId: 'single-operator',
-        revision: state.revision,
-        detail: { value: state.value, revision: state.revision },
-      });
+      return switched(state, JSON.parse(String(init?.body)) as Record<string, unknown>);
     }
     return await legacy.fetch(input, init);
   };

@@ -31,7 +31,7 @@ export interface Grant {
   readonly action: string;
 }
 
-/** What sign-off and the two windows take. */
+/** What sign-off, the two windows, priority stages and single-operator mode take. */
 export const SETTINGS_MANAGE: Grant = { collection: 'settings', action: 'manage' };
 /** What the four-eyes threshold takes: it moves money, so the server gates it as spend. */
 export const SPEND_DECIDE: Grant = { collection: 'spend', action: 'decide' };
@@ -48,6 +48,7 @@ export const KEY = {
   conversation: CONVERSATION_WINDOW,
   retention: RETENTION_WINDOW,
   priority: 'priority_stages',
+  'single-operator': 'single_operator_mode',
 } as const;
 
 /** Each row and the command that writes it. */
@@ -57,6 +58,7 @@ export const COMMAND = {
   conversation: 'settings.set_conversation_window',
   retention: 'settings.set_retention_window',
   priority: 'settings.set_priority_stages',
+  'single-operator': 'settings.set_single_operator',
 } as const;
 
 /** Each row and the grant its own command takes; the server gates them apart. */
@@ -66,7 +68,18 @@ export const GRANT: Record<keyof typeof KEY, Grant> = {
   conversation: SETTINGS_MANAGE,
   retention: SETTINGS_MANAGE,
   priority: SETTINGS_MANAGE,
+  'single-operator': SETTINGS_MANAGE,
 };
+
+/** Refusals this screen says in its own words rather than the server's code and fix. */
+const PLAIN: Readonly<Record<string, string>> = {
+  SINGLE_OPERATOR_REFUSED:
+    'Single-operator mode can be on only while this business has one operator. It has more, so a second person decides each change.',
+};
+
+/** A refusal's words: the screen's own where it has them, else the server's line as it came. */
+export const plainly = (code: string, because: string): string =>
+  Object.hasOwn(PLAIN, code) ? (PLAIN[code] ?? because) : because;
 
 /** A grant in words, as the server names its scopes. */
 export const scopeName = (grant: Grant): string => `${grant.collection}:${grant.action}`;

@@ -22,8 +22,9 @@ import {
 // `Which`, `Draft` and `remember` moved here whole from use-settings.ts to keep that file
 // under the line limit; use-settings.ts re-exports the two types.
 
-/** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
-export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention' | 'priority';
+/** Which setting a press is about: the money and sign-off rows, MP-2-11's two windows, and R5's mode. */
+export type Which =
+  'four-eyes' | 'sign-off' | 'conversation' | 'retention' | 'priority' | 'single-operator';
 
 /** What a person can propose. `null` is the band off, and it is a real value. */
 export type Draft = number | boolean | null | readonly string[];
@@ -37,7 +38,7 @@ export function remember(which: Which, echo: unknown, value: Draft): Confirmed {
     const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
     return fourEyes === undefined ? {} : { fourEyes };
   }
-  // The windows and priority stages keep no browser memory: only the server's read is drawn.
+  // The windows, priority stages and single-operator mode keep no browser memory: only the server's read is drawn.
   if (which !== 'sign-off') return {};
   const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
   return signOff === undefined ? {} : { signOff };
