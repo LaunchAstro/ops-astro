@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2211's demo data through the composed API as one person: every step in the operation register, each task in its state with budgets at AUD 5 or less, a stopped run rerun makes nothing twice, and removal trashes only the manifest's demo tasks, refusing a manifest that names a real task before trashing anything."
+}
