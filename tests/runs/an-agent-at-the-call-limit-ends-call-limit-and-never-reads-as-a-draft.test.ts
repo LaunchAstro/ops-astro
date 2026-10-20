@@ -68,13 +68,7 @@ it('at the shipped call limit, a run asking one turn more stops call_limit with 
   // The graph's own step limit is sized from the call limit, so the call limit,
   // never the graph, ends a run that keeps reading (#1717 R8b, S2092-2).
   const run = scripted((n) => reads(n));
-  const end = await runAttempt(
-    run.state,
-    run.ports,
-    AGENT_MODEL_CALL_LIMIT,
-    undefined,
-    'The task.',
-  );
+  const end = await runAttempt(run.state, run.ports, AGENT_MODEL_CALL_LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
   expect(run.sent, 'no charged turn past the limit').toHaveLength(AGENT_MODEL_CALL_LIMIT);
   expect(run.toolRuns()).toBe(AGENT_MODEL_CALL_LIMIT);
@@ -83,13 +77,7 @@ it('at the shipped call limit, a run asking one turn more stops call_limit with 
 
 it('at the shipped call limit, a final answer on the last allowed turn succeeds', async () => {
   const run = scripted((n) => (n < AGENT_MODEL_CALL_LIMIT ? reads(n) : final(n)));
-  const end = await runAttempt(
-    run.state,
-    run.ports,
-    AGENT_MODEL_CALL_LIMIT,
-    undefined,
-    'The task.',
-  );
+  const end = await runAttempt(run.state, run.ports, AGENT_MODEL_CALL_LIMIT, 'The task.');
   expect(end).toEqual({ outcome: 'success', endCode: 'COMPLETED' });
   expect(run.sent).toHaveLength(AGENT_MODEL_CALL_LIMIT);
 });

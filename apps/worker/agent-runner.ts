@@ -139,13 +139,7 @@ export function agentRunner(options: AgentRunnerOptions): StepRunner {
           await context.call('run.end', { ...context.lease, endCode: code });
         },
       };
-      return await runAttempt(
-        state,
-        ports,
-        AGENT_MODEL_CALL_LIMIT,
-        undefined,
-        options.task ?? 'The task.',
-      );
+      return await runAttempt(state, ports, AGENT_MODEL_CALL_LIMIT, options.task ?? 'The task.');
     },
   };
 }

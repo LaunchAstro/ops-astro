@@ -131,7 +131,7 @@ it('digest binding keeps business and attempt scope and the stored source', asyn
   };
   const bound = await bindTurn(
     tx,
-    { leaseId: 'sol-lease', source: {} as never },
+    { leaseId: 'sol-lease', runId: 'sol-run', source: {} as never },
     {
       ordinal: 1,
       tools: [],
@@ -159,7 +159,7 @@ it('an over-depth answer part is unbound before any stored answer is read', asyn
   expect(
     await bindTurn(
       tx,
-      { leaseId: 'sol-lease', source: {} as never },
+      { leaseId: 'sol-lease', runId: 'sol-run', source: {} as never },
       {
         ordinal: 1,
         tools: ['task.read'],
