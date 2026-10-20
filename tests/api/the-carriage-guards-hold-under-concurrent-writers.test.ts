@@ -48,7 +48,7 @@ const SEND = `update model_call_carriers
                where business_id = $1 and call_id = $2`;
 
 const GUARD_OPEN = "an open row is an active agent's, unpurged";
-const GUARD_ONCE = 'written unset for a dispatched conversation call, set once';
+const GUARD_ONCE = 'written unset for a dispatched call, set once';
 
 // eslint-disable-next-line max-lines-per-function -- one database, one schedule per guard
 describe.skipIf(serverUrl === undefined)('the carriage guards under concurrent writers', () => {

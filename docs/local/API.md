@@ -151,7 +151,7 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), and a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, and Astra's saved `review` of a page revision, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -419,7 +419,9 @@ their adapters are registered in code there, not configured: the replay
 provider is the only one until the real-provider run. Each route in
 `MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
 the calls in flight on that route across every business of the installation,
-at most (the fair share, "The model call" below).
+at most (the fair share, "The model call" below). No two routes share a `key`,
+since a call names its route by key alone: a list that repeats one stops the
+server, and the carried deployment, as malformed (#2091).
 Two more settings stop the server at start: a `local` route any of whose
 operations sends to a destination that is not a loopback address, and a plain
 http destination off this machine. The route that carries a call is the
@@ -1446,6 +1448,39 @@ effect applies. The start sends only a call it moves from `reserved` to
 `dispatched` itself: a second send of the same hold, at once or later, or a
 hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 
+A model turn (#1623 R3) is the same route with `kind: 'turn'`, `turnOrdinal`,
+`tools` and `parts` in place of `fields`, to an operation that takes a turn
+(`model.replay_turn`, or `model.agent_turn`, the one key the agent's runner
+names, #2091). Each part is a reference the broker reads under the
+call's locks, never free text: `{ ref: 'task', taskId, revision }` (the
+attempt's own task at its current revision, with `toolCallId` as a tool
+result), `{ ref: 'answer', callId, text, toolCalls }` (an earlier answer of
+this attempt, carried back with the bytes it returned), and `{ ref:
+'correction', correctionId, toolCallId }` (#1624 R7: a `live_correction.request`
+result, bound only to a row of this business on the run's task requested under
+the run lease's own delegation, and shown to the model as its id and state
+alone). `tools` is the agent's catalogue (`AGENT_TOOLS`): `task.read` with
+`{ taskId }`, and `live_correction.request` with exactly the operands a person
+sends, `{ taskId, page, word, replacement }`; a tool outside it, a wider or
+narrower request, a typed base revision, and a result answering another tool's
+call are `TURN_MALFORMED`. Every operand is a string of 1 to 4,096 units
+(#2091). An operation that declares a `tools` field is also sent the offered
+names (the owner's plan's turn); the replay turn declares none. A turn whose
+request is over its route's body limit is refused `PROMPT_TOO_LARGE` before any
+hold, with nothing held, offered or sent. `turnOrdinal` must be
+the attempt's count of calls. Before any hold, a turn out of shape or order is
+refused `TURN_MALFORMED`, a wrong ordinal `TURN_ORDINAL_STALE`, and a part the
+broker cannot bind (an altered answer, another attempt's or business's answer,
+another task, a stale revision, free text, and for now any `{ ref:
+'definition', path, digest }`, whose read path waits on #1904)
+`PROVENANCE_UNBOUND`, in the same bytes whoever's it was; each records its step and ends the attempt `cancelled`
+([RUNTIME.md](RUNTIME.md), "The model call's ledger"). A settled turn also
+answers `toolCalls`, and the call that reached the attempt's limit answers
+`terminal: 'call_limit'`. An answer whose calls are not this turn's to make (a
+tool it did not offer, operands of another shape, an id used twice or by an
+earlier call) is held as unknown, whole, before the worker sees any call, so
+no tool runs (#2091).
+
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
 model's words, only on the request that made them. A call held as unknown
@@ -1628,9 +1663,33 @@ successor (`task.handback`'s `successor`), and that version is the reviewed
 output. Its accept, by `task.decide` or `task.accept_plan`, is the launch, and
 only a lease on a reviewed output may `task.dispatch`. Any other approved
 version is `LAUNCH_NOT_DECIDED` 409 before any mark, and nothing is written.
-The worker (`apps/worker`) answers that refusal by handing the work back as
-its successor (outcome `handedBack`, with the successor's gate and version);
-the next pass after a person's accept picks up the launch and applies it.
+The worker (`apps/worker`) answers that refusal by running its step runner's
+compute under the plan's lease (#1623 R3, `apps/worker/step-runner.ts`). The
+shipped worker's runner is the agent's (`apps/worker/agent-runner.ts`, #1717
+R8b), its turns `model.agent_turn` (#2091). The `api` and `local-gpt`
+installs answer it with the replay provider, beside `model.replay_compose` and
+`model.replay_turn`. A carried deployment whose settings hold the owner's plan
+route answers it on the plan, text only: the plan's answer is words, and an
+answer with any call is malformed, so a written one is held as unknown and no
+tool runs. An uncarried Ollama install, or a carried one with no plan route,
+does not catalogue it (`OPERATION_NOT_CATALOGUED`), and an install with no
+broker refuses the turn; either way the attempt ends there. A test may hand the
+synthetic runner, which computes nothing. A success hands the work back as its
+successor (outcome `handedBack`, with the successor's gate and version), and
+the next pass after a person's accept picks up the launch and applies it. Any
+other end (outcome `ended`, with its outcome and code) hands nothing back: the
+stop that ended it already recorded the attempt's outcome.
+
+A completed `task.handback` records its attempt's `success / COMPLETED` in the
+same transaction. Under its locks, before it writes anything, it refuses
+`TRANSITION_NOT_PERMITTED` 409 an attempt that already has an outcome, has a
+model call `reserved`, `dispatched` or `liability_unknown`, or has a marked
+step its own observation has not settled: none of those is a success. A
+dispatched step whose observation settled it (`settled`, its cost priced) is
+known, and hands back its success. A launched step dispatched and never
+observed hands back too (INB-1): its hold stays whole as an unknown liability
+for a person, the launcher's item is owed, and the attempt's outcome is
+`unknown_provider_outcome / LIABILITY_UNKNOWN`, never a success.
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the

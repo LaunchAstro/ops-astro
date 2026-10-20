@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3: the settlement of the limit-th call writes call_limit / CALL_LIMIT_REACHED and retires the work; a final answer at the limit is never success and a fourth call reserves nothing."
+}

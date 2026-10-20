@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1624 R7 (S2010-1): a correction the door refuses ends the agent's attempt cancelled TOOL_REFUSED through run.end, recorded, with its lease released, never an end code run.end refuses."
+}

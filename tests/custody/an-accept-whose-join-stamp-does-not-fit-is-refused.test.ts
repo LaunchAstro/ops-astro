@@ -67,7 +67,8 @@ async function acceptedWith(body: (now: number) => Record<string, unknown>) {
   return { outcome, fenced, requests };
 }
 
-const AWAY = { kind: 'refused', started: false, code: 'MODEL_MACHINE_AWAY' };
+// Judged on this side before anything was written to the M5, so the release proves it unsent.
+const AWAY = { kind: 'refused', started: false, code: 'MODEL_MACHINE_AWAY', judged: true };
 
 it.each([
   ['after the accept', (now: number) => ({ acceptedAt: now, joinedAt: now + 1 })],

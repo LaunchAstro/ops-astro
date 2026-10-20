@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1624 R7: the correction the shipped agent runner drafts is in the M5 runner's due list for the business's own site, is pinned by the runner's own write (pinLocated) from the file read at a 40-hex revision, and the owner's review read answers it requested at that version."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Once a carried task call's send judgement passes, a client link or a lease handback from another connection waits until the send is written and the fence lets go, so nothing commits between the judgement and the send."
+}

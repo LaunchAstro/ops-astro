@@ -21,6 +21,9 @@
 
 import { httpTransport, shownAddress, unredirected, type Transport } from '../cli/client.ts';
 import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
+import { REPLAY_AGENT_TURN } from '../../packages/core-connectors/src/index.ts';
+import { AGENT_MODEL_CALL_LIMIT } from '../../packages/core-wire/src/index.ts';
+import { agentRunner } from './agent-runner.ts';
 import { agentSignIn } from './sign-in.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker, type WorkerOutcome } from './worker.ts';
@@ -132,9 +135,23 @@ async function signedInWorker(
     businessKey: env['OPS_ASTRO_BUSINESS'] as string,
     credential: signedIn,
     delegation: env['OPS_ASTRO_DELEGATION'] as string,
-    reporter: SYNTHETIC_USAGE,
+    // The plan holds its compute's ceiling too, every turn at its maximum, so its reviewed successor fits.
+    reporter: {
+      ...SYNTHETIC_USAGE,
+      compute: AGENT_MODEL_CALL_LIMIT * REPLAY_AGENT_TURN.maximumMinor,
+    },
+    // An accepted plan is computed by the agent, its turns the API's agent turn: the replay's,
+    // or the owner's plan where the carried deployment has the plan route (#1717 R8b, #2091).
+    runner: agentRunner({ operation: REPLAY_AGENT_TURN.key }),
   });
 }
+
+/** The task a proposal pass left work on: its new proposal, or its own found in the queue. */
+const proposedTask = (outcome: WorkerOutcome | undefined): string | undefined => {
+  if (outcome === undefined) return undefined;
+  if ('proposed' in outcome) return outcome.proposed.taskId;
+  return 'queued' in outcome ? outcome.queued.taskId : undefined;
+};
 
 /**
  * Counts the passes in a row that refused its credentials; at the limit,
@@ -182,14 +199,16 @@ export async function main(
       process.stderr.write(`worker: no answer from ${shownAddress(api)}\n`);
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
-    if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;
+    proposedOn = proposedTask(outcome) ?? proposedOn;
     if (tooOften(outcome)) return EXIT.refused;
     // oxlint-disable-next-line no-await-in-loop -- one ping per pass the API answered
     if (outcome && !('fault' in outcome || 'refused' in outcome)) await pacedBeat(env[HEARTBEAT]);
     const settled = outcome !== undefined && 'applied' in outcome;
     if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;
-      const ended = ['proposed', 'applied', 'idle', 'dropped'].some((key) => key in outcome);
+      const ended = ['proposed', 'queued', 'applied', 'idle', 'dropped'].some(
+        (key) => key in outcome,
+      );
       if (ended) return EXIT.ok;
       return 'refused' in outcome ? EXIT.refused : EXIT.fault;
     }

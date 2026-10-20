@@ -575,8 +575,8 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'beforePickup',
       replay: 'pickup',
       operands: pickupOperands,
-      serve: async (tx, { session, declaration }, operands) =>
-        await pickupReservation(tx, declaration.collection, session.actorId, operands),
+      serve: async (tx, { session, declaration, credential }, operands) =>
+        await pickupReservation(tx, declaration.collection, session.actorId, operands, credential),
     }),
   ],
   ['task.take_launch', row(TAKE_LAUNCH_ROW)],

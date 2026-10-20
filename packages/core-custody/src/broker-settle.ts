@@ -10,6 +10,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import {
   SETTLE_LEVELS,
+  type FieldSource,
   type ModelAnswer,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
@@ -26,6 +27,7 @@ import type { CustodyOutcome } from './custody.ts';
 import { lockCall, lockedState } from './broker-facts.ts';
 import { giveBack } from './broker-give-back.ts';
 import { dropAfterStop, releaseEndOf, stopAtSettlement, UNPROVEN_RELEASE } from './broker-stop.ts';
+import { settledAnswer } from './broker-limit.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,
@@ -46,7 +48,7 @@ export type Settlement =
       readonly account: string | null;
       readonly credentialKind: CredentialKind;
     }
-  | { readonly kind: 'nothing'; readonly reason: string }
+  | { readonly kind: 'nothing'; readonly reason: string; readonly judged?: boolean }
   | ({ readonly kind: 'unknown' } & Failure);
 
 /**
@@ -62,7 +64,8 @@ export function settlementOf(
   streamed = false,
 ): Settlement {
   if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
-  if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
+  if (outcome.kind === 'refused')
+    return { kind: 'nothing', reason: outcome.code, judged: outcome.judged === true };
   if (outcome.kind === 'withheld') return { kind: 'unknown', ...MALFORMED };
   if (!outcome.outbound.ok) {
     const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
@@ -257,6 +260,7 @@ export async function settle(
   reserved: ReservedCall,
   settlement: Settlement,
   broker: Broker,
+  turn?: FieldSource,
 ): Promise<ModelCallResult> {
   return await database.withBusiness(businessId, async (tx) => {
     const drop = await dropAfterStop(tx, settlement, request.leaseId, broker);
@@ -274,7 +278,7 @@ export async function settle(
     };
     if (settlement.kind === 'unknown') return await unknown(null, settlement);
     if (settlement.kind === 'nothing') {
-      const end = releaseEndOf(settlement.reason, reserved.operation);
+      const end = releaseEndOf(settlement, reserved.operation);
       if (end === undefined) return await unknown(null, UNPROVEN_RELEASE);
       const released = await release(tx, reserved, settlement.reason, broker);
       await giveBack(tx, callId);
@@ -287,13 +291,6 @@ export async function settle(
     await settlePriced(tx, reserved, settlement, broker);
     await giveBack(tx, callId);
     if (work !== 'stands') return { ok: false, code: work, callId };
-    return {
-      ok: true,
-      callId,
-      text: settlement.answer.text,
-      reservedMinor,
-      actualMinor: costMinor,
-      releasedMinor: reservedMinor - costMinor,
-    };
+    return await settledAnswer(tx, request.leaseId, reserved, settlement, turn);
   });
 }

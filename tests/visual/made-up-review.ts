@@ -38,6 +38,7 @@ const revision = (number: 1 | 2, id: string, text: string) => ({
   number,
   digest: `sha256:${String(number + 4).repeat(64)}`,
   captures: [landed(number, 1480, text), landed(number, 390, text)],
+  decision: null,
 });
 
 const before = revision(1, FIRST, 'Harbour Bikes fixes bikes in Townsville.');

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The worker's composition root and its two jobs: propose one versioned
-// synthetic change to the task its delegation is for (T2b), hand the approved
-// plan back for review (AW-08), and once a person launches the reviewed
-// output, apply it once (T2c2): pick the work up, dispatch the step, write
-// the one team-only comment under the operation identity derived from the
-// attempt, and observe it. Each step retried after a lost answer presents the
-// same identity, so it replays rather than repeats.
+// synthetic change to the task its delegation is for (T2b), compute the plan
+// and hand a success back for review (AW-08, #1623 R3), and once a person
+// launches the reviewed output, apply it once (T2c2): pick the work up,
+// dispatch the step, write the one team-only comment under the operation
+// identity derived from the attempt, and observe it. Each step retried after
+// a lost answer presents the same identity, so it replays rather than repeats.
 //
 // It is a client of the API and nothing more (spike RN-04). It talks through
 // the command line's own agent entry (`apps/cli/client.ts`), holds its own
@@ -22,8 +22,9 @@ import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
 import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
-import { proposeStep, selfOf, type Proposer } from './proposal.ts';
-import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
+import { delegatedTask, proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
+import { handBackForReview, type HandedBack } from './review.ts';
+import { SYNTHETIC_RUNNER, type StepEnd, type StepRunner } from './step-runner.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
@@ -36,18 +37,15 @@ export interface WorkerOptions {
   readonly reporter: UsageReporter;
   /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
   readonly provider?: Provider;
+  /** What computes an accepted plan before its Launch (#1623 R3). Absent is the synthetic one. */
+  readonly runner?: StepRunner;
 }
 
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
 
 export type WorkerOutcome =
-  | {
-      readonly proposed: {
-        readonly taskId: string;
-        readonly version: number;
-        readonly gateId: string;
-      };
-    }
+  /** A proposal's answer, or its own approved one in the queue after a restart (`proposal.ts`). */
+  | Proposed
   | {
       readonly applied: {
         readonly taskId: string;
@@ -57,10 +55,10 @@ export type WorkerOutcome =
     }
   /** The plan's work, handed back for review (AW-08, `review.ts`); its launch applies next. */
   | { readonly handedBack: HandedBack }
+  /** The plan's compute ended short of success: its stop recorded the outcome, and nothing is handed back. */
+  | { readonly ended: { readonly taskId: string } & StepEnd }
   /** The provider call dropped after the step was marked, and may have acted; handed back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
-  /** Nothing approved and unpicked on the task: done already, or not yet approved. */
-  | { readonly idle: { readonly taskId: string } }
   | Unanswered;
 
 /** The effect's text: a note to the team, and nothing leaves the app. */
@@ -136,37 +134,41 @@ async function applyOnce(
 }
 
 /**
- * The queued work on `taskId` that this agent proposed, read before any
- * delegation (`agent-envelope.ts`). Work another actor proposed on the same
- * task is theirs: a person's approval of it never runs this worker's step.
+ * The queued work on `taskId` it runs (`agent-envelope.ts`): its own, or the
+ * owner's accepted plan on the task its delegation names, read under it now.
  */
 async function ask(
   options: WorkerOptions,
   taskId: string,
   self: () => Promise<string | Unanswered>,
-): Promise<Asked | WorkerOutcome> {
+): Promise<Asked | { readonly idle: { readonly taskId: string } } | Unanswered> {
   const actorId = await self();
   if (typeof actorId !== 'string') return actorId;
   const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
-  // Its own proposal of its own step: an approval of any other step never runs this one.
-  const work = entries.find(
-    (entry) =>
-      entry['taskId'] === taskId &&
-      entry['proposedByActorId'] === actorId &&
-      entry['purpose'] === SYNTHETIC_STEP.kind,
+  const steps = entries.filter(
+    (entry) => entry['taskId'] === taskId && entry['purpose'] === SYNTHETIC_STEP.kind,
   );
+  let work = steps.find((entry) => entry['proposedByActorId'] === actorId);
+  const owners = steps.find((entry) => entry['ownerProposed'] === true);
+  if (work === undefined && owners !== undefined) {
+    const delegated = await delegatedTask(agentCall(options, options.delegation));
+    if (typeof delegated !== 'string') return delegated;
+    if (delegated === taskId) work = owners;
+  }
   if (work === undefined) return { idle: { taskId } };
+  // Its own per pass, never the reservation's: a second process naming the same
+  // pickup would replay the first's answer and hold its lease (T3f).
   return { reservationId: work['reservationId'], operationId: randomUUID() };
 }
 
-/** The pickup, under the identity it was first asked with. */
+/** The pickup, under the identity it was first asked with and its delegation, which it answers to. */
 async function pickUp(
   options: WorkerOptions,
   asked: Asked,
 ): Promise<{ readonly held: Held } | WorkerOutcome> {
-  const picked = await agentCall(options)('task.pickup', asked);
+  const picked = await agentCall(options, options.delegation)('task.pickup', asked);
   if (!('body' in picked)) return picked;
   return {
     held: {
@@ -199,15 +201,9 @@ async function effectOnce(
   // A drop whose hand-back answer was lost: send the hand-back again, and
   // never call the provider a second time for this attempt.
   if (held.drop !== undefined) return await handBackDrop(held.drop);
-  const handBackForReview = async (operationId: string): Promise<WorkerOutcome> => {
-    const maximumMinor = options.reporter.estimate(SYNTHETIC_STEP);
-    const back = await call(
-      'task.handback',
-      reviewBody(lease, operationId, SYNTHETIC_STEP, maximumMinor),
-    );
-    return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
-  };
-  if (held.review !== undefined) return await handBackForReview(held.review.operationId);
+  const forReview = async (operationId: string): Promise<WorkerOutcome> =>
+    await handBackForReview(call, { taskId, lease, operationId }, SYNTHETIC_STEP, options.reporter);
+  if (held.review !== undefined) return await forReview(held.review.operationId);
   const commentAndObserve = async (effected: NonNullable<Held['effected']>) => {
     let commentId = effected.commentId;
     if (commentId === undefined) {
@@ -245,11 +241,14 @@ async function effectOnce(
   // comment, so the pass cannot prove the provider did nothing.
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
-  // AW-08: a plan's lease fires nothing; refused before any mark, it goes back for review.
+  // AW-08, #1623 R3: a plan's lease fires nothing; the runner computes, a success is reviewed.
   if ('refused' in dispatched && dispatched.refused.code === 'LAUNCH_NOT_DECIDED') {
-    const review = { operationId: randomUUID() };
+    const context = { phase: 'compute', taskId, attemptId, lease, call } as const;
+    const ended = await (options.runner ?? SYNTHETIC_RUNNER).compute(context);
+    if (ended.outcome !== 'success') return { ended: { taskId, ...ended } };
+    const review = { operationId: `review:${attemptId}` };
     keep({ ...held, review });
-    return await handBackForReview(review.operationId);
+    return await forReview(review.operationId);
   }
   if (!('body' in dispatched)) return dispatched;
   // The provider start is made durable before the call, so a
@@ -263,7 +262,7 @@ async function effectOnce(
     link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
     const cause = fault instanceof ProviderFault ? fault.dropCause : 'connection_lost';
-    const drop = { cause, operationId: randomUUID() };
+    const drop = { cause, operationId: `drop:${attemptId}` };
     keep({ ...held, drop });
     // Any other rejection still ends this pass, and the provider may have acted:
     // the next pass hands the drop back and never calls it again.
@@ -282,6 +281,7 @@ export function createWorker(options: WorkerOptions): {
   const kept = new Map<string, Held | Asked>();
   const mine: Proposer = {};
   const self = async (): Promise<string | Unanswered> => await selfOf(call, mine);
+  const queued = async (taskId: string) => await ask(options, taskId, self);
   // A pass on a task already being applied joins that pass: two at once would
   // resume one held attempt twice, and call its provider twice.
   const running = new Map<string, Promise<WorkerOutcome>>();
@@ -293,6 +293,7 @@ export function createWorker(options: WorkerOptions): {
       running.set(taskId, pass);
       return await pass;
     },
-    proposeOnce: async () => await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter),
+    proposeOnce: async () =>
+      await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter, queued),
   };
 }

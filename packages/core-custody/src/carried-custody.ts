@@ -63,6 +63,13 @@ interface Carrying {
 }
 
 const refused = (code: string): CustodyOutcome => ({ kind: 'refused', started: false, code });
+/** Refused by this side's offer, accept or send judgement: the request was never written to the M5. */
+const judged = (code: string): CustodyOutcome => ({
+  kind: 'refused',
+  started: false,
+  code,
+  judged: true,
+});
 const lost: CustodyOutcome = { kind: 'worker_lost', started: true, fault: 'ours' };
 const nothing = (): void => {};
 
@@ -179,7 +186,7 @@ async function carry(
   const skew: Skew = { at: undefined };
   const next = listen(line, carrying.options.keys, k, { now: carrying.now, skew });
   const offer = await handoff.offer();
-  if (!offer.ok) return refused(offer.code);
+  if (!offer.ok) return judged(offer.code);
   // Read once the offer has committed: its judgement's wait is this side's, not the agent's clock.
   const offeredAt = carrying.now();
   const plan = asked.request.destination === PLAN_PROVIDER;
@@ -187,7 +194,7 @@ async function carry(
   const accept = await next((heard) => heard.event === 'accept', carrying.now() + window);
   const heardAt = carrying.now();
   const stamps = stampsOf(accept);
-  if (accept === undefined || stamps === undefined) return refused('MODEL_MACHINE_AWAY');
+  if (accept === undefined || stamps === undefined) return judged('MODEL_MACHINE_AWAY');
   const { acceptedAt, joinedAt } = stamps;
   const { runner } = accept;
   // The agent stamped its join once the offer was rung, before any prepare, so its clock is at
@@ -195,7 +202,7 @@ async function carry(
   // never live. Its accept's stamp would add the prepare's wait to that.
   skew.at = joinedAt - offeredAt;
   const fence = await handoff.fence({ runner, acceptedAt, heardAt });
-  if (!fence.ok) return refused(fence.code);
+  if (!fence.ok) return judged(fence.code);
   carrying.runners.set(k, runner);
   const request = { request: asked.request, deadlineAt: deadlineOf(acceptedAt) };
   let ending: CustodyOutcome | undefined;

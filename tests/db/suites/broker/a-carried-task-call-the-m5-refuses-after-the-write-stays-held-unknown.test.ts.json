@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A carried task call this side refuses before the request is written to the M5 is released and its run cancelled as not admitted, the caller told the reason; the same code from the M5 after it reported the write holds the call as liability unknown."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8a, closes #778 and #786: two workers on one delegation proposing at once open one lineage and one gate; a worker restarted after approval finds its queued proposal and opens no second gate; a worker that dies after its correction request and before its hand-back leaves one correction and one lineage."
+}

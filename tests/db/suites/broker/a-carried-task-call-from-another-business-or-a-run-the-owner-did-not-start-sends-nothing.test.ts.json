@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A run staff queued on an owner's task, another business's run and another business's agent are each refused before any send of a carried task call, and the other business's agent cannot join this business's call topic."
+}

@@ -15,7 +15,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // R5 (20261018050000): Astra's review of a correction, written once.
   ['si', 'live_correction_reviews'],
   ['si', 'live_correction_proposals'],
-  // C35 (20261019123500): a review, its revisions and its asked captures are written, never
+  // C35 (20261019140000): a review, its revisions and its asked captures are written, never
   // removed; a review moves only its count, and a capture (20261019142500) its claim and land,
   // by column.
   ['si', 'reviews'],
@@ -26,6 +26,9 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
+  // C35-X (20261019150000): a decision and Astra's review of a revision, written once.
+  ['si', 'review_decisions'],
+  ['si', 'review_astra_reviews'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -55,7 +58,7 @@ export const SITE_UPDATES = [
     from: '20261013110100',
     columns: ['head_commit', 'request_number', 'settled_at', 'state'],
   },
-  { table: 'public.reviews', from: '20261019123500', columns: ['revision_count', 'updated_at'] },
+  { table: 'public.reviews', from: '20261019140000', columns: ['revision_count', 'updated_at'] },
   // A capture is claimed and landed by these columns; its trigger keeps its revision and width.
   {
     table: 'public.review_captures',

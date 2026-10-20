@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3: a turn ordinal other than the attempt's call count is refused TURN_ORDINAL_STALE before any hold and ends the attempt; the register's same-id replay stays apart."
+}

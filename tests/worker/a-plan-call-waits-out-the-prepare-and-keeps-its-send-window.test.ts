@@ -120,7 +120,12 @@ it("after a 6 s prepare, the function's request seal is good for one seal's life
 
 it('an Ollama call whose accept waits on a 6 s prepare keeps its 5 s window: released, nothing sent', async () => {
   const { outcome } = await carriedAfterSlowPrepare(chatRequest());
-  expect(outcome).toStrictEqual({ kind: 'refused', started: false, code: 'MODEL_MACHINE_AWAY' });
+  expect(outcome).toStrictEqual({
+    kind: 'refused',
+    started: false,
+    code: 'MODEL_MACHINE_AWAY',
+    judged: true,
+  });
   expect(world?.handed).toStrictEqual([]);
   expect(world?.ollama.seen).toHaveLength(0);
 }, 15_000);

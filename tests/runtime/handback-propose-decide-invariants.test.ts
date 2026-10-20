@@ -895,11 +895,12 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       [decided.value.attemptId as string],
     );
 
+    // A legacy mark is never a success (#1623 R2), so it hands back failed.
     const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
-        outcome: 'completed',
+        outcome: 'failed',
         report: { words: 200 },
         actualMinor: null,
       }),

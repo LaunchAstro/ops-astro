@@ -40,4 +40,10 @@ export const REVIEW_ROWS = [
     meaning: 'The revision has not landed at every width, so its pins cannot be carried yet',
     source: 'C35-X, the pin carry',
   },
+  {
+    code: 'REVIEW_ALREADY_DECIDED',
+    status: 409,
+    meaning: "The review's latest revision is approved already",
+    source: 'C35-X, the review decision',
+  },
 ] as const;

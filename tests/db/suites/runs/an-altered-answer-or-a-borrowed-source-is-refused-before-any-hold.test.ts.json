@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3: an altered answer, tool id, name or arguments, another attempt's or business's answer, another task and free text are each refused PROVENANCE_UNBOUND before any hold, in the same bytes; an answer keeps its call's class."
+}

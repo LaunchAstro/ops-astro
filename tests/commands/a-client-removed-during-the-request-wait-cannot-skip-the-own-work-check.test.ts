@@ -55,6 +55,11 @@ it('a client removed during the request wait cannot bypass the own-work source r
     query: async (sql: string, params: unknown[]) => {
       if (sql.includes('select r.uuid_7 as party')) return [{ party }];
       if (sql.includes('select id from public.records')) return [{ id: task }];
+      if (sql.includes('from public.leases l')) {
+        // No pickup minted this delegation, so it serves no plan version.
+        expect(params).toEqual([business, delegation.id]);
+        return [];
+      }
       if (sql.includes('select 1 from public.party_sites')) {
         // The other connection commits its removal before this wait completes.
         party = null;

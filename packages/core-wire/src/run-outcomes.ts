@@ -22,6 +22,7 @@ export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 
 /** The codes the worker may end its own run with (`run.end`): what only it can see. */
 export const WORKER_END_CODES = [
+  'CALL_LIMIT_REACHED',
   'TOOL_NOT_CATALOGUED',
   'TOOL_REFUSED',
   'TURN_MALFORMED',
@@ -61,6 +62,9 @@ export type EndCode =
   | 'CARRIAGE_UNAVAILABLE'
   | 'PROMPT_TOO_LARGE'
   | 'CUSTODY_NOT_ADMITTED'
+  // The turn's own (#1623 R3): an ordinal not the attempt's count, a part the broker cannot bind.
+  | 'TURN_ORDINAL_STALE'
+  | 'PROVENANCE_UNBOUND'
   | 'SUBSCRIPTION_UNATTENDED'
   | 'SUBSCRIPTION_OTHER_TENANT'
   | 'SUBSCRIPTION_NOT_OWN_WORK'
@@ -101,6 +105,8 @@ const OUTCOME_OF: { readonly [Code in EndCode]: RunOutcome } = {
   CARRIAGE_UNAVAILABLE: 'cancelled',
   PROMPT_TOO_LARGE: 'cancelled',
   CUSTODY_NOT_ADMITTED: 'cancelled',
+  TURN_ORDINAL_STALE: 'cancelled',
+  PROVENANCE_UNBOUND: 'cancelled',
   SUBSCRIPTION_UNATTENDED: 'cancelled',
   SUBSCRIPTION_OTHER_TENANT: 'cancelled',
   SUBSCRIPTION_NOT_OWN_WORK: 'cancelled',

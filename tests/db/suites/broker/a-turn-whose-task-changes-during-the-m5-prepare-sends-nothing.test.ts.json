@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent write that makes the task outside or moves its revision during the model agent's prepare, or a client linked during the send fence's wait, binds the agent's turn again at the carried send, and nothing reaches the owner's plan."
+}
