@@ -17,6 +17,7 @@ import {
   databaseItems,
   inPart,
   itemOf,
+  laneWall,
   parseShard,
   planItems,
   readPlan,
@@ -82,17 +83,38 @@ function balance(
 
 // DIRSHARD13, the director's 19 October 2026 decision: 13 shards (12 under RELAYSHARD1830,
 // 13 October), so a merge group runs about 21 jobs at once and two groups fit the account's 60.
-// At most 20 minutes of measured items a shard (19.2 at this plan), beside about a minute of
-// checkout, install and the migrated template, well inside the job's 35-minute limit. A plan
-// past it needs more shards or a finer split.
-const SHARD_ITEM_SECONDS = 20 * 60;
+// #1753: each shard runs its items in lanes, a Postgres service each, a free lane taking the
+// longest item left, slowed by LANE_SLOWDOWN for sharing the runner's cores (laneWall). At most
+// 9 minutes a shard, beside about a minute of checkout, install and the migrated template: the
+// ten-minute job. A plan past it needs more lanes, more shards or a finer split.
+const SHARD_WALL_SECONDS = 9 * 60;
 
-it('the run is split 13 ways, each shard near its share', () => {
+/** The lane URLs the shard's runner step is given, one a Postgres service. */
+const laneUrls = (/^ {10}DATABASE_LANE_URLS: (\S+)$/mu.exec(shardJob)?.[1] ?? '').split(',');
+const lanes = laneUrls.filter((laneUrl) => laneUrl !== '').length;
+
+it('each lane is a Postgres service of its own, and each service is a lane', () => {
+  expect(lanes).toBe(3);
+  const ports = laneUrls.map((laneUrl) => new URL(laneUrl).port);
+  expect(new Set(ports).size, 'two lanes on one server share its counter').toBe(lanes);
+  const services = [...shardJob.matchAll(/^ {6}(postgres(?:_\d+)?):$/gmu)].map((m) => m[1]);
+  expect(services).toStrictEqual(['postgres', 'postgres_2', 'postgres_3']);
+  for (const port of ports) expect(shardJob).toContain(`- ${port}:5432`);
+  expect(shardJob).toContain(
+    'FIXTURE_PG_CONTAINERS: ${{ job.services.postgres.id }},${{ job.services.postgres_2.id }},${{ job.services.postgres_3.id }}',
+  );
+});
+
+it('the run is split 13 ways, each shard near its share and inside the ten-minute job', () => {
   expect(shardCount).toBe(13);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
-  expect(heaviest, 'the heaviest shard, in seconds of measured items').toBeLessThanOrEqual(
-    SHARD_ITEM_SECONDS,
+  // Each shard as the runner takes it: a free lane takes the longest item left.
+  const walls = assignShards(items, timings, shardCount).map((shard) =>
+    laneWall(shard, timings, lanes),
+  );
+  expect(Math.max(...walls), 'the slowest shard, in seconds of wall time').toBeLessThanOrEqual(
+    SHARD_WALL_SECONDS,
   );
 });
 

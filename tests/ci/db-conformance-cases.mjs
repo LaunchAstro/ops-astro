@@ -67,9 +67,9 @@ after(() => {
 // container for each probe, so a lane holding a fixed port stays on it.
 const givenUrl = process.env['DB_CONFORMANCE_CASES_URL'] ?? '';
 
-/** A throwaway Postgres, removed however this ends. */
-function withDatabase(run) {
-  if (givenUrl !== '') return run(givenUrl);
+/** A throwaway Postgres, removed however this ends; `fresh` starts one even beside a given URL. */
+function withDatabase(run, { fresh = false } = {}) {
+  if (givenUrl !== '' && !fresh) return run(givenUrl);
   const password = randomBytes(18).toString('hex');
   const name = `hub-db-conformance-${randomBytes(6).toString('hex')}`;
   startedAny = true;
@@ -615,3 +615,148 @@ test('a counter read that fails is a failure, not a zero baseline', (t) => {
     ),
   );
 });
+
+/** The runner over lanes, one URL each (DATABASE_LANE_URLS, #1753). */
+const cruiseLanes = (manifestPath, urls) =>
+  spawnSync(process.execPath, [runner, '--manifest', manifestPath], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, DATABASE_URL: urls[0], DATABASE_LANE_URLS: urls.join(',') },
+    maxBuffer: 32 * 1024 * 1024,
+  });
+
+test('two lane URLs that reach one Postgres cluster are refused', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites({ 'reaches.test.ts': REACHES_DATABASE }, { invariant: ['reaches.test.ts'] }, (m) => {
+      // The same server under a second spelling of its address.
+      const run = cruiseLanes(m, [url, url.replace('@127.0.0.1:', '@localhost:')]);
+      assert.equal(run.status, 2, `expected exit 2, got ${String(run.status)}: ${run.stdout}`);
+      assert.match(run.stderr, /two lane URLs reach the same Postgres cluster/u);
+      assert.doesNotMatch(run.stdout, /reaches\.test\.ts moved the database counter/u);
+    }),
+  );
+});
+
+test('on two lanes, a suite beside the database fails while its sibling moves the other lane', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((first) =>
+    withDatabase(
+      (second) =>
+        withSuites(
+          {
+            'reaches.test.ts': REACHES_DATABASE,
+            'also-reaches.test.ts': REACHES_DATABASE,
+            'beside.test.ts': NEVER_TOUCHES_THE_DATABASE,
+          },
+          {
+            invariant: ['reaches.test.ts', 'also-reaches.test.ts'],
+            conformance: ['beside.test.ts'],
+          },
+          (m) => {
+            const run = cruiseLanes(m, [first, second]);
+            assert.equal(
+              run.status,
+              1,
+              `expected exit 1, got ${String(run.status)}: ${run.stdout}`,
+            );
+            const named = run.stderr.split(
+              'transaction movement above measurement cost and a new client session',
+            )[1];
+            assert.ok(named !== undefined, `rule 7 did not fire: ${run.stderr}`);
+            assert.match(named, /beside\.test\.ts/u);
+            assert.doesNotMatch(named, /reaches\.test\.ts/u);
+            // Every suite ran once, in the share's order, whichever lane took it.
+            const order = [
+              ...run.stdout.matchAll(/db-conformance: \S+\/(\S+\.test\.ts) moved/gu),
+            ].map((match) => match[1]);
+            assert.deepEqual(order, ['reaches.test.ts', 'also-reaches.test.ts', 'beside.test.ts']);
+          },
+        ),
+      { fresh: true },
+    ),
+  );
+});
+
+// Sol's proofs from the review of #1833 at d6b12eb (#1753). A fixture suite reaches
+// its server as tests/support/fresh-database.ts does, DATABASE_ADMIN_URL
+// first. With that set to the first lane's server, a suite on the second lane
+// used to make its databases on the first, and rule 7 rejected it: its own
+// server's counter never moved. `waits` makes each suite wait for the other
+// to start, so both lanes run at once.
+const REACHES_THE_FIXTURE_SERVER = (index, waits) => `// SPDX-License-Identifier: AGPL-3.0-only
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, test } from 'vitest';
+import pg from 'pg';
+import { databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
+
+test('the fixture server answers', async () => {
+  const client = new pg.Client({ connectionString: databaseUrlFromEnvironment() });
+  await client.connect();
+  try {
+    expect((await client.query('select 1 as n')).rows[0].n).toBe(1);
+  } finally {
+    await client.end();
+  }
+  if (${String(waits)}) {
+    writeFileSync(join(import.meta.dirname, 'ready-${String(index)}'), 'ready');
+    const other = join(import.meta.dirname, 'ready-${String(1 - index)}');
+    const until = Date.now() + 10_000;
+    while (!existsSync(other) && Date.now() < until) await new Promise((done) => setTimeout(done, 25));
+    expect(existsSync(other), 'the other lane starts before this suite ends').toBe(true);
+  }
+});
+`;
+
+for (const [name, adminConfigured] of [
+  ['on two lanes, each suite makes its fixture databases on its own lane’s server', true],
+  ['on two lanes, two suites run at once and each moves its own server', false],
+]) {
+  test(name, (t) => {
+    if (skipUnlessDocker(t)) return;
+    withDatabase((first) =>
+      withDatabase(
+        (second) =>
+          withSuites(
+            {
+              'first.test.ts': REACHES_THE_FIXTURE_SERVER(0, !adminConfigured),
+              'second.test.ts': REACHES_THE_FIXTURE_SERVER(1, !adminConfigured),
+            },
+            { invariant: ['first.test.ts', 'second.test.ts'] },
+            (m) => {
+              const env = {
+                ...process.env,
+                DATABASE_URL: first,
+                DATABASE_ADMIN_URL: first,
+                DATABASE_LANE_URLS: `${first},${second}`,
+              };
+              if (!adminConfigured) delete env.DATABASE_ADMIN_URL;
+              delete env.FIXTURE_PG_CONTAINERS;
+              const run = spawnSync(process.execPath, [runner, '--manifest', m], {
+                cwd: repoRoot,
+                encoding: 'utf8',
+                env,
+                maxBuffer: 32 * 1024 * 1024,
+              });
+              assert.match(
+                run.stdout,
+                /2 passed, 0 failed, 0 skipped/u,
+                'both fixture suites pass',
+              );
+              assert.equal(
+                run.status,
+                0,
+                /transaction movement above measurement cost and a new client session/u.test(
+                  run.stderr,
+                )
+                  ? `rule 7 rejected a passing fixture suite: its admin URL still points at lane 1\n${run.stderr}`
+                  : `runner failed: ${run.stderr}`,
+              );
+            },
+          ),
+        { fresh: true },
+      ),
+    );
+  });
+}

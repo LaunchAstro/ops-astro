@@ -21,7 +21,7 @@ import {
   localSteps,
   readShardPlan,
 } from '../../scripts/ci-shards.ts';
-import { shardWeight } from '../../scripts/db-shards.ts';
+import { laneWall, shardWeight } from '../../scripts/db-shards.ts';
 import config from '../../vitest.config.ts';
 import {
   balance,
@@ -37,22 +37,25 @@ import { read, ROOT } from './merge-group-repo.ts';
 const temp = scratch();
 
 // RELAYSHARD1830 and #1478 (orchestrator, 18 October 2026): 3 and 3 shards, so two merge
-// groups fit the account's 60 runners, each job at most 25 minutes, which every measured full
-// run meets (#1753 takes it to ten). A shard's measured items plus what every shard repeats
+// groups fit the account's 60 runners. A shard's measured items plus what every shard repeats
 // outside them: checkout, install, the cached build and the summary, under a minute in run
-// 38695912255. A plan past it needs more shards or a finer split.
-const SHARD_JOB_SECONDS = 25 * 60;
+// 38695912255. A plan past it needs more shards or a finer split. An isolation shard runs its
+// suites in three lanes (#1753), so its job is bounded at ten minutes of wall time. A local
+// checks shard stays at 25 minutes, which every measured full run meets (up to 23.1), until
+// #1802 brings its own work down.
+const ISOLATION_JOB_SECONDS = 10 * 60;
+const LOCAL_JOB_SECONDS = 25 * 60;
 const SHARD_SETUP_SECONDS = 60;
 
-/** Whether a shard of `load` measured seconds, plus the setup every shard repeats, fits its job. */
-const fitsItsJob = (load: number): boolean => load + SHARD_SETUP_SECONDS <= SHARD_JOB_SECONDS;
+/** Whether `wall` seconds of a shard's work, plus the setup every shard repeats, fits a job of `job` seconds. */
+const fitsItsJob = (wall: number, job: number): boolean => wall + SHARD_SETUP_SECONDS <= job;
 
-it('a shard job may take 25 minutes: the full merge-group runs measured up to 23.1', () => {
+it('a local checks job may take 25 minutes: the full merge-group runs measured up to 23.1', () => {
   // The slowest local checks or isolation tests job of three green groups (#1478, 18 October
   // 2026): 22.3 min in 39089644296 and 39088733082, 23.1 min in 38695912255.
-  expect(fitsItsJob(23.1 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
-  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
-  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS + 1)).toBe(false);
+  expect(fitsItsJob(23.1 * 60 - SHARD_SETUP_SECONDS, LOCAL_JOB_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS, LOCAL_JOB_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS + 1, LOCAL_JOB_SECONDS)).toBe(false);
 });
 
 it('the plan reads the measured times, and refuses a key it does not know or a value that is not seconds', () => {
@@ -80,6 +83,25 @@ it('the plan reads the measured times, and refuses a key it does not know or a v
   }
 });
 
+/**
+ * The slowest isolation shard's wall in seconds: the runner takes a shard's suites in three
+ * lanes (#1753), and the steps beside the runner run after it.
+ */
+const slowestIsolationWall = (shards: readonly (readonly string[])[]): number =>
+  Math.max(
+    ...shards.map(
+      (shard) =>
+        laneWall(
+          shard.filter((item) => items.includes(item)),
+          plan.isolation,
+          3,
+        ) +
+        shard
+          .filter((item) => !items.includes(item))
+          .reduce((t, s) => t + (plan.isolation[s] ?? 0), 0),
+    ),
+  );
+
 describe('isolation tests', () => {
   it('every isolation suite and every step beside the runner in exactly one shard, near its share', () => {
     const shards = isolationShards(items, plan, ISOLATION_COUNT);
@@ -89,7 +111,7 @@ describe('isolation tests', () => {
     for (const shard of shards) expect(shard.some((item) => items.includes(item))).toBe(true);
     const { heaviest, bound } = balance(shards, shardWeight(plan.isolation));
     expect(heaviest).toBeLessThanOrEqual(bound);
-    expect(fitsItsJob(heaviest), `the heaviest isolation shard, ${String(heaviest)} s`).toBe(true);
+    expect(fitsItsJob(slowestIsolationWall(shards), ISOLATION_JOB_SECONDS)).toBe(true);
     const added = 'tests/tenancy/named-later.test.ts';
     const later = isolationShards([...items, added], plan, ISOLATION_COUNT);
     expect(later.filter((shard) => shard.includes(added))).toHaveLength(1);
@@ -225,5 +247,8 @@ it('vitest’s sequencer splits the test files by measured time, every file in e
   const total = loads.reduce((a, b) => a + b, 0);
   expect(Math.max(...loads)).toBeLessThanOrEqual((total / LOCAL_COUNT) * 1.1);
   const heaviest = Math.max(...loads);
-  expect(fitsItsJob(heaviest), `the heaviest local shard, ${String(heaviest)} s`).toBe(true);
+  expect(
+    fitsItsJob(heaviest, LOCAL_JOB_SECONDS),
+    `the heaviest local shard, ${String(heaviest)} s`,
+  ).toBe(true);
 });

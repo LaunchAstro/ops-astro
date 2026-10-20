@@ -526,7 +526,9 @@ jobs:
       # 13 hold about 1152 s of items each, plus about a minute of setup, and
       # a group runs about 21 jobs at once, so two groups still fit.
       # scripts/db-census.ts proves the 13- and 30-way splits hold the same
-      # items and tests. One line, which tests/ci/db-shards.test.ts reads.
+      # items and tests. Each shard runs its items in three lanes, a Postgres
+      # service each (#1753), so it takes about a third of its items' time.
+      # One line, which tests/ci/db-shards.test.ts reads.
       matrix:
         # prettier-ignore
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
@@ -548,6 +550,33 @@ jobs:
         # the image's init server listens on the socket only, so a socket
         # check can pass before TCP is up. tests/ci/db-ready-race.mjs
         # reproduces it, and withDatabase uses the same probe.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # Lanes 2 and 3 (#1753): the runner runs one suite at a time on each
+      # server, three at once, so rule 7's counter stays each suite's own.
+      postgres_2:
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # The third lane's server, the same digest and throwaway password.
+      postgres_3:
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5434:5432
         options: >-
           --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
           --health-interval 5s
@@ -576,6 +605,9 @@ jobs:
           # own container; the service container is not ops-astro-local-pg.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          # Three lanes, one server each (scripts/db-conformance.mjs, #1753).
+          DATABASE_LANE_URLS: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance,postgres://postgres:conformance-throwaway@127.0.0.1:5433/conformance,postgres://postgres:conformance-throwaway@127.0.0.1:5434/conformance
+          FIXTURE_PG_CONTAINERS: ${{ job.services.postgres.id }},${{ job.services.postgres_2.id }},${{ job.services.postgres_3.id }}
       # S0-3: a pull request that adds a migration upgrades a database built and
       # seeded at the base branch's newest migration, with the application
       # stopped, and every row must come through unchanged. No migration added,
@@ -815,7 +847,8 @@ jobs:
       # merge group runs about 20 jobs at once: 6 shards took 56 to 59
       # runner-min in the last three green groups of 13 October, so 3 take
       # about 19 min each. The migration-prefix suite runs in four parts of
-      # under 5 min each.
+      # under 5 min each. The runner takes each shard's suites in three lanes,
+      # a Postgres service each, as `database conformance` does (#1753).
       matrix:
         shard: [1, 2, 3]
     services:
@@ -827,6 +860,32 @@ jobs:
           POSTGRES_DB: conformance
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # Lanes 2 and 3, as in `database conformance` (#1753).
+      postgres_2:
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      # The third lane's server.
+      postgres_3:
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5434:5432
         options: >-
           --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
           --health-interval 5s
@@ -856,6 +915,9 @@ jobs:
           # reader dumps and restores inside this job's own service container.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
           SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          # Three lanes, one server each (scripts/db-conformance.mjs, #1753).
+          DATABASE_LANE_URLS: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance,postgres://postgres:conformance-throwaway@127.0.0.1:5433/conformance,postgres://postgres:conformance-throwaway@127.0.0.1:5434/conformance
+          FIXTURE_PG_CONTAINERS: ${{ job.services.postgres.id }},${{ job.services.postgres_2.id }},${{ job.services.postgres_3.id }}
       # The named service-stop proof with both addresses a local setup has; it
       # skips without both, and the shard jobs set only one.
       - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard "$SHARD" --step 'service stop, two addresses' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts

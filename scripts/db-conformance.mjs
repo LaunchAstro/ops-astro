@@ -60,10 +60,19 @@
 //                 caller, the nightly look-ahead's included, runs them.
 //   --list        print the run items it would run, one a line, and stop
 //                 before reaching the database (tests/ci/ci-shards.test.ts).
+//   DATABASE_LANE_URLS
+//                 optional, comma-separated: one URL per Postgres server, and
+//                 the share runs in that many lanes at once, one suite at a
+//                 time on each server (#1753). Each server must be a different
+//                 cluster; the runner refuses two URLs that reach the same one.
+//                 A lane URL is its server's owner: a suite gets it as both
+//                 DATABASE_URL and DATABASE_ADMIN_URL.
+//                 FIXTURE_PG_CONTAINERS names each server's container, in the
+//                 same order. Unset, DATABASE_URL is the one lane.
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
 //   with SUITE_PART=i/k, sharded or not; every rule applies to each part.
 
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
@@ -73,6 +82,7 @@ import {
   assignShards,
   databaseItems,
   itemOf,
+  laneOrder,
   parseShard,
   planItems,
   readPlan,
@@ -114,6 +124,27 @@ if (url === '') {
   console.error('db-conformance: running it without one is the thing it refuses.');
   process.exit(2);
 }
+
+// One lane per server. A lane runs one suite at a time against its own
+// cluster, so the counter read either side of a suite moves only for that
+// suite, as rule 7 needs; lanes on one server would share the counter.
+const listOf = (value) =>
+  (value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+const laneUrls = listOf(process.env['DATABASE_LANE_URLS']);
+const laneContainers = listOf(process.env['FIXTURE_PG_CONTAINERS']);
+if (laneUrls.length > 0 && laneContainers.length > 0 && laneContainers.length !== laneUrls.length) {
+  console.error('db-conformance: FIXTURE_PG_CONTAINERS must name one container per lane URL.');
+  process.exit(2);
+}
+const lanes = (laneUrls.length === 0 ? [url] : laneUrls).map((laneUrl, index) => ({
+  url: laneUrl,
+  container: laneContainers[index] ?? process.env['FIXTURE_PG_CONTAINER'],
+  client: new pg.Client({ connectionString: laneUrl }),
+  selfCost: 0,
+}));
 
 if (!existsSync(manifestPath)) {
   console.error(`db-conformance: no suite manifest at ${manifestPath}.`);
@@ -212,8 +243,13 @@ const readCounter = async (client) => {
   return { transactions: Number(rows[0]?.n ?? 0), sessions: Number(rows[0]?.sessions ?? 0) };
 };
 
-const client = new pg.Client({ connectionString: url });
-let selfCost = 0;
+/** Each lane's cluster, so two lane URLs that reach one server are refused. */
+const clusterOf = async (client) => {
+  const { rows } = await client.query(
+    'select system_identifier::text as id from pg_control_system()',
+  );
+  return String(rows[0]?.id ?? '');
+};
 
 try {
   // The migrated template is no suite's work, and building it takes a lock in
@@ -224,21 +260,42 @@ try {
   // session flushes its counts at most once a second, so one left idle through
   // the build makes the first read flush and the measured read cost twice that.
   if (failures.length === 0 && templateEnabled()) {
-    await ensureMigratedTemplate(process.env['DATABASE_ADMIN_URL'] ?? url);
+    await Promise.all(
+      lanes.map(async (lane) => {
+        const admin = laneUrls.length === 0 ? process.env['DATABASE_ADMIN_URL'] : undefined;
+        await ensureMigratedTemplate(admin ?? lane.url);
+      }),
+    );
   }
-  await client.connect();
-  // Two consecutive reads measure what a read of the counter costs, so the
-  // threshold below is calibrated on this database rather than assumed. The
-  // same pair of reads brackets each suite, so the cost is the same one.
-  const first = await readCounter(client);
-  const second = await readCounter(client);
-  selfCost = Math.max(1, second.transactions - first.transactions);
+  const clusters = [];
+  for (const lane of lanes) {
+    // eslint-disable-next-line no-await-in-loop -- one lane at a time, before any suite
+    await lane.client.connect();
+    // eslint-disable-next-line no-await-in-loop -- as above, and before the calibrating reads
+    clusters.push(await clusterOf(lane.client));
+    // Two consecutive reads measure what a read of the counter costs, so the
+    // threshold below is calibrated on this database rather than assumed. The
+    // same pair of reads brackets each suite, so the cost is the same one.
+    // eslint-disable-next-line no-await-in-loop -- as above
+    const first = await readCounter(lane.client);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    const second = await readCounter(lane.client);
+    lane.selfCost = Math.max(1, second.transactions - first.transactions);
+  }
+  if (new Set(clusters).size !== lanes.length || clusters.includes('')) {
+    console.error(
+      'db-conformance: two lane URLs reach the same Postgres cluster. Lanes on one server share\n' +
+        "db-conformance: its counter, so a suite could pass on a sibling's transactions.",
+    );
+    await Promise.all(lanes.map(async (lane) => await lane.client.end().catch(() => {})));
+    process.exit(2);
+  }
 } catch (error) {
   console.error(
     'db-conformance: the database named by DATABASE_URL did not answer, or its migrated template was not built.',
   );
   console.error(`db-conformance: ${String(error)}`);
-  await client.end().catch(() => {});
+  await Promise.all(lanes.map(async (lane) => await lane.client.end().catch(() => {})));
   process.exit(1);
 }
 
@@ -249,7 +306,7 @@ let failureDetailRemaining = 16 * 1024;
 const diagnosticSecrets = Object.entries(process.env)
   .filter(([key, value]) => /PASSWORD|TOKEN|SECRET|KEY/iu.test(key) && value)
   .map(([, value]) => value);
-for (const connectionString of [url, process.env['DATABASE_ADMIN_URL']]) {
+for (const connectionString of [url, process.env['DATABASE_ADMIN_URL'], ...laneUrls]) {
   if (!connectionString) continue;
   try {
     const password = new URL(connectionString).password;
@@ -270,10 +327,9 @@ const literal = (path) => path.replace(/[*?[\]{}()!+@\\]/gu, '\\$&');
  * vitest has no exact-path filter, so it is asked what the filter selects,
  * without loading any of it, and everything else it names is excluded.
  */
-const siblingsOf = (suite) => {
-  const listed = spawnSync(process.execPath, [vitestBin, 'list', '--filesOnly', suite], {
+const siblingsOf = async (suite) => {
+  const listed = await spawnCollect(process.execPath, [vitestBin, 'list', '--filesOnly', suite], {
     cwd: repoRoot,
-    encoding: 'utf8',
     env: { ...process.env, CI: 'true' },
   });
   return (listed.stdout ?? '')
@@ -282,6 +338,33 @@ const siblingsOf = (suite) => {
     .filter((line) => line !== '' && resolve(repoRoot, line) !== resolve(repoRoot, suite))
     .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
 };
+
+/**
+ * spawnSync's result, without blocking the other lanes: status, signal,
+ * stdout, stderr and a start error. Output past maxBuffer ends the child, as
+ * spawnSync does, and is reported as its error.
+ */
+const spawnCollect = async (command, args, { maxBuffer = 1024 * 1024, ...options }) =>
+  await new Promise((resolveRun) => {
+    const out = { stdout: '', stderr: '' };
+    let error;
+    const child = spawn(command, args, options);
+    const collect = (stream) => (chunk) => {
+      out[stream] += chunk;
+      if (error === undefined && out.stdout.length + out.stderr.length > maxBuffer) {
+        error = new Error(`${stream} maxBuffer length exceeded`);
+        child.kill('SIGTERM');
+      }
+    };
+    child.stdout.setEncoding('utf8').on('data', collect('stdout'));
+    child.stderr.setEncoding('utf8').on('data', collect('stderr'));
+    child.on('error', (cause) => {
+      error ??= cause;
+    });
+    child.on('close', (status, signal) => {
+      resolveRun({ status, signal: signal ?? null, ...out, error });
+    });
+  });
 
 /** Redact a failed assertion, or any problem the run reports, before it reaches stderr. */
 const redactDetail = (detail) => {
@@ -341,7 +424,23 @@ const readReport = (reportPath, suite, part) => {
  * number that no suite owned; running them one at a time is what gives each
  * path a transaction count of its own.
  */
-const runSuite = async (suite, part) => {
+/**
+ * A suite's environment on its lane: that lane's server, and its container for
+ * T4a's clone. A lane URL is its server's owner, as the template build takes
+ * it, so it is the suite's admin URL too: fixtures read DATABASE_ADMIN_URL
+ * first (tests/support/fresh-database.ts), and one naming another lane's
+ * server would leave this lane's counter still.
+ */
+const laneEnv = (lane, part) => ({
+  ...process.env,
+  DATABASE_URL: lane.url,
+  ...(laneUrls.length === 0 ? {} : { DATABASE_ADMIN_URL: lane.url }),
+  ...(lane.container === undefined ? {} : { FIXTURE_PG_CONTAINER: lane.container }),
+  CI: 'true',
+  SUITE_PART: part ?? '',
+});
+
+const runSuite = async (suite, part, lane) => {
   // vitest's JSON reporter writes to a file, never to stdout, so the report
   // is collected from one and removed afterwards.
   const reportPath = join(mkdtempSync(join(tmpdir(), 'hub-db-conformance-')), 'report.json');
@@ -352,31 +451,27 @@ const runSuite = async (suite, part) => {
   let before = { transactions: 0, sessions: 0 };
   let readError;
   try {
-    before = await readCounter(client);
+    before = await readCounter(lane.client);
   } catch (error) {
     readError = error;
   }
-  const run = spawnSync(
+  const siblings = await siblingsOf(suite);
+  const run = await spawnCollect(
     process.execPath,
     [
       vitestBin,
       'run',
       '--reporter=json',
       `--outputFile=${reportPath}`,
-      ...siblingsOf(suite).map((path) => `--exclude=${path}`),
+      ...siblings.map((path) => `--exclude=${path}`),
       suite,
     ],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: url, CI: 'true', SUITE_PART: part ?? '' },
-      maxBuffer: 64 * 1024 * 1024,
-    },
+    { cwd: repoRoot, env: laneEnv(lane, part), maxBuffer: 64 * 1024 * 1024 },
   );
   let after = before;
   if (readError === undefined) {
     try {
-      after = await readCounter(client);
+      after = await readCounter(lane.client);
     } catch (error) {
       readError = error;
     }
@@ -388,6 +483,7 @@ const runSuite = async (suite, part) => {
     report,
     moved: after.transactions - before.transactions,
     clientSessions: after.sessions - before.sessions,
+    selfCost: lane.selfCost,
     readError,
   };
 };
@@ -395,16 +491,28 @@ const runSuite = async (suite, part) => {
 const results = [];
 
 if (failures.length === 0) {
-  // One at a time, and never Promise.all. The counter reads either side of a
-  // suite are only that suite's if nothing else is touching the database
-  // while it runs; run them in parallel and rule 7 becomes the whole-run
-  // number this round removed.
-  for (const item of toRun) {
-    const started = performance.now();
-    // eslint-disable-next-line no-await-in-loop
-    const result = await runSuite(itemOf(item).suite, itemOf(item).part);
-    results.push({ ...result, item, seconds: (performance.now() - started) / 1000 });
-  }
+  // One at a time on each server, and never two suites on one. The counter
+  // reads either side of a suite are only that suite's if nothing else is
+  // touching its database while it runs; run two on one server and rule 7
+  // becomes the whole-run number this round removed. Each lane is a server
+  // of its own (the cluster check above), so lanes run side by side, and
+  // the results keep the share's order. A free lane takes the longest item
+  // left (laneOrder), so the lanes finish close together.
+  const order = laneOrder(toRun, isolationRun ? readShardPlan(repoRoot).isolation : plan.seconds);
+  let next = 0;
+  await Promise.all(
+    lanes.map(async (lane) => {
+      while (next < order.length) {
+        const index = order[next];
+        next += 1;
+        const item = toRun[index];
+        const started = performance.now();
+        // eslint-disable-next-line no-await-in-loop -- one suite at a time on this lane's server
+        const result = await runSuite(itemOf(item).suite, itemOf(item).part, lane);
+        results[index] = { ...result, item, seconds: (performance.now() - started) / 1000 };
+      }
+    }),
+  );
 
   for (const { suite, run, report } of results) {
     if (report !== undefined) continue;
@@ -568,13 +676,13 @@ if (failures.length === 0) {
   }
 }
 
-await client.end().catch(() => {});
+await Promise.all(lanes.map(async (lane) => await lane.client.end().catch(() => {})));
 
 // 7. Did each named suite actually reach the database? The counter is read
 // either side of each suite's own run, so a suite that passes beside the
 // database is named here even when a sibling moved the number.
 // Each suite starts a fresh process. Reader and autovacuum transactions are not its SQL.
-const beside = results.filter((r) => r.moved <= selfCost || r.clientSessions <= 0);
+const beside = results.filter((r) => r.moved <= r.selfCost || r.clientSessions <= 0);
 if (failures.length === 0 && beside.length > 0) {
   failures.push(
     `${String(beside.length)} named suite(s) did not show both ` +
@@ -586,7 +694,7 @@ if (failures.length === 0 && beside.length > 0) {
             `${String(r.moved)} while it ran, with ${String(r.clientSessions)} new client session(s).`,
         )
         .join('\n') +
-      `\n        A read of the counter costs ${String(selfCost)} on this database.\n` +
+      `\n        A read of the counter costs ${String(Math.max(...lanes.map((lane) => lane.selfCost)))} or less on each server.\n` +
       '        Each suite must also establish a client session. A suite that passes beside the\n' +
       "        database is not a conformance proof, and a sibling's transactions\n" +
       '        are not its own.',
