@@ -519,10 +519,11 @@ const PARENT_FIX = 'the work this helper was given has ended; hand back what it 
  * SQL that holds while the delegation aliased `d` stands: not revoked, handed
  * back or expired, nor its parent (children go one level deep), as
  * `checkDelegatedAuthority` asks at each of a child's calls. For what a read
- * lists or offers and what an assignment accepts; a call still asks
- * `checkDelegatedAuthority`.
+ * lists or offers and what an assignment accepts, and for a lease's
+ * re-check after its lock wait, judged at the instant read after the locks
+ * (#2195); a call still asks `checkDelegatedAuthority` at its start.
  */
-const standsAt = (
+export const delegationStandsAt = (
   clock: string,
 ): string => `(d.revoked_at is null and d.settled_at is null and d.expires_at > ${clock}
    and (d.parent_delegation_id is null
@@ -533,14 +534,14 @@ const standsAt = (
                       and stands_parent.expires_at > ${clock})))`;
 
 /** Judged as the statement starts, so a read after a lock wait sees an expiry during it. */
-export const DELEGATION_STANDS: string = standsAt('statement_timestamp()');
+export const DELEGATION_STANDS: string = delegationStandsAt('statement_timestamp()');
 
 /**
  * `DELEGATION_STANDS` on the clock as it is evaluated, not the statement's
  * start: for a write that may wait on a lock within the statement, so an
  * expiry during the wait counts.
  */
-export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
+export const DELEGATION_STANDS_AT_CHECK: string = delegationStandsAt('clock_timestamp()');
 
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
@@ -554,7 +555,7 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
  */
 const PARENT_ROW = 'select 1 from public.delegations where business_id = $1 and id = $2';
 
-async function parentStanding(
+export async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',

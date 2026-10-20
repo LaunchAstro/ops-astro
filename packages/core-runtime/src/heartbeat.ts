@@ -27,7 +27,7 @@
 //   pickup, cancellation and restart replay; a lease that stops beating simply
 //   expires, and the next pickup fences it as it always did (W04).
 
-import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
+import { parentStanding, type TenantQuery, type Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import {
   fenceCause,
@@ -37,6 +37,7 @@ import {
   readLease,
   refuseLease,
   type LeaseClaimant,
+  type LeaseRow,
   type OwnerFixes,
 } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
@@ -126,15 +127,21 @@ export async function lockOwnedLease(
   fixes: OwnerFixes,
 ): Promise<RuntimeResult<{ readonly taskId: string; readonly lockedAt: string }>> {
   const delegationId = request.claimant === 'person' ? null : request.delegationId;
-  const found = await tx.query<{ readonly delegation_id: string | null }>(
-    `select delegation_id from public.leases where business_id = $1 and id = $2`,
+  // A pickup child's launch is locked with it, so a revoke of the launch waits
+  // for this call or is read by it (#2195). The link is written once at mint.
+  const found = await tx.query<{ readonly parent_delegation_id: string | null }>(
+    `select d.parent_delegation_id from public.leases l
+       left join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+      where l.business_id = $1 and l.id = $2`,
     [tx.businessId, request.leaseId],
   );
   if (found[0] === undefined) return refuseLease('not_owned', fixes.notOwned);
+  const parentId = delegationId === null ? null : found[0].parent_delegation_id;
 
   await acquire(tx, [
     { lockClass: 'lease', id: request.leaseId },
     ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
+    ...(parentId === null ? [] : [{ lockClass: 'delegation' as const, id: parentId }]),
   ]);
   const lockedAt = await lockedInstant(tx);
   const checked = await recheckOwner(tx, request, lockedAt, fixes);
@@ -175,8 +182,27 @@ export async function recheckOwner(
     return refuseLease('authority_lost', fixes.lost);
   }
   if (fenced !== null) return refuseLease(fenced, fixes.expired);
-  if (!authorityLive) return refuseLease('not_live', fixes.expired);
+  if (!authorityLive) return await authorityEnded(tx, lease, fixes.expired);
   return { ok: true, value: lease.task_id };
+}
+
+/**
+ * An agent's lease whose authority no longer stands. A pickup child whose
+ * launch was revoked, handed back or ran out answers as its next call would
+ * (`parentStanding`), so a call that waited on the lease through the revoke
+ * gets the same refusal as one sent after it (#2195). Its own delegation
+ * ending is the lease's end.
+ */
+async function authorityEnded(
+  tx: TenantQuery,
+  lease: LeaseRow,
+  fix: string,
+): Promise<RuntimeResult<never>> {
+  if (lease.parent_delegation_id !== null) {
+    const parent = await parentStanding(tx, lease.parent_delegation_id, '');
+    if (!parent.ok) return parent;
+  }
+  return refuseLease('not_live', fix);
 }
 
 /**

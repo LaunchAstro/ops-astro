@@ -160,6 +160,10 @@ async function lockHeldLease(
     { lockClass: 'task', id: taskId },
     { lockClass: 'lease', id: request.leaseId },
     { lockClass: 'delegation', id: parent.id },
+    // The holder's own launch, when it is a pickup child (#2195).
+    ...(parent.parentDelegationId === null
+      ? []
+      : [{ lockClass: 'delegation' as const, id: parent.parentDelegationId }]),
   ]);
   const caller = {
     claimant: 'agent',
