@@ -88,7 +88,6 @@ function useReset(props: ResetScreenProps, link: string) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [refusal, setRefusal] = useState<Refusal>(null);
-  const [signedOut, setSignedOut] = useState(true);
   const opened = useRef<RecoverySession | null>(null);
   const route: RecoveryRoute = {
     gotrueUrl: props.gotrueUrl,
@@ -110,10 +109,9 @@ function useReset(props: ResetScreenProps, link: string) {
     void (async () => {
       const outcome = await changePassword(route, link, opened, password);
       if ('refusal' in outcome) setRefusal(outcome.refusal);
-      if ('signedOut' in outcome) {
+      if ('email' in outcome) {
         setPassword('');
         setConfirm('');
-        setSignedOut(outcome.signedOut);
         const reset = outcome.email.toLowerCase();
         if (reset !== '' && props.sessions.session?.email.toLowerCase() === reset) {
           props.sessions.clear();
@@ -123,7 +121,7 @@ function useReset(props: ResetScreenProps, link: string) {
     })();
   };
   const fields = { email, setEmail, password, setPassword, confirm, setConfirm };
-  return { stage, refusal, signedOut, fields, onSubmit };
+  return { stage, refusal, fields, onSubmit };
 }
 
 type Fields = ReturnType<typeof useReset>['fields'];
@@ -236,7 +234,7 @@ function ChooseFields(props: {
 }
 
 /** What happened, and where to go next. */
-function Outcome(props: { readonly stage: Stage; readonly signedOut: boolean }): ReactElement {
+function Outcome(props: { readonly stage: Stage }): ReactElement {
   const { stage } = props;
   const words = WORDS[stage];
   return (
@@ -245,9 +243,6 @@ function Outcome(props: { readonly stage: Stage; readonly signedOut: boolean }):
         <div className="banner banner--info" role="status" data-outcome="changed">
           <p className="banner__body">
             Your password is changed, and every session that used the old one has ended.
-            {props.signedOut
-              ? ''
-              : " Signed out here, but we couldn't confirm the sign-out everywhere."}
           </p>
         </div>
       ) : null}
@@ -287,7 +282,7 @@ export function ResetScreen(props: ResetScreenProps): ReactElement {
         {stage === 'choose' || stage === 'changing' ? (
           <ChooseFields fields={fields} refusal={reset.refusal} busy={stage === 'changing'} />
         ) : null}
-        <Outcome stage={stage} signedOut={reset.signedOut} />
+        <Outcome stage={stage} />
       </form>
     </main>
   );

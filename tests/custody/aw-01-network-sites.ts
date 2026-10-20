@@ -60,7 +60,7 @@ export const NETWORK_SITES: Readonly<Record<string, string>> = {
     "threads the page's fetch to the public legal page's reader, same origin (C81)",
   // Password reset on the sign-in provider's recovery session (20261013223000):
   'apps/api/auth/provider-user.ts':
-    "the sign-in provider's `/user` on a person's own bearer (the reset's read and password write, the door's session probe), at its issuer's origin, no redirect",
+    "the sign-in provider's `/user` and `/logout` on a person's own bearer (the reset's read, password write and sign-out everywhere, the door's session probe), at its issuer's origin, no redirect",
   'apps/api/password-reset.ts':
     "threads an injected fetch to `provider-user.ts`'s calls on the reset's own bearer",
   'apps/web/src/screens/Reset.tsx': "threads the page's fetch to the reset's calls",

@@ -207,7 +207,8 @@ async function recordResolved(
 // session. A live *business* grant disqualifies rather than helps: it is a member's grant, and a
 // person holding one without a membership is a former member whose grants outlived them, who stays
 // refused here exactly as before. The per-call check in the serving transaction still decides what
-// the share reaches; this only decides whether there is anyone to ask about.
+// the share reaches; this only decides whether there is anyone to ask about. The password reset
+// asks the same rule (`ops.recovery_subject_business`, 20261013223000), so keep the two alike.
 const STANDING = `
   select count(*) filter (where g.scope_kind <> 'business' and g.action = 'read')::int as shares,
          count(*) filter (where g.scope_kind = 'business')::int as business

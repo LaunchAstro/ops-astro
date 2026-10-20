@@ -45,8 +45,10 @@
 --    session is the same window and a second `changed` settles nothing and
 --    audits nothing.
 -- 4. `ops.recovery_subject_business(subject)`: the first business, by id,
---    where the subject is a provider login mapped live to an active member
---    with an active acting identity, its access not ended; null for none.
+--    where the subject is a provider login mapped live to a person sign-in
+--    admits, with an active acting identity, its access not ended; null for
+--    none. Admitted is an active member, or an external party standing on a
+--    live share there with no live business grant (`standsOnShares`).
 --    `begin` refuses a login mapped nowhere; `changed` reads it before its
 --    write, writes nothing without one, and audits there.
 -- 5. `ops.reset_write_open(subject, signed_in)`: whether a session of the
@@ -201,12 +203,24 @@ as $$
     from public.logins l
     join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
-    join public.memberships m
-      on m.business_id = pl.business_id and m.person_id = pl.person_id and m.active
     join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
    where l.provider = 'supabase' and l.subject = recovery_subject_business.subject
+     and (exists (
+            select 1 from public.memberships m
+             where m.business_id = pl.business_id and m.person_id = pl.person_id and m.active)
+          or (select count(*) filter (where g.scope_kind <> 'business' and g.action = 'read') > 0
+                     and count(*) filter (where g.scope_kind = 'business') = 0
+                from public.grants g
+                left join public.actors ga
+                  on ga.business_id = g.business_id and ga.id = g.subject_id
+                 and ga.kind = 'person'
+               where g.business_id = pl.business_id
+                 and g.revoked_at is null
+                 and (g.expires_at is null or g.expires_at > now())
+                 and ((g.subject_kind = 'person' and g.subject_id = pl.person_id)
+                      or (g.subject_kind = 'actor' and ga.person_id = pl.person_id))))
      and not exists (
        select 1 from public.access_endings e
         where e.business_id = l.business_id and e.login_id = l.id)

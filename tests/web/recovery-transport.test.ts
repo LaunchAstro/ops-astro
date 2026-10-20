@@ -4,18 +4,12 @@
 // the provider (here the API's origin too), and another origin it might send
 // the browser to. No redirect is followed, so a password never reaches
 // another origin, and only the exact acknowledgement counts: the password,
-// handed to the API's `changed`, is set only on its 200, and a sign-out
-// everywhere only on 204, tried again three times otherwise.
+// handed to the API's `changed`, is set only on its 200.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
-import {
-  LOGOUT_RETRIES,
-  signOutEverywhere,
-  verifyRecovery,
-  writePassword,
-} from '../../apps/web/src/session/recovery.ts';
+import { verifyRecovery, writePassword } from '../../apps/web/src/session/recovery.ts';
 
 interface Heard {
   readonly route: string;
@@ -116,26 +110,6 @@ it.each([
 ])('takes a %i %s from changed as %s', async (status, code, outcome) => {
   answer = json(status, { code });
   expect(await writePassword(toApi(), 'a-token', PASSWORD)).toBe(outcome);
-});
-
-it.each([
-  ['a gateway answering 200', json(200, {})],
-  ['a 503', json(503, {})],
-])('takes %s to the sign-out as not signed out, and tries again three times', async (_, said) => {
-  answer = said;
-  expect(await signOutEverywhere(route(), 'a-token')).toBe(false);
-  expect(heard.provider.map((one) => one.route)).toStrictEqual(
-    Array.from({ length: 1 + LOGOUT_RETRIES }, () => 'POST /logout?scope=global'),
-  );
-  expect(LOGOUT_RETRIES).toBe(3);
-});
-
-it('takes a 204 to the sign-out as signed out, asked once', async () => {
-  answer = (_, response) => {
-    response.writeHead(204).end();
-  };
-  expect(await signOutEverywhere(route(), 'a-token')).toBe(true);
-  expect(heard.provider).toHaveLength(1);
 });
 
 it('takes a verify only as 200 with a token and the login, and follows no redirect', async () => {

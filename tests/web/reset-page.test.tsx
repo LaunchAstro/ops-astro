@@ -57,7 +57,6 @@ function fakeNetwork(asked: Asked[], answers: Answers = {}): typeof globalThis.f
     if (url === `${PROVIDER}/verify`) {
       return reply(200, { access_token: ACCESS, user: { id: SUBJECT, email: EMAIL } });
     }
-    if (url.startsWith(`${PROVIDER}/logout`)) return reply(204);
     if (url.endsWith('/api/password/changed') && answers.changed !== undefined) {
       return reply(answers.changed.status, { code: answers.changed.code });
     }
@@ -104,7 +103,6 @@ it('clears the link from the address before its first request, and signs nobody 
     `POST ${PROVIDER}/verify`,
     'POST /api/password/begin',
     'POST /api/password/changed',
-    `POST ${PROVIDER}/logout?scope=global`,
   ]);
   expect(asked.every((one) => one.hashThen === '')).toBe(true);
   expect(asked[0]?.body).toContain(HASH);

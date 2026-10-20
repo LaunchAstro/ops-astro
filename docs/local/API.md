@@ -3206,7 +3206,9 @@ the session's sign-in, and still the provider's latest mailed link, its
 `recovery_sent_at` the one the unit recorded at the mint. The provider keeps
 one such link a login and tells a recovery session from a sign-in link's in
 nothing else, so a sign-in link minted since, and its session, is 401. A login
-mapped live in no business is 401; one with a verified authenticator in any
+mapped live in no business (as an active member, or as an external party on
+a live share with no business grant, the rule sign-in admits by) is 401; one
+with a verified authenticator in any
 business is 403 `RESET_NEEDS_SUPPORT`. Then it opens the reset's window
 (`ops.subject_resets`) and records it against the session's digest
 (`ops.recovery_resets`). From that commit every session of the login, in
@@ -3232,15 +3234,20 @@ answered nowhere. That write's own 200 naming the login is the one
 confirmation: with no password, or any other answer, it is 409
 `RESET_NOT_CONFIRMED` and the window is left to its bound, and a password the
 provider refuses is 422 `RESET_PASSWORD_REFUSED`, the window kept for another
-try. Otherwise, in the database clock's next whole second, the window
+try. Then it signs the login out everywhere at the provider on the same
+bearer (`POST /logout?scope=global`, 204, or GoTrue's 403 `session_not_found`
+for a session already gone), the recovery session's own included, so a bearer
+kept past the page writes nothing after the settle; a write then would delete
+a later session that nothing asks the provider about. Not confirmed, it is
+409 `RESET_NOT_CONFIRMED` and the window is left to its bound. Otherwise, in
+the database clock's next whole second, the window
 settles once and `account.password_reset` is audited once, as the person
 found before the write, in that business, with a digest alone, even when the
 mapping ended while the write was out. A retry settles nothing and audits
 nothing. A sign-in after the settle
 is served.
 
-The page then signs out everywhere at the provider (`POST /logout?scope=global`,
-204 only, tried again three times) and sends the person to sign in. A session
+The page then sends the person to sign in; it signs nothing out itself. A session
 of the same login that the tab still held, which the window ended, is
 forgotten first, so sign-in asks for the new password; another login's
 session in the tab is left alone. Every

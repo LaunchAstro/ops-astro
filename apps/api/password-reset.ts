@@ -30,8 +30,14 @@
 //   anything else (the login's metadata) confirms nothing. 422
 //   `RESET_PASSWORD_REFUSED` when the provider refuses the password itself;
 //   409 `RESET_NOT_CONFIRMED` for no password or any other answer, the window
-//   left to its bound. Otherwise the window settles and the reset is audited
-//   once (`settlePasswordReset`): 200 `{}`.
+//   left to its bound. Then every session of the login is signed out at the
+//   provider on the same bearer (`signOutEverywhere`), the recovery session's
+//   own included, so a bearer kept past the page writes nothing after the
+//   settle: such a write would delete a later session at the provider that
+//   nothing here asks about once the window settles. Not confirmed, 409
+//   `RESET_NOT_CONFIRMED` and the window left to its bound. Otherwise the
+//   window settles and the reset is audited once (`settlePasswordReset`):
+//   200 `{}`.
 //
 // 503 `RESET_UNAVAILABLE` when the provider's keys or its user cannot be
 // reached to check the bearer, `RESET_FAULT` for anything else failing.
@@ -50,7 +56,7 @@ import {
   type Database,
 } from '../../packages/core-records/src/index.ts';
 import { PASSWORD_RESET_PATHS } from '../../packages/core-wire/src/index.ts';
-import { askUser } from './auth/provider-user.ts';
+import { askUser, signOutEverywhere } from './auth/provider-user.ts';
 import { bearerOf } from './auth/session.ts';
 import { createTokenCheck, sessionIdOf, type SupabaseVerifierOptions } from './auth/supabase.ts';
 
@@ -200,7 +206,7 @@ const providerOf = (options: PasswordResetOptions) => ({
   ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
 });
 
-/** `changed`: the password written on the session, then its window settled. */
+/** `changed`: the password written on the session, the session signed out, then its window settled. */
 async function changed(
   context: Context,
   database: Database,
@@ -222,6 +228,9 @@ async function changed(
     written.status !== 200 ||
     written.body['id'] !== bearer.subject
   ) {
+    return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
+  }
+  if ((await signOutEverywhere(providerOf(options), bearer.token)) !== 'ended') {
     return context.json({ code: 'RESET_NOT_CONFIRMED' }, 409);
   }
   await settlePasswordReset(database, bearer, target);

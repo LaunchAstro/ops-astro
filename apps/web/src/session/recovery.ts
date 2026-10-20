@@ -4,8 +4,9 @@
 // session, and the API's three reset routes. The access token lives in the
 // page's memory only, never in the tab's storage, so nobody is signed in. The
 // page writes no password at the provider: it hands the new one to the API's
-// `changed`, which writes it on the same session and settles the reset only
-// on that write's own acknowledgement, inside the reset's window.
+// `changed`, which writes it on the same session, signs the login out
+// everywhere on it, and settles the reset only on both acknowledgements,
+// inside the reset's window. The page signs nothing out itself.
 //
 // Every call uses `redirect: 'error'`, so no answer can send the browser, a
 // password or the session's bearer anywhere else, and a provider answer
@@ -13,10 +14,7 @@
 // acknowledgement; anything else is not one:
 // - verify: 200 with an `access_token` and the login's `user.id`;
 // - `changed`: 200 (a 422 is the provider refusing the password itself:
-//   choose another; a 401 is a window that is over: ask for a new link);
-// - sign out everywhere: 204 only, so a gateway's 200 is not one. A failure
-//   is tried again three times. The reset's window has already ended every
-//   session the sign-out would, so it is tidiness, never the security.
+//   choose another; a 401 is a window that is over: ask for a new link).
 
 import { PASSWORD_RESET_PATHS } from '../../../../packages/core-wire/src/index.ts';
 
@@ -27,9 +25,6 @@ export interface RecoveryRoute {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
 }
-
-/** How many times a sign-out that was not acknowledged is asked again. */
-export const LOGOUT_RETRIES = 3;
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -97,22 +92,6 @@ export async function verifyRecovery(
   return { accessToken, subject, email: typeof email === 'string' ? email : '' };
 }
 
-/** Every session of the login signed out at the provider: true only on its 204. */
-export async function signOutEverywhere(
-  route: RecoveryRoute,
-  accessToken: string,
-): Promise<boolean> {
-  for (let tried = 0; tried <= LOGOUT_RETRIES; tried += 1) {
-    // oxlint-disable-next-line no-await-in-loop -- each try follows the one before
-    const answer = await ask(route, provider(route, '/logout?scope=global'), {
-      method: 'POST',
-      headers: bearer(accessToken),
-    });
-    if (answer?.status === 204) return true;
-  }
-  return false;
-}
-
 /** One of the API's reset routes: its status, or 0 when none came. */
 async function api(
   route: RecoveryRoute,
@@ -144,7 +123,7 @@ export async function beginReset(
   return answer.code === 'RESET_LINK_INVALID' ? 'invalid' : 'failed';
 }
 
-/** The new password, written by the API on the recovery session, which settles the window. */
+/** The new password, written by the API on the recovery session, which signs it out and settles the window. */
 export async function writePassword(
   route: RecoveryRoute,
   accessToken: string,
@@ -163,14 +142,14 @@ export async function writePassword(
 export type ChangeOutcome =
   | { readonly stage: 'invalid' | 'needs-support' | 'failed' }
   | { readonly refusal: 'refused' | 'failed' }
-  | { readonly stage: 'changed'; readonly signedOut: boolean; readonly email: string };
+  | { readonly stage: 'changed'; readonly email: string };
 
 /**
  * "Change password", in its fixed order: open the provider's recovery session
  * with the link's hash (once; a second try keeps it), begin the reset, which
  * ends every session of the login, hand the password to the API's `changed`,
- * which writes it and settles the reset, then sign out everywhere and forget
- * the session.
+ * which writes it, signs the login out everywhere and settles the reset, then
+ * forget the session.
  */
 export async function changePassword(
   route: RecoveryRoute,
@@ -191,5 +170,5 @@ export async function changePassword(
   if (written === 'invalid') return { stage: 'invalid' };
   if (written !== 'set') return { refusal: written };
   opened.current = null;
-  return { stage: 'changed', signedOut: await signOutEverywhere(route, accessToken), email };
+  return { stage: 'changed', email };
 }

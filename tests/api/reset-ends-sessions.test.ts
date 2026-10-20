@@ -169,16 +169,24 @@ withProvider(
     const fresh = await signIn(person, 'sol-first-password-1656');
     expect(await door(fresh, 'alpha')).toBe('served');
     expect(await door(fresh, 'bravo')).toBe('served');
-    // A caller can retain the recovery bearer instead of performing browser logout.
-    expect((await writePassword(recovery, 'sol-second-password-1656')).status).toBe(200);
-    const gone = await fetch(`${process.env['RESET_AUTH_URL']}/user`, {
+    // A caller can retain the recovery bearer instead of performing browser
+    // logout: `changed` signed its session out at the provider before the
+    // settle, so the kept bearer writes nothing and deletes no later session.
+    const kept = await fetch(`${process.env['RESET_AUTH_URL']}/user`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${recovery}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'sol-second-password-1656' }),
+    });
+    expect(kept.status).toBe(403);
+    expect(((await kept.json()) as { error_code: string }).error_code).toBe('session_not_found');
+    const live = await fetch(`${process.env['RESET_AUTH_URL']}/user`, {
       headers: { authorization: `Bearer ${fresh}` },
     });
-    expect(gone.status).toBe(403);
-    expect(((await gone.json()) as { error_code: string }).error_code).toBe('session_not_found');
+    expect(live.status).toBe(200);
+    expect(await signIn(person, 'sol-first-password-1656')).toEqual(expect.any(String));
     expect(await Promise.all([door(fresh, 'alpha'), door(fresh, 'bravo')])).toStrictEqual([
-      'AUTH_SESSION_EXPIRED',
-      'AUTH_SESSION_EXPIRED',
+      'served',
+      'served',
     ]);
   },
   120_000,

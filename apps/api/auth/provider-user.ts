@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The login provider's `/user`, on a person's own bearer: read it, or write
-// the password on a recovery session. Never the admin key. The password
-// reset's `begin` and `changed` and the door's session probe ask it.
+// the password on a recovery session, and its `/logout` to end that recovery
+// session everywhere. Never the admin key. The password reset's `begin` and
+// `changed` and the door's session probe ask it.
 //
 // One fixed destination, the provider's own origin under its issuer; no
 // redirect followed; a time limit; a size limit read off the stream. Anything
@@ -38,13 +39,41 @@ export async function askUser(
   token: string,
   body?: { readonly password: string },
 ): Promise<UserAnswer> {
+  return await ask(options, token, body === undefined ? 'GET' : 'PUT', '/user', body);
+}
+
+/**
+ * `POST /logout?scope=global` on `token`: every session of its login ended at
+ * the provider, the recovery session's own with it, so the bearer writes
+ * nothing more. `ended` on the 204, or on GoTrue's 403 `session_not_found`
+ * (already gone); `unknown` for anything else.
+ */
+export async function signOutEverywhere(
+  options: ProviderUserOptions,
+  token: string,
+): Promise<'ended' | 'unknown'> {
+  const answer = await ask(options, token, 'POST', '/logout?scope=global');
+  if (answer === 'unreachable') return 'unknown';
+  if (answer.status === 204) return 'ended';
+  return answer.status === 403 && answer.body['error_code'] === 'session_not_found'
+    ? 'ended'
+    : 'unknown';
+}
+
+async function ask(
+  options: ProviderUserOptions,
+  token: string,
+  method: 'GET' | 'PUT' | 'POST',
+  path: '/user' | '/logout?scope=global',
+  body?: { readonly password: string },
+): Promise<UserAnswer> {
   const base = new URL(options.issuer);
-  const url = new URL(`${base.pathname.replace(/\/+$/u, '')}/user`, base);
+  const url = new URL(`${base.pathname.replace(/\/+$/u, '')}${path}`, base);
   if (url.origin !== base.origin) return 'unreachable';
   let response: Response;
   try {
     response = await (options.fetch ?? fetch)(url, {
-      method: body === undefined ? 'GET' : 'PUT',
+      method,
       redirect: 'error',
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       headers: {
