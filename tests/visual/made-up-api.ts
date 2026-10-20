@@ -104,7 +104,6 @@ const READS = {
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
       { collection: 'custody', action: 'manage' },
-      // The Review workspace's approve control (#2142).
       { collection: 'gate', action: 'decide' },
     ],
   } satisfies CapabilitiesResult,

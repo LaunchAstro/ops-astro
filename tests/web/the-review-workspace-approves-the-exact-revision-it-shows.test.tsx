@@ -12,6 +12,7 @@ import { act } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { ReviewWorkspaceScreen } from '../../apps/web/src/screens/review/ReviewWorkspace.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { MIA, NATHAN } from '../visual/made-up-access.ts';
 import { REVIEW, REVIEW_ID, pictureOf } from '../visual/made-up-review.ts';
 import { tick } from './task-page-stub.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
@@ -108,15 +109,7 @@ function clientFor(world: World, businessKey = 'alpha') {
       );
     }
     if (path.endsWith('/person/list')) {
-      return Promise.resolve(
-        json({
-          ok: true,
-          persons: [
-            { personId: 'p-nathan', name: 'Nathan' },
-            { personId: 'p-mia', name: 'Mia' },
-          ],
-        }),
-      );
+      return Promise.resolve(json({ ok: true, persons: [NATHAN, MIA] }));
     }
     if (path.endsWith('/review/decide')) {
       return world.decide(sent.filter((each) => each.path === path).length);
