@@ -627,11 +627,13 @@ def policy_keys(path: Path) -> list[str]:
     when the file is inside it, however the target was given: the path as it
     reads below the repository's root, so a symlinked folder is judged by its
     own name, and the path its folders resolve to, so a link cannot rename a
-    denied folder away. As given otherwise. The file itself is never
-    resolved, so a symlink is still judged as the link itself."""
-    full = Path(os.path.abspath(path))
+    denied folder away. A path through `..` names no folder of its own, since
+    a link before it decides where it leads, so only the resolved path keys
+    it. As given otherwise. The file itself is never resolved, so a symlink
+    is still judged as the link itself."""
+    full = Path.cwd() / path
     roots = [root for root in [full, *full.parents] if Path(os.path.realpath(root)) == REPO]
-    keys = [full.relative_to(roots[0]).as_posix()] if roots else []
+    keys = [full.relative_to(roots[0]).as_posix()] if roots and ".." not in full.parts else []
     resolved = Path(os.path.realpath(full.parent)) / full.name
     if resolved.is_relative_to(REPO):
         keys.append(resolved.relative_to(REPO).as_posix())
