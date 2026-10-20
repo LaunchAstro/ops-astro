@@ -228,11 +228,18 @@ export async function takeLaunch(
 
 /**
  * The commands a run taken to answer may send under its credential: it reads
- * its task, and the run's own command writes what lands. Nothing else, so the
- * actions the delegation was minted with (read, comment, write) are never
- * spent by the run directly.
+ * its task, and which task this delegation names (`session.capabilities`, its
+ * own purpose and the pairs the launcher still covers), so the worker can
+ * pick up the owner's accepted plan there (#2178); that pickup is judged
+ * against this delegation (`pickup-delegation.ts`), and the run's own
+ * commands go under the credential it mints. Nothing else, so the actions the
+ * delegation was minted with (read, comment, write) are never spent by the
+ * run directly.
  */
-export const ANSWER_RUN_COMMANDS: ReadonlySet<string> = new Set(['task.read']);
+export const ANSWER_RUN_COMMANDS: ReadonlySet<string> = new Set([
+  'task.read',
+  'session.capabilities',
+]);
 
 /**
  * Whether a call under this delegation is outside what a launch taken to
