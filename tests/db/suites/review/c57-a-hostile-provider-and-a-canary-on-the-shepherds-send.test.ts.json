@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017): hostile provider answers and an unlisted destination on an approved shepherd send are failed attempts keeping only the fault; planted address, key and client marker reach no log, error, attempt or audit row."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017) canary: a provider that answers a hyphen-only recipient's whole local part as its message id never puts it in the send's delivery evidence."
+}

@@ -666,6 +666,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, occurrence_id, outcome)
      select o.business_id, gen_random_uuid(), o.id, 'activation_off'
        from public.activation_occurrences o where o.business_id = $1 limit 1 returning 1`,
+  // C57: the journey runs no review shepherd. One send on the seeded review and occurrence, the
+  // review's task standing in for its comment and its opener for the worker and recipient.
+  'public.review_shepherd_sends': `insert into public.review_shepherd_sends
+       (business_id, id, occurrence_id, review_id, task_id, party_id, comment_id,
+        recipient_person_ids, digest, worker_actor_id)
+     select r.business_id, gen_random_uuid(), o.id, r.id, r.task_id, gen_random_uuid(), r.task_id,
+            array[r.opened_by_person_id], repeat('0', 64), r.opened_by_actor_id
+       from public.reviews r
+       join public.activation_occurrences o on o.business_id = r.business_id
+      where r.business_id = $1 order by r.id, o.id limit 1 returning 1`,
   // C39-T: nothing on the journey invites anyone, so one invitation, the token
   // its send minted and that send's attempt are written here, in order. The
   // invitation names the business's first person and actor.

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017): the shepherd's email is the client's one weekly relationship email and reaches only the review's own client's people with a live party task:read grant and a confirmed address."
+}

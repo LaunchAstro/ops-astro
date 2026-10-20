@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017) correlation: a recipient whose local part is punctuation alone keeps an unrelated provider id in its delivery evidence, so the delivery webhook lands on its send."
+}

@@ -26,6 +26,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C57 (20261019160000): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
+  // C57 (20261019184700): a shepherd send is written once and approved once, by column.
+  ['si', 'review_shepherd_sends'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -82,5 +84,10 @@ export const SITE_UPDATES = [
       'created_task_id',
       'updated_at',
     ],
+  },
+  {
+    table: 'public.review_shepherd_sends',
+    from: '20261019184700',
+    columns: ['approved_by_actor_id', 'approved_by_person_id', 'approved_digest', 'approved_at'],
   },
 ] as const;

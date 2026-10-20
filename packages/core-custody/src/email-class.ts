@@ -82,6 +82,9 @@ export interface CheckedItem {
   readonly subject: string;
   /** The item's `raised_at` as text: a conversation's is read by a member since then (C71). */
   readonly raisedAt: string;
+  /** The item's fact, which names a review shepherd's comment when it is one (C57). */
+  readonly factKind: string;
+  readonly factId: string;
   readonly to: string;
   /** The task's client, which the weekly cap counts by; null for a task of no client. */
   readonly client: string | null;
