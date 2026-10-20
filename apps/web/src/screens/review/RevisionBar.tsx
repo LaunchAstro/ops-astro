@@ -70,8 +70,12 @@ export interface RevisionBarProps {
   readonly reload: () => void;
 }
 
-/** The approve control for the revision under review, while it is undecided. */
-function Approve(props: RevisionBarProps & { readonly after: Revision }): ReactElement {
+/**
+ * The approve control for the revision under review, drawn while it is undecided and the
+ * session may decide. It stays mounted while either flickers, so an answer in flight is still
+ * judged against the digest shown now, never against the one it was sent with.
+ */
+function Approve(props: RevisionBarProps & { readonly after: Revision }): ReactElement | null {
   const { client, desk, review, after } = props;
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<{ readonly digest: string; readonly because: string }>();
@@ -101,6 +105,7 @@ function Approve(props: RevisionBarProps & { readonly after: Revision }): ReactE
       else setRefused({ digest, because: settlement.because });
     })();
   };
+  if (after.decision !== null || !props.mayDecide) return null;
   return (
     <div className="stack" data-approve>
       <div>
@@ -155,9 +160,7 @@ export function RevisionBar(props: RevisionBarProps): ReactElement {
           ))}
         </ul>
       </div>
-      {after === null || after.decision !== null || !props.mayDecide ? null : (
-        <Approve {...props} after={after} />
-      )}
+      {after === null ? null : <Approve {...props} after={after} />}
     </Card>
   );
 }
