@@ -24,6 +24,7 @@ import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { appliedDetail, asAgent, rows, type Schedules } from './schedules-harness.ts';
 import { t2dHarness, type Work } from './t2d-harness.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 /** Another business on the same database, set up as `openSchedules` sets up the first. */
 export async function openSecond(s: Schedules, key: string): Promise<Schedules> {
@@ -217,6 +218,7 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       businessKey: BUSINESS_KEY,
       credential: await tokenFor(fixture.agent.subject),
       delegation: await delegationOn(fixture, taskId),
+      runner: COMPUTES_NOTHING,
       ...options,
     });
     const proposed = await worker.proposeOnce();

@@ -7,6 +7,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { linkClient } from '../runtime/closed-stop-answer-world.ts';
 import { attempts, HOST, launched, linking, r, useReceiptWorld } from './aw-08-receipt-world.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 useReceiptWorld('prv942r21');
 
@@ -57,6 +58,7 @@ const workerOn = (transport: Transport, delegation: string, provider: Provider) 
     credential: r.agentToken,
     delegation,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
     provider,
   });
 

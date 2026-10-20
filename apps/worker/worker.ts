@@ -24,7 +24,7 @@ import { halfway, keptAlive } from './keep-alive.ts';
 import type { Bearer } from './sign-in.ts';
 import { delegatedTask, proposeStep, selfOf, type Proposed, type Proposer } from './proposal.ts';
 import { handBackForReview, type HandedBack } from './review.ts';
-import { SYNTHETIC_RUNNER, type StepEnd, type StepRunner } from './step-runner.ts';
+import type { StepEnd, StepRunner } from './step-runner.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
@@ -37,8 +37,8 @@ export interface WorkerOptions {
   readonly reporter: UsageReporter;
   /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
   readonly provider?: Provider;
-  /** What computes an accepted plan before its Launch (#1623 R3). Absent is the synthetic one. */
-  readonly runner?: StepRunner;
+  /** What computes an accepted plan before its Launch (#1623 R3): the agent's, in `main.ts`. */
+  readonly runner: StepRunner;
 }
 
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
@@ -46,6 +46,7 @@ export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as cons
 export type WorkerOutcome =
   /** A proposal's answer, or its own approved one in the queue after a restart (`proposal.ts`). */
   | Proposed
+  | { readonly idle: { readonly taskId: string } }
   | {
       readonly applied: {
         readonly taskId: string;
@@ -244,7 +245,7 @@ async function effectOnce(
   // AW-08, #1623 R3: a plan's lease fires nothing; the runner computes, a success is reviewed.
   if ('refused' in dispatched && dispatched.refused.code === 'LAUNCH_NOT_DECIDED') {
     const context = { phase: 'compute', taskId, attemptId, lease, call } as const;
-    const ended = await (options.runner ?? SYNTHETIC_RUNNER).compute(context);
+    const ended = await options.runner.compute(context);
     if (ended.outcome !== 'success') return { ended: { taskId, ...ended } };
     const review = { operationId: `review:${attemptId}` };
     keep({ ...held, review });

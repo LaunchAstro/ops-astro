@@ -10,13 +10,14 @@
 // owning stop wrote (the runner's own `run.end` for a tool refusal, the
 // person's cancel for a cancel).
 //
-// Control: with no runner injected the synthetic runner works as before. The
-// plan goes back for review, the person launches it, and the next pass
-// applies its one comment and observes it.
+// Control: a runner that computes nothing (`computes-nothing-runner.ts`) ends
+// in success. The plan goes back for review, the person launches it, and the
+// next pass applies its one comment and observes it.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { approve } from '../runtime/schedules-harness.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 import {
   asWorker,
   cancelTask,
@@ -172,8 +173,8 @@ for (const end of ENDS) {
   });
 }
 
-it('control: with no runner injected, the synthetic runner hands back, and once launched applies its one comment', async () => {
-  const seam = await acceptedPlan('synthetic, as before');
+it('control: a runner that computes nothing hands back, and once launched applies its one comment', async () => {
+  const seam = await acceptedPlan('computes nothing', COMPUTES_NOTHING);
   const first = await seam.worker.applyOnce(seam.taskId);
   if (!('handedBack' in first)) throw new Error(`hand back: ${JSON.stringify(first)}`);
   expect(verbsOf(seam), 'nothing applied before the Launch').not.toContain('task.comment');
