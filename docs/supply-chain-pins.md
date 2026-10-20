@@ -32,12 +32,22 @@ gh api repos/<owner>/<repo>/commits/<sha>               # must return 200
 | `github/codeql-action/init`         | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
 | `github/codeql-action/analyze`      | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
 | `github/codeql-action/upload-sarif` | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
+| `zizmorcore/zizmor-action`          | v0.6.4  | `cc914d7f3750a2d13d75c7f184a1060aa0e9d482` | Tag ref, commit 200 (18 October 2026)  |
 
 That check establishes that the hash is the commit the publisher's own release
 tag points at, so a later tag move cannot change what runs here. It does not establish that the code at that
 commit is trustworthy, and no automated check can. Raising a pin is a
 reviewed change like any other dependency bump, and Renovate is configured to
 propose them rather than merge them.
+
+`zizmorcore/zizmor-action` runs zizmor 1.30.1, the version ci.yml's `workflow
+audit (zizmor, not required)` job asks for, from
+`ghcr.io/zizmorcore/zizmor:1.30.1` pulled by the digest the action's own
+`support/versions` file records at that commit
+(`sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101`),
+and refuses a version it has no digest for. The action's commit fixes the
+image too. Both releases were 39 days old when pinned, past Renovate's
+seven-day minimum.
 
 ## Downloaded archives
 

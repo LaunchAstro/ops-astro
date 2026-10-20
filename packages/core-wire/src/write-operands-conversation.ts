@@ -15,6 +15,7 @@ export const CONVERSATION_OPERANDS: Readonly<Partial<Record<CommandName, Spec>>>
     subject: 'any',
     scope: 'any',
     model: 'any',
+    page: 'any',
   },
   'conversation.message': { conversationId: 'any', body: 'any' },
   'conversation.rename': { conversationId: 'any', title: 'any' },

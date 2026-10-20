@@ -38,21 +38,34 @@ type Docker = (args: string[], input?: Buffer) => Promise<{ code: number; stdout
 type Archive = { takenAt: string; body: Buffer };
 type Scope = { business: string; client: string; person: string };
 
+type RestoreDrill = (options: {
+  fetchArchive: () => Promise<Archive>;
+  privateKey: string;
+  scope: Scope;
+  docker?: Docker;
+  image?: string;
+  prefix?: string;
+}) => Promise<DrillRecord>;
+
+/**
+ * The drill under this run's own prefix (SUITE_PREFIX), so the suite counts
+ * only containers it started; `defaultNamed` is the drill as shipped.
+ */
 const drillModule = async (): Promise<{
-  restoreDrill: (options: {
-    fetchArchive: () => Promise<Archive>;
-    privateKey: string;
-    scope: Scope;
-    docker?: Docker;
-    image?: string;
-  }) => Promise<DrillRecord>;
+  restoreDrill: RestoreDrill;
+  defaultNamed: RestoreDrill;
   docker: Docker;
 }> => {
   const path = '../../scripts/ops/restore-drill.mjs';
-  return await import(
+  const drill = (await import(
     /* @vite-ignore */
     path
-  );
+  )) as { restoreDrill: RestoreDrill; docker: Docker };
+  return {
+    restoreDrill: (options) => drill.restoreDrill({ prefix: SUITE_PREFIX, ...options }),
+    defaultNamed: drill.restoreDrill,
+    docker: drill.docker,
+  };
 };
 const sealModule = async (): Promise<{
   sealArchive: (dump: Buffer, publicKey: string) => Buffer;
@@ -76,7 +89,11 @@ const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 // Postgres 18 by digest: CI's own service image (.github/workflows/ci.yml).
 const OTHER_MAJOR_IMAGE =
   'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
+// The shipped naming contract, which any staging drill on the daemon shares.
 const DRILL_PREFIX = `${staging['x-ops-astro'].ownPrefix}-drill-`;
+// This run's own id: every drill container the suite starts is named under it,
+// so another run's or a stale drill's container is never counted or removed.
+const SUITE_PREFIX = `${staging['x-ops-astro'].ownPrefix}-suite-${randomBytes(6).toString('hex')}`;
 const MADE_UP = `made-up-business-${randomBytes(4).toString('hex')}`;
 // Two businesses, each with a person and a client (an external party, a
 // person of the business with no membership). The drill is scoped to A.
@@ -273,12 +290,17 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
   }
 }
 
-async function drillContainers(): Promise<string> {
+/**
+ * Containers on the daemon, running or not, whose name starts with `start`:
+ * by default the drill containers this run started, and no one else's.
+ */
+async function drillContainers(start = `${SUITE_PREFIX}-drill-`): Promise<string> {
   const listed = await run([
     'ps',
     '-a',
     '--filter',
-    `name=${DRILL_PREFIX}`,
+    // Docker matches the name as a pattern against `/<name>`.
+    `name=^/${start}`,
     '--format',
     '{{.Names}}',
   ]);
@@ -314,7 +336,38 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
   theRestoreDrillCases3();
   theRestoreDrillCases4();
   carriedRestoreCases();
+  suiteCleanupCases();
 });
+
+function suiteCleanupCases() {
+  it("counts a leaked container of this run's own, and not another run's under the same naming", async () => {
+    const own = `${SUITE_PREFIX}-drill-planted`;
+    const other = `${staging['x-ops-astro'].ownPrefix}-suite-${randomBytes(6).toString('hex')}-drill-planted`;
+    const start = (name: string) =>
+      run([
+        'run',
+        '-d',
+        '--rm',
+        '--network',
+        'none',
+        '--name',
+        name,
+        '--entrypoint',
+        'sleep',
+        IMAGE,
+        '300',
+      ]);
+    try {
+      expect((await start(own)).code).toBe(0);
+      expect((await start(other)).code).toBe(0);
+      expect(await drillContainers()).toBe(own);
+    } finally {
+      // Only the two it started, each by its exact name.
+      await run(['rm', '-f', '-v', own, other]);
+    }
+    expect(await drillContainers()).toBe('');
+  }, 60_000);
+}
 
 // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
 function theRestoreDrillCases1() {
@@ -446,9 +499,9 @@ function theRestoreDrillCases3() {
 function drillTargetCases1() {
   // prettier-ignore
   it('restores only into its own networkless container of the production major, and records both majors', async () => {
-      const { restoreDrill, docker } = await drillModule();
+      const { defaultNamed, docker } = await drillModule();
       const calls: string[][] = [];
-      const record = await restoreDrill({
+      const record = await defaultNamed({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
         scope: SCOPE,
@@ -484,6 +537,8 @@ function drillTargetCases1() {
       }
       // Removed with its volumes, and its data kept in memory.
       expect(rest.at(-1)).toEqual(['rm', '-f', '-v', name]);
+      // Gone by its exact name: other drills share the default prefix.
+      expect(await drillContainers(`${name}$`)).toBe('');
       expect(first?.[first.indexOf('--tmpfs') + 1]).toBe('/var/lib/postgresql/drill');
       expect(first).toContain('PGDATA=/var/lib/postgresql/drill');
       // No call names a host, a port or a connection string: there is no
@@ -750,6 +805,7 @@ async function carriedRestore(
       archiveFile: file,
       privateKey: keys.privateKey,
       scope,
+      prefix: SUITE_PREFIX,
     });
     return {
       kept: readdirSync(dir)

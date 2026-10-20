@@ -15,8 +15,8 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import type { ReservedCall } from './broker-reserve.ts';
-import { resolveFields } from './broker-sources.ts';
 import { lockTask } from './broker-task.ts';
+import { fieldsOf } from './broker-turn.ts';
 import type { ModelCallRequest } from './broker-types.ts';
 import type { Admission, Admit } from './custody.ts';
 
@@ -76,7 +76,8 @@ export async function stillDispatched(tx: TenantQuery, callId: string): Promise<
 
 /**
  * A task run's subscription send: the task held `for share`, then no client,
- * and every field still one the subscription may carry, judged from the rows.
+ * and every field still one the subscription may carry, judged from the rows;
+ * a turn's parts bound again against that task.
  */
 export function taskAdmission(
   database: Database,
@@ -90,7 +91,11 @@ export function taskAdmission(
       if (!(await stillDispatched(tx, reserved.callId))) return false;
       const task = await lockTask(tx, request.leaseId);
       if (task === undefined || task.clientId !== null) return false;
-      const resolved = resolveFields(request.fields, task.source);
+      // A turn is bound again, as at the start, against the task held here.
+      const resolved = await fieldsOf(tx, request, reserved.operation, {
+        leaseId: request.leaseId,
+        source: task.source,
+      });
       if (!resolved.ok) return false;
       const still = eligibleRoutes(reserved.operation.fields, resolved.fields, [reserved.route]);
       return still.ok;

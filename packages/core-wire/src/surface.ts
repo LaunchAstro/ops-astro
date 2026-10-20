@@ -34,6 +34,7 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
+import { SITE_SURFACE } from './surface-site.ts';
 import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
@@ -54,8 +55,6 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
-const RUN_COLLECTION = 'run';
-const GATE_COLLECTION = 'gate';
 const CUSTODY_COLLECTION = 'custody';
 const MANDATE_COLLECTION = 'mandate';
 const CONVERSATION_COLLECTION = 'conversation';
@@ -66,6 +65,14 @@ const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
 const CHAT_COLLECTION = 'chat';
+/** The lease holder's own commands, asked of the lease (model.call, run.end). */
+const ASKED_OF_LEASE = {
+  targetsExistingRecord: false,
+  authorisedOn: 'claim',
+  untargetedIdentifiers: ['leaseId'],
+  runtimeShaped: 'leaseId',
+  agent: 'delegated',
+} as const;
 const GROUP_MANAGER =
   'a member of the group, then its creator or a holder of chat:manage (C71-G); else NOT_FOUND or SCOPE_NOT_GRANTED';
 const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
@@ -326,6 +333,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       'settings.set_conversation_window',
       'settings.set_retention_window',
       'settings.set_priority_stages',
+      'settings.set_single_operator',
     ] as const
   ).map((name) =>
     declare(name, 'manage', {
@@ -638,41 +646,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
-  // read inside its query), so one client's grant reaches no other client's
-  // correction. The request is `run:write`, an agent's inside its delegation; the
-  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
-  // never an agent's, and only the configured approver who is not the requester.
-  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
-  declare('live_correction.request', 'write', {
-    collection: RUN_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'target',
-    untargetedIdentifiers: ['partyId', 'taskId'],
-    agent: 'delegated',
-  }),
-  declare('live_correction.decide', 'decide', {
-    collection: GATE_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'target',
-    untargetedIdentifiers: ['correctionId', 'versionId'],
-  }),
-  declare('settings.set_live_correction_approver', 'manage', {
-    collection: SETTINGS_COLLECTION,
-    targetsExistingRecord: false,
-    untargetedIdentifiers: [],
-  }),
+  ...SITE_SURFACE,
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
   // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
-  declare('model.call', 'write', {
-    targetsExistingRecord: false,
-    authorisedOn: 'claim',
-    untargetedIdentifiers: ['leaseId'],
-    runtimeShaped: 'leaseId',
-    agent: 'delegated',
-  }),
+  declare('model.call', 'write', ASKED_OF_LEASE),
+  declare('run.end', 'write', ASKED_OF_LEASE),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work
   // controls. The runtime asks the same pair of the run's own task again under
@@ -892,6 +872,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // a version released under `automation:manage`, both business-wide and
   // never an agent's (the key catalogue: owner and administrators).
   read('automation.registry', SETTINGS_COLLECTION),
+  // One activation's history (#1741), under the same key: never an agent's.
+  read('automation.history', SETTINGS_COLLECTION),
   declare('activation.change', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,

@@ -27,9 +27,12 @@ export const scratch: string = join(tmpdir(), `s0-6-web-${randomBytes(6).toStrin
 beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** The sign-in server's health answer, as Supabase's Auth gives it. */
+/** The sign-in server's health answer, as Supabase's Auth gives it, each read counted. */
+let healthReads = 0;
+export const authReads = (): number => healthReads;
 const auth = createServer((request, response) => {
   const health = request.url === '/auth/v1/health';
+  if (health) healthReads += 1;
   response.writeHead(health ? 200 : 404, { 'content-type': 'application/json' });
   response.end(health ? JSON.stringify({ version: AUTH_VERSION, name: 'GoTrue' }) : '{}');
 });
@@ -152,6 +155,7 @@ export const settings = (path: string): Record<string, string> => ({
   VERCEL_ORG_ID: ORG,
   VERCEL_PROJECT_ID: PROJECT,
   GOTRUE_URL: authUrl,
+  SUPABASE_PUBLISHABLE_KEY: `sb_publishable_${CANARY}`,
   OPS_ASTRO_TOKEN: CANARY,
   DATABASE_URL: `postgres://app:${CANARY}@127.0.0.1:1/never`,
   DATABASE_ADMIN_URL: `postgres://owner:${CANARY}@127.0.0.1:1/never`,

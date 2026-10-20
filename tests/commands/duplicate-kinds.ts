@@ -212,6 +212,8 @@ export const DECLARED: Readonly<
   'conversation.set_model': { carry: 'not carried', plant: 'needs a conversation' },
   'task.check': { carry: 'not carried', plant: 'needs a lease' },
   'model.call': { carry: 'not carried', plant: 'needs a lease' },
+  // The worker's own stop (#1623 R1): an outcome on the attempt, never task content.
+  'run.end': { carry: 'not carried', plant: 'needs a lease' },
   'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.end_at_budget_stop': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.revise_state': { carry: 'not carried', plant: 'needs a run' },
@@ -252,7 +254,10 @@ export const DECLARED: Readonly<
   // clients, so a duplicate carries none (task-duplicate.test.ts plants one to prove it).
   'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
   'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
+  'live_correction.revert': { carry: 'not carried', plant: 'needs a live correction' },
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
+  'settings.set_single_operator': { carry: 'not carried', plant: 'a business setting' },
+  'live_correction.record_review': { carry: 'not carried', plant: 'needs a requested correction' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

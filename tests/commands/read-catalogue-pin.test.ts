@@ -24,6 +24,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'agent.mine': [],
+  'automation.history': ['activationId'],
   'automation.registry': [],
   'chat.conversations': [],
   'chat.messages': ['conversationId'],
@@ -43,7 +44,9 @@ const PINNED_IDENTIFIERS = {
   'inbox.read': [],
   'inbox.unattended': [],
   'invitation.list': [],
+  'live_correction.list': [],
   'live_correction.read': ['correctionId'],
+  'live_correction.receipts': ['correctionId'],
   'map.frontier': ['recordId'],
   'map.list': [],
   'map.view': ['recordId'],
@@ -200,6 +203,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.read': BODIES.map(() => null),
   // C33: the Workflow triggers registry takes nothing.
   'automation.registry': BODIES.map(() => null),
+  // An activation's history (#1741), named by the activation, which none of these bodies carries.
+  'automation.history': unsent('activationId', 'Send activationId as the activation’s identifier.'),
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
   'connection.signal': BODIES.map(() => null),
@@ -237,6 +242,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.unattended': BODIES.map(() => null),
   // C80's correction, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  // #1694: the list takes nothing; the receipts read takes the correction.
+  'live_correction.list': BODIES.map(() => null),
+  'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
@@ -252,7 +260,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-four reads', () => {
+  it('names the same forty-six reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

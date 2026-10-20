@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The site runner (#1692) proposes and publishes an approved correction once under its lease, checks it live on the agency page and writes its receipt; an unapproved correction, or one on another task than the lease, sends nothing; a runner restarted on a new connection and lease observes the held publish again and never sends it twice."
+}

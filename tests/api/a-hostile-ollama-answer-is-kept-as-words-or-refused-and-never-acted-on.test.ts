@@ -33,7 +33,7 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 
 const replyOf = (answer: Answer): Record<string, unknown> =>
   (answer.body as Record<string, Record<string, unknown>>)['reply'] ?? {};

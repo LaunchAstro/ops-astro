@@ -4,8 +4,8 @@
 //
 // The agent's own operations are `AGENT_SURFACE`, and each has a real positive
 // control here: the queue before any pickup, a pickup of a freshly approved
-// reservation, and a read, a comment, a heartbeat, a check, the capabilities read and a
-// handback under the credential that pickup handed out. Each is sent once
+// reservation, and a read, a comment, a heartbeat, a check, the capabilities read, a
+// handback and the worker's own stop under the credential that pickup handed out. Each is sent once
 // valid, then again with every classified system-owned field, and the contract
 // outcome is asserted: `FIELD_NOT_WRITABLE` naming the field, every other table
 // unchanged, one refused audit row. Authority review finding 2 found the agent
@@ -44,48 +44,13 @@ import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
 import { stepResultBody } from './d06-agent-step.ts';
+import { AGENT_OPERATIONS, success } from './d06-agent-operations.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/d06-agent: DATABASE_URL is unset, so nothing below ran.');
 }
-
-/** The agent's operations with a positive control, in the order the journey needs them. */
-const AGENT_OPERATIONS: readonly CommandName[] = [
-  'task.queue',
-  'session.capabilities',
-  'task.read',
-  'task.comment',
-  'task.propose',
-  'run.revise_state',
-  // An author's edit and delete (MP-4-5), each on a comment the agent wrote.
-  'task.edit_comment',
-  'task.delete_comment',
-  // The three marks (MP-4-9), the Ad hoc mark (MP-4-10) and the category
-  // (MP-4-8), which an agent sets on its own task inside its delegation.
-  'task.set_scores',
-  'task.set_adhoc',
-  'task.set_category',
-  // The description and the brief (MP-4-7), the name, the due date and the
-  // page link (MP-4-8, MP-4-12): the fields an agent writes through
-  // `task.update` on its own task.
-  'task.update',
-  // The assignee (MP-4-8), under a delegation that also holds assign.
-  'task.assign',
-  'live_correction.request',
-  'task.heartbeat',
-  'task.dispatch',
-  'task.observe',
-  'task.check',
-  'model.call',
-  'run.delegate_child',
-  'run.child_handback',
-  'task.pickup',
-  'task.handback',
-  // An onboarding step's result (C41-A), on a step the agent picked up.
-  'onboarding.step_result',
-];
 
 /** A business-internal field the replay operation may take to its cloud route. */
 /** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
@@ -132,14 +97,14 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
   ): Promise<{ body: Record<string, unknown>; credential?: string }> {
     const operationId = randomUUID();
     if (name === 'live_correction.request') {
-      // A correction names its task's client (P26 low 4), so the agent picks
-      // up a task the admin put under one, and names that client.
+      // A correction is on its task's client's site (P26 low 4), so the agent
+      // picks up a task the admin put under one, and names a page of that site.
       await hold.release();
-      const { pickup, partyId, pageUrl } = await c80AgentPickup(harness);
+      const { pickup, pageUrl } = await c80AgentPickup(harness);
       expect(pickup.code, 'the pickup a correction is asked under').toBe('ok');
       hold.track(pickup);
       planOnly = true;
-      return c80AgentBody(operationId, await hold.ensureLive(), { partyId, pageUrl });
+      return c80AgentBody(operationId, await hold.ensureLive(), { pageUrl });
     }
     // Every other cell holds a launched lease, so C80's pickup is given back first.
     if (planOnly) await hold.release();
@@ -211,12 +176,15 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential: String(detail['credential']),
       };
     }
+    // A stop names a code that needs no proof in the run's records.
     const leased =
       name === 'task.check'
         ? { name: 'the agent checks', outcome: 'passed' }
         : name === 'model.call'
           ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
-          : { outcome: 'completed', report: { wrote: 'a draft' } };
+          : name === 'run.end'
+            ? { endCode: 'TOOL_REFUSED' }
+            : { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...leased };
     return { body, credential };
   }
@@ -228,6 +196,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     const answer = await harness.asAgent(name, prepared.body, prepared.credential);
     if (name === 'task.pickup') hold.track(answer);
     if (name === 'task.handback' && answer.code === 'ok') hold.settled();
+    // A stop retires the delegation, so the next cell picks up afresh.
+    if (name === 'run.end' && answer.code === 'RUN_ENDED') hold.settled();
     return answer;
   }
 
@@ -236,7 +206,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     async (cell) => {
       const value = probeValue(cell.key);
       const control = await send(cell.operation, await positive(cell.operation));
-      expect(control.code, `positive control for ${cell.operation}`).toBe('ok');
+      expect(control.code, `positive control for ${cell.operation}`).toBe(success(cell.operation));
 
       const prepared = await positive(cell.operation);
       const before = await durable();
@@ -263,7 +233,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         ...prepared,
         body: { ...prepared.body, operationId: randomUUID() },
       });
-      expect(clean.code, 'the injected request, without the field').toBe('ok');
+      expect(clean.code, 'the injected request, without the field').toBe(success(cell.operation));
     },
     60_000,
   );

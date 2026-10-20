@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a correction published through the real runner reads back its place before and after, its commit and deployment; a revoked task read and a client with both grants read nothing."
+}

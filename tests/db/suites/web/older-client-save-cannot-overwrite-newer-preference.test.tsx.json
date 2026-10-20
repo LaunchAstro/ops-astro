@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the You settings over the composed API: an older sign-in's appearance save that lands after the newest one cannot leave the older choice stored"
+}

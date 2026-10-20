@@ -96,12 +96,12 @@ describe('MP-5-10 the row holds its height while a cell editor is open, and the 
       /\.cbd__ed \.sel__menu\s*\{[^}]*position:\s*absolute;[^}]*top:\s*100%;[^}]*min-width:\s*100%;[^}]*max-width:\s*22rem/u,
     );
     // The td lifts its clipping while an editor is open; the wrap only from
-    // 1279, where it does not scroll (REVIEW-2C1-27).
+    // 1279 and only when its table fits, where it does not scroll (REVIEW-2C1-27).
     expect(SHEET).toMatch(
       /\.cbd__tbl td:has\(\.cbd__cell\.is-editing\)\s*\{[^}]*overflow:\s*visible/u,
     );
     expect(SHEET).toMatch(
-      /@media \(min-width: 1279px\)\s*\{\s*\.cbd__wrap:has\(\.cbd__cell\.is-editing\)\s*\{[^}]*overflow:\s*visible/u,
+      /@media \(min-width: 1279px\)\s*\{\s*\.cbd__wrap:not\(\[data-overflows\]\):has\(\.cbd__cell\.is-editing\)\s*\{[^}]*overflow:\s*visible/u,
     );
   });
 });

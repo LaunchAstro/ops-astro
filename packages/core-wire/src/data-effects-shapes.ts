@@ -3,12 +3,34 @@
 // S0-5: the effect shapes several commands share, moved whole from
 // `data-effects.ts` to keep that file under the per-file line cap.
 
-import type { DataEffects } from './data-effects-types.ts';
+import type { CommandName } from './command-names.ts';
+import type { DataEffects, RecordWrite } from './data-effects-types.ts';
 import { business, client, writing } from './data-effects-types.ts';
 
 export const READ: DataEffects = writing([]);
-// A task is a row of `records`, with its unique values beside it.
-export const TASK: DataEffects = writing(client('records', 'record_unique_values'));
+// A map's summary and frontier, derived: a write to a ticket's row, or to a link to it, refreshes
+// its map's (the records and links triggers, `map_summary_on_record` and `map_summary_on_link`).
+export const MAP_READ_MODEL: RecordWrite[] = client('map_summaries', 'map_frontier');
+// A task is a row of `records`, with its unique values beside it; the task may be a ticket (S7).
+export const TASK: DataEffects = writing([
+  ...client('records', 'record_unique_values'),
+  ...MAP_READ_MODEL,
+]);
+// A conversation's message, and its reply kept with a snapshot of the chat's created tasks (#1666).
+export const CHAT: DataEffects = writing(
+  client(
+    'conversations',
+    'conversation_messages',
+    'conversation_reply_snapshots',
+    'conversation_reply_targets',
+  ),
+);
+// The side chat's start and message, spread into `COMMAND_EFFECTS` (kept here for the line cap).
+export const SIDE_CHAT_EFFECTS: {
+  readonly [
+    Name in Extract<CommandName, 'conversation.start' | 'conversation.message'>
+  ]: DataEffects;
+} = { 'conversation.start': CHAT, 'conversation.message': CHAT };
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(
   client(

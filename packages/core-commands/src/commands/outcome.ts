@@ -95,6 +95,18 @@ export interface Applied {
    * which alone knows whose access it ended.
    */
   readonly endsOwnAccess?: true;
+  /**
+   * The delegation whose credential the answer hands over, which the caller
+   * did not present: a take of a launch. The agent's last judgement holds it
+   * live after its last wait, as it holds a presented one (`agent-standing.ts`).
+   */
+  readonly handsOver?: string;
+  /**
+   * A judgement the agent path asks last, after its own standing waits
+   * (`agent-standing.ts`): what the handler read before them may have changed
+   * while they waited. A refusal rolls the work back. Set by the handler.
+   */
+  readonly lastCheck?: () => Promise<CommandRefusal | undefined>;
 }
 
 export interface Refused {

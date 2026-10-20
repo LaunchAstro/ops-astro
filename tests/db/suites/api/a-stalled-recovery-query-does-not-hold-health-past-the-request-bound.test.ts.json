@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1411: the hosted function's reconciliation pass runs on its own connection and a request waits on it for at most RECOVERY_WAIT_MS, so a pass stalled on a lock holds no request past the bound (Sol's proof from #1368, unchanged)"
+}

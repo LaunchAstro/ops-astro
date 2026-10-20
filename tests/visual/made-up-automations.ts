@@ -5,7 +5,10 @@
 // standing approval (C52-A), and one skill run by hand with none. Test side
 // only, like the rest of `made-up-*.ts`.
 
-import type { AutomationRegistryResult } from '../../packages/core-wire/src/index.ts';
+import type {
+  AutomationHistoryResult,
+  AutomationRegistryResult,
+} from '../../packages/core-wire/src/index.ts';
 import { NATHAN } from './made-up-access.ts';
 
 const version = (
@@ -78,3 +81,61 @@ export const AUTOMATION_REGISTRY: AutomationRegistryResult = {
     },
   ],
 };
+
+/**
+ * The weekly report's history (`automation.history`): the newest page, with a
+ * change of each kind a person makes and an occurrence of each outcome the
+ * page words, and a cursor to an older page.
+ */
+export const AUTOMATION_HISTORY: AutomationHistoryResult = {
+  ok: true,
+  entries: [
+    change('h-6', '2026-09-25T06:10:00.000Z', 'approval.revoke'),
+    {
+      kind: 'occurrence',
+      id: 'h-5',
+      at: '2026-09-25T06:00:00.000Z',
+      cause: { kind: 'scheduled', dueAt: '2026-09-25T06:00:00.000Z' },
+      outcome: 'approved',
+      dispatch: 'started',
+      runId: 'run-7f3a9c21-weekly',
+    },
+    {
+      kind: 'occurrence',
+      id: 'h-4',
+      at: '2026-09-24T06:00:00.000Z',
+      cause: { kind: 'event' },
+      outcome: 'over_activation_rate',
+      dispatch: null,
+      runId: null,
+    },
+    change('h-3', '2026-09-24T02:00:00.000Z', 'activation.adopt'),
+    {
+      kind: 'occurrence',
+      id: 'h-2',
+      at: '2026-09-18T06:00:00.000Z',
+      cause: { kind: 'scheduled', dueAt: '2026-09-18T06:00:00.000Z' },
+      outcome: 'no_standing_approval',
+      dispatch: null,
+      runId: null,
+    },
+    change('h-1', '2026-09-17T01:00:00.000Z', 'activation.change'),
+  ],
+  next: 'made-up-older',
+};
+
+function change(
+  id: string,
+  at: string,
+  command: string,
+): AutomationHistoryResult['entries'][number] {
+  return {
+    kind: 'change',
+    id,
+    at,
+    command,
+    actorId: 'ac-nathan',
+    actorKind: 'person',
+    actorName: NATHAN.name,
+  };
+}

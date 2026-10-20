@@ -7,11 +7,15 @@
 
 export {
   carriesLocally,
+  carriesOnPlan,
   LOCAL_SESSION_PROVIDER,
   mayCarry,
-  parseCredentials,
+  PLAN_PROVIDER,
   type CarryContext,
   type CarryRefusal,
+} from './carry-rule.ts';
+export {
+  parseCredentials,
   type CredentialKind,
   type CredentialRefusal,
   type StorableKind,
@@ -29,7 +33,8 @@ export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } f
 export { routeTemplate, siteCustody, siteDestination } from './site-custody.ts';
 export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
 export { custodySenderSource, type DomainRead } from './email-sender-custody.ts';
-export { raiseBudgetWait, stopWords } from './broker-wait.ts';
+export { stopAtBudget, stopWords, type BudgetStopped } from './broker-wait.ts';
+export { recordStop, retireAttempt, type StoppedAs } from './broker-stop.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export {
   ENROL_PATH,
@@ -44,6 +49,8 @@ export { callModelInConversation } from './broker-priced.ts';
 export type { ConversationCallRequest, ConversationScope } from './broker-conversation-types.ts';
 export type { PaidCaller, PaidSeams } from './broker-types.ts';
 export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
+export { readPage } from './broker-task.ts';
+export { ownersOwn } from './broker-sources.ts';
 export {
   callModelForPlanning,
   readPlanningAllowance,
@@ -106,6 +113,12 @@ export {
   type ReserveRefusal,
 } from './broker.ts';
 export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';
+export {
+  judgeCarriedTask,
+  lockCarriedTask,
+  type CarriedTask,
+  type HeldTask,
+} from './broker-carried-task.ts';
 export { COUNTED_CAUSES, countedHold } from './broker-give-back.ts';
 export {
   ACCEPT_WINDOW_MS,

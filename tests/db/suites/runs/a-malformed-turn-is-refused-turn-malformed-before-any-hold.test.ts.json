@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3: each bounded turn parser refuses TURN_MALFORMED before any hold and ends the attempt cancelled."
+}

@@ -203,8 +203,14 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
     // The empty drawer asks which models it may offer, naming no conversation (CS-7.30).
     const offer = calls.filter((call) => call.name === 'conversation.models');
     expect(offer).toStrictEqual([{ kind: 'read', name: 'conversation.models', body: {} }]);
+    // Its correction desks list the business's corrections, naming no conversation (C80).
+    const desks = calls.filter((call) => call.name === 'live_correction.list');
+    expect(desks).toStrictEqual([{ kind: 'read', name: 'live_correction.list', body: {} }]);
     expect(
-      calls.filter((call) => call.name !== 'conversation.allowance' && !offer.includes(call)),
+      calls.filter(
+        (call) =>
+          call.name !== 'conversation.allowance' && !offer.includes(call) && !desks.includes(call),
+      ),
     ).toStrictEqual([]);
     expect(calls.filter((call) => JSON.stringify(call.body).includes('../account'))).toStrictEqual(
       [],

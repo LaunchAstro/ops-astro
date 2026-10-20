@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the scheduled sweep entry fires an adopted one-minute activation once as its business's own worker, counts a business with no worker as skipped and a key naming no business as failed"
+}

@@ -25,6 +25,9 @@ const NOT_DRAWN = new Set([
   'trace.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
+  // #1694: the card's list and receipts, drawn once the live app's card reads them.
+  'live_correction.list',
+  'live_correction.receipts',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

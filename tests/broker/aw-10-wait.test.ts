@@ -18,7 +18,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useFaultWorld('aw10wait');
 
-it('AW-10 fair-share wait under a provider fault: the waiting call is told RATE_LIMITED with its retry, names no other business, and goes on once the hung call is held', async () => {
+it('AW-10 fair-share wait under a provider fault: the waiting call is refused RATE_LIMITED, names no other business, and fresh work goes on once the hung call is held', async () => {
   const bravo = await seedSchedules(s.db, 'aw10wait-bravo', 1_000_000);
   const one = { ...faultBroker(), routes: [{ ...CLOUD, key: 'aw10-wait', ceiling: 1 }] };
   const theirs = await liveWork(bravo, 'aw10 hung', 2_000);
@@ -32,18 +32,21 @@ it('AW-10 fair-share wait under a provider fault: the waiting call is told RATE_
   expect(waited).toStrictEqual({
     ok: false,
     code: 'RATE_LIMITED',
-    callId: null,
-    retryAfterSeconds: 5,
+    callId: expect.any(String),
   });
-  // Nothing written for the wait, in either business.
+  // #1623 R1 (B2): the refusal is recorded and ends the attempt; its one row holds nothing.
   expect(
-    await rows(s, `select 1 from public.model_calls where lease_id = $1`, [mine.picked['leaseId']]),
-  ).toHaveLength(0);
+    await rows(s, `select state, reserved_minor from public.model_calls where lease_id = $1`, [
+      mine.picked['leaseId'],
+    ]),
+  ).toEqual([{ state: 'refused', reserved_minor: '0' }]);
 
   // The hung call times out and is held unknown, a fault nobody can place; the place frees.
   expect(await hung).toMatchObject({ code: 'LIABILITY_UNKNOWN', fault: 'undetermined' });
   world.provider.mode('answer');
-  expect(await callIn(s, mine, one)).toMatchObject({ ok: true });
+  expect(await callIn(s, await liveWork(s, 'aw10 goes on', 2_000), one)).toMatchObject({
+    ok: true,
+  });
 });
 
 it("AW-10 fair-share wait: a provider's own rate limit, declared as proof nothing began, releases the whole hold", async () => {

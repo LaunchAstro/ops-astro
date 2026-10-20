@@ -7,28 +7,25 @@
 import type { GrantView } from '../../../../../packages/core-wire/src/index.ts';
 import { BUSINESS_CLOCK } from '../task/due-dates.ts';
 
-const HOUR = 60;
-
-export interface Countdown {
-  readonly words: string;
-  readonly tone: 'plain' | 'warn';
-}
+export type Countdown = { readonly tone: 'plain' | 'warn' } & (
+  { readonly minutesLeft: number } | { readonly words: string }
+);
 
 /**
- * What is left on a grant: "37m left" in warning ink under an hour, "5h 0m
- * left" otherwise, and a word once it has ended. Whether it ended is the
- * read's to say: a grant the read calls live whose expiry this clock has
- * passed waits for the next re-read in warning ink, never "Ran out".
+ * What is left on a grant. A live grant with a minute or more to run is the
+ * kit's countdown (DS-PRIM-25), in warning ink under an hour. Otherwise a word,
+ * because the kit says "Expired" once its clock passes and whether a grant
+ * ended is the read's to say: a grant the read calls live whose expiry this
+ * clock has passed waits for the next re-read in warning ink, never "Ran out".
  */
 export function countdownOf(grant: GrantView, now: number): Countdown {
   if (grant.state === 'taken_back') return { words: 'Taken back', tone: 'plain' };
   if (grant.state === 'ran_out') return { words: 'Ran out', tone: 'plain' };
   const left = Date.parse(grant.expiresAt) - now;
   if (left <= 0) return { words: 'Expiry passed, re-reading', tone: 'warn' };
-  const minutes = Math.floor(left / 60_000);
-  if (minutes < 1) return { words: 'Under 1m left', tone: 'warn' };
-  if (minutes < HOUR) return { words: `${minutes}m left`, tone: 'warn' };
-  return { words: `${Math.floor(minutes / HOUR)}h ${minutes % HOUR}m left`, tone: 'plain' };
+  const minutesLeft = Math.floor(left / 60_000);
+  if (minutesLeft < 1) return { words: 'Under 1 min left', tone: 'warn' };
+  return { minutesLeft, tone: minutesLeft < 60 ? 'warn' : 'plain' };
 }
 
 export const stamp = (at: string): string =>
@@ -76,13 +73,16 @@ export function tripwiresLede(armed: number, cannotBeArmed: number): string {
   return cannotBeArmed === 0 ? `${counted}.` : `${counted}, and ${cannotBeArmed} that cannot be.`;
 }
 
+const dayOf = (at: number): string =>
+  new Date(at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+/**
+ * The round runs from 23:00 on the evening before `roundOn`, the date its
+ * brief is handed over, to 08:10 that morning.
+ */
 export function nightLede(roundOn: string, notClean: number): string {
-  const day = new Date(`${roundOn}T12:00:00Z`).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  });
-  const window = `${day} · 23:00 to 08:10`;
+  const noon = Date.parse(`${roundOn}T12:00:00Z`);
+  const window = `${dayOf(noon - 86_400_000)} 23:00 to ${dayOf(noon)} 08:10`;
   if (notClean === 0) return `${window}.`;
   return `${window}, and ${plural(notClean, 'step')} did not go cleanly.`;
 }

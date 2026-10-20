@@ -14,6 +14,104 @@ public baseline; ADRs explain its trade-offs and tickets define executable
 scope. New decisions must be recorded here before a ticket relies on them.
 Private conversation history cannot be an implementation dependency.
 
+## Run outcome contract, 18 October 2026
+
+Decision `B2-1623`. Accepted by the owner, 18 Oct 2026, REGISTER 9, with
+the director. It records the accepted #1623 design, revision 3 (SHA256
+`791901f0`), and its four-piece split plan (`cc9e8a4d`), as cited by the build
+plan #1655 revision 2, with the director's rulings of 14 October 2026 on TEST
+F5 (`b818274e`) and on the design's third round (`816536dc`). Its other
+sources are roadmap#921, the owner's seven-outcome ruling RELAY1623D11222 and
+FINDINGS.
+
+**Stack.** The agent loop runs on LangChain `createAgent` over LangGraph at
+exact pins: `langchain` 1.5.16, `@langchain/core` 1.2.17,
+`@langchain/langgraph` 1.4.21 (held to one copy by an override) and
+`langsmith` 0.9.0 as a dependency only. No package is installed before
+2026-10-15T13:46Z, and every resolved transitive must be at least seven days
+old. No provider package (`openai`, `@anthropic-ai/*`, or any `@langchain/*`
+outside core and LangGraph's own) enters the lockfile or the import graph.
+Conversation state is `MemorySaver` only, per process. There is no saved
+pause, checkpoint store or framework interrupt; approvals, budget, custody and
+the run record stay our own.
+
+**Tracing.** No content leaves through framework tracing. The agent refuses
+`TRACING_NOT_ALLOWED` when any LangSmith or LangChain tracing or verbose
+variable is set, when tracing is enabled or a trace context is inherited, or
+when a caller passes callbacks or `verbose` or sets them on the model itself.
+It runs each compute step in a
+fresh context store, so no inherited configure hook can install a handler.
+Diagnostics go to self-hosted Langfuse through the no-content exporter (#1622),
+kept apart from framework callbacks.
+
+**Seven outcomes.** Every attempt that stops ends in exactly one outcome,
+`success`, `budget_wait`, `call_limit`, `cancelled`, `lease_lost`,
+`unknown_provider_outcome` or `waiting_plan_allowance`, with one typed end
+code. There is no eighth outcome and no free-text code.
+
+| Outcome                    | End codes                                                                                                                                                                                                                                                |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `success`                  | `COMPLETED`                                                                                                                                                                                                                                              |
+| `budget_wait`              | `BUDGET_UNAVAILABLE`                                                                                                                                                                                                                                     |
+| `call_limit`               | `CALL_LIMIT_REACHED`                                                                                                                                                                                                                                     |
+| `cancelled`, person        | `TASK_CANCELLED`, `PLAN_SUPERSEDED`, `DECISION_STALE`, `AUTHORITY_LOST`                                                                                                                                                                                  |
+| `cancelled`, broker        | `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`, `LOCAL_MODEL_REQUIRED`, `CLIENT_MODEL_USE_OFF`, `SOURCE_UNREADABLE`, `RATE_LIMITED`, `COPY_NOT_REGISTERED`, `CARRIAGE_UNAVAILABLE`, `PROMPT_TOO_LARGE`, `CUSTODY_NOT_ADMITTED` and the turn codes |
+| `cancelled`, provider      | `PROVIDER_NOTHING_HAPPENED`                                                                                                                                                                                                                              |
+| `cancelled`, door          | `SCOPE_NOT_GRANTED`, `GATE_SHUT`, `DELEGATION_EXCLUDES_OPERATION`, `OPERATION_ID_REUSED`                                                                                                                                                                 |
+| `cancelled`, worker        | `TOOL_NOT_CATALOGUED`, `TOOL_REFUSED`, `TURN_MALFORMED`, `TRACING_NOT_ALLOWED`, `DEFINITION_MISMATCH`                                                                                                                                                    |
+| `lease_lost`               | `LEASE_EXPIRED`, `LEASE_NOT_OWNED`                                                                                                                                                                                                                       |
+| `unknown_provider_outcome` | `LIABILITY_UNKNOWN`, `OPEN_CALL_AT_STOP`, `ANSWER_LOST`, `STILL_ANSWERING`                                                                                                                                                                               |
+| `waiting_plan_allowance`   | `LOCAL_PLAN_LIMIT`                                                                                                                                                                                                                                       |
+
+The turn codes (`TURN_ORDINAL_STALE`, `TURN_MALFORMED`, `PROVENANCE_UNBOUND`)
+arrive with the turn in #1623's third piece. One total function, `outcomeOf`,
+turns a stop signal into its outcome and code; a new code fails typecheck until
+it has a row.
+
+- **A refusal is `cancelled`** with its own code. A person's cancel and a
+  refusal share the outcome, never a code.
+- **Unknown stays unknown.** Once a provider call may have been sent, an
+  uncertain end is `unknown_provider_outcome`; nothing is charged, retried or
+  settled on a guess. A released call counts as nothing happening only for a
+  reason the operation declares; any other reason is `LIABILITY_UNKNOWN` with
+  the maximum held. Only an explicit `LOCAL_PLAN_LIMIT` is plan allowance,
+  never a bare rate answer. There is no retry and no saved pause; a fresh
+  attempt is the existing `task.restart`.
+- **The transaction that stops the work writes the outcome**, inside the
+  same transaction that retires the work, never later by a worker whose
+  authority it retired. The budget stop is #1614's single locked stop
+  operation, never a second transition. When that operation ends a run past
+  its consolidated third ask, the attempt it stopped still records `budget_wait`
+  / `BUDGET_UNAVAILABLE`; the run's `cancelled` state and the alert to a
+  person say that it ended. A worker reports what only it can see
+  through `run.end`, which keeps live-lease authority and never releases or
+  settles a hold on the worker's word.
+- **Every reserve stop, not only `run.end`,** re-checks the worker's session
+  after its last lock wait, before it writes. A session ended during the wait
+  gets the session refusal, and nothing is committed.
+- **An open call wins.** If any of the attempt's calls is dispatched or of
+  unknown liability when a stop commits, the outcome is
+  `unknown_provider_outcome` and the intended code is kept as the stop cause.
+  Unsent holds are released; a dispatched call keeps its liability and its
+  late answer still settles.
+- **Only success hands work back** for review. Success is refused with an
+  outcome already recorded, a call still open, or a step-level unknown.
+- **The record.** `run_outcomes` holds one row per attempt: business,
+  attempt, planned run, outcome, end code, stop cause, agent version, when and
+  by whom. The first writer wins by its key; the row is never updated or
+  deleted by any role; its facts come from the attempt and lease, never from a
+  caller's operands; row security scopes it by business. It sits beside the
+  existing attempt and audit rows, which keep their meaning: an attempt's
+  `outcome` (`completed`, `failed`, `abandoned`, `unknown`) and state still
+  record its accounting, and the outcome records why the work stopped. A later
+  settlement changes the ledger, never the outcome.
+- **The read.** The stored outcome and end code are returned on the existing
+  task execution read, so the task needs no new read to show them.
+- **TEST F5** for #1623 is stop, restart, then claim and apply once: with the
+  API stopped nothing is claimed or applied, and the receipt after the restart
+  cites the Launch decision. Work continuing while the whole API is down is a
+  later item, outside #1623.
+
 ## Projects and Tasks visual reference, 12 October 2026
 
 Decision `R20261012`. Nathan makes the running Hub mockup the canonical
@@ -27,6 +125,94 @@ hover or focus callouts. Remove Settings from the shipped dock registration;
 its full page and frozen stored identifier remain. Retain real operation,
 ownership and authority behaviour. The director owns integration and merging.
 Implementation and verification details are in [visual parity](../VISUAL-PARITY.md).
+
+## A dormant launcher identity grants a Launch nothing, 12 October 2026
+
+Owner decision on #804 (its F4, comment 6125140111). A Launch draws on its
+delegating person's grants and on those of the acting identity it was minted
+on. A grant on that identity counts only while the identity is active:
+dormant means inactive. A Launch backed only by a dormant launcher identity
+is refused `DELEGATION_NARROWED`, the Access preview shows it with nothing,
+and a write that asks again after its last lock wait is refused by a
+deactivation that committed during that wait. The person's own grants are
+unaffected. Built in #1499 (`delegatingSubjects`, `effectiveGrants`).
+
+## Single-operator Launch, 18 October 2026
+
+Decision `R5-S1-20261018`, R5 in
+[Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
+recording seam S1 as the director settled it on 14 October 2026. Nathan
+accepted it on 18 October 2026, including his own hand-typed request, Astra's
+review before the first self-approval and the revert ask (owner questions a, c
+and d; the round register, items 10, 11 and 13).
+
+- An operator is an active member of the business in a staff role (owner,
+  administrator or member): the people who may be the configured approver.
+- Single-operator mode is a business setting, `single_operator_mode`, off by
+  default, set by `settings.set_single_operator` under `settings:manage`.
+  Turning it on is refused unless the business has exactly one operator.
+  A membership change that leaves the business without exactly one operator
+  (a second added, or the last ended) turns it off in the same transaction,
+  whatever wrote the membership.
+- While it is on, the configured approver may approve a live correction they
+  requested themselves, or one their own agent requested. This covers the
+  owner's own hand-typed request too, not only the agent's. The decision
+  re-reads the mode and the operator count under its lock, so a second
+  operator added while it waits is seen and the approval refused with nothing
+  written. Like any approval, it lands only while the site runner checked the
+  page within the last 60 seconds (#1693).
+- The business's first such approval also needs Astra's review recorded on
+  the correction, bound to its exact version digest and approving it; the
+  latest review of that version is the one that counts. The
+  owner records it with `live_correction.record_review`, carrying Astra's
+  saved review and the digest, which the server checks against the stored
+  version (owner question c, the recommended answer). The review is recorded
+  only on a version the site runner checked within the last 60 seconds, so a
+  refused review never admits the approval (#2063). The server refuses
+  without it; hiding the button is not the control.
+- Every such approval is marked as a single-operator self-approval on the
+  correction's decision, which is never rewritten. The decision is the
+  correction's durable record, and its receipts are read with it. An agent
+  run's own event record is not written here.
+- The storage admits a decision by the requester only on a row carrying that
+  mark, and the command writes the mark only after its checks pass. With the
+  mode off, self-approval is refused as before, and another configured
+  approver decides as today.
+- The owner may also ask to revert a correction they requested, under the
+  same mark (owner question a, the recommended answer). A forward revert by
+  hand stays the fallback.
+
+## Own-business site, 18 October 2026
+
+Decision `R6-S2-20261018`, the first part of R6 in
+[Spec: Agents work a task (runs)](https://github.com/LaunchAstro/ops-astro/issues/1655),
+recording seam S2 as the director settled it on 14 October 2026. Nathan
+accepted it on 18 October 2026 (owner question d; the round register, items
+10, 11 and 13).
+
+- A business's own site is bound to the business itself, not to a party. It
+  is the business's one site row with no party. A client's site stays bound
+  to that client.
+- No party record is the business. A client can never take the business's
+  own identity, and no label on a client admits anything; the storage
+  refuses a client whose identity is the business's.
+- A task with no client may request a live correction only on a page of its
+  own business's site. A task with a client may request one only on a page of
+  that client's site. Any other pairing stores nothing. The task's client is
+  read in the request's own statement, after its lock wait, so a client set
+  on the task while the request waits is seen and refused.
+- A correction on the business's own site carries no party. Only a
+  business-wide grant reaches it; a grant scoped to a client never does.
+- The proposal reads the correction's site through the same binding.
+- Admitting own-business work on a subscription route, judged by the task's
+  source, is the second part of R6 (#1699). Client-party work never gains
+  plan eligibility. The broker reads the run's task's client and source after
+  its last lock wait at admission, and again at custody's handoff. An agent
+  asks on the business's own site only while its task is still the owner's
+  own work, read after the request's lock wait by the broker's own reader
+  (`CORRECTION_NOT_OWN_WORK`). A replay of that request holds the task from
+  before its audit-chain wait, its last, reads it again after that wait, and
+  a refusal takes the replay's audit event back (#1877).
 
 ## Selected foundation
 
@@ -44,9 +230,10 @@ Implementation and verification details are in [visual parity](../VISUAL-PARITY.
 
 The detailed decisions are indexed in [ADRs](adr/README.md). As of 8 September
 2026, all product components remained unbuilt in this foundation; the dated
-paragraph below records the integrated head. Deep Agents, LangGraph,
-LangChain, and Langflow are unselected candidates. No new framework is required
-to publish the foundation or prove a deterministic local task flow.
+paragraph below records the integrated head. LangChain and LangGraph are
+selected for the agent loop at the pins in the run outcome contract above (decision
+`B2-1623`); Deep Agents and Langflow remain unselected. No new framework is
+required to publish the foundation or prove a deterministic local task flow.
 
 ### State at the integrated head, 23 September 2026
 

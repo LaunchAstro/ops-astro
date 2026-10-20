@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# The images the existing M5 Langfuse installation ran on 14 October 2026, pinned by digest,
+# with signup, media upload and telemetry off. Ports, volumes and restart stay the installation's.
+# Staged only: applying this file recreates the containers and needs owner approval.
+# See deploy/m5/langfuse.md for the evidence behind each digest.
+services:
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4.30.0@sha256:376b96bdd8725e74171a3d0cdd9115c8265d4209df95cb26c47370cb3b32329a
+    environment:
+      AUTH_DISABLE_SIGNUP: 'true'
+      LANGFUSE_MEDIA_UPLOAD_ENABLED: 'false'
+      TELEMETRY_ENABLED: 'false'
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.30.0@sha256:00bc13c8da68fb77c55bcba0c1c16377f1f360ffb17206dbc708912ce4e3afb5
+    environment:
+      LANGFUSE_MEDIA_UPLOAD_ENABLED: 'false'
+      TELEMETRY_ENABLED: 'false'
+  postgres:
+    image: docker.io/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+  redis:
+    image: docker.io/redis:7@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.12.11.4@sha256:8a790dd3468db22b1d4e7b18a176f378ff5ff6053b9c48dd4ea1fa71a24c5ba6
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:617ff93bf711edab967765dcb8002bea6dc31e8584627cbd11008198466e0ae8

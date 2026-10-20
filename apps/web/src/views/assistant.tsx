@@ -51,6 +51,7 @@ import {
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
 import { sendProposal } from '../assistant/proposals.ts';
+import { usePicks } from '../assistant/picks.ts';
 import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
@@ -66,7 +67,7 @@ import type {
 } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
-import { AllowanceLine } from './allowance-line.tsx';
+import { allowanceFor } from './allowance-line.tsx';
 import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
@@ -114,7 +115,7 @@ async function startWith(
   // default. A title, page or model chosen while it waits follows it in turn.
   const { title, page, model } = chat;
   const chosen = model === null ? {} : { model };
-  const start = { body, title, subject: subject.label, scope, ...chosen };
+  const start = { body, title, subject: subject.label, scope, ...chosen, ...(page && { page }) };
   const settled = settle(
     await withPieces(store, chat.key, (by) => client.mutate('conversation.start', start, by)),
   );
@@ -225,15 +226,6 @@ function useWrites(
   };
 }
 
-/** The tab's allowance line, read again as each of its answers settles. */
-function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactElement {
-  // Every message but the person's own is a settled answer: a reply, a note or a failure.
-  const settled =
-    chat?.messages.filter((line) => line.role !== 'user' && line.writing !== true).length ?? 0;
-  const conversationId = chat?.conversationId ?? null;
-  return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
-}
-
 /** The send, with the tab answering while its question is out; a kept tab's read lands first. */
 const answering =
   (store: KeptStore, send: (key: string, body: string) => Promise<void>) =>
@@ -285,14 +277,13 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
       onTakeOut={(key) => {
         update((current) => takeOut(current, key));
       }}
-      onNew={() => {
-        update(fresh);
-      }}
+      onNew={() => void update(fresh)}
       onModel={writes.chooseModel}
       onAddPage={writes.addPage}
       onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onPropose={(key, id) => void sendProposal(props, store, { key, id })}
+      onPick={usePicks(props, store)}
       onClose={props.onClose}
     />
   );

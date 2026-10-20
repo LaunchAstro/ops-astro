@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3: a turn naming a definition is refused PROVENANCE_UNBOUND at binding, not a server error, and the run's kept copy stays insert-only for the application (0086)."
+}

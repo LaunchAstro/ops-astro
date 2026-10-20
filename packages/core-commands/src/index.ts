@@ -34,12 +34,8 @@ export {
   type SeamReads,
 } from './commands/live-correction-propose.ts';
 export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
-export {
-  runLivePublish,
-  type CorrectionRun,
-  type RunnerPorts,
-  type RunResult,
-} from './commands/live-correction-runner.ts';
+export { runLivePublish, type PassOptions } from './commands/live-correction-runner.ts';
+export type { CorrectionRun, RunnerPorts, RunResult } from './commands/live-correction-run.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
   callerAudit,

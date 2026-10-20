@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The chatgpt-plan route names SUBSCRIPTION_NOT_OWNER_STARTED before the data classes choose a route, with nothing sent, for a staff-created task and for a run a member proposed and approved on an owner-created task; the run's owner standing is the database's stamp at proposal and approval, which no application write to membership history or to the stamp changes, and a proposal waiting on a demotion records the standing after it."
+}

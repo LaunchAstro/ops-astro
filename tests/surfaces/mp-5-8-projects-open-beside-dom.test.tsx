@@ -101,7 +101,7 @@ const NAME = (id: string): string => `tr[data-row="${id}"] .cbd__nm`;
 const press = async (target: Element | null): Promise<void> => {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(600);
   });
 };
 
@@ -118,7 +118,7 @@ const pressEnter = async (link: HTMLAnchorElement | null): Promise<void> => {
     if (link?.dispatchEvent(enter) === true) {
       link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }));
     }
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(600);
   });
 };
 

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1693: the door resolves a typed page on the task's own site only, inside the insert; an unbound, foreign or ambiguous name answers one body storing nothing, a body naming a revision or file is refused, and another business, client or delegation reaches nothing."
+}

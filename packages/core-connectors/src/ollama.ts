@@ -15,7 +15,7 @@
 // The model runs on hardware already paid for, so every answer costs nothing
 // and the operation is unpriced, as the conversation seam requires (#1508, option B).
 
-import { conversationInstructions } from './conversation-prompt.ts';
+import { conversationInstructions, promptPage } from './conversation-prompt.ts';
 import {
   readModelId,
   type AdapterRequest,
@@ -30,8 +30,12 @@ export const OLLAMA_PROVIDER = 'ollama';
 
 export const OLLAMA_PATH = '/api/chat';
 
-/** The models offered, the default first: Qwen, then Gemma, each as Ollama names it on the M5. */
-export const OLLAMA_MODELS = ['qwen3.6:27b-mlx', 'gemma4:31b-mlx'] as const;
+/**
+ * The models offered, the default first, each as Ollama names it on the M5:
+ * the Qwen mixture of experts (about five times the dense model's speed on the
+ * M5, 15 Oct), then the dense Qwen, then Gemma.
+ */
+export const OLLAMA_MODELS = ['qwen3.6:35b-mlx', 'qwen3.6:27b-mlx', 'gemma4:31b-mlx'] as const;
 export const OLLAMA_DEFAULT_MODEL: string = OLLAMA_MODELS[0];
 
 export interface Turn {
@@ -61,17 +65,6 @@ export function earlierTurns(earlier: string | undefined): readonly Turn[] {
   });
 }
 
-/** The page's title (`{ task, title }`), never its id; null when there is no page or no title. */
-export function pageTitle(page: string | undefined): string | null {
-  if (page === undefined || page === '') return null;
-  try {
-    const { title } = JSON.parse(page) as Record<string, unknown>;
-    return typeof title === 'string' && title !== '' ? title : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The adapter: fields in, one chat for the model asked for (the default unless
  * named), streamed only when the broker says custody presents no credential.
@@ -83,7 +76,7 @@ export function ollamaAdapter(
   streamed = false,
 ): AdapterRequest {
   const messages: readonly Turn[] = [
-    { role: 'system', content: conversationInstructions(pageTitle(values['page'])) },
+    { role: 'system', content: conversationInstructions(promptPage(values['page'])) },
     ...earlierTurns(values['earlier']),
     { role: 'user', content: values['message'] ?? '' },
   ];

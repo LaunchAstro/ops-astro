@@ -9,8 +9,16 @@
 // refused at start, so a call never leaves the machine for a model. The paid
 // chat's settings are optional and go together: custody's credential
 // reference for OpenRouter, and OpenRouter's address, which must be exactly
-// `https://openrouter.ai`.
+// `https://openrouter.ai`. The owner's ChatGPT plan's settings (#1620 P4) are
+// optional and go together too: the plan's token file, by its absolute path,
+// and the two addresses its custody reaches, exactly `https://api.openai.com`
+// and `https://auth.openai.com`.
 
+import { isAbsolute } from 'node:path';
+import {
+  CHATGPT_PLAN_ISSUER,
+  CHATGPT_PLAN_ORIGIN,
+} from '../../packages/core-connectors/src/index.ts';
 import { parseCarryKeys } from '../../packages/core-custody/src/agent.ts';
 
 export interface AgentSettings {
@@ -29,6 +37,10 @@ export interface AgentSettings {
   /** Custody's reference for OpenRouter's key; absent, no paid chat is sent. */
   readonly openrouterCredentialRef?: string;
   readonly openrouterOrigin?: string;
+  /** The owner's ChatGPT plan's token file; absent, with the two below, no plan call is sent. */
+  readonly planTokenFile?: string;
+  readonly planOrigin?: string;
+  readonly planIssuer?: string;
 }
 
 /** OpenRouter's one address. */
@@ -62,7 +74,7 @@ function problemIn(shape: Record<string, unknown>): string | undefined {
   if (next !== undefined && typeof next !== 'string') return 'carryKeyNext is malformed';
   if (!parseCarryKeys(text('carryKey'), next).ok) return 'the carry key is malformed';
   if (!loopback(text('ollamaOrigin') ?? '')) return "ollamaOrigin is not this machine's loopback";
-  return paidProblemIn(shape);
+  return paidProblemIn(shape) ?? planProblemIn(shape);
 }
 
 /** The paid chat's two settings: both or neither, the address exactly OpenRouter's. */
@@ -71,6 +83,15 @@ function paidProblemIn(shape: Record<string, unknown>): string | undefined {
   if (ref === undefined && origin === undefined) return undefined;
   if (typeof ref !== 'string' || ref === '') return 'openrouterCredentialRef is missing';
   return origin === OPENROUTER_ORIGIN ? undefined : `openrouterOrigin is not ${OPENROUTER_ORIGIN}`;
+}
+
+/** The plan's three settings: all or none, the token file absolute, each address exact. */
+function planProblemIn(shape: Record<string, unknown>): string | undefined {
+  const { planTokenFile: file, planOrigin: origin, planIssuer: issuer } = shape;
+  if (file === undefined && origin === undefined && issuer === undefined) return undefined;
+  if (typeof file !== 'string' || !isAbsolute(file)) return 'planTokenFile is not an absolute path';
+  if (origin !== CHATGPT_PLAN_ORIGIN) return 'planOrigin is not the Responses address';
+  return issuer === CHATGPT_PLAN_ISSUER ? undefined : "planIssuer is not the plan's issuer";
 }
 
 /** The settings, or the first problem with them. */

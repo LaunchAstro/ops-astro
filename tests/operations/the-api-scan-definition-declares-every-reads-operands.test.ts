@@ -59,10 +59,20 @@ function sampleOf(name: string, schema: Schema): unknown {
   throw new Error(`no sample for ${name}: give it one in BY_NAME`);
 }
 
+// A valid value one read alone takes: a history's cursor is one a page gave.
+const BY_READ: Readonly<Partial<Record<ReadName, Readonly<Record<string, unknown>>>>> = {
+  'automation.history': {
+    cursor: Buffer.from(`2026-01-01T00:00:00.000000Z|${UUID}`).toString('base64url'),
+  },
+};
+
 /** Every operand the document declares, each at a valid value. */
-function fullBody(schema: Schema): Record<string, unknown> {
+function fullBody(schema: Schema, read: ReadName): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(schema.properties ?? {}).map(([name, each]) => [name, sampleOf(name, each)]),
+    Object.entries(schema.properties ?? {}).map(([name, each]) => [
+      name,
+      BY_READ[read]?.[name] ?? sampleOf(name, each),
+    ]),
   );
 }
 
@@ -134,7 +144,7 @@ describe.each(FORMS)('%s', (_label, name, schema) => {
   const parse = (body: Readonly<Record<string, unknown>>) => READ_CATALOGUE[name].parse(body);
 
   it('a body of every declared operand at a valid value is taken by the read', () => {
-    const body = fullBody(schema);
+    const body = fullBody(schema, name);
     const parsed = parse(body);
     expect(parsed.ok ? 'taken' : parsed.refusal, name).toBe('taken');
     expect(
@@ -145,7 +155,7 @@ describe.each(FORMS)('%s', (_label, name, schema) => {
 
   it('each operand the document requires is refused by the read when absent', () => {
     for (const required of schema.required ?? []) {
-      const { [required]: _absent, ...body } = fullBody(schema);
+      const { [required]: _absent, ...body } = fullBody(schema, name);
       const after = CHECKED_AFTER_THE_DOOR[name] === required;
       // A read that checks after the door parses the body; once it refuses here, drop it from the list.
       expect(parse(body).ok, `${name} without ${required}`).toBe(after);

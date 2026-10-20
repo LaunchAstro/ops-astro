@@ -104,10 +104,15 @@ export const READ_NAMES = [
   'trace.read',
   // One live correction's decision, read again for its card (C80).
   'live_correction.read',
+  // The business's corrections and one correction's receipts, for the card after a reload (#1694).
+  'live_correction.list',
+  'live_correction.receipts',
   // The business's team invitations (C39-T), under `access:share` on the server.
   'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.
   'automation.registry',
+  // One activation's history (#1741), opened from its Workflow triggers row.
+  'automation.history',
 ] as const;
 
 /**

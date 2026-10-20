@@ -6,6 +6,7 @@ import { parseDocument } from 'yaml';
 import { expect, it } from 'vitest';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
 import { readScopeMap } from '../../scripts/ci-scope.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 it.each(['pull_request', 'merge_group', 'push', ''])(
   'runs the migration-order pin on %s without reading changed imports',
@@ -45,7 +46,7 @@ it('runs the pin job before the full-check label and keeps the database shards q
   );
   expect(workflow.on.pull_request.paths).toBeUndefined();
   expect(workflow.on.pull_request['paths-ignore']).toBeUndefined();
-  expect(workflow.jobs['database-shard'].if).toBe("github.event_name != 'pull_request'");
+  expect(workflow.jobs['database-shard'].if).toBe(SHARDS_RUN);
 });
 
 it('lists every repository pin and catalogue count in the always-run settings', () => {
@@ -71,6 +72,25 @@ it('lists every repository pin and catalogue count in the always-run settings', 
   expect(contracts.length).toBeGreaterThan(0);
   expect(contracts.filter((path) => !settings.alwaysRunTests.includes(path))).toEqual([]);
   expect(new Set(settings.alwaysRunTests).size).toBe(settings.alwaysRunTests.length);
+});
+
+// The repository-wide rules a merge group would otherwise test first, where one
+// red rebuilds every group behind it: each read the whole tree, and none needs a
+// database.
+it.each([
+  ['named-suite manifest', 'tests/db/named-suite-manifest.test.ts'],
+  ['test files named by behaviour', 'tests/docs/test-files-by-behaviour.test.ts'],
+  ['source comments', 'tests/docs/source-comments.test.ts'],
+  ['source-comment cases', 'tests/docs/source-comment-cases-kept.test.ts'],
+  [
+    'column-grant contract',
+    'tests/tenancy/column-grant-contract-names-every-migration-grant.test.ts',
+  ],
+])('runs the %s rule on every pull request', (_, path) => {
+  const named = readNamedSuites('.');
+  const database = [...named.invariant, ...named.conformance].map((s) => s.split('#')[0]);
+  expect(readScopeMap('scripts/ci-scope.json').alwaysRunTests).toContain(path);
+  expect(database).not.toContain(path);
 });
 
 it.each(['failure', 'cancelled', 'skipped'])(

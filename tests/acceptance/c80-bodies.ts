@@ -14,25 +14,23 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import { insertLiveCorrection } from '../../packages/core-records/src/site/live-corrections.ts';
+import { pinAsRunner } from '../site/located.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { enrol } from '../commands/fixture.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
+import { revertBody, reviewBody } from './c80-revert-body.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
-/** C80's one-word request, less the party and the task each recipe names. */
+/** C80's one-word request, less the task each recipe names (#1693: the page as typed). */
 export const C80_REQUEST = {
-  path: 'src/pages/about.md',
+  page: 'about',
   word: 'friendly',
   replacement: 'welcoming',
-  pageUrl: 'https://agency.example/about/',
-  baseRevision: 'rev-1',
-  before: 'We are a friendly studio.\n',
-  after: 'We are a welcoming studio.\n',
 };
 
 /** Who asks for a seeded correction, and who makes the task it is worked under. */
@@ -118,25 +116,22 @@ export async function seedLiveCorrection(
     if (!granted.ok) throw new Error(`seedLiveCorrection: grant refused ${granted.refusal.code}`);
     const stored = await insertLiveCorrection(tx, {
       ...C80_REQUEST_ROW,
-      ...at,
-      pageUrl,
+      taskId: at.taskId,
+      page: pageUrl,
       requestedByActorId: requester.actorId as string,
       requestedByPersonId: requester.personId as string,
       seam: `seam-${randomUUID()}`,
     });
     if ('code' in stored) throw new Error(`seedLiveCorrection: refused ${stored.code}`);
-    return { correctionId: stored.id, versionId: stored.versionId };
+    const { versionId } = await pinAsRunner(tx, stored.id);
+    return { correctionId: stored.id, versionId };
   });
 }
 
 const C80_REQUEST_ROW = {
   delegationId: null,
-  targetPath: C80_REQUEST.path,
   word: C80_REQUEST.word,
   replacement: C80_REQUEST.replacement,
-  preImageDigest: 'sha256:matrix',
-  baseRevision: C80_REQUEST.baseRevision,
-  versionDigest: 'sha256:matrix',
 };
 
 /**
@@ -147,36 +142,66 @@ export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada'>,
   taskId: string,
 ): Required<
-  Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'bindClientSite'>
-> => ({
-  alphaTaskId: taskId,
-  adminPersonId: world.ada.personId as string,
+  Pick<
+    BodyContext,
+    'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
+  >
+> => {
   // Asked for by a member of its own, holding the run:write the request rests on,
   // so the matrix's callers keep exactly their declared grants.
-  seedCorrection: async () =>
+  const asked = async () =>
     await seedLiveCorrection(
       world.db.app,
       world.alpha,
       taskId,
       await enrol(world.db.app, world.alpha, 'asker'),
       world.ada,
-    ),
-  bindClientSite: async (partyId) =>
-    await world.db.app.withBusiness(
-      world.alpha,
-      async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
-    ),
-});
+    );
+  return {
+    alphaTaskId: taskId,
+    adminPersonId: world.ada.personId as string,
+    seedCorrection: asked,
+    seedLiveCorrection: async () => {
+      const seeded = await asked();
+      await recordLive(world, seeded.correctionId);
+      return seeded;
+    },
+    bindClientSite: async (partyId) =>
+      await world.db.app.withBusiness(
+        world.alpha,
+        async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
+      ),
+  };
+};
 
-/** C80's four operations, whose positive bodies are the matrix's from here. */
+/** A requested correction decided by `ada` and recorded live: the runner's publish, no command's. */
+async function recordLive(world: Pick<World, 'db' | 'ada'>, correctionId: string): Promise<void> {
+  const [admin, decider] = [world.db.admin, world.ada];
+  await admin.execute(
+    `update public.live_corrections
+        set state = 'approved', decided_by_actor_id = $2, decided_by_person_id = $3,
+            decided_at = now(), decided_version_digest = version_digest, revision = revision + 1
+      where id = $1`,
+    [correctionId, decider.actorId, decider.personId],
+  );
+  await admin.execute(
+    `update public.live_corrections set state = 'live', revision = revision + 1 where id = $1`,
+    [correctionId],
+  );
+}
+
+/** C80's operations, whose positive bodies are the matrix's from here. */
 export const C80_NAMES: ReadonlySet<string> = new Set([
   'settings.set_live_correction_approver',
   'live_correction.request',
   'live_correction.decide',
   'live_correction.read',
+  'live_correction.receipts',
+  'live_correction.revert',
+  'live_correction.record_review',
 ]);
 
-/** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
+/** The matrix's positive bodies for C80's operations (`role-case-positive-body.ts`). */
 export async function c80PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (name === 'settings.set_live_correction_approver') {
     return { body: { value: context.assigneePersonId } };
@@ -196,16 +221,18 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
       return { exception: 'this harness binds no client site (C80)' };
     }
     const pageUrl = await context.bindClientSite(partyId);
-    return { body: { ...C80_REQUEST, partyId, taskId: task.id, pageUrl } };
+    return { body: { ...C80_REQUEST, taskId: task.id, page: pageUrl } };
   }
   // Another member's request, and the admin named as the approver just
   // before: the requester never approves, and only the configured one does.
   if (context.seedCorrection === undefined || context.adminPersonId === undefined) {
     return { exception: 'this harness seeds no live correction (C80)' };
   }
+  if (name === 'live_correction.revert') return await revertBody(context);
   const correction = await context.seedCorrection();
-  // The decision read: that request, read back under the admin's run:write.
-  if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
+  if (name === 'live_correction.record_review') return reviewBody(correction.correctionId);
+  // The decision and receipts reads: that request, read back under the admin's run:write.
+  if (name !== 'live_correction.decide') return { body: { correctionId: correction.correctionId } };
   const named = await context.asPerson('settings.set_live_correction_approver', {
     value: context.adminPersonId,
   });
@@ -246,12 +273,12 @@ export async function c80AgentPickup(
   return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId, pageUrl };
 }
 
-/** D06's positive agent body for C80's request: the picked-up task, at its client. */
+/** D06's positive agent body for C80's request: the picked-up task and its client's page. */
 export const c80AgentBody = (
   operationId: string,
   held: { readonly taskId: string; readonly credential: string },
-  at: { readonly partyId: string; readonly pageUrl: string },
+  at: { readonly pageUrl: string },
 ): { body: Record<string, unknown>; credential: string } => ({
-  body: { operationId, ...C80_REQUEST, ...at, taskId: held.taskId },
+  body: { operationId, ...C80_REQUEST, page: at.pageUrl, taskId: held.taskId },
   credential: held.credential,
 });

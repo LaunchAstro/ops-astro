@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "automation.history is settings:read at the business, never an agent's, and another business's activation answers as unknown with none of its rows or canary"
+}

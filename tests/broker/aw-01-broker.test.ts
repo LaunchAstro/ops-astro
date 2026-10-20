@@ -140,12 +140,13 @@ it('AW-01 cost above reservation: refused, the amount recorded and audited, held
     [callId],
   );
   expect(refusal).toMatchObject([{ attempted: { heldMinor: 500, observedMinor: 1000 } }]);
-  // The held maximum stays held: the next call finds less room.
+  // #1623 R1 (B2): the unknown end retired the attempt. Its next call finds no live lease,
+  // and the held maximum stays held, unsettled.
   world.provider.mode('answer');
-  const next = await call(work);
-  expect(next).toMatchObject({ ok: true, actualMinor: 100 });
-  const third = await call(work);
-  expect(third).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
+  expect(await call(work)).toEqual({ ok: false, code: 'LEASE_EXPIRED', callId: null });
+  expect(await rowsOf(callId)).toMatchObject([
+    { state: 'liability_unknown', reserved_minor: '500', ended_at: null },
+  ]);
 });
 
 it('AW-01 positive proof that nothing happened releases the whole hold', async () => {
@@ -223,7 +224,9 @@ it('AW-01 six facts: none is taken from the caller', async () => {
     ok: false,
     code: 'OPERATION_NOT_CATALOGUED',
   });
-  expect(await call(work, { operation: NOT_RECONCILABLE.key })).toMatchObject({
+  // The refusal above ended that attempt (B2), so the next is asked on fresh work.
+  const fresh = await liveWork(s, 'six facts, again', 2_000);
+  expect(await call(fresh, { operation: NOT_RECONCILABLE.key })).toMatchObject({
     ok: false,
     code: 'EFFECT_NOT_RECONCILABLE',
   });

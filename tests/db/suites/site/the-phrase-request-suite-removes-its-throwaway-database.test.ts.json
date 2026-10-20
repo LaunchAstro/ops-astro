@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2094 (S2094-2): the phrase request suite, run on its own, drops the throwaway database and the two login roles it made."
+}

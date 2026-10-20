@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { bindAboutPage } from './party-site-fixture.ts';
+import { pinAsRunner } from './located.ts';
 import { addClient, enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -104,24 +105,21 @@ async function openLows(part: string): Promise<Lows> {
 /** A request by the requester on `taskId` under `partyId`, as the record layer answers it. */
 export async function file(taskId: string, partyId: string): Promise<unknown> {
   const { requester } = lows();
-  return await inBusiness(
-    async (tx) =>
-      await insertLiveCorrection(tx, {
-        pageUrl: await bindAboutPage(tx, partyId, requester.actorId),
-        partyId,
-        taskId,
-        requestedByActorId: requester.actorId,
-        requestedByPersonId: requester.personId,
-        delegationId: null,
-        targetPath: 'src/pages/about.md',
-        word: 'friendly',
-        replacement: 'welcoming',
-        preImageDigest: 'sha256:pre',
-        baseRevision: 'rev-1',
-        seam: 'seam-p26',
-        versionDigest: 'sha256:version',
-      }),
-  );
+  return await inBusiness(async (tx) => {
+    const stored = await insertLiveCorrection(tx, {
+      page: await bindAboutPage(tx, partyId, requester.actorId),
+      taskId,
+      requestedByActorId: requester.actorId,
+      requestedByPersonId: requester.personId,
+      delegationId: null,
+      word: 'friendly',
+      replacement: 'welcoming',
+      seam: 'seam-p26',
+    });
+    if ('code' in stored) return stored;
+    const { versionId } = await pinAsRunner(tx, stored.id);
+    return { ...stored, versionId, state: 'requested' };
+  });
 }
 
 /** A stored request on client A's task, decided by the decider when a decision is named. */
@@ -132,16 +130,11 @@ export async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCor
   }
   const correction = made as LiveCorrection;
   if (decision === undefined) return correction;
-  const { decider } = lows().s;
-  return await inBusiness(
-    async (tx) =>
-      await writeCorrectionDecision(tx, {
-        id: correction.id,
-        decision,
-        actorId: decider.actorId,
-        personId: decider.personId,
-      }),
-  );
+  const { actorId, personId } = lows().s.decider;
+  const write = { id: correction.id, decision, actorId, personId, selfApproval: false };
+  const decided = await inBusiness(async (tx) => await writeCorrectionDecision(tx, write));
+  if (decided === undefined) throw new Error('the decision found the page unchecked');
+  return decided;
 }
 
 export async function stateOf(id: string): Promise<string | undefined> {
@@ -270,7 +263,7 @@ function findingFour(): void {
     const { taskB, clientA, clientB } = lows();
     expect(await file(taskB, clientA)).toStrictEqual({
       ok: false,
-      code: 'CORRECTION_PARTY_MISMATCH',
+      code: 'PAGE_NOT_FOUND',
     });
     expect(await countOf(OF_TASK_B, taskB)).toBe(0);
     // The control: under the task's own client it is stored, at that party.

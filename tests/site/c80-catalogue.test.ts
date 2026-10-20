@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80: the twelve catalogued operations (the release decision's section 3.1,
-// the four the publish binding adds and the two reads of what serves the page), each registered with all twelve
+// C80: the thirteen catalogued operations (the release decision's section 3.1,
+// the four the publish binding adds, the two reads of what serves the page and
+// the head read a locate pins at, #1693), each registered with all twelve
 // declarations, and a registration missing one refuses. The strictest-default rule means nothing registers by omission.
 
 import { describe, expect, it } from 'vitest';
@@ -27,6 +28,7 @@ const NAMES = [
   'site.deployment.lookup',
   'site.deployment.current',
   'site.deployment.alias',
+  'site.source.head',
 ];
 
 function registration(name: string): OperationRegistration {
@@ -36,7 +38,7 @@ function registration(name: string): OperationRegistration {
 }
 
 describe('C80 twelve declarations', () => {
-  it('registers exactly the twelve catalogued operations, each declaring all twelve', () => {
+  it('registers exactly the thirteen catalogued operations, each declaring all twelve', () => {
     const catalogue = siteCatalogue();
     expect(catalogue.ok).toBe(true);
     if (!catalogue.ok) return;

@@ -26,6 +26,22 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
 }
+/* Add client: the kit's `tf` and a small button on one line, the server's
+   refusal under them. */
+.clbook__add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+  margin-bottom: var(--s-4);
+}
+.clbook__add > .tf {
+  flex: 1 1 12rem;
+}
+.clbook__add > .field__error {
+  flex-basis: 100%;
+  margin: 0;
+}
 .clbook__find {
   margin-bottom: var(--s-5);
 }

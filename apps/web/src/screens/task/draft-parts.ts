@@ -17,7 +17,11 @@ import { commandAnswer, type DraftReceipt, type DraftCommand } from './draft-rec
 import type { Attempt, TaskDraft } from './task-draft.ts';
 export type CreateOutcome =
   | { readonly kind: 'created'; readonly key: string; readonly missed: readonly string[] }
-  | { readonly kind: 'refused' | 'unknown'; readonly because: string };
+  | {
+      readonly kind: 'refused' | 'unknown';
+      readonly because: string;
+      readonly retryRefused?: true;
+    };
 /** Command-specific answers preserve the parent's cursor; this remains the legacy mutable retry caller. */
 function prepareDraft(draft: TaskDraft, attempt: Attempt) {
   const ids = [...attempt.parts];
@@ -61,10 +65,12 @@ export async function createFromDraft(
       ? { kind: 'refused', because: created.answer.because }
       : {
           kind: 'unknown',
-          because:
-            created.answer.kind === 'unknown'
-              ? created.answer.because
-              : `${created.answer.because} The task may already exist: check the board before you retry.`,
+          ...(created.answer.kind === 'unknown'
+            ? { because: created.answer.because }
+            : {
+                because: `${created.answer.because} The task may already exist: check the board before you retry.`,
+                retryRefused: true,
+              }),
         };
   return finishDraft(client, attempt, save, prepared, created.receipt!, recovering);
 }

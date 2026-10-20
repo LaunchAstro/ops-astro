@@ -6,7 +6,7 @@
 // the line limit; the contract and the catalogue reads are unchanged.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { MANDATE_GRANTS, OCCURRENCE_ROLE, PART_UPDATES } from './restricted-calls-cases.ts';
+import { OCCURRENCE_ROLE, PART_GRANTS, PART_UPDATES } from './restricted-calls-cases.ts';
 import { RESET_GRANTS, RESET_UPDATES } from './restricted-calls-reset.ts';
 
 /**
@@ -182,7 +182,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
-  ...MANDATE_GRANTS,
+  ...PART_GRANTS,
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {

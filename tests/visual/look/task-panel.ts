@@ -5,7 +5,7 @@
 // description and the subtasks head.
 //
 // The mockup opens it by pressing a task's row on `/agency/projects/` (its name
-// waits 260ms for a double-click, so the client cell); the
+// waits 500ms for a second click, so the client cell); the
 // app by pressing a to-do's name on `/todos`. The panel's frame (DS-SIDE-7,
 // its head buttons DS-SIDE-8 and 9) is the dock frame's (MP-3-1), not this
 // body's, so it is not measured here.

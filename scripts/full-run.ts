@@ -12,21 +12,25 @@
 //                 or the merge queue; light otherwise, and the aggregates fail
 //                 saying so. A label change on a closed pull request runs
 //                 nothing at all (the gate's own guard).
-//   push to main  light when a green merge-group run of ci.yml already tested
-//                 this exact tree and the queue still holds entries; full
-//                 when nothing tested it, or the queue is empty, which is the
-//                 end of a batch.
+//   push to main  full when no green merge-group run of ci.yml tested this
+//                 exact tree. Otherwise only main's head takes the full set
+//                 (#1485): a push main has moved past is light, and main's
+//                 head waits until main moves (light) or the queue empties,
+//                 the end of a batch (full), up to 40 minutes (then full).
 //
 // Anything it cannot read is full: a mistake here costs runner time, never a
 // check.
 
 import { appendFileSync, readFileSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 export const LABEL = 'ci-next';
 export const FULL = 'full';
 export const LIGHT = 'light';
 export type Scope = typeof FULL | typeof LIGHT;
 const WORKFLOW = '.github/workflows/ci.yml';
+/** A head push's reads of the queue and main, 30 s apart: 40 minutes, inside the gate's 45 for a push. */
+const WAITS = 80;
 
 /** A workflow run as the runs list returns it, every field possibly absent. */
 export interface Run {
@@ -160,6 +164,57 @@ export async function queueBusyNow({
   return false;
 }
 
+/**
+ * A tested push's scope at the end of a batch (#1485): only main's head takes the full set. A push
+ * main has moved past is light, since a later push's run owns the batch end. Main's head waits,
+ * reading the queue and main again each `pause`, until main moves (light) or the queue empties
+ * (full), so a group that fails after the last push still leaves main's tip a full run. At the
+ * last of `waits` reads it is full, and anything it cannot read is full.
+ */
+export async function batchEnd({
+  api,
+  graphql,
+  repo,
+  sha,
+  pause,
+  waits = WAITS,
+}: {
+  api: Api;
+  graphql: GraphQL;
+  repo: string;
+  sha: string;
+  pause: () => Promise<void>;
+  waits?: number;
+}): Promise<Scope> {
+  for (let read = 0; ; read += 1) {
+    // eslint-disable-next-line no-await-in-loop -- the queue, then main, read again each pause
+    const busy = await queueBusyNow({ api, graphql, repo });
+    // eslint-disable-next-line no-await-in-loop -- main's head after the queue
+    const head = await api(`/repos/${repo}/commits/main`).then(
+      (commit) => field(commit, 'sha'),
+      () => null,
+    );
+    if (typeof head !== 'string' || head === '') {
+      console.log("full run: main's head could not be read; the full set runs");
+      return FULL;
+    }
+    if (head !== sha) {
+      console.log(`full run: main has moved on to ${head}, whose run owns the batch end; light`);
+      return LIGHT;
+    }
+    if (!busy) {
+      console.log('full run: the merge queue is empty, the end of a batch; the full set runs');
+      return FULL;
+    }
+    if (read >= waits) {
+      console.log('full run: the queue still holds more at the end of the wait; the full set runs');
+      return FULL;
+    }
+    // eslint-disable-next-line no-await-in-loop -- the wait between two reads
+    await pause();
+  }
+}
+
 function client(token: string, base: string): { api: Api; graphql: GraphQL } {
   const headers = {
     accept: 'application/vnd.github+json',
@@ -202,11 +257,11 @@ async function decide(env: NodeJS.ProcessEnv): Promise<Scope> {
     );
     return scope;
   }
-  return await pushScope(env, payload);
+  return await pushScope(env);
 }
 
 /** A push to main's scope: light only when its tree was tested and the queue holds more. */
-async function pushScope(env: NodeJS.ProcessEnv, payload: unknown): Promise<Scope> {
+async function pushScope(env: NodeJS.ProcessEnv): Promise<Scope> {
   try {
     const repo = env['GITHUB_REPOSITORY'] ?? '';
     const { api, graphql } = client(env['GH_TOKEN'] ?? '', env['GITHUB_API_URL'] ?? '');
@@ -216,23 +271,20 @@ async function pushScope(env: NodeJS.ProcessEnv, payload: unknown): Promise<Scop
       api,
       repo,
       tree: typeof tree === 'string' ? tree : undefined,
-      pause: async () => {
-        await new Promise((done) => {
-          setTimeout(done, 15_000);
-        });
-      },
+      pause: async () => await sleep(15_000),
     });
     if (tested === undefined) {
       console.log('full run: no green merge group tested this tree; the full set runs');
       return FULL;
     }
     console.log(`full run: merge group run ${String(tested.id)} tested this tree`);
-    if (!(await queueBusyNow({ api, graphql, repo }))) {
-      console.log('full run: the merge queue is empty, the end of a batch; the full set runs');
-      return FULL;
-    }
-    console.log('full run: the queue holds more; the light set runs');
-    return scopeOf({ eventName: 'push', payload, tested: true, queueBusy: true });
+    return await batchEnd({
+      api,
+      graphql,
+      repo,
+      sha: env['GITHUB_SHA'] ?? '',
+      pause: async () => await sleep(30_000),
+    });
   } catch (error) {
     console.log(
       `full run: ${error instanceof Error ? error.message : String(error)}; the full set runs`,

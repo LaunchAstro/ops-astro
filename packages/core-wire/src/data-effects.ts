@@ -13,6 +13,7 @@ import {
   READ,
   SETTINGS,
   SHARE,
+  SIDE_CHAT_EFFECTS,
   TASK,
 } from './data-effects-shapes.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
@@ -22,6 +23,7 @@ import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
+import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS, STOP } from './data-effects-runs.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -40,17 +42,20 @@ export { classOf } from './data-effects-types.ts';
  * the act's audit, which is no record kind.
  */
 export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {
-  'task.create': TASK,
+  'task.create': writing([...TASK.writes, ...client('conversations')]),
   'task.update': TASK,
   'task.complete': TASK,
   'task.reopen': TASK,
+  // A comment names its task in `uuid_1`, not the parent slot (`uuid_4`) the map trigger reads,
+  // and leaves the task's row as it is, so a comment on a ticket or a map refreshes no map (S7).
   'task.comment': writing(client('records')),
   // A comment's own edit and deletion (MP-4-5), on its record.
   'task.edit_comment': writing(client('records')),
   'task.delete_comment': writing(client('records')),
   // AW-09: the lease holder's revision of its output is the reviewed output too.
   // A restart opens a new lineage, which supersedes nothing, so it marks none.
-  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
+  // A supersession records the outcome of the attempt it stops, releasing its unsent calls (#1623 R1).
+  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs', ...STOP)]),
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
@@ -58,19 +63,20 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // its budget instead (AW-05): the ask, and after the run's last ask a person told on the task.
   'task.pickup': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
-    ...client('run_events'),
+    ...client('run_events', ...STOP),
     ...business('delegations'),
   ]),
-  // A successor is a proposal on the lineage, and the reviewed output (AW-08).
+  // A successor is a proposal on the lineage, and the reviewed output (AW-08). A completed
+  // handback records its attempt's success (#1623 R3).
   'task.handback': writing([
     ...client('alerts', 'attempts', 'evidence_packs', 'gates', 'handback_reports', 'inbox_items'),
     ...client('leases', 'planned_runs', 'planned_steps', 'proposal_versions', 'reservations'),
-    ...client('reviewed_outputs', 'run_events', 'task_envelopes'),
+    ...client('reviewed_outputs', 'run_events', 'run_outcomes', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'task.start': TASK,
   // An assignment raises the assignee's item (INB-1).
-  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.assign': writing([...TASK.writes, ...client('inbox_items')]),
   // A run opened for the task's agent, with the delegation it acts under.
   ...LAUNCH_EFFECTS,
   'task.triage': TASK,
@@ -80,8 +86,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
   'task.set_category': TASK,
-  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
-  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8), a ticket's too.
+  'task.duplicate': writing([...TASK.writes, ...client('record_links')]),
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
@@ -98,7 +104,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...TASK.writes,
     ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
     ...client('inbox_items', 'inbox_attention', 'inbox_delivery_attempts'),
-    ...client('map_components', 'map_versions', 'map_summaries', 'map_frontier'),
+    ...client('map_components', 'map_versions'),
   ]),
   'task.read': READ,
   'task.board': READ,
@@ -194,22 +200,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'gate.pending': READ,
   'conversation.read': READ,
   'conversation.list': READ,
-  'conversation.start': writing(client('conversations', 'conversation_messages')),
-  'conversation.message': writing(client('conversations', 'conversation_messages')),
+  ...SIDE_CHAT_EFFECTS,
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
   'conversation.set_model': writing(client('conversations')),
-  // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
-  // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
-  // delegation retired, the run waiting. The provider call goes through the credential broker; a
-  // client's task never reaches a route (C60), so it is the business's own.
-  'model.call': writing(
-    [
-      ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
-      ...business('copy_registrations', 'delegations'),
-    ],
-    [{ provider: 'model', forClient: false }],
-  ),
+  'model.call': MODEL_CALL_EFFECTS,
+  'run.end': RUN_END_EFFECTS,
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
   // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
   // At a hold its calls spent whole, the top-up is the step's fresh hold: a new attempt.
@@ -262,7 +258,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ],
     [{ provider: 'identity', forClient: false }],
   ),
-  'grant.revoke': GRANTS,
+  // T5: the authority loss it causes stops the work it retires (#1623 R1).
+  'grant.revoke': writing([...GRANTS.writes, ...client(...STOP)]),
   'delegation.revoke': writing([
     // The agent's person is owed the decision on a task the agent held (INB-1).
     ...client(
@@ -271,11 +268,14 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'leases',
       'planned_runs',
       'reservations',
+      'run_outcomes',
       'task_envelopes',
     ),
     ...business('delegations'),
   ]),
-  'task.cancel': writing(client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages')),
+  'task.cancel': writing(
+    client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages', ...STOP),
+  ),
   'task.restart': PROPOSAL,
   'task.heartbeat': writing(client('leases')),
   'task.dispatch': writing(client('attempts', 'planned_steps')),
@@ -286,7 +286,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // calls spent whole, ends the lease and the delegation and stops the run at its budget (AW-05).
   'budget.record_outcome': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
-    ...client('reservations', 'task_envelopes'),
+    ...client('reservations', 'run_outcomes', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),

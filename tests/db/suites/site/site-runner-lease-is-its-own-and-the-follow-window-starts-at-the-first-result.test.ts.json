@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Sol's proofs on the site runner (#1692): another business, another actor or another client's correction cannot use the runner's lease, each sending nothing and writing no receipt; the ten-minute follow window is measured from the first accepted result, after that run returned."
+}

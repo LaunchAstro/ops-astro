@@ -14,14 +14,16 @@
 // 3. Write the observed result with its receipt under the same lease. A lease
 //    lost in between writes no receipt and raises a task; the register still
 //    holds the effect, so the next run observes it rather than sending it.
+//    An acceptance whose deployment the provider shows no record of yet is not
+//    published yet: it stays accepted, and each later pass looks the deployment
+//    up again by its commit until the host's last pass asks a person (#1696). A pass whose
+//    lookup ends after that ask leaves it standing (#1761).
 // No transaction is held open across a provider call.
 
 import {
   readCorrectionForRun,
-  recordObservedResult,
   type Database,
   type LiveCorrection,
-  type ObservedResult,
 } from '../../../core-records/src/index.ts';
 import {
   approvedChange,
@@ -31,11 +33,8 @@ import {
   observeLanded,
   publishCorrection,
   type Accepted,
-  type CaptureOptions,
-  type ProviderResult,
+  type Observed,
   type PublishJob,
-  type PublishPorts,
-  type ReadBack,
 } from '../../../core-connectors/src/index.ts';
 import {
   landedObservations,
@@ -45,140 +44,99 @@ import {
   targetOf,
   type Observations,
 } from './live-correction-observations.ts';
-import { capturePort, pageNotCatalogued } from './live-correction-capture.ts';
+import { capturePort } from './live-correction-capture.ts';
 import {
   acceptedOf,
-  askOnce,
   correctionEffectId,
   readCorrectionEffect,
   registerCorrectionEffect,
-  settleAsk,
   takeDispatch,
 } from './live-correction-effect.ts';
-
-/** Where the worker stands: the correction, the lease and fence it holds, and its own actor. */
-export interface CorrectionRun {
-  readonly business: string;
-  readonly correctionId: string;
-  readonly leaseId: string;
-  readonly fence: number;
-  /** The lease's holder: the read and the receipt are refused to any other actor. */
-  readonly actorId: string;
-}
-
-type Seamed = { readonly seam: string; readonly dispatchToken: string };
-type Deployed = { revision: string; deploymentId: string };
-
-/** The provider calls, each a catalogued operation through the guarded call or the fence. */
-export interface RunnerPorts {
-  readonly readSource: PublishPorts['readSource'];
-  /** `site.source.read` of the bound file on the default branch. */
-  readonly readBack: PublishPorts['readBack'];
-  readonly publish: PublishPorts['publish'];
-  readonly readDeployment: (
-    deploymentId: string,
-  ) => Promise<ProviderResult<{ revision: string; served: boolean }>>;
-  /** `site.capture`: the C18-1 fence's own inputs, never a function handed in. */
-  readonly capture: CaptureOptions;
-  /** `site.source.read` of the default branch head, for a revert. */
-  readonly revertReadBack: (input: Seamed) => Promise<ReadBack<Deployed>>;
-  /** `site.source.revert`, under the token derived from the published revision. */
-  readonly revert: (input: Seamed) => Promise<ProviderResult<Deployed>>;
-  readonly raiseTask: (reason: string) => Promise<void>;
-  readonly now: () => number;
-  /** Every refusal and unknown the guarded calls recorded on this run, by code. */
-  readonly refusals: () => readonly string[];
-  /** The refusal of a correction these ports were not bound to (`bindingRefuses`), or nothing. */
-  readonly unbound: (correction: LiveCorrection) => string | undefined;
-}
-
-export type RunResult =
-  | { readonly kind: 'refused'; readonly code: string; readonly waitsOn?: 'person' }
-  | { readonly kind: 'recorded'; readonly state: string; readonly receiptId: string }
-  | { readonly kind: 'unrecorded'; readonly outcome: string; readonly code: string };
-
-export const refused = (code: string): RunResult => ({ kind: 'refused', code });
-
-/** A refusal that waits on a person, with its task raised. */
-async function waiting(code: string, ports: RunnerPorts): Promise<RunResult> {
-  await ports.raiseTask(code);
-  return { kind: 'refused', code, waitsOn: 'person' };
-}
-
-/** The lease read's refusal: a narrowed delegation waits on its person to restore the grant. */
-export async function leaseRefused(code: string, ports: RunnerPorts): Promise<RunResult> {
-  return code === 'DELEGATION_NARROWED' ? await waiting(code, ports) : refused(code);
-}
+import {
+  leaseRefused,
+  pageRefused,
+  record,
+  refused,
+  unknownWaits,
+  waiting,
+  type CorrectionRun,
+  type RunnerPorts,
+  type RunResult,
+} from './live-correction-run.ts';
 
 /** The digest a person approved, only while the correction stands approved. */
 const approvedDigest = (correction: LiveCorrection): string | undefined =>
   correction.state === 'approved' ? (correction.decidedVersionDigest ?? undefined) : undefined;
 
-/** An outcome nothing registered: it waits on a person, asked once (`askOnce`). */
-export async function unknownWaits(
-  db: Database,
-  run: CorrectionRun,
-  at: Parameters<typeof askOnce>[2],
-  ports: RunnerPorts,
-): Promise<RunResult> {
-  const asked = await askOnce(db, run, at);
-  if (typeof asked === 'string') return await leaseRefused(asked, ports);
-  if (asked) {
-    await ports.raiseTask('OUTCOME_UNKNOWN').catch(async (error: unknown) => {
-      await settleAsk(db, run, at, 'none').catch(() => null);
-      throw error;
-    });
-    await settleAsk(db, run, at, 'person');
-  }
-  return { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
+/** How the host runs a pass: its last pass, at its cap, ends a deployment still not found. */
+export interface PassOptions {
+  readonly lastPass?: boolean;
 }
 
-/** Step 3: the observed result and its receipt, or a raised task when it cannot be written. */
-export async function record(
+/** The accepted publish's deployment: as accepted, else looked up again by its revision. */
+const deploymentOf = async (accepted: Accepted, ports: RunnerPorts) =>
+  accepted.deploymentId === undefined
+    ? await ports.findDeployment(accepted.revision)
+    : ({ kind: 'ok', value: accepted.deploymentId } as const);
+
+type Seen = Accepted | Observed<'live'> | Observed<'unknown'>;
+
+/** Step 3 for an accepted publish as seen on this pass: unknown is not serving, for a person. */
+async function recordSeen(
   db: Database,
   run: CorrectionRun,
-  result: Pick<ObservedResult, 'step' | 'outcome'> & { readonly observations: Observations },
-  ports: RunnerPorts,
-): Promise<RunResult> {
-  const written = await db.withBusiness(
-    run.business,
-    async (tx) => await recordObservedResult(tx, { ...run, ...result }),
-  );
-  if (written.ok) return { kind: 'recorded', state: written.state, receiptId: written.receiptId };
-  await ports.raiseTask('RECEIPT_NOT_WRITTEN');
-  return { kind: 'unrecorded', outcome: result.outcome, code: written.code };
-}
-
-/** Ports bound to another correction, or a stored page the fence refuses, stop the run first. */
-export async function pageRefused(
   correction: LiveCorrection,
+  landed: Seen,
   ports: RunnerPorts,
-): Promise<RunResult | undefined> {
-  const code = ports.unbound(correction) ?? pageNotCatalogued(correction.pageUrl, ports.capture);
-  return code === undefined ? undefined : await waiting(code, ports);
+  unlessAsked?: string,
+): Promise<RunResult> {
+  const unserved = landed.state === 'unknown';
+  const observations = {
+    ...pinnedObservations(correction, ports.refusals()),
+    ...landedObservations(correction, unserved ? { ...landed, state: 'accepted' } : landed),
+    ...(unserved ? { deployment_served: seen('not serving'), waits_on: seen('person') } : {}),
+    effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
+  };
+  const result = { step: 'publish', outcome: landed.state, observations } as const;
+  return await record(db, run, result, ports, unlessAsked);
 }
 
-/** An accepted publish observed again: its revision served and its word on the page. */
+/**
+ * An accepted publish observed again: its deployment found, its revision served and its word on
+ * the page. None found yet stays accepted (not published yet) until the host's last pass, which
+ * asks a person once; one found for another commit is unknown.
+ */
 async function observe(
   db: Database,
   run: CorrectionRun,
   correction: LiveCorrection,
   accepted: Accepted,
   ports: RunnerPorts,
+  options: PassOptions,
 ): Promise<RunResult> {
-  const landed = await observeLanded(accepted, targetOf(correction), {
-    readDeployment: ports.readDeployment,
-    capture: capturePort(correction.pageUrl, ports.capture),
-    raiseTask: async (reason) => await ports.raiseTask(reason),
-  });
-  const unserved = landed.state === 'unknown';
-  const observations = {
-    ...pinnedObservations(correction, ports.refusals()),
-    ...landedObservations(correction, unserved ? accepted : landed),
-    ...(unserved ? { deployment_served: seen('not serving'), waits_on: seen('person') } : {}),
-    effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
-  };
-  return await record(db, run, { step: 'publish', outcome: landed.state, observations }, ports);
+  const found = await deploymentOf(accepted, ports);
+  if (found.kind !== 'ok') {
+    await ports.raiseTask(found.code);
+    return await recordSeen(db, run, correction, { ...accepted, state: 'unknown' }, ports);
+  }
+  if (found.value === undefined && options.lastPass === true) {
+    const at = { step: 'publish', outcome: 'unknown' } as const;
+    return await unknownWaits(db, run, at, ports, 'DEPLOYMENT_NOT_FOUND');
+  }
+  // Still not found before the last pass: accepted again, unless a last pass already asked.
+  if (found.value === undefined) {
+    return await recordSeen(db, run, correction, accepted, ports, 'DEPLOYMENT_NOT_FOUND');
+  }
+  const landed = await observeLanded(
+    { ...accepted, deploymentId: found.value },
+    targetOf(correction),
+    {
+      readDeployment: ports.readDeployment,
+      capture: capturePort(correction.pageUrl, ports.capture),
+      raiseTask: async (reason) => await ports.raiseTask(reason),
+    },
+  );
+  return await recordSeen(db, run, correction, landed, ports);
 }
 
 /** Step 2's rebuild: the approved change from the pinned source, or the refusal. */
@@ -228,6 +186,7 @@ async function dispatch(
   correction: LiveCorrection,
   job: PublishJob,
   ports: RunnerPorts,
+  options: PassOptions,
 ): Promise<RunResult> {
   const token = dispatchToken('site.publish', job.version.digest);
   const taken = await takeDispatch(db, run, token, approvedDigest);
@@ -245,11 +204,15 @@ async function dispatch(
   if (outcome.state === 'refused') await ports.raiseTask(outcome.code);
   if (outcome.state === 'accepted') {
     const { revision, deploymentId, occurrence } = outcome;
-    const answer = { revision, deploymentId, dispatchToken: outcome.dispatchToken };
+    const answer = {
+      revision,
+      ...(deploymentId === undefined ? {} : { deploymentId }),
+      dispatchToken: outcome.dispatchToken,
+    };
     const kept = occurrence === undefined ? answer : { ...answer, occurrence };
     if (!(await registerCorrectionEffect(db, run, correction, 'publish', kept)))
       await ports.raiseTask('EFFECT_NOT_REGISTERED');
-    return await observe(db, run, correction, outcome, ports);
+    return await observe(db, run, correction, outcome, ports, options);
   }
   const refusals = ports.refusals();
   const observations: Observations = {
@@ -274,6 +237,7 @@ export async function runLivePublish(
   db: Database,
   run: CorrectionRun,
   ports: RunnerPorts,
+  options: PassOptions = {},
 ): Promise<RunResult> {
   const held = await db.withBusiness(run.business, async (tx) => {
     const read = await readCorrectionForRun(tx, run);
@@ -287,7 +251,7 @@ export async function runLivePublish(
     if (accepted === undefined) return refused('OUTCOME_UNKNOWN');
     const unfenced = await pageRefused(correction, ports);
     if (unfenced !== undefined) return unfenced;
-    return await observe(db, run, correction, accepted, ports);
+    return await observe(db, run, correction, accepted, ports, options);
   }
   if (correction.state === 'unknown' || correction.state === 'accepted') {
     const unfenced = await pageRefused(correction, ports);
@@ -296,5 +260,5 @@ export async function runLivePublish(
   }
   const job = await rebuild(correction, ports);
   if (!isJob(job)) return job;
-  return await dispatch(db, run, correction, job, ports);
+  return await dispatch(db, run, correction, job, ports, options);
 }

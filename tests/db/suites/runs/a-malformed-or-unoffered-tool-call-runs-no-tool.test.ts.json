@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2091 gaps 4 and v2-1: a model tool call out of shape (non-string operands, bounds, extra keys, an uncatalogued tool, a bad sibling, a reused id) holds the whole answer before the runner sees it; no tool command runs and no correction is made."
+}

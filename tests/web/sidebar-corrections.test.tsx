@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The sidebar's one-word site correction: the request door, the desks and the
-// card. The request goes through the one typed port the hook takes; the port
-// here is a labelled mock, since `site.source.propose` is not on this build.
-// The card's state is what `live_correction.read` answers, and its only
+// card. The request goes through the one typed port the hook takes: a
+// labelled mock where the suite is about the card, and the task's port
+// (`locate.ts`) on the real command client. The card's state is what `live_correction.read` answers, and its only
 // controls are a person's approve and decline through `live_correction.decide`.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { requestPort } from '../../apps/web/src/assistant/correction-desks.ts';
+import { taskCorrectionPort } from '../../apps/web/src/assistant/locate.ts';
 import { SidebarCorrections } from '../../apps/web/src/views/correction-card.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import {
   ABOUT,
-  ABOUT_FILE,
-  aboutPage,
+  CHECK_HOLDS_MS,
+  TASK_A,
   askFor,
   controls,
   mockPropose,
@@ -37,10 +37,18 @@ function business(businessKey: string, state: string) {
     if (path === '/live_correction/read') {
       const correctionId = String(body['correctionId']);
       const approver = state === 'requested' ? null : 'Grace Hopper';
+      const check = { verifiedAt: '2026-10-19T00:00:00.000Z', verifiedForMs: CHECK_HOLDS_MS };
       return Promise.resolve(
         json({
           ok: true,
-          correction: { correctionId, state, approver, versionId: `v-${correctionId}` },
+          correction: {
+            correctionId,
+            state,
+            approver,
+            versionId: `v-${correctionId}`,
+            ...check,
+            refusal: null,
+          },
         }),
       );
     }
@@ -96,14 +104,16 @@ describe('the card never publishes; a person decides through the decision path',
       const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
       // oxlint-disable-next-line no-await-in-loop
       await askFor(view, ABOUT);
-      expect(controls(view), state).toStrictEqual([]);
+      // A published or reverted card opens its receipts (#1695), and decides nothing.
+      const receipted = state === 'live' || state === 'reverted';
+      expect(controls(view), state).toStrictEqual(receipted ? ['Receipts'] : []);
       // oxlint-disable-next-line no-await-in-loop
       await view.unmount();
     }
     const { client } = business('alpha', 'requested');
     const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
     await askFor(view, ABOUT);
-    expect(controls(view)).toStrictEqual(['Approve', 'Decline']);
+    expect(controls(view)).toStrictEqual(['Launch', 'Decline']);
     expect(view.text()).not.toMatch(/publish now|publish this/iu);
   });
 
@@ -120,6 +130,7 @@ describe('the card never publishes; a person decides through the decision path',
     const paths = new Set(calls.map((call) => call.path));
     expect([...paths].toSorted()).toStrictEqual([
       '/live_correction/decide',
+      '/live_correction/list',
       '/live_correction/read',
     ]);
   });
@@ -140,7 +151,7 @@ describe('the request door', () => {
     const view = await mount(<SidebarCorrections client={client} propose={refused.port} />);
     await askFor(view, ABOUT);
     const said = view.find('[data-correction-refusal]')?.textContent ?? '';
-    expect(said).toMatch(/one word for one word/iu);
+    expect(said).toMatch(/one phrase or sentence on one line/iu);
     expect(view.text()).not.toContain('CHANGE_ENVELOPE_EXCEEDED');
     expect(view.find('[data-correction-card]')).toBeNull();
   });
@@ -171,25 +182,26 @@ describe('the desks hold the active business’s corrections only', () => {
     await view.render(<SidebarCorrections client={alpha.client} propose={mock.port} />);
     await tick();
     expect(view.all('[data-correction-card]')).toHaveLength(1);
-    expect(bravo.calls).toStrictEqual([]);
+    // Bravo was sent its own list read and nothing of Alpha's.
+    expect(bravo.calls).toStrictEqual([{ path: '/live_correction/list', body: {} }]);
   });
 });
 
 describe('the door on the real command client', () => {
-  it('sends live_correction.request with the located file and the one word changed', async () => {
+  it('sends live_correction.request with the task, the page and the two words only', async () => {
     const { client, calls } = business('alpha', 'requested');
     const view = await mount(
-      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+      <SidebarCorrections client={client} propose={taskCorrectionPort(client, TASK_A)} />,
     );
     await askFor(view, ABOUT);
     const sent = calls.filter((call) => call.path === '/live_correction/request');
     expect(sent).toHaveLength(1);
     const { operationId: _id, ...operands } = sent[0]?.body ?? {};
     expect(operands).toStrictEqual({
-      ...ABOUT_FILE,
+      taskId: TASK_A,
+      page: 'About',
       word: 'alongside',
       replacement: 'beside',
-      after: '# About\n\nWe work beside the teams who run your website.\n',
     });
     expect(
       (view.find('[data-correction-card]') as HTMLElement | null)?.dataset['correctionState'],
@@ -199,7 +211,7 @@ describe('the door on the real command client', () => {
   it('says the command’s refusal in plain words, never its code', async () => {
     const { client } = business('alpha', 'refuse-request');
     const view = await mount(
-      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+      <SidebarCorrections client={client} propose={taskCorrectionPort(client, TASK_A)} />,
     );
     await askFor(view, ABOUT);
     expect(view.find('[data-correction-refusal]')?.textContent).toMatch(/another client/iu);
@@ -209,40 +221,42 @@ describe('the door on the real command client', () => {
   it('decide sends for the correction whose card was pressed, and no other', async () => {
     const { client, calls } = business('alpha', 'requested');
     const view = await mount(
-      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+      <SidebarCorrections client={client} propose={taskCorrectionPort(client, TASK_A)} />,
     );
     await askFor(view, ABOUT);
     await askFor(view, { ...ABOUT, word: 'teams', replacement: 'people' });
-    const ids = calls.filter((call) => call.path === '/live_correction/read');
-    const second = String(ids[1]?.body['correctionId']);
+    // Newest first, so the first asked is drawn second.
+    const read = calls.find((call) => call.path === '/live_correction/read');
+    const first = String(read?.body['correctionId']);
     await view.click(`[data-correction-card]:nth-of-type(2) [data-correction-decide="reject"]`);
     await tick();
     const decided = calls.filter((call) => call.path === '/live_correction/decide');
     expect(decided.map(({ body: { operationId: _o, ...rest } }) => rest)).toStrictEqual([
-      { correctionId: second, versionId: `v-${second}`, decision: 'reject' },
+      { correctionId: first, versionId: `v-${first}`, decision: 'reject' },
     ]);
   });
 });
 
 describe('the assistant sidebar', () => {
-  it('sends the door’s ask as live_correction.request when handed the site read, and draws no door without', async () => {
+  it('sends the door’s ask as live_correction.request when handed a task, and draws the desks with no door without', async () => {
     const { client, calls } = business('alpha', 'requested');
-    const drawer = (locate?: typeof aboutPage) => (
+    const drawer = (taskId?: string) => (
       <AssistantView
         client={client}
         route="agency:projects-board"
         here="/projects"
         entry={null}
-        {...(locate === undefined ? {} : { locate })}
+        {...(taskId === undefined ? {} : { taskId })}
       />
     );
-    const view = await mount(drawer(aboutPage));
+    const view = await mount(drawer(TASK_A));
     await tick();
     expect(view.find('[data-assistant="corrections"] [data-correction-door]')).not.toBeNull();
     await askFor(view, ABOUT);
     expect(calls.filter((call) => call.path === '/live_correction/request')).toHaveLength(1);
     await view.render(drawer());
     await tick();
-    expect(view.find('[data-assistant="corrections"]')).toBeNull();
+    expect(view.find('[data-assistant="corrections"]')).not.toBeNull();
+    expect(view.find('[data-correction-door]')).toBeNull();
   });
 });

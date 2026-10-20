@@ -13,10 +13,12 @@ export function copied(storage: Storage): Storage {
   return next;
 }
 
+/** `appStorage` is what the App keeps recovery in; null is a browser that blocks site data. */
 export async function realm(
   fetch: typeof globalThis.fetch,
   storage = draftTab(),
   path = '/task/Timer-A',
+  appStorage: Storage | null = storage,
 ) {
   vi.resetModules();
   const [{ act, createElement }, { App }, { SessionStore }, { mount }, { tick }] =
@@ -35,7 +37,7 @@ export async function realm(
     gotrueUrl: 'http://gotrue.test',
     apiOrigin: '',
     fetch,
-    storage,
+    storage: appStorage,
   };
   const view = await mount(createElement(App, props));
   await tick();

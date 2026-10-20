@@ -13,6 +13,9 @@
 // a failure, is logged by cause alone, never an id or an error's text, and the
 // round goes on. `stop` starts no business after it and resolves once a pass
 // in flight has ended, so the pool outlives every pass.
+//
+// The scheduled entry (A6) runs one `occurrenceRound` per invocation and
+// counts each business's outcome through `report`.
 
 import { sweepOccurrences } from '../../packages/core-commands/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
@@ -26,7 +29,12 @@ export interface OccurrenceSweeperOptions {
   readonly everyMs?: number;
   /** The pass's clock; the wall clock unless a case sets one. */
   readonly now?: () => Date;
+  /** Told each business's outcome, for a caller that counts them; the API sweeper sets none. */
+  readonly report?: (outcome: SweepOutcome) => void;
 }
+
+/** One business's pass: ran clean, skipped for want of a worker, or failed. */
+export type SweepOutcome = 'swept' | 'noWorker' | 'failed';
 
 /** The business's active worker actor, or undefined while it has none. */
 async function workerOf(database: Database, businessId: BusinessId): Promise<string | undefined> {
@@ -52,20 +60,25 @@ export function occurrenceRound(
   return async () => {
     for (const businessId of await options.businesses()) {
       if (stopping?.aborted === true) return;
+      let outcome: SweepOutcome = 'noWorker';
       try {
         // oxlint-disable-next-line no-await-in-loop -- one business's pass before the next's
         const workerActorId = await workerOf(database, businessId);
-        if (workerActorId === undefined) continue;
-        // oxlint-disable-next-line no-await-in-loop -- one business's pass before the next's
-        const report = await sweepOccurrences(database, { businessId, workerActorId, now: now() });
-        if (report.failed.length > 0) {
-          console.error(
-            'occurrence sweep: an activation or occurrence did not fire in one business',
-          );
+        if (workerActorId !== undefined) {
+          // oxlint-disable-next-line no-await-in-loop -- one business's pass before the next's
+          const swept = await sweepOccurrences(database, { businessId, workerActorId, now: now() });
+          outcome = swept.failed.length > 0 ? 'failed' : 'swept';
+          if (outcome === 'failed') {
+            console.error(
+              'occurrence sweep: an activation or occurrence did not fire in one business',
+            );
+          }
         }
       } catch {
+        outcome = 'failed';
         console.error('occurrence sweep: the pass failed in one business');
       }
+      options.report?.(outcome);
     }
   };
 }

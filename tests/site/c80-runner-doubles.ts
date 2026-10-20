@@ -94,6 +94,7 @@ export function doubles(
         kind: 'ok',
         value: { revision: id === 'dep-3' ? 'rev-3' : 'rev-2', served: true },
       }),
+    findDeployment: () => Promise.resolve({ kind: 'ok', value: undefined }),
     capture: { ...fenceDouble(seen, () => pageNow(seen)), ...fence },
     revertReadBack: () => Promise.resolve({ state: 'absent' }),
     revert: () => {

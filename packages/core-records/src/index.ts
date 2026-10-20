@@ -189,6 +189,7 @@ export {
 } from './register-gate.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
+export { raiseAlert, type AlertKind, type Raised, type WaitingReason } from './tasks/alerts.ts';
 export * from './team/index.ts';
 export {
   DERIVED_ON_CREATE,
@@ -223,6 +224,7 @@ export {
   LAUNCH_HOURS,
   launchPurpose,
   launchRun,
+  UNANSWERED_MINUTES,
   type LaunchRequest,
   type LaunchResult,
 } from './authority/launches.ts';
@@ -237,6 +239,7 @@ export {
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
+export { taskPageRef } from './tasks/page-ref.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
@@ -257,6 +260,7 @@ export {
   connectAsAdmin,
   connectListener,
   isBusinessId,
+  RUNTIME_IDLE_SECONDS,
   type AdminConnection,
   type BusinessId,
   type Database,

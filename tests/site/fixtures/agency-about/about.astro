@@ -1,0 +1,10 @@
+---
+import AboutPage from '../components/layouts/AboutPage.astro';
+import { about } from '../content/pages';
+import ReferenceLayout from '../layouts/ReferenceLayout.astro';
+---
+<ReferenceLayout title="About us — Agency Astro" description={about.lede}>
+  <AboutPage pathname={Astro.url.pathname}>
+    <p slot="lede" class="phero__lede reveal" style="--d:90ms">Too many business owners are doing great work but navigating growth blind: no clear course, no guide, no plan. We exist to chart the course, walk alongside you, and build the brand, digital, and systems that turn a good business into a growing one.</p>
+  </AboutPage>
+</ReferenceLayout>

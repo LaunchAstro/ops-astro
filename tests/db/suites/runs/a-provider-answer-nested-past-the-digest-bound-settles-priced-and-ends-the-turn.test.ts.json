@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R3 (S1900-6): a provider answer nested too deep to digest settles priced and ends the attempt cancelled / TURN_MALFORMED; nothing throws away the settlement of a call already sent."
+}

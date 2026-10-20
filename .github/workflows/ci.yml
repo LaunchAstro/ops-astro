@@ -11,7 +11,10 @@ on:
     # is reported, not limited. The triggers stay as they were. One label
     # event changes a result (CI-SPEED): adding `sent-back` cancels the run on
     # a head sent back for fixes and fails the gate there
-    # (scripts/sent-back-hold.mjs). No other label changes any check.
+    # (scripts/sent-back-hold.mjs). Two labels widen what runs and never skip
+    # a check: `ci-next` takes the full set (scripts/full-run.ts), and
+    # `precheck-batch` on a branch of this repository runs the merge-group set
+    # (#1918, the database conformance shards). No other label changes any check.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -73,8 +76,10 @@ jobs:
     # skips, so every job behind it skips, and the three `always()` jobs carry
     # the same condition. A pull request that is open runs as before.
     if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
-    # Its slowest green run in the day to 1 October 2026: 5.2 min.
-    timeout-minutes: 15
+    # Its slowest green run in the day to 1 October 2026: 5.2 min. On a push to
+    # main its scope step may wait up to 40 minutes for the end of a batch
+    # (scripts/full-run.ts, #1485), so a push gets 45.
+    timeout-minutes: ${{ github.event_name == 'push' && 45 || 15 }}
     # `actions: read` lets the scope step below read the merge group runs on a
     # push to main; the merge queue is read with the same token. Both read only.
     permissions:
@@ -108,7 +113,8 @@ jobs:
         run: node scripts/queue-head-check.mjs
       # Queue hygiene (owner, 12 October 2026): a merge group always takes the
       # full set; a pull request only with the `ci-next` label; a push to main
-      # only when no green merge group tested its tree or the queue is empty.
+      # when no green merge group tested its tree, or when it is main's head at
+      # the end of a batch (#1485).
       - name: Which set this run takes, full or light
         id: scope
         env:
@@ -179,6 +185,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Install gitleaks, verified before it is extracted
         env:
           # Pinned by version and by digest. The digest is the one published
@@ -197,8 +204,16 @@ jobs:
           tar -xzf "$archive" gitleaks
           rm -f "$archive"
           ./gitleaks version
-      - name: Scan every commit, not just the diff
-        run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
+      # Every commit that would land on main, history included: the checked-out
+      # commit and all its ancestors. That is main plus the pull request's
+      # commits, the queue's combined head, or main on a push. gitleaks' default
+      # is `--all`, every branch the full-depth checkout fetched, so a fixture on
+      # a branch that never lands here failed everyone (18 October 2026). A
+      # merge is read against its first parent, so what a merge commit adds
+      # itself (a conflict resolution) is read too; plain `git log -p` shows
+      # no merge's diff.
+      - name: Scan every commit that would land on main, not just the diff
+        run: ./gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--full-history --diff-merges=first-parent HEAD" .
       # gitleaks' own default allowlist, which .gitleaks.toml extends and
       # cannot narrow, skips pnpm-lock.yaml by path; stdin has no path.
       - name: Every version of the lockfile, which gitleaks' allowlist skips
@@ -208,8 +223,9 @@ jobs:
           done
 
   pin-tests:
-    # Pin and count contracts read repository-wide facts that changed-import
-    # selection cannot see. Run before ci-next, without a database.
+    # Pin and count contracts, and the repository-wide rules a merge group
+    # would otherwise test first, read facts that changed-import selection
+    # cannot see. Run before ci-next, without a database.
     name: pin and count tests
     needs: [gate]
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
@@ -271,6 +287,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -328,18 +345,25 @@ jobs:
       # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
       # here, after every capture in `pnpm check`.
       - name: The suites that start containers, after the browser captures
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'container suites' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'container suites' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'browser proofs' -- pnpm vitest run tests/browser/
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'browser proofs' -- pnpm vitest run tests/browser/
         env:
           BROWSER_PROOFS: '1'
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'semgrep settings' -- bash scripts/local/semgrep-settings.sh
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'semgrep settings' -- bash scripts/local/semgrep-settings.sh
       # `pnpm check` reads the same policy over the working tree on a pull request too.
       - name: Public content in the actual checked-out snapshot
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'public content snapshot' -- node scripts/public-content-check.mjs --repo "$PWD"
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'public content snapshot' -- node scripts/public-content-check.mjs --repo "$PWD"
       # S0-1 promotion same artefact, a dry run in CI: the release step turns
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
@@ -354,11 +378,13 @@ jobs:
       # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
       # the merge queue.
       - name: S0-1 promotion same artefact, a dry run over the build output just made
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
         run: |
           set -euo pipefail
           decision="$(node scripts/ci-scope.ts 'local checks' --decide)"
           case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
-          shard="$(node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'promotion dry run' --decide)"
+          shard="$(node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'promotion dry run' --decide)"
           case "$shard" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
           version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
           store="${RUNNER_TEMP}/artefacts"
@@ -377,7 +403,8 @@ jobs:
         env:
           DOCKER: docker
           L5_RUNTIME_PROOFS: '1'
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'inbox restart' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard "$SHARD" --step 'inbox restart' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
 
   local-checks:
     # The required check (ruleset 23396133, .github/required-checks.json): one
@@ -430,6 +457,7 @@ jobs:
         with:
           # merge-group.mjs walks a group's first parents down to the base tip.
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -477,25 +505,31 @@ jobs:
     # aggregate below passes that skip on a pull request whose contamination
     # gate passed, and nowhere else. This never
     # skips a group (tests/ci/merge-group-jobs.test.ts).
-    if: github.event_name != 'pull_request'
+    # #1918: a pre-check batch, a pull request labelled `precheck-batch` whose
+    # head is a branch of this repository, runs them too, hosted, so a batch's
+    # green covers what the queue runs; scripts/ci-scope.ts reads the same
+    # label and runs every suite. A fork's pull request never does. With
+    # `ci-next` alone a pull request skips them as before.
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'precheck-batch') && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
-      # 12 since RELAYSHARD1830 (director, 13 October 2026), down from 30
-      # (CIITEM3): the account runs 60 jobs at once and one merge group took 53
-      # of them (run 38366609090), so a second group waited for the first.
-      # With the isolation suites out of these shards (#1533), the 30 shards
-      # took 223 to 234 runner-min in the last three green groups of 13
-      # October, setup included; 12 hold about 16 min of items each, plus
-      # about a minute of setup, and a group runs about 20 jobs at once.
-      # scripts/db-census.ts proves the 12- and 30-way splits hold the same
+      # 13 since DIRSHARD13 (director, 19 October 2026), up from 12
+      # (RELAYSHARD1830, 13 October 2026, down from 30 under CIITEM3): the
+      # account runs 60 jobs at once and one merge group took 53 of them at 30
+      # (run 38366609090), so a second group waited for the first. By the green
+      # merge groups of 19 October the items had grown to 14971 s, 1248 s a
+      # shard at 12, past the 20-minute cap tests/ci/db-shards.test.ts holds;
+      # 13 hold about 1152 s of items each, plus about a minute of setup, and
+      # a group runs about 21 jobs at once, so two groups still fit.
+      # scripts/db-census.ts proves the 13- and 30-way splits hold the same
       # items and tests. One line, which tests/ci/db-shards.test.ts reads.
       matrix:
         # prettier-ignore
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
@@ -524,6 +558,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -534,12 +569,13 @@ jobs:
       # group or a push the wrapped command always runs, and the shards run on
       # nothing else. No step here carries a condition.
       # --without-isolation: the `isolation tests` shards run the isolation suites.
-      - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }} --without-isolation
+      - run: node scripts/ci-scope.ts 'database conformance' --shard "$SHARD" -- pnpm run db:conformance --shard "$SHARD" --without-isolation
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # T4a's clone past a reader dumps and restores inside the server's
           # own container; the service container is not ops-astro-local-pg.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # S0-3: a pull request that adds a migration upgrades a database built and
       # seeded at the base branch's newest migration, with the application
       # stopped, and every row must come through unchanged. No migration added,
@@ -571,7 +607,7 @@ jobs:
     # check means. The isolation suites are named suites the `isolation tests`
     # shards run, not these shards (`--without-isolation`), so a group runs
     # each once; outside a pull request this passes only when those shards
-    # succeeded too.
+    # succeeded too, and so on a pre-check batch (#1918), whose shards run.
     name: database conformance
     needs: [gate, full, database-shard, isolation]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.state == 'open')
@@ -587,8 +623,10 @@ jobs:
           # The event reaches the script as a value, never as script text.
           EVENT: ${{ github.event_name }}
           SCOPE: ${{ needs.gate.outputs.scope }}
+          # `true` on a pre-check batch, the shards' own condition.
+          BATCH: ${{ contains(github.event.pull_request.labels.*.name, 'precheck-batch') && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          echo "database conformance shards: $SHARDS, isolation shards: $ISOLATION, contamination gate: $GATE, scope: $SCOPE"
+          echo "database conformance shards: $SHARDS, isolation shards: $ISOLATION, contamination gate: $GATE, scope: $SCOPE, batch: $BATCH"
           if [ "$SCOPE" = light ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             if [ "$EVENT" = push ]; then
               echo "database conformance: a green merge group tested this tree"
@@ -597,7 +635,7 @@ jobs:
             echo "database conformance: the full set waits for the ci-next label; a run that started before it was added stays light, so add it again"
             exit 1
           fi
-          if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+          if [ "$EVENT" = pull_request ] && [ "$BATCH" != true ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             echo "database conformance: the shards run in the merge queue, the only way into main"
             exit 0
           fi
@@ -612,6 +650,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -634,6 +674,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -667,6 +708,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # Reported for each pull request in a group, each against main.
       - name: Measure the diff against the size rule
         run: node scripts/merge-group.mjs each node scripts/pr-size.mjs
@@ -684,6 +726,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -702,6 +746,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -716,6 +762,37 @@ jobs:
           --metrics off --json . > "${RUNNER_TEMP}/semgrep.json" || true
       - name: Every finding recorded with its reason, and none new
         run: node scripts/security-gate.mjs semgrep --report "${RUNNER_TEMP}/semgrep.json"
+
+  zizmor:
+    # zizmor audits every workflow here (register 45 item b, 18 October 2026):
+    # a checkout that keeps the job token, a value expanded into `run:` shell
+    # text, an unpinned action and the rest of its default set. Any finding
+    # fails it. Not required, so not in the merge queue: it becomes a required
+    # check only by the owner's ruleset step (.github/required-checks.json).
+    # tests/ci/workflow-audit-zizmor.test.ts holds this job and the two rules
+    # its first run found (#1840, #1841).
+    name: workflow audit (zizmor, not required)
+    needs: [gate]
+    if: github.event_name != 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The action pulls zizmor's image by the digest it records for this
+      # version and refuses a version it has none for (docs/supply-chain-pins.md).
+      # Offline: no online audit, so zizmor calls no API. The action always
+      # hands zizmor a token and zizmor refuses an empty one, so a placeholder
+      # stands in for the job's token; a call that tried it would fail the job.
+      - name: zizmor over .github/workflows, offline, at a pinned version
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: 1.30.1
+          inputs: .github/workflows
+          online-audits: false
+          advanced-security: false
+          token: offline-no-token
 
   isolation:
     # The client-isolation, restricted-call, pooled-crossover and permission
@@ -760,6 +837,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -771,30 +849,34 @@ jobs:
       # the merge queue, the only way into main, and passes, so the check
       # still reports under its name; on a merge group or a push each always
       # runs. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD"
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a
           # reader dumps and restores inside this job's own service container.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # The named service-stop proof with both addresses a local setup has; it
       # skips without both, and the shard jobs set only one.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'service stop, two addresses' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard "$SHARD" --step 'service stop, two addresses' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # The seed's boundary proof is a node:test file, so no manifest runs it: it
       # makes and drops its own migrated databases on this service.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed boundaries' -- node --test tests/review/seed-boundaries-proof.test.mjs
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard "$SHARD" --step 'seed boundaries' -- node --test tests/review/seed-boundaries-proof.test.mjs
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed redirect' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard "$SHARD" --step 'seed redirect' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
 
   isolation-tests:
     # The required check: one name over every `isolation tests` shard, on the
@@ -832,6 +914,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -864,6 +948,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

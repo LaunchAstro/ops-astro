@@ -415,21 +415,42 @@ const GATE_TASK: ScopeLookup = [
   },
 ];
 
+/**
+ * The party of the correction a decision or a revert ask names, read in this business only; one
+ * on the business's own site has none and is asked of the business (R6).
+ */
+const CORRECTION_PARTY: ScopeLookup = [
+  'correctionId',
+  (tx, id) =>
+    firstRow(
+      tx,
+      `select case when party_id is null then 'business' else 'party' end as kind, party_id as id
+         from public.live_corrections
+        where business_id = $1 and id = $2`,
+      id,
+    ),
+];
+
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
-  // C80: the party a request names is its scope as named; an approval's is
+  // C80: a request is asked at its task's client (#1693: the request names no
+  // party), or the business for a task with no client (R6); an approval's is
   // the party of the correction it names, read in this business only, so a
   // correction elsewhere falls back to the business like any unknown target.
-  'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
-  'live_correction.decide': [
-    'correctionId',
+  'live_correction.request': [
+    'taskId',
     (tx, id) =>
       firstRow(
         tx,
-        `select 'party' as kind, party_id as id from public.live_corrections
-          where business_id = $1 and id = $2`,
+        `select case when r.uuid_7 is null then 'business' else 'party' end as kind, r.uuid_7 as id
+           from public.records r
+           join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+          where r.business_id = $1 and r.id = $2 and t.key = 'task' and r.deleted_at is null`,
         id,
       ),
   ],
+  'live_correction.decide': CORRECTION_PARTY,
+  'live_correction.revert': CORRECTION_PARTY,
+  'live_correction.record_review': CORRECTION_PARTY,
   'grant.revoke': [
     'grantId',
     (tx, id) =>

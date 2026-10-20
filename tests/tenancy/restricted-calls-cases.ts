@@ -14,7 +14,7 @@
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { PART_EXECUTES, PART_GROUPS } from './restricted-calls-mandates.ts';
 import { RESET_EXECUTES, RESET_GROUPS } from './restricted-calls-reset.ts';
-export { MANDATE_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
+export { PART_GRANTS, PART_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -72,13 +72,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
-  // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
-  ['si', 'run_states'],
+  // 0095 (MP-6-2) and #1623 R1: a run's state versions and an attempt's outcome, never rewritten.
+  ['si', 'run_states run_outcomes'],
   // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
-  // edited) and its wrap-ups (append only, never purged).
+  // edited), its wrap-ups (append only) and, #1666, a reply's snapshot (cascades).
   ['siu', 'conversations'],
   ['sid', 'conversation_messages'],
-  ['si', 'conversation_wrap_ups'],
+  ['si', 'conversation_reply_snapshots conversation_reply_targets conversation_wrap_ups'],
   // AW-01: the model-call ledger, and the copy register, which is append only.
   ['siu', 'model_calls'],
   ['si', 'copy_registrations'],

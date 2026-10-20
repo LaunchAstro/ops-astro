@@ -28,7 +28,9 @@ describe.skipIf(noDatabase)('run-reference upgrades preserve valid history', () 
     await insertReference('model_calls', conversationRow(), true);
     const before = await snapshot();
     await s.db.closeSessions();
-    expect((await applyMigrations(s.db.admin, ALL)).applied).toContain(VERSION);
+    // Compare complete rows across this scope migration, before later columns are added.
+    const upgrade = ALL.filter(({ version }) => version <= VERSION);
+    expect((await applyMigrations(s.db.admin, upgrade)).applied).toContain(VERSION);
     expect(await snapshot()).toEqual(before);
     await REFERENCES.reduce(async (previous, [table, column]) => {
       await previous;

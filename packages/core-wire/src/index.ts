@@ -169,6 +169,15 @@ export type {
   TimeEntryView,
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
+// #1694's correction reads, straight from their module: `views.ts` is at its line cap.
+export type {
+  CorrectionListItem,
+  CorrectionReceiptView,
+  LiveCorrectionListResult,
+  LiveCorrectionReads,
+  LiveCorrectionReceiptsResult,
+  ReceiptCapture,
+} from './views-run.ts';
 export type * from './views-chat.ts';
 export type {
   MapComponentView,
@@ -185,6 +194,7 @@ export type {
   AttributionResult,
   ConversationModelsResult,
   ConversationModelView,
+  ConversationTargetsView,
   PlanningAllowanceView,
   PreReviewAttribution,
   PreReviewRun,
@@ -199,9 +209,13 @@ export type {
 export type {
   ActivationView,
   AutomationDefinitionView,
+  AutomationHistoryEntry,
+  AutomationHistoryResult,
   AutomationRegistryResult,
   DefinitionVersionView,
   StandingApprovalView,
+  ChangeHistoryEntry,
+  OccurrenceHistoryEntry,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet and the per-client graduation region as Connections & signal reads
@@ -256,3 +270,15 @@ export type {
   SkillUsageView,
   Unavailable,
 } from './cost-views.ts';
+
+export {
+  isWorkerEndCode,
+  outcomeOf,
+  RUN_OUTCOMES,
+  WORKER_END_CODES,
+  type EndCode,
+  type RunOutcome,
+  type RunOutcomeView,
+  type WorkerEndCode,
+} from './run-outcomes.ts';
+export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';

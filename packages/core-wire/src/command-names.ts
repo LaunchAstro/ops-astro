@@ -5,6 +5,7 @@
 
 import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
+import type { SiteCommandName } from './surface-site-names.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -157,13 +158,6 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // C80's live correction: an agent may request it inside its delegation, a
-  // person decides the exact version, a named setting names who, the decision
-  // is read back; the publish, revert and receipt are system writes, not rows here.
-  | 'live_correction.request'
-  | 'live_correction.read'
-  | 'live_correction.decide'
-  | 'settings.set_live_correction_approver'
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
   // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
   | 'task.set_type'
@@ -202,8 +196,9 @@ export type CommandName =
   | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
-  // the broker verifies from rows; no person grant carries it.
+  // the broker verifies from rows; no person grant carries it. run.end: its stop (#1623 R1).
   | 'model.call'
+  | 'run.end'
   // A person's two answers to a run waiting at its approved ceiling (AW-05):
   // a top-up under four eyes above the business's threshold, or one click
   // that ends the work and parks the task. No agent answers either.
@@ -281,6 +276,7 @@ export type CommandName =
   // `settings:read`; changing an activation is `settings:manage` and releasing
   // a definition version `automation:manage`, neither an agent's.
   | 'automation.registry'
+  | 'automation.history'
   | 'activation.change'
   | 'definition.release'
   // Standing approvals (C52-A): adopting a version, rolling back, turning off
@@ -295,4 +291,5 @@ export type CommandName =
   | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName
-  | LaunchCommandName;
+  | LaunchCommandName
+  | SiteCommandName;

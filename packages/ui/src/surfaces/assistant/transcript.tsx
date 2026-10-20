@@ -13,7 +13,7 @@
 import type { ReactElement } from 'react';
 import { PlanCard } from './plan-card.tsx';
 import { ProposalCard } from './proposal-card.tsx';
-import type { AssistantCite, AssistantMessage } from './types.ts';
+import type { AssistantCite, AssistantMessage, AssistantPickMove } from './types.ts';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
 export const ownHref = (href: string): boolean =>
@@ -45,8 +45,10 @@ export function Transcript(props: {
   readonly onAccept?: ((messageId: string) => void) | undefined;
   /** The one click on a task proposal card, by message. */
   readonly onPropose?: ((messageId: string) => void) | undefined;
+  /** A move on an edit card's pick, by message. */
+  readonly onPick?: ((messageId: string, move: AssistantPickMove) => void) | undefined;
 }): ReactElement {
-  const { onAccept, onPropose } = props;
+  const { onAccept, onPropose, onPick } = props;
   return (
     <div className="aip__scroll" role="log" aria-live="polite" aria-label="Conversation">
       {props.messages.map((message) => (
@@ -67,6 +69,7 @@ export function Transcript(props: {
             <ProposalCard
               proposal={message.proposal}
               onSend={onPropose === undefined ? undefined : () => onPropose(message.id)}
+              onPick={onPick === undefined ? undefined : (move) => onPick(message.id, move)}
             />
           )}
           {message.role === 'ai' && message.cites.length > 0 ? (

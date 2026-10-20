@@ -130,6 +130,11 @@ const bodies = (claim: Claim): Record<string, Body> => ({
   'task.take_launch': (record) => ({ launchId: record }),
 });
 
+const withStop = (claim: Claim): Record<string, Body> => ({
+  ...bodies(claim),
+  'run.end': () => ({ ...claim.lease, endCode: 'TOOL_REFUSED' }),
+});
+
 /** The lease and run operations the delegation reaches only on its own task. */
 const RUN_AND_LEASE = ['task.check', 'model.call', 'run.delegate_child', 'run.revise_state'];
 
@@ -170,7 +175,7 @@ export function delegationCrossing(): void {
     expect(stepsBefore).toContainEqual(
       expect.objectContaining({ step_key: 'welcome-email', state: 'ready' }),
     );
-    const target = bodies({ lease: foreignLease, taskId: foreignTaskId, runId: foreignRunId });
+    const target = withStop({ lease: foreignLease, taskId: foreignTaskId, runId: foreignRunId });
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
     // The lease and the run: the delegation's one task is not the other person's. The
     // pickup: one live delegation per agent and purpose, so a second task never joins
@@ -182,6 +187,8 @@ export function delegationCrossing(): void {
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
+      // The worker's own stop (#1623 R1), asked of the lease; not in the control, which it would end.
+      'run.end': 'DELEGATION_OUT_OF_PURPOSE',
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
       'onboarding.step_result': 'DELEGATION_OUT_OF_PURPOSE',

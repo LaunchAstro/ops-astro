@@ -40,6 +40,9 @@ export type {
   AssistantPage,
   AssistantPanelProps,
   AssistantPast,
+  AssistantPick,
+  AssistantPickMove,
+  AssistantPickRow,
   AssistantPlan,
   AssistantProposal,
   AssistantRole,
@@ -47,6 +50,7 @@ export type {
   PlanCardState,
   ProposalCardState,
 } from './assistant/types.ts';
+export { PICK_SIZE } from './assistant/proposal-pick.tsx';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
 
@@ -192,10 +196,11 @@ function useChipGuard(
 function Thread(props: {
   readonly chat: AssistantChat | undefined;
   readonly answering: boolean;
-  readonly onAccept: AssistantPanelProps['onAccept'];
-  readonly onPropose: AssistantPanelProps['onPropose'];
+  /** The clicks on the transcript's cards. */
+  readonly cards: Pick<AssistantPanelProps, 'onAccept' | 'onPropose' | 'onPick'>;
 }): ReactElement {
-  const { chat, onAccept, onPropose } = props;
+  const { chat } = props;
+  const { onAccept, onPropose, onPick } = props.cards;
   const byMessage = (
     click: ((key: string, messageId: string) => void) | undefined,
   ): ((messageId: string) => void) | undefined =>
@@ -208,6 +213,11 @@ function Thread(props: {
         messages={chat?.messages ?? NO_MESSAGES}
         onAccept={byMessage(onAccept)}
         onPropose={byMessage(onPropose)}
+        onPick={
+          onPick === undefined || chat === undefined
+            ? undefined
+            : (messageId, move) => onPick(chat.key, messageId, move)
+        }
       />
       {props.answering ? (
         <p className="aip__msg aip__msg--note" role="status" data-assistant="answering">
@@ -249,12 +259,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
       {props.allowance}
-      <Thread
-        chat={chat}
-        answering={props.answering === true}
-        onAccept={props.onAccept}
-        onPropose={props.onPropose}
-      />
+      <Thread chat={chat} answering={props.answering === true} cards={props} />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}

@@ -37,6 +37,21 @@ writes each address to an owner-only file in a new `OPS_LOGINS_DIR` for the
 password manager and the M5's settings files. The owner deletes the folder
 after use.
 
+### How a migrate window drains
+
+The window opens with the planned maintenance page (`web-deploy.mjs
+--maintenance --version <id> --artefacts <store> --production`), naming the
+version that takes it off, so production is never left on the page by a deploy
+that cannot run.
+
+A migration refuses while any other session is connected, so production's
+database drains the way staging's does ([staging README](../staging/README.md),
+"How a migrate window drains"): the API's alias detached, the worker and
+forwarder stopped (`scripts/ops/stop-production.mjs`), then a wait of about a
+minute while the function's idle connections close (20 seconds without a
+statement, `RUNTIME_IDLE_SECONDS`). A session left after that is read in
+`pg_stat_activity` before anything ends it.
+
 ## The first business and its owner
 
 Production starts with no business. After the migrations and the logins, the
@@ -146,7 +161,10 @@ done (migration 0058).
 A deploy that Vercel reads back as ready on production writes `deploy recorded`
 to the operator's record folder (`OPS_ASTRO_DEPLOYMENTS`), as staging's does,
 with `environment: "production"`. `--maintenance --production` puts the
-maintenance page on production's address.
+maintenance page on production's address. In a window it takes the planned
+form, `--maintenance --version <id> --artefacts <store> --production`: the
+page goes up only if that version passes production's deploy checks now. The
+bare form is for an incident.
 
 ## The M5 unit
 
@@ -165,6 +183,10 @@ worker and forwarder containers are `ops-astro-worker` and
 ```sh
 node scripts/ops/deploy.mjs --version <id> --artefacts <store> --production
 ```
+
+Set `PRODUCTION_RELEASE` to that `<id>`, the build stamp being deployed, before
+each run: it is the forwarder's `OPS_RELEASE`, the release on every event the
+sink receives (see the staging runbook's deploy section, #1787).
 
 The worker is parked: the deploy reads `compose.json` alone, so no
 `PRODUCTION_WORKER_*` setting is needed and no worker sign-in is made in the
@@ -221,6 +243,53 @@ The drill still takes no target. It restores only into its own container,
 `ops-astro-drill-<hex>`, with no network, and never into production's
 database. Its receipt's `ranOn` says `staging machine` for a drill on the M5:
 that is the store's own value for "on the machine", shared by both stores.
+
+## The scheduled occurrence sweep
+
+`ops-astro-occurrence-sweep.plist` is staging's
+[scheduled occurrence sweep](../staging/README.md#the-scheduled-occurrence-sweep)
+job renamed: `node apps/automations/sweep.ts` every 60 seconds, its env file
+`@PRODUCTION_SWEEP_ENV_FILE@` and its log `@PRODUCTION_SWEEP_LOG@`. The env
+file holds the same four settings: `AUTOMATION_FIRING`,
+`AUTOMATION_BUSINESS_KEYS`, `DATABASE_URL` (production's application login)
+and `DATABASE_LOOKUP_URL`. Unset `AUTOMATION_FIRING` means off, and any value
+but exactly `on` is off too.
+
+The job ships unloaded, with its env file absent. Loading it is the owner's
+switch-on step, A5 of #1653: after staging's proof, the runs gates and the
+owner's go, in daylight. One sweeping entry per environment: this job or a
+long-running API process with `AUTOMATION_FIRING=on`, never both.
+
+## Alerts
+
+Production's alerts are staging's [alerts](../staging/README.md#alerts), with
+production named in their words. Every alert mails the owner
+(`OPS_ALERT_OWNER_EMAIL`) and the second operator
+(`OPS_ALERT_SECOND_OPERATOR_EMAIL`) at once. Nobody else gets them, and no
+alert goes to a client or a business's own people.
+
+| Alert                                                     | Raised by                                   | Who sees it                       |
+| --------------------------------------------------------- | ------------------------------------------- | --------------------------------- |
+| Production not loading, its API not answering             | the off-box watcher, every five minutes     | the owner and the second operator |
+| Production's maintenance page is up                       | the off-box watcher                         | the owner and the second operator |
+| Backup, restore drill, forwarder or worker heartbeat late | the off-box watcher                         | the owner and the second operator |
+| The error sink not answering                              | the off-box watcher (one sink, both places) | the owner and the second operator |
+| An app error on production                                | the error sink, from production's forwarder | the owner and the second operator |
+| Failed sign-ins, refusals, permission changes, downloads  | the error sink, from production's forwarder | the owner and the second operator |
+| A failed secret scan                                      | the error sink, from the scan itself        | the owner and the second operator |
+
+Nothing here sets up the watcher or the sink. With `OPS_WATCH_PRODUCTION_URL`
+set, `node scripts/ops/alerts.mjs plan` prints production's checks, their
+alert words and the recipients; the operator adds each one by hand in the
+watcher and in the sink. For a proof, `plan --test` prints the agreed test
+address as the only recipient, to enter in place of the operators'.
+
+The operations view links the error sink once `OPS_ERROR_SINK_URL` is set on
+production's Vercel project. It holds the sink's web address and no secret.
+Setting it takes one daylight redeploy. Delivery is proved only by mail
+arriving: `node scripts/ops/alerts.mjs test`, run with production's forwarder
+settings, raises one test alert through the sink, and a planted health failure
+proves the watcher.
 
 ## The promotion step
 

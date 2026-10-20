@@ -36,6 +36,25 @@ import { read, ROOT } from './merge-group-repo.ts';
 
 const temp = scratch();
 
+// RELAYSHARD1830 and #1478 (orchestrator, 18 October 2026): 3 and 3 shards, so two merge
+// groups fit the account's 60 runners, each job at most 25 minutes, which every measured full
+// run meets (#1753 takes it to ten). A shard's measured items plus what every shard repeats
+// outside them: checkout, install, the cached build and the summary, under a minute in run
+// 38695912255. A plan past it needs more shards or a finer split.
+const SHARD_JOB_SECONDS = 25 * 60;
+const SHARD_SETUP_SECONDS = 60;
+
+/** Whether a shard of `load` measured seconds, plus the setup every shard repeats, fits its job. */
+const fitsItsJob = (load: number): boolean => load + SHARD_SETUP_SECONDS <= SHARD_JOB_SECONDS;
+
+it('a shard job may take 25 minutes: the full merge-group runs measured up to 23.1', () => {
+  // The slowest local checks or isolation tests job of three green groups (#1478, 18 October
+  // 2026): 22.3 min in 39089644296 and 39088733082, 23.1 min in 38695912255.
+  expect(fitsItsJob(23.1 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS)).toBe(true);
+  expect(fitsItsJob(25 * 60 - SHARD_SETUP_SECONDS + 1)).toBe(false);
+});
+
 it('the plan reads the measured times, and refuses a key it does not know or a value that is not seconds', () => {
   expect(Object.keys(plan.isolation).length).toBeGreaterThan(100);
   expect(Object.keys(plan.files).length).toBeGreaterThan(100);
@@ -70,6 +89,7 @@ describe('isolation tests', () => {
     for (const shard of shards) expect(shard.some((item) => items.includes(item))).toBe(true);
     const { heaviest, bound } = balance(shards, shardWeight(plan.isolation));
     expect(heaviest).toBeLessThanOrEqual(bound);
+    expect(fitsItsJob(heaviest), `the heaviest isolation shard, ${String(heaviest)} s`).toBe(true);
     const added = 'tests/tenancy/named-later.test.ts';
     const later = isolationShards([...items, added], plan, ISOLATION_COUNT);
     expect(later.filter((shard) => shard.includes(added))).toHaveLength(1);
@@ -204,4 +224,6 @@ it('vitest’s sequencer splits the test files by measured time, every file in e
   );
   const total = loads.reduce((a, b) => a + b, 0);
   expect(Math.max(...loads)).toBeLessThanOrEqual((total / LOCAL_COUNT) * 1.1);
+  const heaviest = Math.max(...loads);
+  expect(fitsItsJob(heaviest), `the heaviest local shard, ${String(heaviest)} s`).toBe(true);
 });

@@ -101,6 +101,9 @@ function installationUnique(table: string, business: string): Record<string, str
   return {};
 }
 
+const SEED_PARTY = randomUUID();
+const SEED_PAGE_PARTY = randomUUID();
+
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
@@ -172,20 +175,26 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     word: 'friendly',
     replacement: 'welcoming',
     page_url: 'https://agency.example/about/',
-    pre_image_digest: 'sha256:seed',
-    base_revision: 'rev-1',
+    // #1693: pinned in the forms the storage checks, as a row from before the locate was.
+    pre_image_digest: `sha256:${'ab'.repeat(32)}`,
+    base_revision: 'c0'.repeat(20),
     seam: 'seam-seed',
     version_id: randomUUID(),
-    version_digest: 'sha256:seed',
+    version_digest: `sha256:${'cd'.repeat(32)}`,
+    state: 'requested',
+    located_at: '2026-10-19T00:00:00Z',
   },
-  // C80: a client's site and one page of it; nothing the journey does binds one.
+  // C80: a client's site and one page of it; nothing the journey does binds one. Each names
+  // its holder (R6) as its trigger keeps it, for the prefixes that have the column.
   'public.party_sites': {
-    party_id: randomUUID(),
+    party_id: SEED_PARTY,
+    holder: SEED_PARTY,
     default_branch: 'main',
     changed_by_actor_id: randomUUID(),
   },
   'public.party_site_pages': {
-    party_id: randomUUID(),
+    party_id: SEED_PAGE_PARTY,
+    holder: SEED_PAGE_PARTY,
     page_url: 'https://agency.example/about/',
     path: 'src/pages/about.md',
   },
@@ -205,6 +214,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'live',
     observations: {},
   },
+  // C80: nothing the journey does asks a revert.
+  'public.live_correction_revert_asks': {
+    correction_id: randomUUID(),
+    asked_by_actor_id: randomUUID(),
+    asked_by_person_id: randomUUID(),
+  },
+  // R5: Astra's review of a correction; the journey records none.
+  'public.live_correction_reviews': {
+    correction_id: randomUUID(),
+    version_digest: 'sha256:seed',
+    verdict: 'approve',
+    review: 'seed',
+    recorded_by_actor_id: randomUUID(),
+    recorded_by_person_id: randomUUID(),
+  },
+  // #1666: the journey keeps no reply in a chat opened on no task, so no snapshot.
+  'public.conversation_reply_snapshots': { message_id: randomUUID(), created: 1 },
+  'public.conversation_reply_targets': {
+    message_id: randomUUID(),
+    position: 1,
+    task_id: randomUUID(),
+    revision: 0,
+  },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
   // The journey revises no run's state (MP-6-2).
@@ -215,6 +247,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     knowledge: [],
     unknowns: [],
     revised_by_actor_id: randomUUID(),
+  },
+  // The journey stops no attempt (#1623 R1): one outcome, written with foreign keys off.
+  'public.run_outcomes': {
+    attempt_id: randomUUID(),
+    planned_run_id: randomUUID(),
+    outcome: 'cancelled',
+    end_code: 'TOOL_REFUSED',
+    recorded_by: randomUUID(),
   },
   // The journey launches nothing (Launch from the task).
   'public.task_launches': {

@@ -8,7 +8,7 @@
 import { isUuid, type TenantQuery } from '../../core-records/src/index.ts';
 import { holdsWork } from './broker-holds.ts';
 import type { TaskSource } from './broker-sources.ts';
-import { lockTask } from './broker-task.ts';
+import { readTask, shareTask } from './broker-task.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
 export interface Facts {
@@ -26,6 +26,10 @@ export interface Facts {
   readonly clientId: string | null;
   /** The run's task as a bound field's source, as held (S3). */
   readonly source: TaskSource;
+  /** The owner started both the task and the run, and the task has no client (#1620 P4). */
+  readonly ownerStarted: boolean;
+  /** The person who proposed the run, or null for an agent or a schedule (#1703). */
+  readonly starterPersonId: string | null;
 }
 
 export type Checked =
@@ -149,19 +153,22 @@ export async function lockFacts(
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  const task = await lockTask(tx, request.leaseId);
-  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  await lockRun(tx, task.runId);
+  const runId = await shareTask(tx, request.leaseId);
+  if (runId === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  await lockRun(tx, runId);
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;
   // The task held is the lease's run's: a lease moved to another run between
   // the two reads is refused, never decided on the other task's client.
-  if (lease.run_id !== task.runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.run_id !== runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const delegation = await lockDelegation(tx, lease.delegation_id);
   if (!delegation.ok) return delegation;
   const held = await lockHeld(tx, lease, request.stepId);
   if (!held.ok) return held;
+  // Source and party after the last wait (R6): the task row is held, its register is not.
+  const task = await readTask(tx, request.leaseId);
+  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return {
     ok: true,
     facts: {
@@ -176,6 +183,8 @@ export async function lockFacts(
       heldMinor: held.heldMinor,
       clientId: task.clientId,
       source: task.source,
+      ownerStarted: task.source.ownerWork && task.ownerRan,
+      starterPersonId: task.starter,
     },
   };
 }
@@ -241,4 +250,16 @@ export async function committedMinor(tx: TenantQuery, reservationId: string): Pr
     [tx.businessId, reservationId],
   );
   return Number(row?.committed ?? 0);
+}
+
+/**
+ * The call's state, read and locked under its envelope's and reservation's
+ * locks before it settles: a call already closed stays closed.
+ */
+export async function lockedState(tx: TenantQuery, callId: string): Promise<string | undefined> {
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, callId],
+  );
+  return call?.state;
 }

@@ -47,6 +47,7 @@ export {
   cancelAndClassify,
   discoverLiveWork,
   endLease,
+  loseLease,
   liveWorkLocks,
   replayRecordedTransitions,
   retireWork,

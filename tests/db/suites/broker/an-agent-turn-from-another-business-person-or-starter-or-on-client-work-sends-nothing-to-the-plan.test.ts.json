@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An agent's turn on the owner's plan is carried and sent only for the owner's own run on an internal task: another business's run and agent, a run for a person the carrier does not carry for, a run staff started and a client's task are each refused before any send, nothing offered, and no planted marker task appears in any result or carried message."
+}

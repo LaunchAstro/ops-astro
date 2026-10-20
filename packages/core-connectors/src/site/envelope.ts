@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The change envelope (release decision section 2, D21-2): one file, one
-// line, one contiguous word inside one text node, markup and style
-// unchanged. It is checked here at proposal time and refused by name, so a
+// line, one phrase or sentence wholly inside body copy (#1987), markup and
+// style unchanged. It is checked here at proposal time and refused by name, so a
 // grown diff never reaches a gate for someone to notice. The captures'
 // comparison is `captures.ts`.
 
 import { closingFence } from './fence.ts';
+import { placedOnLine, wordPairRefusal } from './word-pair.ts';
+
+export { wordOffsets } from './word-pair.ts';
 
 export interface CorrectionTarget {
   readonly path: string;
@@ -43,7 +46,6 @@ const exceeded = (reason: string): EnvelopeResult => ({
   reason,
 });
 
-const ONE_WORD = /^\p{L}+$/u;
 /**
  * One path segment, by an explicit allow-list of characters, opening with a letter or digit: no
  * route parameter, escape, `.` or `..`, and no `_` or `.` file Astro leaves out of its routes.
@@ -64,31 +66,6 @@ function pageSource(path: string): boolean {
     PAGE_FILE.test(rest.at(-1) ?? '')
   );
 }
-const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
-
-/** Offsets at which `word` stands alone in `text`, not as part of a longer word. */
-export function wordOffsets(text: string, word: string): number[] {
-  const found: number[] = [];
-  if (word === '') return found;
-  for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
-    // Whole characters, never one code unit: half a surrogate pair is no letter.
-    const left = Array.from(text.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
-    const next = text.codePointAt(at + word.length);
-    const right = next === undefined ? '' : String.fromCodePoint(next);
-    if (!WORD_CHARACTER.test(left) && !WORD_CHARACTER.test(right)) found.push(at);
-  }
-  return found;
-}
-
-/** The one standalone occurrence of `word` in `before` whose replacement gives `after`. */
-function replacedAt(before: string, after: string, target: CorrectionTarget): number | undefined {
-  const matches = wordOffsets(before, target.word).filter(
-    (at) =>
-      before.slice(0, at) + target.replacement + before.slice(at + target.word.length) === after,
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 // Body copy is read as a closed grammar that fails closed: a refused edit costs an approval.
 
 /** What carries JavaScript across a line: a template, a block comment, a line continuation. */
@@ -253,13 +230,25 @@ function constructEnd(source: string, at: number, markdown: boolean): number | u
   return /[<{}]/u.test(label) ? undefined : at + Math.max(label.length, 1);
 }
 
-/** The run of non-space characters around `offset`. */
-const runAround = (source: string, offset: number): string =>
-  (/(?<!\S)\S*$/u.exec(source.slice(0, offset))?.[0] ?? '') +
-  (/^\S*/u.exec(source.slice(offset))?.[0] ?? '');
+/** The runs of non-space characters from the one around `start` to the one around `end`. */
+const runsAround = (source: string, start: number, end: number): string[] =>
+  (
+    (/(?<!\S)\S*$/u.exec(source.slice(0, start))?.[0] ?? '') +
+    source.slice(start, end) +
+    (/^\S*/u.exec(source.slice(end))?.[0] ?? '')
+  ).split(/\s+/u);
 
-/** Whether `offset` is in body copy, read construct by construct from the body's start. */
-function inTextNode(source: string, offset: number, markdown: boolean): boolean {
+// A Markdown phrase opens with a letter, number or opening mark and holds no emphasis, code,
+// link, table cell or escape; a number with `.` or `)` and a space after it is a list marker.
+const MARKDOWN_PHRASE = /^[\p{L}\p{N}"“‘'(][^*_~`[\]|\\]*$/u;
+const ORDERED_MARKER = /^\p{N}+[.)](?:\s|$)/u;
+
+/**
+ * Whether `text` at `offset` is body copy, read construct by construct from the body's start:
+ * the walk reaches it as text and every character of it is text. On a Markdown page it is a
+ * plain phrase and each run of non-space characters it touches passes the run grammar.
+ */
+function inTextNode(source: string, offset: number, text: string, markdown: boolean): boolean {
   let at = bodyStart(source);
   if (at === undefined) return false;
   while (at < offset) {
@@ -267,15 +256,23 @@ function inTextNode(source: string, offset: number, markdown: boolean): boolean 
     if (end === undefined) return false;
     at = end;
   }
-  return at === offset && (!markdown || MARKDOWN_RUN.test(runAround(source, offset)));
+  if (at !== offset) return false;
+  for (; at < offset + text.length; at += 1) {
+    if (constructEnd(source, at, markdown) !== at + 1) return false;
+  }
+  if (!markdown) return true;
+  const runs = runsAround(source, offset, offset + text.length);
+  return (
+    MARKDOWN_PHRASE.test(text) &&
+    !ORDERED_MARKER.test(source.slice(offset, offset + text.length + 2)) &&
+    runs.every((run) => MARKDOWN_RUN.test(run))
+  );
 }
 
 /** Refuses anything wider than the envelope, naming why. */
 export function checkEnvelope(change: ProposedChange, target: CorrectionTarget): EnvelopeResult {
-  if (!ONE_WORD.test(target.word) || !ONE_WORD.test(target.replacement)) {
-    return exceeded('the correction is not one word for one word');
-  }
-  if (target.word === target.replacement) return exceeded('the word does not change');
+  const pair = wordPairRefusal(target);
+  if (pair !== undefined) return exceeded(pair);
   if (change.files.length !== 1) return exceeded('more than one file');
   const [file] = change.files;
   if (file === undefined || file.path !== target.path) return exceeded('not the target file');
@@ -288,11 +285,14 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   if (changed.length !== 1)
     return exceeded(changed.length === 0 ? 'no change' : 'more than one line');
   const index = changed[0] ?? 0;
-  const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
-  if (at === undefined) return exceeded('not the one word replaced in place');
-  const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
-  if (!inTextNode(file.before, offset, file.path.endsWith('.md')))
+  const placed = placedOnLine(before[index] ?? '', after[index] ?? '', target);
+  if ('reason' in placed) return exceeded(placed.reason);
+  const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + placed.at;
+  const markdown = file.path.endsWith('.md');
+  if (!inTextNode(file.before, offset, target.word, markdown))
     return exceeded('the word is not in body copy');
+  if (!inTextNode(file.after, offset, target.replacement, markdown))
+    return exceeded('the replacement is not body copy');
   return {
     ok: true,
     value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },

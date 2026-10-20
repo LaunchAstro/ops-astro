@@ -11,7 +11,7 @@ import {
   type PictureBrowser,
 } from '../../packages/core-connectors/src/index.ts';
 import type { PictureAnswer } from '../../packages/core-connectors/src/capture/picture.ts';
-import { importsOf } from '../../packages/core-connectors/src/capture/page.ts';
+import { importsOf } from '../../packages/core-connectors/src/capture/css.ts';
 
 const PAGE = 'https://www.example.com/about';
 const SHEET = 'https://www.example.com/site.css';

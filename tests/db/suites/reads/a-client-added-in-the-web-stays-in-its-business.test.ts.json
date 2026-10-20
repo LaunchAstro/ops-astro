@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Add client (#1735): a client made by client.create is listed by its own business after reread and the same operation id returns it; another business, another client's holder, another person and an agent acting for the owner never see or receive it"
+}

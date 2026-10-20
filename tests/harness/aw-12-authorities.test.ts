@@ -210,17 +210,18 @@ async function retryOwner(): Promise<void> {
   world.provider.mode('answer');
   expect(calls).toBe(3);
   expect(world.provider.seen.length - seen).toBe(1);
-  expect(last).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
-  expect(await callsOn(work)).toMatchObject([
-    { state: 'liability_unknown', sent: true },
-    { state: 'refused', refusal_code: 'LIABILITY_UNKNOWN', sent: false },
-    { state: 'refused', refusal_code: 'LIABILITY_UNKNOWN', sent: false },
-  ]);
+  // #1623 R1 (B2): the unknown settlement's stop ended the attempt, so each retry meets
+  // an ended lease and is refused before any call is held.
+  expect(last).toMatchObject({ ok: false, code: 'LEASE_EXPIRED' });
+  expect(await callsOn(work)).toMatchObject([{ state: 'liability_unknown', sent: true }]);
 
-  // The product owns the retry: the hand-back (again, it replays) and the pass's proof.
+  // The product owns the retry: the settlement recorded the drop with its stop (R1B-A),
+  // so the worker's hand-back is refused, and the pass's proof brings the work back.
   const drop = dropBody(work);
-  appliedDetail(await asAgent(s, drop, String(work.picked['credential'])), 'task.handback');
-  appliedDetail(await asAgent(s, drop, String(work.picked['credential'])), 'task.handback');
+  expect(await asAgent(s, drop, String(work.picked['credential']))).toMatchObject({
+    refused: true,
+    code: 'DELEGATION_NOT_LIVE',
+  });
   expect(await attempts(s, work.taskId)).toMatchObject([{ state: 'liability_unknown' }]);
   await room(s, work);
   world.provider.lookupMode('honest');

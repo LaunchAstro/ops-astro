@@ -13,7 +13,7 @@ import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
-import { ABOUT, aboutPage, askFor } from './sidebar-corrections-support.tsx';
+import { ABOUT, TASK_A, askFor } from './sidebar-corrections-support.tsx';
 import { CLIENT_A, CLIENT_B, separated } from './sidebar-corrections-server.tsx';
 
 afterEach(unmountAll);
@@ -31,7 +31,7 @@ const drawer = (who: Person) => (
     route="agency:projects-board"
     here="/projects"
     entry={null}
-    locate={aboutPage}
+    taskId={TASK_A}
   />
 );
 
@@ -44,7 +44,7 @@ const keyedDrawer = (who: Person) => (
     route="agency:projects-board"
     here="/projects"
     entry={null}
-    locate={aboutPage}
+    taskId={TASK_A}
   />
 );
 

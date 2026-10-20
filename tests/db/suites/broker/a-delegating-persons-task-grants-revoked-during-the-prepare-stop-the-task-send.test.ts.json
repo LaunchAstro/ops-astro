@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A carried task call's send judgement, made after the model agent's prepare, re-asks the delegating person's task authority, so a revocation committed during that wait stops the send."
+}

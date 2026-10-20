@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "each ordinary task command on a ticket writes only the record kinds it declares, the map's summary and frontier included"
+}

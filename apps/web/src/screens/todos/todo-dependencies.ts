@@ -56,7 +56,6 @@ export function useTodoDependencies(
       : 'withdrawn';
   const admission =
     prior === 'withdrawn' ||
-    vocabulary.withdrawn ||
     (read.blocked && !vocabulary.recovering) ||
     (reported?.body !== body && !vocabulary.recovering)
       ? 'withdrawn'

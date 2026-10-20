@@ -42,7 +42,7 @@ const unbind = async (client: FreshClient, pageUrl: string) =>
 
 /** Ava's request on the client's task for `page`, through the command. */
 const requestOn = async (client: FreshClient, page: Page) =>
-  await w.request(w.ava, { partyId: client.partyId, taskId: client.taskId, ...page });
+  await w.request(w.ava, { taskId: client.taskId, page: page.pageUrl });
 
 /** A latch: `open` lets every `passed` through. */
 function latch(): { readonly open: () => void; readonly passed: Promise<void> } {
@@ -97,7 +97,7 @@ describe.skipIf(serverUrl === undefined)('unbinding a page', () => {
     });
     expect(codeOf(rejected)).toBe('not-a-refusal');
     expect(await unbind(client, page.pageUrl)).toEqual({ ok: true });
-    expect(codeOf(await requestOn(client, page))).toBe('PAGE_OUTSIDE_PARTY_SITE');
+    expect(codeOf(await requestOn(client, page))).toBe('NOT_FOUND');
   });
 });
 
@@ -135,7 +135,7 @@ describe.skipIf(serverUrl === undefined)('an unbind holding the page a request n
       await aLockWait();
       release.open();
       expect(await unbinding).toEqual({ ok: true });
-      expect(codeOf(await request)).toBe('PAGE_OUTSIDE_PARTY_SITE');
+      expect(codeOf(await request)).toBe('NOT_FOUND');
     } finally {
       await second.close();
     }

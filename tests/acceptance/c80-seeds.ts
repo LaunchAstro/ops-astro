@@ -7,6 +7,8 @@
 export interface C80Seeds {
   /** A live correction another member requested, for C80's approval (never the admin's own). */
   seedCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
+  /** Such a correction recorded live owner-side, the admin its decider, for C80's revert ask. */
+  seedLiveCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
   /** Bind a client's own about page, for C80's request; the page's address. */
   bindClientSite?(partyId: string): Promise<string>;
 }

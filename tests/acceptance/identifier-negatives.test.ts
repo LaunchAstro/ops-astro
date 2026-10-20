@@ -651,7 +651,20 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { correctionId: theirs.correctionId },
         fabricated: { correctionId: randomUUID() },
       });
-      const request = { ...C80_REQUEST, partyId: randomUUID() };
+      await refuses('live_correction.receipts', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
+      await refuses('live_correction.revert', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
+      const review = { versionDigest: 'sha256:a-version', verdict: 'approve', review: NOBODY };
+      await refuses('live_correction.record_review', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId, ...review },
+        fabricated: { correctionId: randomUUID(), ...review },
+      });
+      const request = C80_REQUEST;
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...request, taskId: w.foreign.task.id },
         fabricated: { ...request, taskId: randomUUID() },
@@ -712,6 +725,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
         ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
+        // A code it may end on, so the lease is what is compared (#1623 R1).
+        ['run.end', { endCode: 'TOOL_REFUSED' }],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

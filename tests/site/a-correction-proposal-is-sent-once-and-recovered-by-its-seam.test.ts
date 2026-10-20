@@ -15,13 +15,13 @@ import {
   settleProposal,
 } from '../../packages/core-records/src/index.ts';
 import { siteBindingFor } from '../../packages/core-connectors/src/index.ts';
-import { AFTER, BEFORE } from './c80-world.ts';
+import { REV, AFTER, BEFORE } from './c80-world.ts';
 import { approved, at, lease, serverUrl, useRegisterWorld, w } from './c80-register-world.ts';
 import { standIn, type Knobs, type StandIn, type Step } from './proposal-stand-in.ts';
 
 useRegisterWorld();
 
-const BASE = { revision: 'rev-1', blob: 'blob-base', content: BEFORE };
+const BASE = { revision: REV, blob: 'blob-base', content: BEFORE };
 const PROPOSED = { kind: 'proposed', head: 'commit-1', request: '17' };
 const WAITS = { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
 
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)('a correction proposal, sent once', () 
       head_commit: 'commit-1',
       request_number: '17',
       seam_branch: await seamOf(id),
-      base_revision: 'rev-1',
+      base_revision: REV,
       pre_image_blob: 'blob-base',
     });
   });
@@ -133,7 +133,7 @@ const tampers: readonly (readonly [string, (site: StandIn, seam: string) => void
   [
     'the file at the base is another blob than the claimed pre-image',
     (site) => {
-      site.commits.set('rev-1', { parent: 'root', blob: 'blob-other', content: BEFORE });
+      site.commits.set(REV, { parent: 'root', blob: 'blob-other', content: BEFORE });
     },
   ],
 ];
@@ -229,7 +229,7 @@ async function bindingFrom(id: string, proposal: Proposal) {
     version: {
       target: { path, word, replacement },
       preImageDigest,
-      baseRevision: 'rev-1',
+      baseRevision: REV,
       pageUrl,
       seam,
     },

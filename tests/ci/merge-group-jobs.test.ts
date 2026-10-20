@@ -15,24 +15,22 @@ import { read } from './merge-group-repo.ts';
 import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
 import { FULL_GUARD, HEAVY } from './full-checks.ts';
 import { scopeOf } from '../../scripts/full-run.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
 /** Not required, and nightly since CI-SPEED; it must not come back as a required check. */
 const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
 const ONLY_PULL_REQUESTS = "github.event_name == 'pull_request'";
-// `!= 'pull_request'` never skips a group: the database conformance shards carry it (CI-SPEED,
-// light pull requests). A required job carrying it is refused by merge-group-workflows.test.ts.
-const ALLOWED = new Set([
-  undefined,
-  'always()',
-  "github.event_name != 'push'",
-  "github.event_name != 'pull_request'",
-]);
+// `!= 'pull_request' || (a batch)` never skips a group: the database conformance shards carry it
+// (CI-SPEED, light pull requests; #1918, pre-check batches). A required job carrying it is
+// refused by merge-group-workflows.test.ts.
+const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'", SHARDS_RUN]);
 // Cut 6 (13 October 2026): a job no required check names, kept out of merge groups on purpose.
-// It may skip a group with exactly this condition, and no job may wait on it.
+// It may skip a group with exactly this condition, and no job may wait on it. The zizmor workflow
+// audit joined on 18 October 2026, report-only until the owner's ruleset step.
 const NOT_IN_GROUPS = "github.event_name != 'merge_group'";
-const OUT_OF_GROUPS = new Set(['visual-drift']);
+const OUT_OF_GROUPS = new Set(['visual-drift', 'zizmor']);
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string }[];

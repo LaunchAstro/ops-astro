@@ -5,10 +5,12 @@
 // broker's own late answer to a call, the step's attempt, custody's reading of
 // a counted hold, and the answers on a run.
 
+import { expect } from 'vitest';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { COUNTED_CAUSES, countedHold } from '../../packages/core-custody/src/broker-give-back.ts';
 import { settle, type Settlement } from '../../packages/core-custody/src/broker-settle.ts';
+import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
 import { CLOUD } from '../broker/broker-world.ts';
 import { rows, type Detail, type Schedules } from './schedules-harness.ts';
 
@@ -97,4 +99,30 @@ export async function answersOn(s: Schedules, runId: string): Promise<number> {
     [s.business, runId],
   );
   return Number(found?.n);
+}
+
+/**
+ * #1623 R1 (B2): a settlement that held a call unknown has already ended its
+ * attempt: the outcome recorded, the lease released, the delegation retired.
+ * The pass's replay is then the fence a revocation was: the marked step held
+ * unknown, its hold kept whole.
+ */
+export async function fencedAfterStop(s: Schedules, picked: Detail): Promise<void> {
+  const read = async () =>
+    await rows(
+      s,
+      `select d.revocation_cause as revoked, l.state as lease, o.outcome,
+              a.state as step, r.state as hold
+         from public.leases l
+         join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+         join public.attempts a on a.business_id = l.business_id and a.lease_id = l.id
+         join public.reservations r on r.business_id = a.business_id and r.id = a.reservation_id
+         left join public.run_outcomes o on o.business_id = a.business_id and o.attempt_id = a.id
+        where l.business_id = $1 and l.id = $2`,
+      [s.business, picked['leaseId']],
+    );
+  const ended = { revoked: 'work_retired', lease: 'released', outcome: 'unknown_provider_outcome' };
+  expect(await read()).toEqual([{ ...ended, step: 'dispatched', hold: 'held' }]);
+  await s.db.app.withBusiness(s.business, async (tx) => await replayRecordedTransitions(tx));
+  expect(await read()).toEqual([{ ...ended, step: 'liability_unknown', hold: 'held' }]);
 }

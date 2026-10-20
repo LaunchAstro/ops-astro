@@ -16,8 +16,8 @@ const TASK_OF_LEASE = `
        join public.records t on t.business_id = run.business_id and t.id = run.task_id
       where l.business_id = $1 and l.id = $2`;
 
-/** The run's task, taken `for share` before anything of it is read. */
-const LOCK_TASK = `select t.id ${TASK_OF_LEASE} for share of t`;
+/** The run's task, taken `for share` before anything of it is read, and its run. */
+const LOCK_TASK = `select run.id::text as run_id ${TASK_OF_LEASE} for share of t`;
 
 /** An applied operation on the task by an actor, `o` joined to `a`. */
 const APPLIED_ON_TASK = `select 1 from public.operations o
@@ -46,7 +46,7 @@ const HELD_THEN = (roles: string): string => `exists (
  * role. `$3` is the commands that leave its data alone.
  */
 const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
-            t.deleted_at is null as live, t.data,
+            t.deleted_at is null as live, t.revision::int as revision, t.data,
             exists (${APPLIED_ON_TASK} and a.kind <> 'person'
                  and o.command <> all($3::text[])) as others_wrote,
             exists (${APPLIED_ON_TASK} and a.kind = 'person'
@@ -56,12 +56,38 @@ const TASK_SOURCE = `t.id::text as id, t.${CLIENT_SLOT}::text as client,
                  and ${HELD_THEN(`('owner')`)}) as owner_started`;
 
 /**
+ * Whether the owner started the run (#1620 P4): its version proposed by a
+ * person then holding the owner role, and every approval of it given by one.
+ * A run an agent or a schedule proposed, or a member approved, is not. The
+ * standing is what the database stamped as each row was written (#1909),
+ * never membership history read now, which the application may rewrite.
+ */
+const OWNER_RAN = `exists (select 1 from public.proposal_versions v
+               where v.business_id = run.business_id and v.id = run.version_id
+                 and v.proposed_by_owner is true)
+         and exists (select 1 from public.gate_decisions d
+               where d.business_id = run.business_id and d.version_id = run.version_id
+                 and d.decision = 'approve')
+         and not exists (select 1 from public.gate_decisions d
+               where d.business_id = run.business_id and d.version_id = run.version_id
+                 and d.decision = 'approve'
+                 and d.decided_by_owner is not true)`;
+
+/** The person who proposed the run's version: its starter (#1703), or null for an agent or a schedule. */
+const STARTER = `(select pa.person_id::text from public.proposal_versions v
+                join public.actors pa on pa.business_id = v.business_id
+                                     and pa.id = v.proposed_by_actor_id
+               where v.business_id = run.business_id and v.id = run.version_id
+                 and pa.kind = 'person')`;
+
+/**
  * What S3 reads of the task, in a statement of its own after the lock: a
  * statement that waits on the lock rereads the task's row but keeps its
  * earlier view of the operations, so an edit committed during the wait would
  * be read without the write that made it.
  */
-const READ_TASK = `select run.id::text as run_id, ${TASK_SOURCE} ${TASK_OF_LEASE}`;
+const READ_TASK = `select ${OWNER_RAN} as owner_ran, ${STARTER} as starter,
+            ${TASK_SOURCE} ${TASK_OF_LEASE}`;
 
 /** A task by its id, as a conversation's page: `$2` the task. */
 const READ_PAGE = `select ${TASK_SOURCE}
@@ -71,6 +97,7 @@ interface TaskRow {
   readonly id: string;
   readonly client: string | null;
   readonly live: boolean;
+  readonly revision: number;
   readonly data: Record<string, unknown>;
   readonly others_wrote: boolean;
   readonly client_typed: boolean;
@@ -83,6 +110,7 @@ function sourceOf(task: TaskRow): TaskSource {
   return {
     id: task.id,
     live: task.live,
+    revision: task.revision,
     entered: typeof entered === 'string' ? entered : null,
     othersWrote: task.others_wrote,
     clientTyped: task.client_typed,
@@ -91,39 +119,67 @@ function sourceOf(task: TaskRow): TaskSource {
   };
 }
 
+/** The task's client link (C60) and what a bound field reads of it (S3). */
+export interface TaskFacts {
+  readonly clientId: string | null;
+  readonly source: TaskSource;
+}
+
+/** A run's task: its facts, and whether the owner proposed and approved the run (`OWNER_RAN`). */
+export interface RunTaskFacts extends TaskFacts {
+  readonly ownerRan: boolean;
+  /** The person who proposed the run (`STARTER`). */
+  readonly starter: string | null;
+}
+
 /**
  * The run's task, first in the lock order (`task` comes before `lease`), held
  * `for share` so a `task.set_party` cannot move its client while the call is
- * decided, and answering the task's client link (C60) and what a bound
- * field reads of it (S3): a link or an edit in flight is waited on, never
- * missed. The lease names the run and the run its
- * task, read here before the lease's own lock; the run's task is fixed once
- * written (the application may update a run's state only, 0086), and the
- * lease's run is compared again under the lease's lock (`lockFacts`).
- * Unknown to this business answers nothing, refused as a made-up lease is.
+ * decided: a link or an edit in flight is waited on, never missed. The lease
+ * names the run and the run its task, read here before the lease's own lock;
+ * the run's task is fixed once written (the application may update a run's
+ * state only, 0086), and the lease's run is compared again under the lease's
+ * lock (`lockFacts`). Unknown to this business answers nothing, refused as a
+ * made-up lease is.
  */
+export async function shareTask(tx: TenantQuery, leaseId: string): Promise<string | undefined> {
+  const [task] = await tx.query<{ run_id: string }>(LOCK_TASK, [tx.businessId, leaseId]);
+  return task?.run_id;
+}
+
+/**
+ * The held task's client and source, read after the caller's last lock wait
+ * (R6, #1699): a write that names the task without moving its row, committed
+ * while a later lock was waited on, is read with it.
+ */
+export async function readTask(
+  tx: TenantQuery,
+  leaseId: string,
+): Promise<RunTaskFacts | undefined> {
+  const [task] = await tx.query<TaskRow & { owner_ran: boolean; starter: string | null }>(
+    READ_TASK,
+    [tx.businessId, leaseId, LEAVES_ROW_DATA],
+  );
+  return task === undefined
+    ? undefined
+    : {
+        clientId: task.client,
+        source: sourceOf(task),
+        ownerRan: task.owner_ran,
+        starter: task.starter,
+      };
+}
+
+/** The run's task held (`shareTask`), then read (`readTask`): for a caller with no later wait. */
 export async function lockTask(
   tx: TenantQuery,
   leaseId: string,
-): Promise<
-  | { readonly runId: string; readonly clientId: string | null; readonly source: TaskSource }
-  | undefined
-> {
-  await tx.query(LOCK_TASK, [tx.businessId, leaseId]);
-  const [task] = await tx.query<TaskRow & { run_id: string }>(READ_TASK, [
-    tx.businessId,
-    leaseId,
-    LEAVES_ROW_DATA,
-  ]);
-  if (task === undefined) return undefined;
-  return { runId: task.run_id, clientId: task.client, source: sourceOf(task) };
+): Promise<RunTaskFacts | undefined> {
+  return (await shareTask(tx, leaseId)) === undefined ? undefined : await readTask(tx, leaseId);
 }
 
 /** A conversation's page task, as a source, and its client link; undefined when there is none. */
-export async function readPage(
-  tx: TenantQuery,
-  taskId: string,
-): Promise<{ readonly clientId: string | null; readonly source: TaskSource } | undefined> {
+export async function readPage(tx: TenantQuery, taskId: string): Promise<TaskFacts | undefined> {
   const [task] = await tx.query<TaskRow>(READ_PAGE, [tx.businessId, taskId, LEAVES_ROW_DATA]);
   return task === undefined ? undefined : { clientId: task.client, source: sourceOf(task) };
 }

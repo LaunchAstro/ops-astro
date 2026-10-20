@@ -40,7 +40,13 @@ export type CustodyOutcome =
       readonly credentialKind: StorableKind;
       readonly account: string | null;
     }
-  | { readonly kind: 'refused'; readonly started: false; readonly code: string }
+  | {
+      readonly kind: 'refused';
+      readonly started: false;
+      readonly code: string;
+      /** This side's own judgement refused it before the request was written anywhere. */
+      readonly judged?: boolean;
+    }
   | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' }
   | { readonly kind: 'withheld'; readonly started: true; readonly reason: 'echoed' | 'malformed' };
 
@@ -56,7 +62,11 @@ export interface Carrier {
 export interface CustodyConfig {
   readonly credentialsFile: string;
   readonly destinations: readonly Destination[];
+  /** The owner's ChatGPT plan: its token file and its issuer (#1620 P4). */
+  readonly plan?: { readonly tokenFile: string; readonly issuer: string };
 }
+
+export type Prepared = { readonly ok: true } | { readonly ok: false; readonly code: string };
 
 /**
  * A send admitted at the handoff, its transaction still open. At custody's
@@ -113,6 +123,8 @@ export interface ProcessCustody extends Custody {
     gate: Required<Pick<SendGate, 'deadlineAt' | 'onWritten'>>,
     onPiece?: (text: string) => void,
   ): Promise<CustodyOutcome>;
+  /** The plan's token made ready to present; never the token itself. */
+  prepare(): Promise<Prepared>;
 }
 
 function forkCustody(config: CustodyConfig): ChildProcess {
@@ -123,8 +135,16 @@ function forkCustody(config: CustodyConfig): ChildProcess {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),
+      ...(config.plan === undefined
+        ? {}
+        : {
+            CUSTODY_PLAN_TOKEN_FILE: config.plan.tokenFile,
+            CUSTODY_PLAN_ISSUER: config.plan.issuer,
+          }),
     },
-    execArgv: [],
+    // No inherited flag, and no inspector on SIGUSR1: custody holds the credentials.
+    // The plan's token store is on node:sqlite, which warns as experimental: custody's stderr is its own words.
+    execArgv: ['--disable-sigusr1', '--disable-warning=ExperimentalWarning'],
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     serialization: 'json',
   });
@@ -240,6 +260,13 @@ export async function startCustody(config: CustodyConfig): Promise<ProcessCustod
         onPiece,
         admit,
       ),
+    prepare: async () => {
+      const reply = await exchange({ type: 'prepare' });
+      if (reply === 'lost') return { ok: false, code: 'CUSTODY_LOST' };
+      return reply['type'] === 'prepared'
+        ? { ok: true }
+        : { ok: false, code: String(reply['code']) };
+    },
     describe: async (credentialRef, destination) =>
       await describeCarrier(exchange, credentialRef, destination),
     stderr: () => errors,

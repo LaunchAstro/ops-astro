@@ -712,11 +712,14 @@ async function main(): Promise<void> {
     codeRevision: identity.commit,
   });
 
-  // C33: the occurrence sweep (#1318) over the same businesses, every minute,
-  // as system work once the port is bound: due scheduled activations fire.
-  const occurrences = startOccurrenceSweeper(database, {
-    businesses: async () => await Promise.resolve(traced),
-  });
+  // A1 (#1653): this long-running API process fires only with an explicit opt-in.
+  const occurrences =
+    environment['AUTOMATION_FIRING'] === 'on'
+      ? startOccurrenceSweeper(database, {
+          businesses: async () => await Promise.resolve(traced),
+        })
+      : undefined;
+  console.log(`api process: automation firing ${occurrences === undefined ? 'off' : 'on'}`);
 
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
@@ -725,7 +728,7 @@ async function main(): Promise<void> {
       topics: async () => await topics.close(),
       mail: mail?.stop,
       conversations: conversations.stop,
-      occurrences: occurrences.stop,
+      occurrences: occurrences?.stop,
       sweeper: sweeper.stop,
       tracer: tracer?.stop,
       database: async () => await database.close(),

@@ -375,6 +375,34 @@ test('a suite that passes without touching the database fails', (t) => {
   );
 });
 
+// With `postgres` configured, the runner's migrated-template build takes its
+// lock in the same database rule 7 counts, so that setup must not pass as the
+// suite's own database work.
+test('a suite that passes without touching the database fails with postgres configured', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((given) => {
+    const url = new URL(given);
+    url.pathname = '/postgres';
+    withSuites(
+      { 'beside.test.ts': NEVER_TOUCHES_THE_DATABASE },
+      { invariant: ['beside.test.ts'] },
+      (m) => {
+        const run = spawnSync(process.execPath, [runner, '--manifest', m], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: { ...process.env, DATABASE_URL: url.href, DATABASE_ADMIN_URL: url.href },
+          maxBuffer: 32 * 1024 * 1024,
+        });
+        assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+        assert.match(
+          run.stderr,
+          /transaction movement above measurement cost and a new client session/u,
+        );
+      },
+    );
+  });
+});
+
 test('a named suite vitest never discovered fails', (t) => {
   if (skipUnlessDocker(t)) return;
   withDatabase((url) =>

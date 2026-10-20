@@ -9,9 +9,11 @@ import type {
   FieldSource,
   ModelAnswer,
   ModelOperation,
+  ModelToolCall,
   RouteReach,
 } from '../../core-connectors/src/index.ts';
-import type { CarryRefusal, CredentialKind } from './credentials.ts';
+import type { CarryRefusal } from './carry-rule.ts';
+import type { CredentialKind } from './credentials.ts';
 import type { Custody } from './custody.ts';
 
 /**
@@ -110,6 +112,20 @@ export interface Broker {
   readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
+  /**
+   * T3e1's drop at settlement, given by the command layer (#1623 R1): called
+   * before the settlement's own locks for a provider drop the worker could
+   * report, it takes its locks and returns the writer the stop calls last.
+   */
+  /**
+   * The calls a run attempt may make (#1623 R3); absent, `AGENT_MODEL_CALL_LIMIT`.
+   * Its first hold records it, so a change mid-attempt never raises it.
+   */
+  readonly callLimit?: number;
+  readonly drops?: (
+    tx: TenantQuery,
+    leaseId: string,
+  ) => Promise<((cause: DropCause) => Promise<void>) | undefined>;
 }
 
 /**
@@ -160,12 +176,21 @@ export interface PaidSeams {
   ) => Promise<T | undefined>;
 }
 
+/** A turn as the body sent it, read by the broker's bounded parsers (`broker-turn.ts`). */
+export interface TurnRequest {
+  readonly turnOrdinal: unknown;
+  readonly tools: unknown;
+  readonly parts: unknown;
+}
+
 export interface ModelCallRequest {
   readonly leaseId: string;
   readonly fence: number;
   readonly stepId: string;
   readonly operation: string;
   readonly fields: readonly ModelCallField[];
+  /** A model turn (#1623 R3), for an operation that takes one; its fields are then none. */
+  readonly turn?: TurnRequest;
 }
 
 /** Who is calling, from the authenticated envelope, never the body. */
@@ -198,6 +223,11 @@ export type BrokerRefusal =
   // #1508: a paid request past its destination's size; the send no longer admitted at the handoff.
   | 'PROMPT_TOO_LARGE'
   | 'CUSTODY_NOT_ADMITTED'
+  // #1623 R3: the attempt's calls at its limit; a turn out of shape, out of order or unbound.
+  | 'CALL_LIMIT_REACHED'
+  | 'TURN_MALFORMED'
+  | 'TURN_ORDINAL_STALE'
+  | 'PROVENANCE_UNBOUND'
   | CarryRefusal;
 
 export type ModelCallResult =
@@ -205,6 +235,10 @@ export type ModelCallResult =
       readonly ok: true;
       readonly callId: string;
       readonly text: string;
+      /** A turn's tools asked for, in the provider's order. */
+      readonly toolCalls?: readonly ModelToolCall[];
+      /** The call that reached its attempt's limit: its settlement ended the attempt. */
+      readonly terminal?: 'call_limit';
       readonly reservedMinor: number;
       readonly actualMinor: number;
       readonly releasedMinor: number;

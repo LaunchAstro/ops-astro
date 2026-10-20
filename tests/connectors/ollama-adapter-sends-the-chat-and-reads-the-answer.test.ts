@@ -89,6 +89,17 @@ describe('the agent’s instructions', () => {
     expect(system?.content).toContain('Nothing happens until the person clicks');
   });
 
+  it('tells the model to chat by default and propose a task only when asked for one', () => {
+    const [system] = bodyOf({ message: 'How is the week looking?' }).messages;
+    expect(system?.content).toContain(
+      'Most messages are conversation: answer them in words, with no task block.',
+    );
+    // A chat on no task that created none is offered a create only (#1666).
+    expect(system?.content).toContain(
+      'Only when the person plainly asks you to create a task, say in one short sentence',
+    );
+  });
+
   it('tells the model today’s date, so a due date lands in the right year', () => {
     const [system] = bodyOf({ message: 'Make a task' }).messages;
     expect(system?.content).toContain(`Today is ${new Date().toLocaleDateString('en-CA')}.`);

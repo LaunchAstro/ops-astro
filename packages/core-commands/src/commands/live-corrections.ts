@@ -1,94 +1,58 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's two commands, `live correction requested` and `approved` (the permissions table of #765).
-// The request is checked against the envelope before anything is written, so a change of more than
-// one word on one line of one file is refused with nothing stored; what is stored is the target,
-// the digests and the version the approval must name, never the file's text. The approval refuses a
-// caller outside the staff roles before reading any correction, locks the row at its
-// party, reads the configured approver under a share lock on its setting, and refuses the requester
-// first: a person cannot approve their own change even when they are the configured approver
-// (release decision 3.4). Each write reads its authority again after its last
-// lock wait (`live-correction-standing.ts`); an agent's request is
-// `live-correction-agent.ts`.
+// C80's `live correction requested` (the permissions table of #765). The request names the task,
+// the page and the two texts (#1693): a pair that is not one phrase or sentence on one line for
+// another (#1987) is refused with nothing stored, and the page is resolved on the task's own site
+// in the insert. It is stored `locating`: the site runner pins the version from the file itself,
+// so no caller supplies a revision, a file or a digest, and nothing stores the file's text. The
+// approval is `live-correction-decide.ts`. Each write reads its authority again after its last
+// lock wait (`live-correction-standing.ts`); an agent's request is `live-correction-agent.ts`.
 //
 // Refusals carry fixed text only: no word, path, page or content reaches a refused caller.
 
 import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
-  GATE_COLLECTION,
+  correctionOfPlan,
   insertLiveCorrection,
   RUN_COLLECTION,
-  isActiveMember,
   isUuid,
-  lockConfiguredApprover,
-  lockCoveredCorrection,
   subjectsOf,
-  writeCorrectionDecision,
 } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
-import {
-  checkEnvelope,
-  contentDigest,
-  versionDigestOf,
-} from '../../../core-connectors/src/index.ts';
-import { isInternalReader } from '../reads/tasks.ts';
+import { wordPairRefusal } from '../../../core-connectors/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
-import { approverConfigured, decisionRefusal } from './live-correction-decision-checks.ts';
+import { approverConfigured } from './live-correction-decision-checks.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export { setApprover } from './live-correction-approver.ts';
+export { decideLiveCorrection } from './live-correction-decide.ts';
 
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
 
 const ENVELOPE_FIXES: readonly string[] = [
-  'A live correction is one word for one word, on one line of the one target file.',
+  'A live correction is one phrase or sentence on one line, in the one target file.',
 ];
-const NOT_VISIBLE = refuseCommand(
-  'NOT_FOUND',
-  [],
-  ['No live correction by that identity in this business.', 'Name one you can see.'],
-);
 const UNCONFIGURED = refuseCommand(
   'APPROVER_NOT_CONFIGURED',
   [],
   ['An administrator names the approver with settings.set_live_correction_approver.'],
 );
-const NOT_THE_APPROVER = refuseCommand(
-  'APPROVER_NOT_CONFIGURED_ONE',
-  [],
-  ['Only the configured staff approver approves a live correction.'],
-);
-const SELF = refuseCommand(
-  'SELF_APPROVAL_REFUSED',
-  [],
-  ['A second person approves the change; ask the configured approver.'],
-);
-const DECIDED = refuseCommand('GATE_ALREADY_DECIDED', [], ['This correction is decided already.']);
-const STALE = refuseCommand(
-  'VERSION_STALE',
-  ['versionId'],
-  ['Read the correction again and approve the version it shows.'],
-);
-const DECISION_FIXES: readonly string[] = ['A decision is approve or reject.'];
 const TASK_ABSENT = refuseCommand(
   'NOT_FOUND',
   ['taskId'],
   ['Name a task in this business for the correction to be worked under.'],
 );
-const PARTY = refuseCommand('CORRECTION_PARTY_MISMATCH', ['partyId'], ['Name the task’s client.']);
-const STORE_REFUSALS = {
-  CORRECTION_PARTY_MISMATCH: PARTY,
-  PAGE_OUTSIDE_PARTY_SITE: refuseCommand(
-    'PAGE_OUTSIDE_PARTY_SITE',
-    ['pageUrl', 'path'],
-    ['Name a page of this client’s own site, and its file, as the site holds them.'],
-  ),
-} as const;
+// One body for an unbound name, another holder's page and an ambiguous one.
+const PAGE_ABSENT = refuseCommand(
+  'NOT_FOUND',
+  ['page'],
+  ['Name a page of the task’s own site, as the site holds it.'],
+);
 
 async function taskExists(tx: TenantQuery, taskTypeId: string, taskId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
@@ -106,14 +70,16 @@ export interface Requester {
   readonly delegationId: string | null;
   /** Whose run:write the request rests on, read again after the insert's lock wait. */
   readonly subjects: readonly Subject[];
+  /** An agent's accepted plan version, which holds one correction (#1717); absent for a person. */
+  readonly planVersionId?: string;
 }
 
 export type RequestOperands = Omit<Of<'live_correction.request'>, 'command' | 'operationId'>;
 
 /**
- * Check the envelope, then store. Shared by the person command and the agent's
- * row (`agent-operations.ts`), each of which has already asked its own
- * authority at the named party.
+ * Check the word pair, then store `locating`. Shared by the person command and
+ * the agent's row (`agent-operations.ts`), each of which has already asked its
+ * own authority at the task's client.
  */
 export async function storeRequest(
   tx: TenantQuery,
@@ -121,56 +87,44 @@ export async function storeRequest(
   requester: Requester,
   request: RequestOperands,
 ): Promise<HandlerOutcome> {
-  const target = { path: request.path, word: request.word, replacement: request.replacement };
-  const change = { files: [{ path: request.path, before: request.before, after: request.after }] };
-  const envelope = checkEnvelope(change, target);
-  if (!envelope.ok) {
-    return refused(
-      refuseCommand('CHANGE_ENVELOPE_EXCEEDED', [], [envelope.reason, ...ENVELOPE_FIXES]),
-    );
+  const pair = wordPairRefusal(request);
+  if (pair !== undefined) {
+    return refused(refuseCommand('CHANGE_ENVELOPE_EXCEEDED', [], [pair, ...ENVELOPE_FIXES]));
   }
   if (!(await taskExists(tx, taskTypeId, request.taskId))) return refused(TASK_ABSENT);
-  const preImageDigest = contentDigest(request.before);
-  const seam = `seam-${randomUUID()}`;
-  const stored = await insertLiveCorrection(tx, {
-    partyId: request.partyId,
-    taskId: request.taskId,
-    requestedByActorId: requester.actorId,
-    requestedByPersonId: requester.personId,
-    delegationId: requester.delegationId,
-    targetPath: request.path,
-    word: request.word,
-    replacement: request.replacement,
-    pageUrl: request.pageUrl,
-    preImageDigest,
-    baseRevision: request.baseRevision,
-    seam,
-    versionDigest: versionDigestOf({
-      target,
-      change,
-      preImageDigest,
-      baseRevision: request.baseRevision,
-      pageUrl: request.pageUrl,
-      seam,
-    }),
-  });
-  // The party is the task's client (P26 low 4), the page its site's: else nothing is stored.
-  if ('code' in stored) return refused(STORE_REFUSALS[stored.code]);
+  const { planVersionId } = requester;
+  const drafted =
+    planVersionId === undefined ? undefined : await correctionOfPlan(tx, planVersionId);
+  const inserted =
+    drafted ??
+    (await insertLiveCorrection(tx, {
+      taskId: request.taskId,
+      requestedByActorId: requester.actorId,
+      requestedByPersonId: requester.personId,
+      delegationId: requester.delegationId,
+      page: request.page,
+      word: request.word,
+      replacement: request.replacement,
+      seam: `seam-${randomUUID()}`,
+      planVersionId: planVersionId ?? null,
+    }));
+  // A request at once on the same plan waited on the first's insert and stored nothing: the first answers it.
+  const stored =
+    'code' in inserted && planVersionId !== undefined
+      ? ((await correctionOfPlan(tx, planVersionId)) ?? inserted)
+      : inserted;
+  // The page is one of the task's own site's: else nothing is stored.
+  if ('code' in stored) return refused(PAGE_ABSENT);
   const ended = await endedSince(tx, requester, stored.partyId);
   if (ended !== undefined) return ended;
-  return applied(stored.id, stored.revision, {
-    correctionId: stored.id,
-    versionId: stored.versionId,
-    versionDigest: stored.versionDigest,
-    state: stored.state,
-  });
+  return applied(stored.id, stored.revision, { correctionId: stored.id, state: stored.state });
 }
 
 /** After the insert's wait: an approver still set, then the requester's authority again. */
 async function endedSince(
   tx: TenantQuery,
   requester: Requester,
-  partyId: string,
+  partyId: string | null,
 ): Promise<ReturnType<typeof refused> | undefined> {
   if (!(await approverConfigured(tx))) return refused(UNCONFIGURED);
   const { delegationId } = requester;
@@ -211,56 +165,7 @@ export async function requestLiveCorrection(
   );
 }
 
-export async function decideLiveCorrection(
-  tx: TenantQuery,
-  context: CommandContext,
-  request: Of<'live_correction.decide'>,
-): Promise<HandlerOutcome> {
-  if (request.decision !== 'approve' && request.decision !== 'reject') {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['decision'], DECISION_FIXES));
-  }
-  const { session } = context;
-  if (!isInternalReader(session.roleKey)) return refused(NOT_THE_APPROVER);
-  // A malformed id names no correction, as a fabricated one does.
-  if (!isUuid(request.correctionId)) return refused(NOT_VISIBLE);
-  const gate = { subjects: subjectsOf(session), collection: GATE_COLLECTION, action: 'decide' };
-  const correction = await lockCoveredCorrection(tx, request.correctionId, gate);
-  if (correction === undefined) return refused(NOT_VISIBLE);
-  if (correction.requestedByPersonId === session.personId) return refused(SELF);
-  const approver = await lockConfiguredApprover(tx);
-  if (approver === undefined || !(await isActiveMember(tx, approver))) {
-    return refused(UNCONFIGURED);
-  }
-  if (approver.toLowerCase() !== session.personId) return refused(NOT_THE_APPROVER);
-  if (correction.state !== 'requested') return refused(DECIDED);
-  if (correction.versionId !== request.versionId.toLowerCase()) return refused(STALE);
-  const after = await decisionRefusal(tx, correction, { gate, unseen: NOT_VISIBLE });
-  if (after !== undefined) return refused(after);
-
-  const decided = await writeCorrectionDecision(tx, {
-    id: correction.id,
-    decision: request.decision === 'approve' ? 'approved' : 'rejected',
-    actorId: session.actorId,
-    personId: session.personId,
-  });
-  return applied(decided.id, decided.revision, {
-    correctionId: decided.id,
-    versionId: decided.versionId,
-    state: decided.state,
-  });
-}
-
-const OPERAND_NAMES = [
-  'partyId',
-  'taskId',
-  'path',
-  'word',
-  'replacement',
-  'pageUrl',
-  'baseRevision',
-  'before',
-  'after',
-] as const;
+const OPERAND_NAMES = ['taskId', 'page', 'word', 'replacement'] as const;
 
 /**
  * The agent row's operands, taken as sent: their shape is judged after the
@@ -281,19 +186,17 @@ export function typedOperands(
   operands: Readonly<Record<string, unknown>>,
 ): RequestOperands | ReturnType<typeof refused> {
   const wrong = OPERAND_NAMES.filter((name) =>
-    name === 'partyId' || name === 'taskId'
-      ? !isUuid(operands[name])
-      : typeof operands[name] !== 'string',
+    name === 'taskId' ? !isUuid(operands[name]) : typeof operands[name] !== 'string',
   );
   if (wrong.length > 0) {
     return refused(
       refuseCommand('FIELD_VALUE_INVALID', wrong, [
-        'Send partyId and taskId as identifiers, and the rest as text.',
+        'Send taskId as an identifier, and the page and the two words as text.',
       ]),
     );
   }
   const unstorable = unstorableOperands(operands, OPERAND_NAMES);
   if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
   const typed = operands as unknown as RequestOperands;
-  return { ...typed, partyId: typed.partyId.toLowerCase(), taskId: typed.taskId.toLowerCase() };
+  return { ...typed, taskId: typed.taskId.toLowerCase() };
 }

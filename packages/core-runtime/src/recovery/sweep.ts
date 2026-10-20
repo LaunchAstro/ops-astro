@@ -42,7 +42,7 @@ import {
   type Affected,
   type Classification,
 } from './classifier.ts';
-import { endLease } from './lease-retirement.ts';
+import { loseLease } from './lease-retirement.ts';
 import { holdLostCalls } from './broker-effect.ts';
 
 /**
@@ -97,8 +97,9 @@ export async function sweepExpiredLeases(
     (row) => ({ reservationId: row.reservation_id, cause: row.cause, causeId: row.cause_id }),
     async (row) => {
       // The fence first, under the lease lock this set holds: the classifier
-      // reads the lease's recorded end as the cause, never the clock.
-      if (row.lease_id !== null) await endLease(tx, row.lease_id, 'expired');
+      // reads the lease's recorded end as the cause, never the clock. Its
+      // attempt's outcome is unknown beside a call `holdLostCalls` just held.
+      if (row.lease_id !== null) await loseLease(tx, row.lease_id);
     },
   );
   // T3e1: the pass's drop step (`drop.ts`), under these same locks.

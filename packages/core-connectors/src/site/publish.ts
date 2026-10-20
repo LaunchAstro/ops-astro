@@ -54,7 +54,8 @@ export interface PublishJob {
 
 export interface Published {
   readonly revision: string;
-  readonly deploymentId: string;
+  /** Absent while none is found for the revision: not published yet. */
+  readonly deploymentId?: string;
   readonly liveUrl: string;
 }
 
@@ -195,7 +196,7 @@ export interface ObservePorts {
   readonly raiseTask: PublishPorts['raiseTask'];
 }
 
-type Observed<S> = Omit<Accepted, 'state'> & { readonly state: S };
+export type Observed<S> = Omit<Accepted, 'state'> & { readonly state: S };
 
 /**
  * Live is two observations: the revision serving the page before and after the capture, and

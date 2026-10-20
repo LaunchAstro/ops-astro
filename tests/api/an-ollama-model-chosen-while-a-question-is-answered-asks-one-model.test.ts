@@ -24,7 +24,7 @@ import { ollamaBroker, says, standInOllama, type StandIn } from './ollama-stand-
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const QWEN = 'qwen3.6:27b-mlx';
+const QWEN = 'qwen3.6:35b-mlx';
 const GEMMA = 'gemma4:31b-mlx';
 
 // eslint-disable-next-line max-lines-per-function -- one stand-in, one broker and one world

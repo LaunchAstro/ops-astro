@@ -20,6 +20,7 @@ export {
   type AdapterRequest,
   type Declaration,
   type ModelAnswer,
+  type ModelToolCall,
   type ModelOperation,
   type ModelOperationDeclaration,
   type Registration,
@@ -88,6 +89,9 @@ export {
   REPLAY_MODEL_WINDOW,
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
+  REPLAY_TURN,
+  AGENT_TURN_KEY,
+  REPLAY_AGENT_TURN,
   startReplayProvider,
   type ReplayLookupMode,
   type ReplayMode,
@@ -163,6 +167,8 @@ export {
   type ProposedChange,
 } from './site/envelope.ts';
 export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';
+export { replaced } from './site/replaced.ts';
+export { wordPairRefusal } from './site/word-pair.ts';
 export {
   dispatchToken,
   observeLanded,
@@ -170,6 +176,7 @@ export {
   revertCorrection,
   type Accepted,
   type GateDecision,
+  type Observed,
   type PublishJob,
   type PublishOutcome,
   type PublishPorts,
@@ -178,6 +185,7 @@ export {
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
   bindingRefuses,
+  findDeployment,
   mergeAndFind,
   partySiteRefuses,
   readServed,
@@ -225,7 +233,12 @@ export {
   ollamaPieces,
   readOllamaAnswer,
 } from './ollama.ts';
-export { conversationInstructions, TASK_BLOCK_FENCE } from './conversation-prompt.ts';
+export {
+  conversationInstructions,
+  promptPage,
+  TASK_BLOCK_FENCE,
+  type PromptPage,
+} from './conversation-prompt.ts';
 export {
   CONVERSATION_MODELS,
   conversationModelsOf,
@@ -251,3 +264,31 @@ export {
   readOpenRouterAnswer,
   type OpenRouterModel,
 } from './openrouter.ts';
+export {
+  CHATGPT_PLAN_ANSWER_BYTES,
+  CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_DEFAULT_MODEL,
+  CHATGPT_PLAN_ISSUER,
+  CHATGPT_PLAN_MODELS,
+  CHATGPT_PLAN_ORIGIN,
+  CHATGPT_PLAN_PARAMETERS_BYTES,
+  CHATGPT_PLAN_PARAMETERS_DEPTH,
+  CHATGPT_PLAN_PATH,
+  CHATGPT_PLAN_PROVIDER,
+  CHATGPT_PLAN_TIMEOUT_MS,
+  chatgptPlanAdapter,
+  chatgptPlanBody,
+  readChatgptPlanAnswer,
+  readChatgptPlanToolCalls,
+  type PlanAsk,
+  type PlanItem,
+  type PlanTool,
+  type PlanTurn,
+} from './chatgpt-plan.ts';
+export {
+  AGENT_TURN_INSTRUCTIONS,
+  CHATGPT_PLAN_TURN,
+  chatgptPlanTurnAdapter,
+  readChatgptPlanTurnAnswer,
+} from './chatgpt-plan-turn.ts';

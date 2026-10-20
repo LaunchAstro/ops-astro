@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1710: the task read answers a waiting run's time left on its bound from the database's clock in the statement that judges its state, and none once the run is unanswered or taken, so the browser never sets its own clock against the server's."
+}

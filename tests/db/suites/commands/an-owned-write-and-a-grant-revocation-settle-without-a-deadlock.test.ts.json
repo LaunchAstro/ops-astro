@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an owned agent write paused after its task lock and a grant revocation waiting on it settle without a deadlock, and the covering grant hold reads no grant of another business"
+}

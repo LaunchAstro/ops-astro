@@ -183,6 +183,7 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
       'task.check',
       'task.handback',
       'model.call',
+      'run.end',
     ]);
     const excluded = detail['excludedOperations'] as { operation: string; reason: string }[];
     expect(excluded.map((entry) => entry.operation)).toStrictEqual([
@@ -191,7 +192,6 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
       'task.decide on this work',
     ]);
     expect(excluded.every((entry) => entry.reason.length > 0)).toBe(true);
-
     expectShape(detail, 'agent');
 
     // The descriptor's required operands are the ones the handback refuses

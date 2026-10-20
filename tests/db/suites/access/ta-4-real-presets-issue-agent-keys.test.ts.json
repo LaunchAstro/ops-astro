@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "TA-4 (ops-astro-roadmap #869): through the real credential.issue route, the owner and the administrator, each holding a real role's grants, get an agent key; a member, a client-portal person and an outside party are refused and nothing is written."
+}

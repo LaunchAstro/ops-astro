@@ -38,9 +38,9 @@ function waitFor(ms: number, onWake: (wake: () => void) => void): Promise<void> 
 }
 
 /**
- * The agent's clock against this one, learnt from its accept: `acceptedAt`
- * less the instant just before the offer, the most it can be ahead. Unknown
- * until then.
+ * The agent's clock against this one, learnt from its accept: the instant it
+ * joined the call's line, before any prepare, less the instant just after the
+ * offer, the most it can be ahead. Unknown until then.
  */
 export interface Skew {
   at: number | undefined;

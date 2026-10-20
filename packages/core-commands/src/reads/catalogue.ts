@@ -63,8 +63,12 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { listInvitations } from './invitations.ts';
-import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
-import { readAutomationRegistry } from './automations.ts';
+import { CORRECTION_READS } from './live-correction.ts';
+import {
+  parseHistoryOperands,
+  readAutomationHistory,
+  readAutomationRegistry,
+} from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
@@ -940,16 +944,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
-  // C80: a correction's decision; `run:write` at its party, asked inside the query.
-  'live_correction.read': {
-    identifiers: ['correctionId'],
-    parse: parseCorrectionRead,
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
-    serve: serveCorrectionRead,
-  },
+  // C80 and #1694: a correction's decision, the list and a correction's receipts.
+  ...CORRECTION_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {
@@ -959,6 +955,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => await readAutomationRegistry(tx),
+  },
+  // One activation's history (#1741), asked as the registry is. Another
+  // business's activation is NOT_FOUND on `activationId` like a made-up one.
+  'automation.history': {
+    identifiers: ['activationId'],
+    parse: parseHistoryOperands,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, _session, operands) => await readAutomationHistory(tx, operands),
   },
 };
 

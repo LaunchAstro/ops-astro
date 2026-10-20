@@ -5,7 +5,7 @@
 // completes or reopens through what the page hands in (the one completion
 // transition); a double-click renames in place, Enter or blur saving, Escape
 // cancelling, and a blank or unchanged name saving nothing (P-32); a plain
-// click opens the task after 260ms unless a double-click follows (CS-5.14);
+// click opens the task after 500ms unless a second click follows (CS-5.14);
 // the hover box holds add subtask, the door with its in-app mark, and the
 // timer only when the page can start one (P-33). The commands from the
 // Projects screen are in mp-5-9-projects-row-screen.test.tsx.
@@ -213,7 +213,7 @@ describe('MP-5-9 the hover box holds timer, add subtask and a door with its in-a
 });
 
 describe('MP-5-9 open the task beside the board', () => {
-  it('a plain click opens the task after 260ms; a double-click in that time does not', async () => {
+  it('a plain click opens the task after 500ms; a double-click in that time does not', async () => {
     vi.useFakeTimers();
     try {
       const { board, calls } = await open();
@@ -222,9 +222,9 @@ describe('MP-5-9 open the task beside the board', () => {
         new MouseEvent('click', { bubbles: true, cancelable: true }),
       );
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(450);
       });
-      // Still inside the double-click window at 200ms.
+      // Still inside the double-click window at 450ms.
       expect(calls.opens).toStrictEqual([]);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(100);
@@ -236,11 +236,45 @@ describe('MP-5-9 open the task beside the board', () => {
       );
       await dbl(board, 'done');
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(300);
+        await vi.advanceTimersByTimeAsync(600);
       });
       expect(calls.opens).toStrictEqual(['open']);
     } finally {
       vi.useRealTimers();
     }
   });
+});
+
+describe('MP-5-9 a slow double-click renames', () => {
+  it.each([
+    ['with', true],
+    ['without', false],
+  ])(
+    'a second click 350ms after the first renames, %s a double-click, and never opens the task',
+    async (_, double) => {
+      vi.useFakeTimers();
+      try {
+        const { board, calls } = await open();
+        await fire(
+          one(board, NAME('open')),
+          new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }),
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(350);
+        });
+        await fire(
+          one(board, NAME('open')),
+          new MouseEvent('click', { bubbles: true, cancelable: true, detail: double ? 2 : 1 }),
+        );
+        if (double) await dbl(board, 'open');
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        expect(calls.opens).toStrictEqual([]);
+        expect(one(board, RENAME('open'))).not.toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });

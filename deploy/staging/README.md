@@ -139,6 +139,24 @@ setting's value.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+### How a migrate window drains
+
+The window opens with the planned maintenance page,
+`scripts/ops/web-deploy.mjs --maintenance --version <id> --artefacts <store>`,
+naming the version that takes it off, so staging is never left on the page by
+a deploy that cannot run (#1985).
+
+The migrations and the reset refuse while any other session is connected. To
+drain staging's database, detach the API's alias so no request reaches the
+function, stop the M5 unit's worker and forwarder (each holds a session of its
+own), then wait about a minute. The function keeps no session open once
+idle: its runtime pool, its reconciliation pass's connection, its outbox and
+its lookup login each close a connection after 20 seconds without a statement
+(`RUNTIME_IDLE_SECONDS`, #1530). A session still connected after that is not
+one the wait covers: read `pg_stat_activity` for its login and its last
+statement before anything else. Ending it with `pg_terminate_backend` is the
+last resort, and the run's record says so.
+
 The dump from Supabase's pooler leaves out `auth`. On hosted Supabase that
 schema belongs to the platform, and staging's owner may use it but may not
 grant it. No platform role is granted to the backup identity, because each one
@@ -275,6 +293,13 @@ service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
 operator's record folder: the version and the artefact.
 
+The forwarder sends every error and alert with its own `OPS_RELEASE`, never
+the release an API instance wrote (`rebuiltError`). So at each deploy, set
+`STAGING_RELEASE` to the build stamp of the version deployed, the `<id>` given
+to `--version` (the `build` in the artefact's `build.json`), before
+`deploy.mjs` starts Compose. A unit left on an earlier stamp names the wrong
+build on every alert (#1787). The Vercel function reads no release setting.
+
 The web app goes to Vercel with `scripts/ops/web-deploy.mjs --version <id>
 --artefacts <store>` (the Vercel re-plan, step 4), beside the deploy above.
 The same gate comes first, and the same stored build output and preflight are
@@ -285,7 +310,8 @@ and hands the CLI nothing else from the environment. It refuses to run with
 `VERCEL_TOKEN` set. Then it asks `vercel inspect` about the deployment it
 made, which must report that same deployment `READY` on `production`. Before
 it asks Vercel, the sign-in server at `GOTRUE_URL` must report its version on
-`/health` (with `SUPABASE_PUBLISHABLE_KEY` as its key when set): no version,
+`/health` with `SUPABASE_PUBLISHABLE_KEY` as its key, a setting refused up
+front when unset: no version,
 no deploy. Only a deployment read back that way writes `deploy recorded`: the
 version, the artefact, the digest, the deployment's own address, the region,
 the function runtime and the sign-in server's version. The region is `syd1`,
@@ -317,7 +343,13 @@ enrolment until it is reconciled.
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
 without asking the database: one static page for every path, nothing that
-runs. Deploying a version again takes it off. The page answers 200, so the
+runs. Deploying a version again takes it off. The planned form,
+`--maintenance --version <id> --artefacts <store>`, names that version and
+runs its deploy up to Vercel (the settings, the artefact and its digest, the
+preflight, the sign-in server's version, the copy checked again, and the
+operator's held grant); the page goes up only if all pass, and a refusal
+deploys nothing. The bare form is for an incident and says it
+checked no deploy. The page answers 200, so the
 watcher's web check stays green; its keyword check on the page's marker
 (`alerts.mjs plan`, watch `maintenance`) alerts while it is up.
 
@@ -391,7 +423,8 @@ environment at run time:
 | `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                                                                                                                    |
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it)                                                                                                   |
 | `OPS_ERROR_SINK_URL`                                       | the API                                      | the sink's web address, the operations view's link (C55); no secret, never the DSN (an address with a user part stops the API)                                                                                                                               |
-| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                                                                                                                   |
+| `OPS_ENVIRONMENT`                                          | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`                                                                                                                                                                                                                                    |
+| `OPS_RELEASE`                                              | the forwarder, `alerts.mjs test`             | the build stamp of the version deployed, the release on every event the sink receives; set at each deploy (above). The Vercel function reads none                                                                                                            |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                                                                                                                      |
 | `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, the function does not start                                                                                                                                                   |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                                                                                                                      |
@@ -401,6 +434,7 @@ environment at run time:
 | `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                                                                                                                                             |
 | `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                                                                                                                                          |
 | `DATABASE_UPKEEP_URL`                                      | `backup.mjs expire`                          | a login that is a member of `ops_astro_upkeep` alone, on the pooler the relay lists; never the Vercel function's (it refuses to start beside it)                                                                                                             |
+| `DATABASE_TRACE_URL`                                       | `apps/trace-export/main.ts` (M5)             | a login that is a member of `ops_astro_trace` alone, in the trace export's settings file (`docs/local/LANGFUSE.md`)                                                                                                                                          |
 | `OPS_HEARTBEAT_EVERY_MS`                                   | the worker, `forwarder.mjs`                  | the least milliseconds between two pings to one heartbeat, so a free watcher's budget holds; a few minutes under the watcher's window (a ping lands up to one pass late), at most a day; staging's compose requires it, and unset elsewhere every pass pings |
 
 `RECOVERY_BUSINESS_KEYS` makes the Vercel function recovery's one owner (the
@@ -414,3 +448,57 @@ passes on its own, so a key that resolves to no business holds up no other.
 its alert message in plain words, and the recipients to set up in both
 services (`--test`: all mail to the test address).
 `node scripts/ops/alerts.mjs test` sends a test alert through the sink.
+
+## Automation firing in the API process
+
+`AUTOMATION_FIRING` controls the long-running API process entry,
+`node apps/api/server.ts`, only. That process starts its occurrence sweeper
+only for the exact value `on`. An unset setting, an empty value, `off`, or
+any other value keeps it off. The setting is read at startup, so changing it
+requires a process restart.
+
+When enabled, the sweeper runs at startup and every minute over the process's
+recovered businesses. At startup the process logs exactly one
+`api process: automation firing on` or `api process: automation firing off`
+line. Shutdown waits for a started sweeper's running pass before closing the
+pools.
+
+This setting guards one process entry. The hosted function entry,
+`apps/api/function.ts`, starts no occurrence sweeper. A hosted installation
+fires scheduled automations through the scheduled occurrence sweep below.
+
+Production firing stays off until A5's runner and custody reviews, owner
+sign-in, staging proof, and owner's production go. A1 changes no deployed
+setting and grants no switch-on approval.
+
+## The scheduled occurrence sweep
+
+`ops-astro-staging-occurrence-sweep.plist` is a launchd job on the M5 that
+runs `node apps/automations/sweep.ts` (`pnpm automations:sweep`) every 60
+seconds. One run is one round of the occurrence sweep over staging's
+businesses, then it exits. Each business is swept in its own transaction as
+its own active worker; a business with none is skipped. No route, command
+line verb or request reaches it.
+
+Its env file, `@STAGING_SWEEP_ENV_FILE@`, holds four settings:
+
+| Setting                    | What it is                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `AUTOMATION_FIRING`        | exactly `on` to sweep; unset or any other value is off                                         |
+| `AUTOMATION_BUSINESS_KEYS` | the business keys to sweep, comma separated, or `none`, written as `RECOVERY_BUSINESS_KEYS` is |
+| `DATABASE_URL`             | the application login, the one the endings loop holds on this machine                          |
+| `DATABASE_LOOKUP_URL`      | the lookup login, which reads business ids and keys alone                                      |
+
+Unset means off: the run prints `automation sweep: firing off` and exits 0
+before it reads another setting or opens a connection. On, it prints one
+line of counts and no ids, `{"firing":"on","swept":n,"noWorker":m,"failed":f}`,
+to `@STAGING_SWEEP_LOG@`. It exits 1 when a business failed, a key naming no
+business included, and 2 on a settings problem, which it names on stderr. It
+refuses to start beside any login or key held elsewhere, `DATABASE_ADMIN_URL`
+among them.
+
+The job ships unloaded, with its env file absent. Loading it with
+`AUTOMATION_FIRING=on` is the owner's switch-on step, A5 of #1653, staging
+first. Run one sweeping entry per environment: this job or the API process's
+switch above, never both on. Both on is safe, since the claim starts each run
+once, but doubles the work.

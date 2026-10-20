@@ -26,31 +26,43 @@ interface BoardEditState {
 }
 const EMPTY: BoardEditState = { holds: new Map(), problem: null, changed: 0 };
 const RECOVERY = 'The saved board change could not be recovered. No stored change was sent.';
+const REPLACED =
+  'The saved board change was replaced after it was read, so it was not discarded. Reload the page to check it again.';
+const STUCK = 'This browser could not discard the saved board change. Board edits stay paused.';
 export class BoardEditCustody {
   readonly #owner: string;
   readonly #storage: StorageLike | null;
-  readonly #memoryOnly: boolean;
+  readonly #lenient: boolean;
   readonly #generation = tabOwnerGeneration();
   readonly #listeners = new Set<() => void>();
   readonly #settlements = new Set<(entry: BoardEditEntry, answer: Settlement) => void>();
   #state: BoardEditState = EMPTY;
+  /** The exact recovery copy refused on reading, the only bytes Discard may remove. */
+  #rejected: string | null = null;
   #client: OperationsClient;
   #alive = true;
   #epoch = 0;
+  /**
+   * With no storage (site data blocked) edits are kept in memory for this tab and checked as
+   * usual. `lenient` is for isolated mounts with no App owner: it also skips the task id,
+   * revision and receipt checks.
+   */
   constructor(
     client: OperationsClient,
     owner: string,
     storage: StorageLike | null,
-    memoryOnly = false,
+    lenient = false,
   ) {
     this.#client = client;
     this.#owner = owner;
     this.#storage = storage;
-    this.#memoryOnly = memoryOnly;
+    this.#lenient = lenient;
+    let raw: string | null = null;
     try {
-      const raw = storage?.getItem(BOARD_EDIT_KEY) ?? null;
+      raw = storage?.getItem(BOARD_EDIT_KEY) ?? null;
       if (raw === null) return;
       const entries = boardEditDocument(JSON.parse(raw) as unknown, owner);
+      if (entries === null) this.#rejected = raw;
       this.#state =
         entries === null
           ? { ...EMPTY, problem: RECOVERY }
@@ -64,6 +76,7 @@ export class BoardEditCustody {
               ),
             };
     } catch {
+      this.#rejected = raw;
       this.#state = { ...EMPTY, problem: RECOVERY };
     }
   }
@@ -102,6 +115,28 @@ export class BoardEditCustody {
       /* Persisted session endings fence a failed removal. */
     }
   };
+  /**
+   * The person's way past an unreadable recovery copy. It removes the copy only for the
+   * owner that read it and only while the stored bytes are exactly the ones refused, with
+   * no await between those checks and the removal. Otherwise board edits stay paused.
+   */
+  discard = (): void => {
+    const storage = this.#storage;
+    if (!this.#current() || this.#state.problem === null) return;
+    let problem: string | null = null;
+    try {
+      if (this.#rejected === null || storage === null) problem = STUCK;
+      else if (storage.getItem(BOARD_EDIT_KEY) === this.#rejected) {
+        storage.removeItem(BOARD_EDIT_KEY);
+        if (storage.getItem(BOARD_EDIT_KEY) !== null) problem = STUCK;
+      } else problem = REPLACED;
+    } catch {
+      problem = STUCK;
+    }
+    if (problem === null) this.#rejected = null;
+    this.#state = { ...this.#state, problem };
+    this.#notify();
+  };
   #current(): boolean {
     return this.#alive && this.#generation === tabOwnerGeneration();
   }
@@ -118,7 +153,8 @@ export class BoardEditCustody {
   #save(): boolean {
     if (!this.#current() || this.#state.problem !== null) return false;
     return (
-      this.#memoryOnly ||
+      this.#lenient ||
+      this.#storage === null ||
       verifiedJsonWrite(this.#storage, BOARD_EDIT_KEY, {
         version: 1,
         owner: this.#owner,
@@ -146,7 +182,7 @@ export class BoardEditCustody {
       [...this.#state.holds.values()].some((hold) => !hold.kept)
     )
       return false;
-    if (!this.#memoryOnly && (!isUuid(id) || !revision(expectedRevision))) return false;
+    if (!this.#lenient && (!isUuid(id) || !revision(expectedRevision))) return false;
     const operationId = this.#client.newOperationId();
     if (
       !validOperationId(operationId) ||
@@ -207,7 +243,7 @@ export class BoardEditCustody {
     const answer = settle(
       await this.#client.mutate(attempt.command, attempt.body, {
         operationId: attempt.operationId,
-        ...(attempt.expectedRevision === 0 && this.#memoryOnly
+        ...(attempt.expectedRevision === 0 && this.#lenient
           ? {}
           : { expectedRevision: attempt.expectedRevision }),
       }),
@@ -215,13 +251,18 @@ export class BoardEditCustody {
     if (!this.#current() || epoch !== this.#epoch || this.#state.holds.get(id)?.entry !== entry)
       return;
     const result: Settlement =
-      answer.kind === 'ok' && !this.#memoryOnly && !boardEditReceipt(answer.value, id)
+      answer.kind === 'ok' && !this.#lenient && !boardEditReceipt(answer.value, id)
         ? { kind: 'unknown', because: 'The API did not return a valid board change receipt.' }
         : answer;
     this.#settled(id, entry, result, uncertain);
   }
   #settled(id: string, entry: BoardEditEntry, result: Settlement, uncertain: boolean): void {
-    if (result.kind === 'unknown' || (uncertain && result.kind !== 'ok')) {
+    // A stored success replays before the revision check, so VERSION_STALE settles even a
+    // lost edit as not stored. Other refusals after a lost answer may hide a stored success.
+    if (
+      result.kind === 'unknown' ||
+      (uncertain && result.kind !== 'ok' && result.kind !== 'stale')
+    ) {
       this.#put(id, {
         entry,
         busy: false,

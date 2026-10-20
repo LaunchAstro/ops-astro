@@ -104,5 +104,8 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'chat.messages': { conversationId: 'id' },
   'trace.read': RECORD,
   'live_correction.read': { correctionId: 'id' },
+  'live_correction.list': NONE,
+  'live_correction.receipts': { correctionId: 'id' },
   'automation.registry': NONE,
+  'automation.history': { activationId: 'id', cursor: 'text?' },
 };

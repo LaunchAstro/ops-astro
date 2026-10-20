@@ -73,7 +73,6 @@ const SETTINGS = [
   'OPS_ENVIRONMENT',
   // C55: the error sink's web address, never its DSN (ORCH49).
   'OPS_ERROR_SINK_URL',
-  'OPS_RELEASE',
   'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',
   'SUPABASE_KEY_SET_URL',

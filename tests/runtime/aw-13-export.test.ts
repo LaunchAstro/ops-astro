@@ -14,6 +14,7 @@ import {
   appliedDetail,
   asAgent,
   asPerson,
+  barrier,
   capCommitted,
   handbackBody,
   liveWork,
@@ -183,4 +184,100 @@ it('AW-13 two exporters at once: a slower export that read an older batch never 
   release();
   expect((await slow).kind).toBe('delivered');
   expect(await cursorOf(s)).toBe(ahead);
+});
+
+async function replayCall(s: typeof t.alpha, leaseId: unknown, late = false): Promise<void> {
+  await rows(
+    s,
+    `insert into public.model_calls
+      (business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
+       operation_key, route_key, credential_kind, state, reserved_minor, actual_minor,
+       accepted_at, ended_at)
+     select l.business_id, $2, l.run_id, st.id, l.id, r.version_id, r.id,
+            'scripted_replay', 'replay', 'replay', 'settled', 1, 1,
+            now() + case when $4 then interval '10 minutes' else interval '0' end,
+            now() + case when $4 then interval '10 minutes' else interval '0' end
+       from public.leases l
+       join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
+       join public.planned_steps st on st.business_id = l.business_id and st.run_id = l.run_id
+      where l.business_id = $1 and l.id = $3 order by st.ordinal limit 1`,
+    [s.business, randomUUID(), leaseId, late],
+  );
+}
+
+it('terminal export shows the recorded outcome and call usage only from its business, run, lease and event time', async () => {
+  const s = t.alpha;
+  await drain(s);
+  const canary = `synthetic message page and tool output ${randomUUID()}`;
+  const work = await liveWork(s, canary, 1_000);
+  const other = await liveWork(s, `another run ${randomUUID()}`, 1_000);
+  const foreign = await liveWork(t.bravo, `another business ${randomUUID()}`, 1_000);
+  await replayCall(s, work.picked['leaseId']);
+  await replayCall(s, work.picked['leaseId'], true);
+  await replayCall(s, other.picked['leaseId']);
+  await replayCall(t.bravo, foreign.picked['leaseId']);
+  appliedDetail(
+    await asAgent(
+      s,
+      {
+        ...handbackBody(work.picked),
+        report: { summary: canary },
+      },
+      String(work.picked['credential']),
+    ),
+    'task.handback',
+  );
+  const from = t.target.received.length;
+  await drain(s);
+  const body = t.target.received.slice(from).join('\n');
+  expect(body).toContain('"key":"ops-astro.outcome","value":{"stringValue":"completed"}');
+  expect(body).toContain('"key":"ops-astro.usage.model_calls","value":{"intValue":"1"}');
+  expect(body).toContain('"key":"ops-astro.usage.settled_calls","value":{"intValue":"1"}');
+  expect(body).not.toContain(canary);
+  for (const raw of [work.taskId, String(work.picked['runId']), s.business, t.bravo.business])
+    expect(body).not.toContain(raw);
+});
+
+it('an exporter observed mid-run records the target outage while handback finishes and later catches up', async () => {
+  const s = t.alpha;
+  await drain(s);
+  const work = await liveWork(s, `outage replay ${randomUUID()}`, 1_000);
+  const before = await cursorOf(s);
+  const arrived = barrier();
+  const resume = barrier();
+  t.target.tamper = async (_method, body) => {
+    arrived.release();
+    await resume.held;
+    return body;
+  };
+  const pending = exportDue(s);
+  let outage: Awaited<typeof pending>;
+  try {
+    await Promise.race([
+      arrived.held,
+      pending.then(() => {
+        throw new Error('export ended before reaching the target');
+      }),
+    ]);
+    t.target.mode = 'down';
+    resume.release();
+    const [exported, handed] = await Promise.all([
+      pending,
+      asAgent(s, handbackBody(work.picked), String(work.picked['credential'])),
+    ]);
+    outage = exported;
+    appliedDetail(handed, 'task.handback');
+    expect(await runState(work.picked['runId'])).toBe('handed_back');
+  } finally {
+    resume.release();
+    t.target.tamper = undefined;
+  }
+  expect(outage).toMatchObject({ kind: 'gap', code: 'target_unreachable' });
+  expect(await cursorOf(s)).toBe(before);
+  expect(await gaps('target_unreachable')).toBeGreaterThan(0);
+  const from = t.target.received.length;
+  await drain(s);
+  const sent = spanIds(t.target.received.slice(from));
+  for (const id of await eventSpanIds(work.picked['runId'])) expect(sent).toContain(id);
+  expect(await exportFor(s)).toEqual({ kind: 'idle' });
 });

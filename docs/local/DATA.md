@@ -67,23 +67,77 @@ SOL-R3R2-1), so the runner checks the rule rather than leaving it to this page,
 within the limit below.
 
 When at least one migration is pending, the runner
-(`packages/core-records/src/tenancy/migrate.ts`) reads `pg_stat_activity` for
-every client backend on its own database except its own
-(`datname = current_database()`, `backend_type = 'client backend'`,
-`pid <> pg_backend_pid()`). If it finds any, it throws `MigrationRefused`,
-which names each one by pid, login, application name, client address and
-start time. It has applied nothing and written no ledger row. The CLI prints
-the same and exits 2. It counts any client session: the application login, GoTrue
-(which connects as `postgres` on the local install), a `psql` you left open, another tool. None of
-them can be told apart from an application safely, and there is no flag or
-environment variable that skips the check. The one exception is hosted
+(`packages/core-records/src/tenancy/migrate.ts`) opens its one transaction
+and, before any file runs, does three things in this order.
+
+1. It bounds every lock wait in the transaction to 5 s
+   (`select set_config('lock_timeout', '5000ms', true)`, for the transaction
+   only).
+2. It locks every ordinary and partitioned table in the `ops` and `public`
+   schemas in ACCESS EXCLUSIVE mode, in one `LOCK TABLE` statement, in schema
+   and name order, each named `ONLY` so the lock never reaches an inheritance
+   child or partition in another schema. Those are the schemas the migrations own. Supabase's own
+   (`auth`, `storage`, `realtime`) are never locked. The list is read from the
+   catalogue on each attempt, not from the files, so no table a file alters can
+   be missed. Tables the pending files create need no lock: they do not exist
+   yet.
+3. It reads `pg_stat_activity` for every client backend on its own database
+   except its own (`datname = current_database()`,
+   `backend_type = 'client backend'`, `pid <> pg_backend_pid()`), and counts
+   the ones that could be using the old schema: `state` other than `idle` (a
+   null state counts), a transaction open (`xact_start` set, including idle or
+   aborted in one), or any lock held or awaited in `pg_locks`. If it finds any,
+   it throws `MigrationRefused`, which names each by pid, login, application
+   name, client address, start time, state, transaction start and the locks it
+   holds.
+
+**The rule: a session idle with no transaction and no lock passes.** That is
+what a transaction-mode pooler keeps open. On hosted staging, Supavisor holds
+one idle backend per runtime login (port 6543) and opens a new one within
+100 ms when it is ended, so a rule that counted any session could never pass
+there (#1984, 19 October 2026). Such a backend cannot be mid-work on the old
+schema. Any statement it starts on a table in `ops` or `public` waits on the
+run's locks, and once the run commits, it reads the new schema. A session
+that is already waiting on the run's locks when the runner looks still counts,
+and the run refuses naming it, applying nothing. A function takes no lock, so
+its transaction, or the same statement, may already have run an old definition
+(S2007-3), and `pg_stat_activity` cannot tell one statement from several sent
+in one message. Once the run has rolled back, the waiting statement finishes on
+the old schema. A session in a transaction refuses whatever it has done, and
+so does one holding any lock, an advisory lock included.
+
+A refused run has applied nothing and written no ledger row. The CLI prints
+the refusal and each session and exits 2. The rule applies to any client
+session: the application login, GoTrue (which connects as `postgres` on the
+local install), a `psql` you left open, another tool. None of them can be
+told apart from an application safely, and there is no flag, environment
+variable or option that skips the check. The one exception is hosted
 Supabase's own services, which never stop: sessions whose login is exactly
 `authenticator`, `pgbouncer`, `supabase_admin`, `supabase_auth_admin` or
 `supabase_storage_admin` are left out of the count, so on hosted Supabase it
 does not see Data API, Auth, Storage or Realtime traffic, and none of those roles exists on
 the local install. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
-The runner's role must be able to read every session in `pg_stat_activity`:
+
+**A lock wait that times out is retried, then refused.** `lock_timeout` bounds
+the run's own `LOCK TABLE` and every file's statements. A wait that passes it
+(SQLSTATE `55P03`) rolls the run back whole, as any failure does. The runner
+waits 10 s and runs it again from the ledger read, three attempts in all. After
+the third, it throws `MigrationLockTimeout`. That error names the attempts, the
+timeout, the pause and the sessions that counted at a look taken after the last
+attempt. The CLI prints it like `MigrationRefused` and exits 2. The 10 s pause
+gives a transient reader time to finish; it is not for a pool to drain, which
+Supavisor's never does. The attempts, timeout and pause are options of
+`migrate` and `applyMigrations` for the tests; `db-migrate.mjs` passes none.
+The retry composes with the shared-role retry below, which keeps its own
+schedule. Every refusal says nothing was applied and names the version the
+database is still at.
+
+The runner's role must be able to lock those tables: the owner can, and so can
+a role with `MAINTAIN`, `UPDATE`, `DELETE` or `TRUNCATE` on each. A lock it may
+not take fails the run before any file runs, naming the version it is still
+at.
+The runner's role must also be able to read every session in `pg_stat_activity`:
 a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of
 `pg_read_all_stats`. PostgreSQL hides another role's `backend_type` from any
 other role, so a role without that would find nobody connected. With a
@@ -131,39 +185,48 @@ transaction, so the runner stops at once and says which file and statement
 did it, and that work before it in the run may be committed. That error never
 says nothing was applied.
 
-A session can connect after that first look. So the runner looks again inside
-the transaction, before each file's first statement and once more after the
-last ledger row, just before commit. It clears the backend's statistics
-snapshot first, because otherwise a later look inside one transaction would
-repeat the first. A session caught there refuses the run, and the whole run
-rolls back. That leaves one window: a session that connects after the look
-before commit and before the commit completes. It can begin a transaction
-against the old schema and carry on after the commit, which a session that
-connects afterwards cannot; a migration that needs to rule that out takes its
-locks before its checks, as 0030 does. A run of many files also holds its
-locks until the one commit, so an application that is somehow still up waits
-longer. Nothing changes the database's `ALLOW_CONNECTIONS` or `CONNECTION
-LIMIT` to close that window, because a crash between setting it and restoring
-it would leave the install refusing its own application.
+Every look is inside the transaction, after the locks. A session can get busy
+after one look, so the runner looks before each file's first statement and
+once more after the last ledger row, just before commit. It clears the
+backend's statistics snapshot first, because otherwise a later look inside one
+transaction would repeat the first. A session caught there refuses the run,
+and the whole run rolls back. There is no look before the transaction: it
+would refuse a lock holder at once, where the bounded wait and its retries
+give a transient one time to finish. The window a look cannot close, a session
+that begins a transaction after the look before commit and before the commit
+completes, is closed by the locks for every table in `ops` and `public`. Its
+first statement on one of them waits for the commit and then sees the new
+schema. The locks are held until the one commit, so an application that is
+somehow still up waits for the whole run, up to 5 s for each lock. Nothing
+changes the database's `ALLOW_CONNECTIONS` or `CONNECTION LIMIT`, because a
+crash between setting it and restoring it would leave the install refusing its
+own application.
 
 **The check cannot tell a stopped application from an idle one.** The API's
 pool (`postgres`, `tenancy/database.ts`) opens a connection when a query needs
-one, and an idle API or GoTrue may hold none between requests. A live drill on
-the local install saw none from a running, healthy API and GoTrue, and one from
-the API right after a request to `/api/health`. So an idle application passes
-the check, and reconnects on its next request, on whichever schema is there by
-then. Stopping the API and GoTrue is the operator's step, as README.md's
+one, and an idle API or GoTrue may hold none between requests, or hold one
+idle. A live drill on the local install saw none from a running, healthy API
+and GoTrue, and one from the API right after a request to `/api/health`. So an
+idle application passes the check. Its next statement on a locked table waits
+for the run and then sees the new schema; one outside `ops` and `public` does
+not wait. Stopping the API and GoTrue is the operator's step, as README.md's
 upgrade steps give it, and a script that upgrades must stop them itself before
 `db:migrate`; the runner's check is a backstop, not the stop.
 
 `tests/tenancy/migration-runner-guard.test.ts` holds real sessions open against
 databases at 0023 and at the head. It covers the refusal with the application
-login held, with other client sessions held, the ledger and schema unchanged
-after it, the apply once they close, an up-to-date install with the
-application connected, a session that arrives inside a migration, a session
-that arrives during the second of two pending files and a failure in the
-second of two (neither leaves the first), the refusal of each statement the
-transaction cannot hold, and the CLI.
+login mid-transaction, with other client sessions mid-transaction, the ledger
+and schema unchanged after it, the apply once they close, the apply beside an
+idle pooled session, a held lock refused after the bounded retries, a query
+that arrives mid-run and waits refusing the run and then reading the old
+schema, an up-to-date install
+with the application connected, a session that starts a transaction inside a
+migration, one that does so during the second of two pending files and a
+failure in the second of two (neither leaves the first), the refusal of each
+statement the transaction cannot hold, the strict reader the staging reset
+keeps, and the CLI, the lock-timeout refusal included.
+`tests/ci/staging-hosted-roles.test.ts` covers a platform login holding a lock
+outside `ops` and `public`, which neither refuses nor delays the run.
 The test harness's `closeSessions()` ends its own application pool before a
 test migrates. Nothing in the runner has a bypass.
 
@@ -393,6 +456,17 @@ and any later change to one, and the definer
 occurrence is not `approved` or whose definition is not the one that
 occurrence's activation runs. The suites sort it into a class of its own
 (`occurrence`), and the column-grant contract names each of its column grants.
+
+`ops_astro_trace` (migration 20261018222300, #1708) is the M5 trace export's
+role: no login, no bypass, under row security like the application. It reads
+the run-event columns a span is made of (never `task_id`, `attempt_id` or
+`actor_id`), the lease and model-call columns the call counts read, and the
+trace copies it registers; it writes its own cursor, gaps and retention record
+and a run's trace copy, and nothing else. Its login, `ops_astro_trace_login`
+(`scripts/ops/staging-logins.ts`), is a member of it alone and takes it in each
+transaction (`apps/trace-export/main.ts`). The suites sort it into a class of
+its own (`trace`), and `tests/db/trace-export-login.test.ts` proves what it
+reads and refuses.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
@@ -977,11 +1051,11 @@ the address is the key in a business, so a page names one client, and
 several pages may share one file. The repository and the project are each
 unique across the installation (`party_sites_repository_key`,
 `party_sites_project_key`), so no business binds a site another holds.
-`live_corrections`' insert joins the page row of the task's own client, page
-and file as one pair, key-share locked: another client's page, or a page no
-client holds, stores nothing (`PAGE_OUTSIDE_PARTY_SITE`).
+`live_corrections`' insert joins the page row of the task's own client,
+key-share locked: another client's page, or a page no client holds, stores
+nothing (since #1693, one `NOT_FOUND`; see the locate below).
 
-While a correction of the client is open (`requested` to `live`, or
+While a correction of the client is open (`locating` to `live`, or
 `cancelled` after its decision), no page of
 its site is deleted and its providers do not change (`party_site_pages_held`,
 `party_sites_held`, each share-locking the corrections first); a page is
@@ -989,3 +1063,91 @@ never updated (`party_site_pages_fixed`). The application may select and
 insert both, delete pages, and update the site's provider columns; no command
 writes them: the operator binds a site with `bindPartySite`. Tenancy-keyed
 with the restrictive policy.
+
+## The business's own site (20261018020000, R6 part 1)
+
+The business's own site is its one `party_sites` row with no party, bound to
+the business itself (decision R6-S2-20261018). Sites and pages are keyed by
+`holder`, kept equal to `coalesce(party_id, business_id)` by a trigger (`party_site_holder`) and a check: the primary key is
+`(business_id, holder)` and a page's site key names it. No client takes the
+business's identity (`clients_not_the_business`), and no page names it as a
+party (`party_site_pages_not_the_business`), so the two holders never meet.
+
+`live_corrections.party_id` is null for a correction on the business's own
+site. The insert reads the task's client in its own statement: a task with no
+client stores a request only on a page of the business's own site, and a
+client's task only on its client's. The grant filter reaches a correction
+with no party only through a business-wide grant, so a party-scoped grant,
+even one naming the business's identity, reaches none of it. The freeze
+functions (`party_site_under_correction`, `party_site_pages_held`) judge
+either holder.
+
+## Single-operator Launch (20261018050000, R5)
+
+`business_settings` gains `single_operator_mode` (boolean, off), written only
+by `settings.set_single_operator`, which refuses turning it on
+(`SINGLE_OPERATOR_REFUSED`) unless the business has exactly one operator: an
+active membership in the owner, admin or member role. The migration adds the
+row to every business that has settings; `installBusinessSettings` adds it to
+a later one. `memberships_end_single_operator` runs after every membership
+insert or update: it locks the setting's row for update and turns the mode off
+once the business has any number of operators but one (a second, or none), in
+the same transaction, moving its revision. It is the one writer of a setting besides `writeBusinessSetting`.
+
+`live_corrections.single_operator_self_approval` marks an approval by the
+person who requested the correction. `live_corrections_no_self_approval` now
+admits a decision by the requester only on a marked row,
+`live_corrections_self_approval_marked` admits the mark only on such an
+approval, and `live_corrections_self_approval_kept` sets it only with its
+decision, only while the mode is on, and never changes it after.
+`live_correction.decide` writes the mark after it share-locks the mode's row,
+counts one operator, and, for the business's first such approval, finds
+Astra's approving review of the correction's exact version digest
+(`ASTRA_REVIEW_MISSING` otherwise): the latest review of that digest counts, so a
+later `changes_requested` withdraws an earlier approval.
+
+`live_correction_reviews` holds Astra's review of a correction: the version
+digest it read, its verdict (`approve` or `changes_requested`) and the saved
+review, recorded by a person with `live_correction.record_review` under
+`gate:decide`. It keeps the approval's guard order (#2063): a correction with
+no version yet (`locating`, `unlocated`, `superseded`) is refused
+`VERSION_NOT_READY`, a decided one `GATE_ALREADY_DECIDED`, a digest other than
+the correction's `VERSION_STALE`, and a page the site runner has not checked in
+the last 60 seconds `VERSION_UNVERIFIED`, read by `clock_timestamp()` in the
+insert itself. A refused review writes nothing. Insert and select only;
+tenancy-keyed with the restrictive policy.
+
+## The locate (20261019010000, #1693)
+
+A request names the task, the page as typed and the two words. Its insert
+resolves the page on the task's own holder's site only, inside the query: the
+exact address, or the address's last path segment in any case (`home` for the
+root). Exactly one match stores the row `locating`; none, several, or another
+holder's page store nothing and answer one `NOT_FOUND`.
+
+`pre_image_digest`, `base_revision`, `version_id` and `version_digest` (the
+pins) are null while `locating`, `unlocated`, or cancelled before a pin, and
+set together exactly once, by the site runner, as the row becomes `requested`
+(`core-records/src/site/locate.ts`, imported by the runner alone). Their forms
+are checked: a 40- or 64-hex commit and `sha256:` digests. `located_at` is
+written by the pin or the unlocate; `verified_at` by the pin, then only forward
+while `requested`; `locate_code` is set exactly in `unlocated` (a fixed code)
+and `superseded` (`CONTENT_DRIFTED`). `next_check_at` (null: due now) and
+`check_failures` schedule the runner's checks and move only while `locating`
+or `requested`, the time only forward. Rows from before were all pinned at
+request, so the migration sets their `located_at` to `created_at`.
+
+An approval lands only while `verified_at` is at most 60 s old by
+`clock_timestamp()` in the update that writes it. `locating` counts as open
+for the site freeze.
+
+## One correction per accepted plan (20261019120000, #1717)
+
+An agent's request stores `plan_version_id`: the plan version its pickup
+serves, read from the lease its delegation was minted with (`leases` to
+`reservations.version_id`), never from the request. A person's request leaves
+it null. `live_corrections_one_per_plan_idx` holds one row per business and
+plan version, so a second request on the same plan, from a later attempt or
+at the same moment, stores nothing and is answered the first correction: the
+second insert waits on the first's index entry, then reads the stored row.
+The column never changes once written (`live_corrections_plan_kept`).

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1710: a launch no runner takes within 15 minutes shows in plain words and Launch again ends it, retires its delegation and opens a fresh run; within the bound and once taken Launch is refused; a take and a Launch past the bound, in either lock order on separate connections, leave one open run."
+}

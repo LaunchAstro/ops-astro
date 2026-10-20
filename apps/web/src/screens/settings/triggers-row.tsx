@@ -8,14 +8,17 @@
 // to manual (`activation.change`, `settings:manage`), and adopting a newer
 // version or approving the pinned one, rolling back, revoking the approval
 // and turning off (each `automation:manage`). Rollback and revocation are two
-// controls. The server refuses anyone without the key.
+// controls. The server refuses anyone without the key. History opens the
+// activation's history under its row (`triggers-history.tsx`, #1741).
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Chip } from '@launchastro/ui';
 import type {
   ActivationView,
   AutomationDefinitionView,
 } from '../../../../../packages/core-wire/src/index.ts';
+import type { OperationsClient } from '../../operations/client.ts';
+import { ActivationHistory } from './triggers-history.tsx';
 
 /** The writes a row's controls send, each its own command. */
 export type TriggerCommand =
@@ -157,31 +160,47 @@ export function ActivationRow(props: {
   readonly activation: ActivationView;
   readonly busy: boolean;
   readonly change: Change;
+  readonly client: OperationsClient;
 }): ReactElement {
   const { definition, activation } = props;
+  const [open, setOpen] = useState(false);
   return (
-    <li
-      className="lrow lrow--page"
-      data-definition={definition.id}
-      data-activation={activation.id}
-      data-mode={activation.mode}
-      data-enabled={String(activation.enabled)}
-    >
-      <span className="lrow__main">
-        <span className="lrow__title">{definition.name}</span>
-        <span className="lrow__meta">
-          {KIND[definition.kind]} · <span data-trigger="mode">{modeOf(activation)}</span> ·{' '}
-          <span data-trigger="version">pinned to v{activation.versionNumber}</span> ·{' '}
-          {activation.enabled ? 'on' : 'off'}
+    <>
+      <li
+        className="lrow lrow--page"
+        data-definition={definition.id}
+        data-activation={activation.id}
+        data-mode={activation.mode}
+        data-enabled={String(activation.enabled)}
+      >
+        <span className="lrow__main">
+          <span className="lrow__title">{definition.name}</span>
+          <span className="lrow__meta">
+            {KIND[definition.kind]} · <span data-trigger="mode">{modeOf(activation)}</span> ·{' '}
+            <span data-trigger="version">pinned to v{activation.versionNumber}</span> ·{' '}
+            {activation.enabled ? 'on' : 'off'}
+          </span>
         </span>
-      </span>
-      <span className="lrow__trail">
-        <Chip kind="soft" tone={approvalTone(activation)}>
-          <span data-trigger="approval">{approvalOf(activation)}</span>
-        </Chip>
-        <Controls {...props} />
-      </span>
-    </li>
+        <span className="lrow__trail">
+          <Chip kind="soft" tone={approvalTone(activation)}>
+            <span data-trigger="approval">{approvalOf(activation)}</span>
+          </Chip>
+          <Controls {...props} />
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            data-control="history"
+            aria-expanded={open}
+            onClick={() => {
+              setOpen(!open);
+            }}
+          >
+            History
+          </button>
+        </span>
+      </li>
+      {open ? <ActivationHistory client={props.client} activationId={activation.id} /> : null}
+    </>
   );
 }
 
@@ -190,6 +209,7 @@ export function DefinitionRows(props: {
   readonly definition: AutomationDefinitionView;
   readonly busy: boolean;
   readonly change: Change;
+  readonly client: OperationsClient;
 }): ReactElement {
   const { definition } = props;
   if (definition.activations.length === 0) {

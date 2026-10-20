@@ -4,10 +4,16 @@
 // its pages, and a correction's proposal claimed before its first send (20261013110100), gathered with MP-14-10a's part in `restricted-calls-mandates.ts` and spread into the
 // main lists beside the rest. Apart from them to keep each under the line limit.
 
-/** Table grants: a site is moved by column grant, never deleted; a page is bound and unbound. */
+/**
+ * Table grants: a site is moved by column grant, never deleted; a page is bound and unbound; a
+ * revert ask (20261014180943) is written once and never changed or removed.
+ */
 export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'party_sites'],
   ['sid', 'party_site_pages'],
+  ['si', 'live_correction_revert_asks'],
+  // R5 (20261018050000): Astra's review of a correction, written once.
+  ['si', 'live_correction_reviews'],
   ['si', 'live_correction_proposals'],
 ];
 

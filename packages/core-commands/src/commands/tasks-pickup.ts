@@ -13,6 +13,7 @@ import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand } from './refusal.ts';
+import { delegationReaches } from './pickup-delegation.ts';
 import {
   applied,
   refused,
@@ -44,12 +45,18 @@ export interface PickupFields {
  * could name the authorising person would be a body that could name whose
  * authority the agent borrows. There is no field for it here for the same
  * reason there is no field for `actorId`.
+ *
+ * A pickup sent under a delegation `credential` also answers to it, last
+ * (`delegationReaches`): the worker claims only on the task its own
+ * delegation names, and a revocation committed before the claim is judged
+ * refuses it (ROUTE1905, S2113-1).
  */
 export async function pickupReservation(
   tx: TenantQuery,
   collection: string,
   agentActorId: string,
   fields: PickupFields,
+  credential?: string,
 ): Promise<HandlerOutcome> {
   // An agent's pickup mints a credential, and the credential is derived under
   // the deployment's delegation key. Without one there is no credential this
@@ -69,7 +76,13 @@ export async function pickupReservation(
       ),
     );
   }
-  return await claim(tx, collection, fields, agentClaimant(agentActorId));
+  const claimed = await claim(tx, collection, fields, agentClaimant(agentActorId));
+  if (credential === undefined || credential === '' || 'refusal' in claimed) return claimed;
+  const taskId = claimed.recordId;
+  return {
+    ...claimed,
+    lastCheck: async () => await delegationReaches(tx, agentActorId, credential, taskId),
+  };
 }
 
 /**
@@ -226,8 +239,9 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
   if (picked.claimant === 'person') return common;
   return {
     ...common,
-    // An agent also makes the run's priced model calls, through the broker.
-    permittedOperations: [...common.permittedOperations, 'model.call'],
+    // An agent also makes the run's priced model calls, through the broker,
+    // and ends its own run on what only it sees (#1623 R1).
+    permittedOperations: [...common.permittedOperations, 'model.call', 'run.end'],
     // In the clear only in this answer. The delegation stores its digest and
     // the register keeps this detail with the credential nulled
     // (`agent-envelope.ts`, `storable`). A replay of this pickup, after the

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "preference saves over the composed API: after the repair of an overtaken newest save goes unanswered, retrying that newest choice stores it rather than replaying the lost first save's success"
+}

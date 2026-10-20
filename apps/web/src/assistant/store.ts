@@ -22,6 +22,9 @@ import {
 
 type Move = (state: AssistantState) => AssistantState;
 
+/** An answered reply: its message id, its words, and its targets, unchecked until read. */
+type Reply = { readonly messageId: string; readonly body: string; readonly targets?: unknown };
+
 export interface Store {
   readonly state: AssistantState;
   readonly update: (move: Move) => void;
@@ -37,11 +40,12 @@ export interface Store {
   ) => string;
   /**
    * An agent's answer as the tab's newest line: a task proposal it ends in
-   * drawn as a card, its line carrying the reply's message id for the click.
+   * drawn as a card, its line carrying the reply's message id for the click,
+   * and an edit in a chat on no task given the reply's targets to pick from.
    */
   readonly answer: (
     key: string,
-    reply: { readonly messageId: string; readonly body: string },
+    reply: Reply,
     after?: string,
     cites?: readonly AssistantCite[],
   ) => void;
@@ -81,13 +85,16 @@ export function useStore(start: () => AssistantState = initial): Store {
       count.current += 1;
       const id = `${role}-${String(count.current)}`;
       const into = keyIn(latest.current, key);
-      update((current) => placed(said(current, into, { id, role, body, cites }), into, after));
+      update((current) =>
+        placed(said(current, into, { id, role, body, cites }, after), into, after),
+      );
       return id;
     },
     answer: (key, reply, after, cites = []) => {
       const into = keyIn(latest.current, key);
       const chat = latest.current.chats.find((each) => each.key === into);
-      const line = replyLine(reply.body, chat !== undefined && taskOf(chat) !== null);
+      const onTask = chat !== undefined && taskOf(chat) !== null;
+      const line = replyLine(reply.body, onTask, reply.targets);
       count.current += 1;
       const id =
         line.proposal === undefined
@@ -124,7 +131,7 @@ export function answersTo(
     line: (key, role, words, _after, cites) => store.line(key, role, words, question, cites),
     plan: (key, words, offer) => store.plan(key, words, offer, question),
     answer: (key, reply, _after, cites) => {
-      keepBaseline(view.grantKey, reply, baseline);
+      keepBaseline(view, reply, baseline);
       store.answer(key, reply, question, cites);
     },
   };

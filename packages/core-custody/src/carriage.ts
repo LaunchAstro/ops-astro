@@ -28,6 +28,10 @@ import type { Outbound, OutboundRequest } from './egress.ts';
 export const SEND_WINDOW_MS = 3_000;
 /** The function takes the first sealed accept within this of its offer, or releases the call. */
 export const ACCEPT_WINDOW_MS = 5_000;
+/** The plan holder's prepare bound (`PREPARE_BOUND_MS`): the agent waits this long before it accepts. */
+export const PLAN_PREPARE_MS = 30_000;
+/** A plan call's accept window: the accept window and the prepare before it. */
+export const PLAN_ACCEPT_WINDOW_MS: number = ACCEPT_WINDOW_MS + PLAN_PREPARE_MS;
 /** A seal is good for this long after it is made: replay outside a call's life is refused. */
 export const SEAL_LIFE_MS = 30_000;
 /** After `started`, this long with no piece, `working` or answer and the call is held. */

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent task update whose delegating write grant was revoked, and a task create whose write grant expired, while each waited on a row lock are refused and write nothing"
+}

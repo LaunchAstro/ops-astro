@@ -31,6 +31,11 @@
 // administrator's invitation, made or resent, also asks `access:manage`:
 // without it the role is not offered and such a resend is not drawn.
 // Each section has its own outcome line and holds one act at a time.
+//
+// API-2's agent credential (U18) is its own section, drawn only when
+// `session.capabilities` says the session holds `credential:write`
+// (`access/credential.tsx`). A business or person switch answers that read
+// loading, so the section goes and its secret and what it made go with it.
 
 import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
@@ -43,6 +48,7 @@ import type {
   PersonView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import { AgentCredential, holdsCredentialWrite } from './access/credential.tsx';
 import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx';
 import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
@@ -241,6 +247,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
           </div>
         )}
       </RecordState>
+      {holdsCredentialWrite(capabilities.state) ? <AgentCredential client={client} /> : null}
       {holdsAccess(capabilities.state, 'share') ? (
         <InviteSection
           client={client}

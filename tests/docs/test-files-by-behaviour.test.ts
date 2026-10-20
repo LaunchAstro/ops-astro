@@ -335,6 +335,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
+    'apps/site-runner/main.ts',
+    "the site runner's launchd entry point (deploy/m5/ops-astro-site-runner.plist); nothing imports an entry point but its tests",
+  ],
+  [
     'apps/local-agent/stack.ts',
     'the `pnpm local-agent` entry point (package.json); nothing imports an entry point but its tests',
   ],
@@ -357,6 +361,14 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
   [
     'apps/model-agent/main.ts',
     'the model agent process entry (`pnpm model-agent`), started by launchd rather than imported',
+  ],
+  [
+    'apps/trace-export/main.ts',
+    'the trace export process entry (deploy/m5/ops-astro-trace-export.plist), started by launchd rather than imported',
+  ],
+  [
+    'apps/automations/sweep.ts',
+    'the scheduled occurrence sweep entry (`pnpm automations:sweep`), started by launchd rather than imported',
   ],
   [
     'packages/core-records/src/identity/identifier-resolution.ts',

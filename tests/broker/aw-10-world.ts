@@ -141,6 +141,16 @@ export async function dropped(
   await room(on, work);
   world.provider.mode(mode);
   const result = await callIn(on, work, with_);
+  // #1623 R1 (B2): a call whose own stop ended the attempt has recorded its outcome, and an
+  // ended attempt hands nothing back.
+  const ended = await rows(
+    on,
+    `select 1 from public.run_outcomes o
+       join public.attempts a on a.business_id = o.business_id and a.id = o.attempt_id
+      where o.business_id = $1 and a.lease_id = $2`,
+    [on.business, work.picked['leaseId']],
+  );
+  if (ended.length > 0) return { work, result };
   const cause = 'cause' in result ? result.cause : null;
   // A failure that is no drop is handed back as failed: the worker names no cause it lacks.
   const body = {
