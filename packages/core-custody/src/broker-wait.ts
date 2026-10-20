@@ -105,7 +105,10 @@ async function endAtLastAsk(tx: TenantQuery, stop: BudgetStop): Promise<void> {
  * abandoned at its spend to date, its open calls counted at their maximum (each
  * gives back what it did not spend when it ends, `broker-give-back.ts`), the
  * rest back to the envelope. A hold already classified is left as it is; one
- * with a step's cost unknown stays held for a person's outcome. The reserve
+ * with an attempt still open, marked or observed (its effect may have applied
+ * and awaits observation) or its cost unknown, stays held for that cost to be
+ * recorded; a picked-up attempt that never marked is `dispatched` too, and
+ * holds nothing back (`pickup.ts`). The reserve
  * holds the envelope's row from before the task (`lockFacts`).
  */
 async function endHold(tx: TenantQuery, stop: BudgetStop): Promise<void> {
@@ -124,7 +127,8 @@ async function endHold(tx: TenantQuery, stop: BudgetStop): Promise<void> {
         where r.business_id = $1 and r.id = $2 and r.state = 'held'
           and not exists (select 1 from public.attempts a
                            where a.business_id = r.business_id and a.reservation_id = r.id
-                             and a.state = 'liability_unknown')
+                             and a.state not in ('settled', 'abandoned')
+                             and (a.dispatch_marker or a.observed or a.state = 'liability_unknown'))
        returning r.envelope_id, r.held_minor
      ), envelope as (
        update public.task_envelopes env
