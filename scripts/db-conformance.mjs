@@ -65,6 +65,8 @@
 //                 the share runs in that many lanes at once, one suite at a
 //                 time on each server (#1753). Each server must be a different
 //                 cluster; the runner refuses two URLs that reach the same one.
+//                 A lane URL is its server's owner: a suite gets it as both
+//                 DATABASE_URL and DATABASE_ADMIN_URL.
 //                 FIXTURE_PG_CONTAINERS names each server's container, in the
 //                 same order. Unset, DATABASE_URL is the one lane.
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
@@ -422,10 +424,17 @@ const readReport = (reportPath, suite, part) => {
  * number that no suite owned; running them one at a time is what gives each
  * path a transaction count of its own.
  */
-/** A suite's environment on its lane: that lane's server, and its container for T4a's clone. */
+/**
+ * A suite's environment on its lane: that lane's server, and its container for
+ * T4a's clone. A lane URL is its server's owner, as the template build takes
+ * it, so it is the suite's admin URL too: fixtures read DATABASE_ADMIN_URL
+ * first (tests/support/fresh-database.ts), and one naming another lane's
+ * server would leave this lane's counter still.
+ */
 const laneEnv = (lane, part) => ({
   ...process.env,
   DATABASE_URL: lane.url,
+  ...(laneUrls.length === 0 ? {} : { DATABASE_ADMIN_URL: lane.url }),
   ...(lane.container === undefined ? {} : { FIXTURE_PG_CONTAINER: lane.container }),
   CI: 'true',
   SUITE_PART: part ?? '',
