@@ -17,7 +17,7 @@ import { useSignedInName } from '../../app-state.ts';
 import { Avatar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
-import { holding, useHeldOperations, type Held } from './held-operations.ts';
+import { holding, useHeldOperations, useHoldTaskRead, type Held } from './held-operations.ts';
 
 const loggedOn = (at: string): string =>
   new Date(at).toLocaleDateString('en-AU', {
@@ -49,16 +49,23 @@ function NoteBox(props: {
 }
 
 /**
- * One held note per entry: the same words sent again after a lost answer go
- * under the held id; other words replace it, so a note typed back later is a
- * new save, never a replay of an earlier one's stored answer.
+ * One held note per entry: the same words sent again over the same note, after
+ * a lost answer, go under the held id; other words, or a note read back changed
+ * since, replace it, so a note typed back later is a new save, never a replay
+ * of an earlier one's stored answer.
  */
-function noteHold(held: Held, body: { entryId: string; note: string }, mint: () => string) {
+function noteHold(
+  held: Held,
+  body: { entryId: string; note: string },
+  over: string,
+  mint: () => string,
+) {
   const slot = `time.set_note ${body.entryId}`;
   const words = `${slot} words`;
-  const id = held[words] === body.note ? (held[slot] ?? mint()) : mint();
+  const said = JSON.stringify([over, body.note]);
+  const id = held[words] === said ? (held[slot] ?? mint()) : mint();
   held[slot] = id;
-  held[words] = body.note;
+  held[words] = said;
   const settle = (kind: string): void => {
     if (kind === 'unknown' || held[slot] !== id) return;
     held[slot] = undefined;
@@ -76,6 +83,8 @@ function EntryNote(props: {
   const { entry } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const held = useHeldOperations();
+  // The save's reread keeps the page drawn while the box is open (#1455).
+  useHoldTaskRead(draft !== null);
   const open = (event: KeyboardEvent<HTMLSpanElement>): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
@@ -86,7 +95,7 @@ function EntryNote(props: {
     if (event.key !== 'Enter' || draft === null) return;
     event.preventDefault();
     const body = { entryId: entry.id, note: draft };
-    const hold = noteHold(held, body, () => props.client.newOperationId());
+    const hold = noteHold(held, body, entry.note, () => props.client.newOperationId());
     props.run(
       () => props.client.mutate('time.set_note', body, { operationId: hold.id }),
       (settlement) => {
