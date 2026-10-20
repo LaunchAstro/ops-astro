@@ -48,6 +48,8 @@ const EMPTY: readonly CommandName[] = [
   'agent.mine',
   // The corrections the admin's run:write and task:read reach (#1694): no operand.
   'live_correction.list',
+  // A client's own reviews under review:read: no operand.
+  'review.client_list',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {

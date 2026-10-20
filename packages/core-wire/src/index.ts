@@ -291,10 +291,10 @@ export {
   type WorkerEndCode,
 } from './run-outcomes.ts';
 export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';
-// What the review reads answer (C35, #2011).
 export type {
   ReviewCaptureView,
   ReviewPictureResult,
   ReviewReadResult,
   WidthDifference,
 } from './views-review.ts';
+export type * from './views-review-client.ts';

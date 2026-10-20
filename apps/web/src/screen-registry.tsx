@@ -32,6 +32,7 @@ import { MapsScreen } from './screens/Maps.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
 import { ReviewWorkspaceScreen } from './screens/review/ReviewWorkspace.tsx';
+import { ClientReviewsScreen } from './screens/review/ClientReviews.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
@@ -220,6 +221,7 @@ export const SCREENS: {
       {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
     />
   ),
+  'portal:reviews': (c) => <ClientReviewsScreen client={c.client} grantKey={c.grantKey} />,
   'agency:task-unnamed': () => <TaskUnnamed />,
   'agency:todos': (context) => (
     <TodosScreen
