@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the runner re-runs an untouched suite once on a merge group and logs its pass as timing, blocks a second failure, never re-runs a touched suite or a failure no test owns, and leaves a quarantined untouched suite out, against fixture suites in disposable databases"
+}

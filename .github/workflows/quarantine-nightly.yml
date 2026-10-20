@@ -1,0 +1,88 @@
+name: quarantine nightly
+
+# The timing-failure rule (register item 50a, owner, 18 October 2026; #1857):
+# each suite .github/test-quarantine.json holds out of the merge group runs
+# here each night, on the required job's Postgres 17, until its ticket closes
+# or its entry expires (scripts/timing-rule.ts). No required check names it,
+# and nothing waits on it. A failed night is added to each listed suite's
+# ticket. Actions are pinned by commit and the image by digest, as in ci.yml.
+
+on:
+  # 03:30 in Sydney under daylight saving, after the look-ahead. Schedules run from main only.
+  schedule:
+    - cron: '30 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quarantine-nightly
+  cancel-in-progress: false
+
+jobs:
+  quarantined:
+    name: quarantined suites, nightly (not required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        # The same digest and throwaway password as ci.yml's `database conformance`.
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # It reads each entry's ticket with no token, as ci.yml's database shards do.
+      - name: The suites the quarantine holds out of the merge group today
+        run: node scripts/timing-rule.ts prepare --nightly --out "$RUNNER_TEMP/timing-rule.json"
+      - name: Each of them against Postgres 17, with no re-run
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: node scripts/db-conformance.mjs --quarantined --timing-rule "$RUNNER_TEMP/timing-rule.json"
+
+  report:
+    # The only job here that may write anything, and only issues: a comment on
+    # each listed suite's ticket while that ticket is open.
+    name: quarantine nightly failure reported
+    needs: [quarantined]
+    # Any outcome but success: a run that hits its timeout is cancelled, not failed.
+    if: always() && needs.quarantined.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Add this night to each open ticket the quarantine names
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for ticket in $(jq -r '.tests[].ticket | select(type == "number")' .github/test-quarantine.json); do
+            if [ "$(gh issue view "$ticket" --json state --jq .state)" = OPEN ]; then
+              gh issue comment "$ticket" --body "The nightly run of quarantined suites failed: $RUN_URL"
+            fi
+          done
