@@ -12,7 +12,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
-import { grantTo, type Member } from './fixture.ts';
+import { addClient, grantTo, type Member } from './fixture.ts';
 import { agentWorld, codeOf, detailOf, type AgentWorld } from './agent-fixture.ts';
 import { WHOLE, timeWorld, type TimeWorld } from './time-world.ts';
 
@@ -96,10 +96,42 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another business', 
   });
 });
 
+/** A new task of Alpha's on a stored client `clientId`, set through `task.set_party`. */
+async function onClient(clientId: string, title: string): Promise<string> {
+  await addClient(w.db.app, w.alpha, clientId, w.ada);
+  const taskId = await w.fresh(w.alpha, w.ada, title);
+  const [row] = await w.db.admin.execute<{ readonly revision: number }>(
+    'select revision::int as revision from public.records where id = $1',
+    [taskId],
+  );
+  const party = await w.as(w.alpha, w.ada, {
+    command: 'task.set_party',
+    recordId: taskId,
+    expectedRevision: row?.revision,
+    fields: { client: clientId },
+  });
+  if (isCommandRefusal(party)) throw new Error(`set_party refused ${party.code}`);
+  return taskId;
+}
+
+/** The task's client, as the record's spine holds it. */
+const clientLinkOf = async (taskId: string): Promise<string | null> =>
+  (
+    await w.db.admin.execute<{ readonly client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [taskId],
+    )
+  )[0]?.client ?? null;
+
 describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another client', () => {
-  it('a client A editor tags client A’s task, and never lists or touches client B’s', async () => {
-    const taskA = await w.fresh(w.alpha, w.ada, 'client A');
-    const taskB = await w.fresh(w.alpha, w.ada, 'client B');
+  it('a client A editor tags client A’s task, and never lists or touches stored client B’s', async () => {
+    const [clientA, clientB] = [randomUUID(), randomUUID()];
+    const taskA = await onClient(clientA, 'client A');
+    const taskB = await onClient(clientB, 'client B');
+    // A real crossing: two stored clients, both linked, not the same one.
+    const [linkA, linkB] = [await clientLinkOf(taskA), await clientLinkOf(taskB)];
+    expect([linkA, linkB]).not.toContain(null);
+    expect(linkA).not.toBe(linkB);
     const shared = tagIdOf(await w.as(w.alpha, w.ada, { command: 'tag.create', name: 'Shared' }));
     // The business test above made the canary's upper case here; this one is its own.
     const secret = tagIdOf(
@@ -107,8 +139,8 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another client', ()
     );
     await w.as(w.alpha, w.ada, { command: 'task.add_tag', recordId: taskB, tagId: secret });
     await w.db.app.withBusiness(w.alpha, async (tx) => {
-      await grantTo(tx, w.clientA, 'read', { kind: 'record', id: taskA });
-      await grantTo(tx, w.clientA, 'write', { kind: 'record', id: taskA });
+      await grantTo(tx, w.clientA, 'read', { kind: 'party', id: clientA });
+      await grantTo(tx, w.clientA, 'write', { kind: 'party', id: clientA });
     });
     const add = await w.as(w.alpha, w.clientA, {
       command: 'task.add_tag',
