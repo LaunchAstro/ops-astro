@@ -30,6 +30,49 @@ function parity(copy: string) {
     timeout: 60_000,
   });
 }
+function refused(copy: string): unknown {
+  const script = `
+    import { askedAgain } from './packages/core-commands/src/commands/prepare.ts';
+    import { declarationOf } from './packages/core-wire/src/index.ts';
+    const tx = { businessId: '00000000-0000-4000-8000-000000000001', query: async () => [] };
+    const session = { personId: '00000000-0000-4000-8000-000000000002', actorId: '00000000-0000-4000-8000-000000000003', roleKey: 'member' };
+    const result = await askedAgain(tx, { session, declaration: declarationOf('task.update') }, '00000000-0000-4000-8000-000000000004');
+    process.stdout.write(JSON.stringify({ code: result?.refusal?.code ?? null }));
+  `;
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: copy,
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  return JSON.parse(run.stdout).code;
+}
+
+test(
+  'parity rejects write enforcement removed after the grant query',
+  () =>
+    withCopy((copy) => {
+      assert.equal(parity(copy).status, 0, 'control: unchanged parity passes');
+      assert.equal(
+        refused(copy),
+        'SCOPE_NOT_GRANTED',
+        'control: no grants refuses the actual helper',
+      );
+      const path = join(copy, 'packages/core-commands/src/commands/prepare.ts');
+      const original = readFileSync(path, 'utf8');
+      const mutant = original.replace('if (authorised.ok) return {};', 'if (true) return {};');
+      assert.notEqual(mutant, original, 'the mutation applied');
+      writeFileSync(path, mutant);
+      assert.equal(refused(copy), null, 'the mutant admits a caller holding no grants');
+      const result = parity(copy);
+      assert.equal(
+        result.status,
+        1,
+        `Parity still passes with write enforcement removed: ${result.stderr}`,
+      );
+    }),
+  300_000,
+);
+
 const u16 = (n: number) => Buffer.from([n >> 8, n & 255]);
 function hello(name: string, padding: number): Buffer {
   const host = Buffer.from(name);

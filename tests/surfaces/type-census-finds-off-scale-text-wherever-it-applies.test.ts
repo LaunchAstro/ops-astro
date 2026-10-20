@@ -2,8 +2,9 @@
 //
 // The type census finds off-scale text wherever the browser would apply it:
 // an earlier important literal font that a later scale token cannot override,
-// a quoted inline style key, and an inline style after `//` inside a string.
-// Each planted case must fail the census by name.
+// a quoted inline style key, an inline style after `//` inside a string, text
+// a keyframe animates, and a property or at-rule name spelled with a CSS
+// escape. Each planted case must fail the census by name.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -58,5 +59,28 @@ describe('type census finds hidden off-scale text', () => {
     const out = census(`.x {\n  ${BODY}\n}\n`, tsx);
     expect(out.status, 'the // inside a string hid the rest of the line').toBe(1);
     expect(out.stderr).toContain('fontSize');
+  });
+
+  it('refuses off-scale text a keyframe animates', () => {
+    const out = census(
+      `.x {\n  ${BODY}\n  animation: grow 1s;\n}\n@keyframes grow {\n  from { font-size: 99px; font-weight: 900; letter-spacing: 9px; }\n}\n`,
+    );
+    expect(out.status, 'the keyframe text passed unread').toBe(1);
+    expect(out.stderr).toContain('font-size: 99px');
+    expect(out.stderr).toContain('letter-spacing: 9px');
+  });
+
+  it('refuses off-scale text behind an escaped property name', () => {
+    const out = census(`.x {\n  ${BODY}\n  f\\6fnt-size: 99px;\n}\n`);
+    expect(out.status, 'the escaped font-size passed unread').toBe(1);
+    expect(out.stderr).toContain('font-size: 99px');
+  });
+
+  it('refuses off-scale text inside an escaped conditional at-rule', () => {
+    const out = census(
+      `@m\\65 dia (min-width: 0) {\n  .x {\n    ${BODY}\n    font-size: 99px;\n  }\n}\n`,
+    );
+    expect(out.status, 'the escaped media block was skipped whole').toBe(1);
+    expect(out.stderr).toContain('font-size: 99px');
   });
 });
