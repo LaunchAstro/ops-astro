@@ -8,8 +8,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
+import type { Member } from '../commands/fixture.ts';
 import { c57World, type C57World } from './c57-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -53,6 +56,38 @@ const auditOf = async (since: string) =>
       [w.world.business, since],
     )
   ).map((row) => [row.command, row.refusal_code]);
+
+/**
+ * Each call on a connection of its own (`max: 1`), all opened and on their backends before any
+ * call is sent, so the calls race in Postgres rather than queueing on the world's one-connection
+ * pool. Answers with the backend each call ran on.
+ */
+const atOnce = async (calls: readonly (readonly [Member, Readonly<Record<string, unknown>>])[]) => {
+  const own = calls.map(() => connect(w.world.db.appUrl, { max: 1 }));
+  try {
+    const pids = await Promise.all(
+      own.map(async (db) => {
+        const [row] = await db.withBusiness(
+          w.world.business,
+          async (tx) => await tx.query<{ pid: number }>('select pg_backend_pid() as pid'),
+        );
+        return row!.pid;
+      }),
+    );
+    const answers = await Promise.all(
+      calls.map(
+        async ([member, body], i) =>
+          await executeCommand(own[i]!, w.world.business, member.presented, 'api', {
+            operationId: randomUUID(),
+            ...body,
+          } as never),
+      ),
+    );
+    return { answers, pids };
+  } finally {
+    await Promise.all(own.map(async (db) => await db.close()));
+  }
+};
 
 describe.skipIf(serverUrl === undefined)('C57 deciding a change request', () => {
   it('C57 refusal proposal:write', async () => {
@@ -130,12 +165,11 @@ describe.skipIf(serverUrl === undefined)('C57 deciding a change request', () => 
   });
 
   it('C57 two decisions or two filings at once leave one', async () => {
-    // Each call is its own transaction on its own pooled connection.
     const id = await filed();
-    const decisions = await Promise.all([
-      w.decide(w.ava, id, 'approve'),
-      w.decide(w.ava, id, 'refuse'),
-    ]);
+    const decide = (decision: string) =>
+      [w.ava, { command: 'review.decide_change', changeRequestId: id, decision }] as const;
+    const { answers: decisions, pids } = await atOnce([decide('approve'), decide('refuse')]);
+    expect(new Set(pids).size, 'two decisions on two backends').toBe(2);
     expect(decisions.map((answer) => codeOf(answer)).toSorted()).toStrictEqual([
       'CHANGE_REQUEST_ALREADY_DECIDED',
       'not-a-refusal',
@@ -144,7 +178,17 @@ describe.skipIf(serverUrl === undefined)('C57 deciding a change request', () => 
     expect((await stateOf(id))?.state).toBe(won['state']);
 
     const { clientPin } = await w.pins();
-    const filings = await Promise.all([w.propose(w.ava, clientPin), w.propose(w.ben, clientPin)]);
+    const file = (member: Member) =>
+      [
+        member,
+        {
+          command: 'review.propose_change',
+          commentId: clientPin,
+          text: 'Move the heading above the photo on the phone layout',
+        },
+      ] as const;
+    const { answers: filings, pids: filingPids } = await atOnce([file(w.ava), file(w.ben)]);
+    expect(new Set(filingPids).size, 'two filings on two backends').toBe(2);
     expect(filings.map((answer) => codeOf(answer)).toSorted()).toStrictEqual([
       'CHANGE_REQUEST_ALREADY_FILED',
       'not-a-refusal',
