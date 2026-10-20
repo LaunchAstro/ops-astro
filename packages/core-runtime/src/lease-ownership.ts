@@ -17,7 +17,7 @@
 // and handback give the same reason for the same cause.
 
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
-import type { RuntimeRefusalCode } from '../../core-records/src/index.ts';
+import { delegationStandsAt, type RuntimeRefusalCode } from '../../core-records/src/index.ts';
 import { checkAuthorityAt } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -153,12 +153,15 @@ export interface LeaseRow {
   readonly delegation_id: string | null;
   readonly expired: boolean;
   readonly current_fence: string;
+  /** Its delegation and, for a pickup child, the launch's both stand at the locked instant. */
   readonly delegation_live: boolean;
+  readonly parent_delegation_id: string | null;
 }
 
 /**
  * Read under the lease lock, with expiry judged at `lockedAt`, the clock read
- * after the locks: a call that waited on them past the expiry sees it expired.
+ * after the locks: a call that waited on them past the expiry sees it expired,
+ * and one that waited past a revoke of its launch sees that (#2195).
  */
 export async function readLease(
   tx: TenantQuery,
@@ -172,8 +175,9 @@ export async function readLease(
               where business_id = l.business_id and task_id = l.task_id)::text as current_fence,
             exists (select 1 from public.delegations d
                      where d.business_id = l.business_id and d.id = l.delegation_id
-                       and d.revoked_at is null and d.settled_at is null
-                       and d.expires_at > $3::timestamptz) as delegation_live
+                       and ${delegationStandsAt('$3::timestamptz')}) as delegation_live,
+            (select d.parent_delegation_id from public.delegations d
+              where d.business_id = l.business_id and d.id = l.delegation_id) as parent_delegation_id
        from public.leases l where l.business_id = $1 and l.id = $2`,
     [tx.businessId, leaseId, lockedAt],
   );
