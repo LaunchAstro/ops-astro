@@ -7,7 +7,8 @@
 // and `conversation.set_model` and the exchange ask the same rule again. An
 // answer is kept with the client and conversation it was read for, so another
 // tab's models are never drawn here; a refused or unavailable read offers
-// nothing.
+// nothing. Models the answer names as unavailable (#2175) follow the offered
+// ones with their reason in words, for the picker to show and never offer.
 
 import { useEffect, useState } from 'react';
 import type { ConversationModelsResult } from '../../../../packages/core-wire/src/index.ts';
@@ -34,9 +35,18 @@ export function useModels(
       const answer = await client.read<ConversationModelsResult>('conversation.models', body);
       if (!current) return;
       // A refused, unavailable or malformed answer offers nothing.
-      const offered = isRefusal(answer) || isUnavailable(answer) ? undefined : answer.value.models;
+      const value = isRefusal(answer) || isUnavailable(answer) ? undefined : answer.value;
+      const offered = value?.models;
+      const shown = Array.isArray(value?.unavailable) ? value.unavailable : [];
       const models = Array.isArray(offered)
-        ? offered.map((model) => ({ id: model.id, label: model.label ?? model.id }))
+        ? [
+            ...offered.map((model) => ({ id: model.id, label: model.label ?? model.id })),
+            ...shown.map((model) => ({
+              id: model.id,
+              label: model.label ?? model.id,
+              unavailable: model.words,
+            })),
+          ]
         : NONE;
       setHeld({ client, conversationId, models });
     };
