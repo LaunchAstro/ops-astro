@@ -110,10 +110,15 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'C59 a person’s own second factor, through the API',
   () => {
-    it('C59 hostile provider: an issued factor whose QR is not SVG is refused, and the factor left there is reported', async () => {
+    it('C59 hostile provider: an issued factor whose QR is not SVG is refused, and the factor left there is removed', async () => {
       replies['POST /factors'] = json(200, {
         ...GOOD_ENROL,
         totp: { qr_code: 'data:text/html,<script>alert(1)</script>', secret: CANARY, uri: 'x' },
+      });
+      // GoTrue lists the factor it has just issued as unverified.
+      replies['GET /user'] = json(200, {
+        id: 'user-one',
+        factors: [{ id: 'factor-one', factor_type: 'totp', status: 'unverified' }],
       });
       const orphanedBefore = (await eventsFor('account.factor_orphaned')).length;
       const answer = await act('enrol', await fresh(clientD));
@@ -125,9 +130,8 @@ describe.skipIf(serverUrl === undefined)(
         outcome: 'refused',
         refusal_code: 'PROVIDER_ANSWER_INVALID',
       });
-      expect((await eventsFor('account.factor_orphaned')).slice(orphanedBefore)).toEqual([
-        { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
-      ]);
+      expect(seen.map((request) => request.route)).toContain('DELETE /factors/factor-one');
+      expect((await eventsFor('account.factor_orphaned')).slice(orphanedBefore)).toEqual([]);
     });
   },
 );
