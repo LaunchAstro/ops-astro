@@ -134,8 +134,16 @@ corrections. It never treats a correction's claim as a capture's.
 
 The fence's pool for captures holds the configured site's pages only when
 that site is the business's own (`reviewPool`, TR-P-1). A runner configured
-for a client's site captures nothing, and no other page is reachable until
-the pool's reviews are recorded (#2018). A refused page lands nothing and
+for a client's site captures none of them. For a review of a client's page the
+runner reads the rest of the pool after the claim, each time (#2018): that page
+alone while the client's site still binds it, and the identities of the
+closed pool reviews recorded for the pool version the fence runs now
+(`CAPTURE_POOL_VERSION`). The fence refuses the page
+`CAPTURE_POOL_REVIEWS_OPEN` until three distinct ones are recorded
+(`operations.record_capture_pool_review`, docs/local/API.md). A pool it
+cannot read fails the pass with nothing fetched, the lease handed back
+`failed` with `POOL_UNREAD`. Nothing is kept between captures or taken from
+the settings, so a restart reads the same rows. A refused page lands nothing and
 its lease goes back `failed` with the fence's code. A queue the captures
 cannot read fails the pass and pings no heartbeat, as the corrections' does,
 and so does a claim refused or never answered: it logs its code, lands
