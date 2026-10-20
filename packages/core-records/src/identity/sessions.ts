@@ -49,11 +49,11 @@ const LISTED = 50;
 const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
 
 /**
- * Less the sessions an ending of the login's other sessions (0063) covers:
- * first served here at or before it. Login resolution refuses those (a
- * session's sign-in is no later than its first serving plus the minute of
- * clock), so the list follows what the door serves, but for a request served
- * in the instant the ending takes to commit, which stays listed.
+ * What the door still serves. Sign-in is no later than first serving, so a
+ * session first served over the limit plus the clock minute ago is past it
+ * (its servings span at most the limit, so twice the window holds them all).
+ * An ending of the login's other sessions (0063) covers one first served at or
+ * before it: a later one may carry a sign-in stamp past the door's minute.
  */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
@@ -63,17 +63,17 @@ const SEEN = `
      and a.person_id = $2
      and a.outcome = 'resolved'
      and a.session_id is not null
-     and a.at > now() - make_interval(secs => $3)
+     and a.at > now() - make_interval(secs => 2 * $3)
      and not exists (
        select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
    group by a.session_id, l.subject
-  having not exists (
+  having min(a.at) > now() - make_interval(secs => $3)
+     and not exists (
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to(l.subject, 'UTF8')), 'hex')
           and s.kept_session is distinct from a.session_id
           and min(a.at) <= s.ended_before)
-   order by max(a.at) desc, a.session_id
-   limit $4`;
+   order by max(a.at) desc, a.session_id limit $4`;
 
 /** The person's live sessions, newest first; `current` marks the one asking. */
 export async function listSeenSessions(

@@ -97,25 +97,25 @@ function expiryOf(token: string): number | undefined {
 
 /**
  * The cookies of other sign-ins this request carries that go with its answer:
- * each whose token's `exp` has passed, and every one beyond the
- * `OTHER_SESSIONS_KEPT` with the latest `exp`, or one more when the request
- * carries no cookie of its own (a tab whose cookie went), so that it clears no
- * live cookie a request with its own would keep. A closed tab never names its
- * cookie again, and the cookies of tabs opened faster than their tokens run
- * out would otherwise ride on every request until the headers are too large to
- * answer (431), after which no request reaches the door to clear them. A tab
- * whose cookie goes signs in again. The claim is read unverified because all it
- * decides is which of the cookies this request carries are cleared.
+ * each whose token's `exp` has passed, and each outside the newest
+ * `OTHER_SESSIONS_KEPT` + 1 by `exp`, its own included in that count but never
+ * cleared. Every request ranks the same cookies the same way, so two tabs
+ * answered at once clear the same cookie, never each other's. A closed tab
+ * never names its cookie again, and the cookies of tabs opened faster than
+ * their tokens run out would otherwise ride on every request until the headers
+ * are too large to answer (431), after which no request reaches the door to
+ * clear them. A tab whose cookie goes signs in again. The claim is read
+ * unverified because all it decides is which of the cookies this request
+ * carries are cleared.
  */
 export function staleSessions(request: Context['req'], now: number): string[] {
   const named = cookieNameFor(namedSession(request) ?? '');
-  const held = sessionCookies(request);
-  const kept = OTHER_SESSIONS_KEPT + (held.some(([name]) => name === named) ? 0 : 1);
-  const others = held
-    .filter(([name]) => name !== named)
+  const ranked = sessionCookies(request)
     .map(([name, token]) => [name, expiryOf(token)] as const)
-    .toSorted(([, a = -Infinity], [, b = -Infinity]) => (a === b ? 0 : b - a));
-  const stale = others.filter(([, exp], rank) => rank >= kept || (exp !== undefined && exp < now));
+    .toSorted(([x, a = -Infinity], [y, b = -Infinity]) => (a === b ? x.localeCompare(y) : b - a));
+  const stale = ranked
+    .filter(([, exp], rank) => rank > OTHER_SESSIONS_KEPT || (exp !== undefined && exp < now))
+    .filter(([name]) => name !== named);
   return [...new Set(stale.map(([name]) => name))];
 }
 

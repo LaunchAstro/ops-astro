@@ -252,7 +252,7 @@ export class OperationsClient {
     let response: Response;
     try {
       response = await this.#options.fetch(url, {
-        method: 'POST',
+        ...POST,
         headers,
         body: JSON.stringify(body),
       });
@@ -294,5 +294,7 @@ export class OperationsClient {
   }
 }
 
+// A 307 or 308 would resend the body, a factor code among them, to wherever it points.
+const POST = { method: 'POST', redirect: 'error' } as const;
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : 'The request did not reach the API.';
