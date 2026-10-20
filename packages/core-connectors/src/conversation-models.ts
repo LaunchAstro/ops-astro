@@ -14,8 +14,15 @@
 // (`apps/local-agent/gate.ts`), so it is never offered here. OpenRouter's paid
 // models (#1508) are listed for their provider, and offered only to a person
 // on the outside people list in a conversation with no client page; never the
-// default.
+// default. The owner's ChatGPT plan's models (#2175) are the route's own admit
+// list (`CHATGPT_PLAN_MODELS`, which the M5 checks a plan call against),
+// offered only to the owner where the carried deployment has the plan's route.
 
+import {
+  CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_MODELS,
+  CHATGPT_PLAN_PROVIDER,
+} from './chatgpt-plan.ts';
 import {
   LOCAL_GPT_CONVERSATION,
   LOCAL_GPT_DEFAULT_MODEL,
@@ -76,11 +83,50 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     ceilingMinor: openrouterHoldMinor(model),
     label: model.label,
   })),
+  // Named by no client's setting, so never offered on a client's conversation.
+  ...CHATGPT_PLAN_MODELS.map((id): ConversationModel => ({
+    id,
+    provider: CHATGPT_PLAN_PROVIDER,
+    reach: 'cloud',
+    egressName: null,
+    ceilingMinor: CHATGPT_PLAN_CONVERSATION.maximumMinor,
+    label: `${id} (your ChatGPT plan)`,
+  })),
 ];
 
-/** The conversation operation a provider's models answer on: OpenRouter's own, else the install's. */
-export const conversationOperationOf = (provider: string): string =>
-  provider === OPENROUTER_PROVIDER ? OPENROUTER_CONVERSATION_KEY : CONVERSATION_ANSWER.key;
+/** The conversation operation a provider's models answer on: OpenRouter's and the plan's own, else the install's. */
+export function conversationOperationOf(provider: string): string {
+  if (provider === OPENROUTER_PROVIDER) return OPENROUTER_CONVERSATION_KEY;
+  return provider === CHATGPT_PLAN_PROVIDER
+    ? CHATGPT_PLAN_CONVERSATION.key
+    : CONVERSATION_ANSWER.key;
+}
+
+/**
+ * Whether the carried deployment has the owner's plan route (#2091): the
+ * install answers on Ollama, `MODEL_BROKER_CARRIER` is set, and a route of
+ * `MODEL_BROKER_ROUTES` is the plan's. The API's composition root refuses to
+ * start on a malformed setting, so this reads only the provider of each.
+ */
+export function planRouteSet(environment: Readonly<Record<string, string | undefined>>): boolean {
+  if (environment['OPS_AGENT_PROVIDER'] !== 'ollama') return false;
+  if ((environment['MODEL_BROKER_CARRIER'] ?? '') === '') return false;
+  let routes: unknown;
+  try {
+    routes = JSON.parse(environment['MODEL_BROKER_ROUTES'] ?? '');
+  } catch {
+    return false;
+  }
+  return (
+    Array.isArray(routes) &&
+    routes.some(
+      (route: unknown) =>
+        typeof route === 'object' &&
+        route !== null &&
+        (route as Record<string, unknown>)['provider'] === CHATGPT_PLAN_PROVIDER,
+    )
+  );
+}
 
 /**
  * `OPS_OUTSIDE_MODEL_PEOPLE` as `businessId:personId` pairs, lower case, when

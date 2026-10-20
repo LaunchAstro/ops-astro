@@ -9,6 +9,7 @@
 // call always has its reply.
 
 import {
+  CHATGPT_PLAN_CONVERSATION,
   CONVERSATION_ANSWER,
   CONVERSATION_MODELS,
   conversationOperationOf,
@@ -29,6 +30,7 @@ import {
   answered,
   budgetWith,
   heldWith,
+  planHeldWith,
   refusedWith,
   releasedWith,
   type ConversationReply,
@@ -145,6 +147,7 @@ export function paidSeams(ask: PaidAsk): {
 export async function unanswered(
   result: Exclude<ModelCallResult, { readonly ok: true }>,
   reread: () => Promise<Kept | object | undefined>,
+  operation?: string,
 ): Promise<ConversationReply | null> {
   if (result.code === 'STILL_ANSWERING' || result.code === 'ANSWER_ENDED') {
     const kept = await reread();
@@ -153,6 +156,10 @@ export async function unanswered(
   if (result.code === 'CALL_RELEASED') return releasedWith(result.reason);
   if (result.code === 'LIABILITY_UNKNOWN' && 'heldMinor' in result && result.heldMinor > 0) {
     return heldWith(result.heldMinor);
+  }
+  // A plan call went out before it was held: told by what the plan answered (#2175).
+  if (result.code === 'LIABILITY_UNKNOWN' && operation === CHATGPT_PLAN_CONVERSATION.key) {
+    return planHeldWith('providerCode' in result ? result.providerCode : null);
   }
   if (result.code === 'BUDGET_UNAVAILABLE' && 'leftMinor' in result) {
     return budgetWith(result.leftMinor);

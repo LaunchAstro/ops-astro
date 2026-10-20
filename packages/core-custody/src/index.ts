@@ -52,6 +52,7 @@ export type { PaidCaller, PaidSeams } from './broker-types.ts';
 export { PLANNING_CAP_DEFAULT } from './broker-hold.ts';
 export { readPage } from './broker-task.ts';
 export { ownersOwn } from './broker-sources.ts';
+export { planHolds, type PlanAsk } from './broker-conversation-plan.ts';
 export {
   callModelForPlanning,
   readPlanningAllowance,

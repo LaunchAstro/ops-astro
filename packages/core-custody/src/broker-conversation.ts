@@ -5,13 +5,16 @@
 // version. Local routes only and unpriced: no money moves, so nothing is
 // reserved, and a cloud route is refused before anything is written (AW-03
 // egress off), save LA-1's laptop carve-out: the owner's own GPT session
-// (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
+// (`carriesLocally`), for the owner's own typed message, and the owner's
+// ChatGPT plan for his own typed message, judged again under the locks
+// before the call is written (#2175, `broker-conversation-plan.ts`). A priced planning reply takes the same checks and holds
 // against the planning budget (`broker-planning.ts`, AW-04's U10), and a paid
 // chat reply takes the held path (`broker-priced.ts`, #1508).
 
-import type { BusinessId, Database } from '../../core-records/src/index.ts';
+import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
+import { planHolds, planRoute } from './broker-conversation-plan.ts';
 import { sendingCarrier } from './broker-carrier.ts';
 import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
@@ -106,6 +109,41 @@ export function localRoute(
 }
 
 /**
+ * The route and the fields as the broker found them: the owner's plan for his
+ * own typed message only, as owner work (#2175); anything else a local route.
+ */
+function routeFor(
+  operation: ModelOperation,
+  request: ConversationCallRequest,
+  caller: ModelCaller,
+  broker: Broker,
+):
+  | { readonly ok: true; readonly route: BrokerRoute; readonly fields: readonly ResolvedField[] }
+  | { readonly ok: false; readonly code: BrokerRefusal } {
+  if (carriesOnPlan(operation)) {
+    return planRoute(operation, request.fields, caller, broker, request.plan);
+  }
+  const fields = outsideFields(request.fields);
+  const chosen = localRoute(operation, fields, caller, broker);
+  return chosen.ok ? { ...chosen, fields } : chosen;
+}
+
+/** A twin's call for the message, or a plan call's standing lost under its locks (#2175). */
+async function earlierOrLost(
+  tx: TenantQuery,
+  request: ConversationCallRequest,
+  caller: ModelCaller,
+  operation: ModelOperation,
+): Promise<ModelCallResult | undefined> {
+  const earlier = await messageCall(tx, request.messageId);
+  if (earlier !== undefined || !carriesOnPlan(operation) || request.plan === undefined) {
+    return earlier;
+  }
+  const lost = await planHolds(tx, caller.attendedByPersonId, request.plan);
+  return lost === undefined ? undefined : refused(lost);
+}
+
+/**
  * A person's unpriced model call from their own conversation, streamed only where
  * custody presents no credential the answer could echo (`sendingCarrier`). Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
@@ -125,9 +163,9 @@ export async function callModelUnpriced(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
-  const fields = outsideFields(request.fields);
-  const chosen = localRoute(operation, fields, caller, broker);
+  const chosen = routeFor(operation, request, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
+  const { fields } = chosen;
   // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
   const { route } = chosen;
@@ -136,7 +174,7 @@ export async function callModelUnpriced(
   const started = await database.withBusiness(
     businessId,
     async (tx): Promise<string | ModelCallResult> => {
-      const earlier = await messageCall(tx, request.messageId);
+      const earlier = await earlierOrLost(tx, request, caller, operation);
       if (earlier !== undefined) return earlier;
       // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
       if (await atCeiling(tx, operation, route)) {
