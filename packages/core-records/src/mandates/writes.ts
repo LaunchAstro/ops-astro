@@ -145,11 +145,102 @@ export async function insertMandate(
   return rows[0] === undefined ? null : mandateOf(rows[0]);
 }
 
+/** A mandate locked as a filing's answer, with whether it is revoked. */
+export type LockedMandate = MandateRow & { readonly revoked: boolean };
+
+/**
+ * The client's mandate this draft is bound to, locked; null when the draft is
+ * unbound. The binding names the client as well as the mandate, so a draft
+ * never reaches another client's mandate.
+ */
+export async function lockDraftMandate(
+  tx: TenantQuery,
+  clientId: string,
+  draftId: string,
+): Promise<LockedMandate | null> {
+  const rows = await tx.query<MandateDbRow & { readonly revoked: boolean }>(
+    `select ${MANDATE_COLUMNS}, m.revoked_at is not null as revoked
+       from public.standing_mandate_drafts d
+       join public.standing_mandates m
+         on m.business_id = d.business_id and m.client_id = d.client_id and m.id = d.mandate_id
+      where d.business_id = (select public.app_business_id()) and d.client_id = $1
+        and d.draft_id = $2
+      for no key update of m`,
+    [clientId, draftId],
+  );
+  const row = rows[0];
+  return row === undefined ? null : { ...mandateOf(row), revoked: row.revoked };
+}
+
+/**
+ * The client's live mandate identical to this filing, locked; null when there
+ * is none. `standing_mandate_live_filing` judges identity in its own
+ * statement, after the caller's client lock, so it sees every filing that
+ * committed first; the lock re-checks the row is still live after its wait.
+ */
+export async function lockLiveFiling(
+  tx: TenantQuery,
+  filing: MandateFiling,
+): Promise<MandateRow | null> {
+  const rows = await tx.query<MandateDbRow>(
+    `with found as (
+       select public.standing_mandate_live_filing((select public.app_business_id()), $1::uuid,
+                $2::text[], $3::boolean, $4::bigint, $5::text, $6::timestamptz, $7::text, $8::text)
+                as id)
+     select ${MANDATE_COLUMNS}
+       from found join public.standing_mandates m on m.id = found.id
+      where m.business_id = (select public.app_business_id()) and m.client_id = $1
+        and m.revoked_at is null and m.expires_at > clock_timestamp()
+      for no key update of m`,
+    [
+      filing.clientId,
+      filing.classes,
+      filing.refuses,
+      filing.ceiling?.amountMinor ?? null,
+      filing.ceiling?.currency ?? null,
+      filing.expiresAt,
+      filing.label,
+      filing.graduationClass,
+    ],
+  );
+  return rows[0] === undefined ? null : mandateOf(rows[0]);
+}
+
+/** Binds a draft of the client to the mandate its filing was answered with. */
+export async function bindDraft(
+  tx: TenantQuery,
+  clientId: string,
+  draftId: string,
+  mandateId: string,
+): Promise<void> {
+  await tx.query(
+    `insert into public.standing_mandate_drafts (business_id, client_id, draft_id, mandate_id)
+     values ((select public.app_business_id()), $1, $2, $3)`,
+    [clientId, draftId, mandateId],
+  );
+}
+
+/** Whether the client's mandate is unrevoked and unexpired at this clock, locked. */
+export async function mandateStillLive(
+  tx: TenantQuery,
+  clientId: string,
+  mandateId: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select m.id from public.standing_mandates m
+      where m.business_id = (select public.app_business_id()) and m.client_id = $1 and m.id = $2
+        and m.revoked_at is null and m.expires_at > clock_timestamp()
+      for no key update`,
+    [clientId, mandateId],
+  );
+  return rows.length === 1;
+}
+
 /** The mandate, locked for its revocation; null when it is not this business's. */
 export async function lockMandate(
   tx: TenantQuery,
   mandateId: string,
-): Promise<(MandateRow & { readonly revoked: boolean }) | null> {
+): Promise<LockedMandate | null> {
   const rows = await tx.query<MandateDbRow & { readonly revoked: boolean }>(
     `select ${MANDATE_COLUMNS}, m.revoked_at is not null as revoked
        from public.standing_mandates m

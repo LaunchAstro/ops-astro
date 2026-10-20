@@ -5,17 +5,26 @@
 // value it needs is set: an empty press moves focus to the first empty field
 // and files nothing (AG-C54). The sentence is the mandate's label; the classes
 // come from the client's scope list, and a refusal carries no ceiling.
+//
+// What is typed lives in the region's store (`graduation-drafts.ts`), above
+// its read: each form draws its own client's slot and writes back to it, so
+// an outage that takes the forms off the page gives them back as they were.
 
-import { useRef, useState, type ReactElement, type RefObject } from 'react';
+import { useRef, type ReactElement, type RefObject } from 'react';
+import type { MandateDraft, MandateEdit, Promotion, PromotionEdit } from './graduation-drafts.ts';
 
 /** The business currency record is not built; ceilings are Australian dollars. */
 export const CURRENCY = 'AUD';
 
-/** Dollars and cents as typed, to whole cents; anything else is not a ceiling. */
+/**
+ * Dollars and cents as typed, to whole cents, a leading $ and thousands commas
+ * allowed ($1,000.50); anything else is not a ceiling.
+ */
 export function centsOf(typed: string): number | null {
-  const match = /^(\d{1,12})(?:\.(\d{1,2}))?$/u.exec(typed.trim());
+  const match = /^\$?(\d{1,3}(?:,\d{3})+|\d{1,12})(?:\.(\d{1,2}))?$/u.exec(typed.trim());
   if (match === null) return null;
-  return Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
+  const dollars = Number(String(match[1]).replaceAll(',', ''));
+  return dollars * 100 + Number((match[2] ?? '').padEnd(2, '0'));
 }
 
 /** A date as typed, to the end of that day where the reader is. */
@@ -44,6 +53,8 @@ function CeilingAndExpiry(props: {
   readonly setCeiling: (value: string) => void;
   readonly ceilingRef: RefObject<HTMLInputElement | null>;
   readonly noCeiling?: boolean;
+  /** Locked while a write is in flight, so an answer clearing the form clears nothing newer. */
+  readonly locked: boolean;
   readonly expiry: string;
   readonly setExpiry: (value: string) => void;
   readonly expiryRef: RefObject<HTMLInputElement | null>;
@@ -57,7 +68,7 @@ function CeilingAndExpiry(props: {
         inputMode="decimal"
         aria-label={`Value ceiling${props.what}, in dollars`}
         placeholder="Ceiling, $"
-        disabled={props.noCeiling === true}
+        disabled={props.locked || props.noCeiling === true}
         value={props.noCeiling === true ? '' : props.ceiling}
         onChange={(event) => props.setCeiling(event.target.value)}
         {...{ [`data-${props.marks}-ceiling`]: '' }}
@@ -67,6 +78,7 @@ function CeilingAndExpiry(props: {
         className="connnote__field"
         type="date"
         aria-label={`Expiry${props.what}`}
+        disabled={props.locked}
         value={props.expiry}
         onChange={(event) => props.setExpiry(event.target.value)}
         {...{ [`data-${props.marks}-expiry`]: '' }}
@@ -75,7 +87,11 @@ function CeilingAndExpiry(props: {
   );
 }
 
-function useCeilingAndExpiry(): {
+/** The ceiling and expiry as the store holds them, with the fields that draw them. */
+function useCeilingAndExpiry(
+  typed: { readonly ceiling: string; readonly expiry: string },
+  edit: (change: { ceiling?: string; expiry?: string }) => void,
+): {
   readonly ceiling: string;
   readonly setCeiling: (value: string) => void;
   readonly ceilingRef: RefObject<HTMLInputElement | null>;
@@ -83,21 +99,28 @@ function useCeilingAndExpiry(): {
   readonly setExpiry: (value: string) => void;
   readonly expiryRef: RefObject<HTMLInputElement | null>;
 } {
-  const [ceiling, setCeiling] = useState('');
-  const [expiry, setExpiry] = useState('');
   const ceilingRef = useRef<HTMLInputElement>(null);
   const expiryRef = useRef<HTMLInputElement>(null);
-  return { ceiling, setCeiling, ceilingRef, expiry, setExpiry, expiryRef };
+  return {
+    ceiling: typed.ceiling,
+    setCeiling: (ceiling) => edit({ ceiling }),
+    ceilingRef,
+    expiry: typed.expiry,
+    setExpiry: (expiry) => edit({ expiry }),
+    expiryRef,
+  };
 }
 
 export function PromoteForm(props: {
   readonly id: string;
   readonly label: string;
+  readonly typed: Promotion;
+  readonly edit: (change: PromotionEdit) => void;
   readonly promote: (filing: Filing) => void;
   readonly cancel: () => void;
   readonly locked: boolean;
 }): ReactElement {
-  const values = useCeilingAndExpiry();
+  const values = useCeilingAndExpiry(props.typed, props.edit);
   const confirm = (): void => {
     const cents = centsOf(values.ceiling);
     const expiresAt = expiryOf(values.expiry);
@@ -110,7 +133,12 @@ export function PromoteForm(props: {
   };
   return (
     <div className="fieldrow" data-promote-form={props.id}>
-      <CeilingAndExpiry what={` for ${props.label}`} marks="promote" {...values} />
+      <CeilingAndExpiry
+        what={` for ${props.label}`}
+        marks="promote"
+        locked={props.locked}
+        {...values}
+      />
       <button
         type="button"
         className="btn btn--sm btn--primary"
@@ -144,11 +172,13 @@ function ScopePicker(props: {
   readonly setScope: (value: string) => void;
   readonly refuses: boolean;
   readonly setRefuses: (value: boolean) => void;
+  readonly locked: boolean;
 }): ReactElement {
   return (
     <>
       <select
         aria-label="Action classes"
+        disabled={props.locked}
         value={props.scope}
         onChange={(event) => props.setScope(event.target.value)}
         data-mandate-scope
@@ -163,6 +193,7 @@ function ScopePicker(props: {
         <input
           type="checkbox"
           checked={props.refuses}
+          disabled={props.locked}
           onChange={(event) => props.setRefuses(event.target.checked)}
           data-mandate-refuses
         />{' '}
@@ -195,21 +226,23 @@ function mandateOf(draft: {
 
 export function MandateForm(props: {
   readonly scopes: readonly string[];
+  readonly draft: MandateDraft;
+  readonly edit: (change: MandateEdit) => void;
   readonly file: (mandate: MandateFiling, done: () => void) => void;
   readonly locked: boolean;
 }): ReactElement {
-  const [label, setLabel] = useState('');
-  const [scope, setScope] = useState(props.scopes[0] ?? '');
-  const [refuses, setRefuses] = useState(false);
+  const { draft, edit, locked } = props;
+  const { label, refuses } = draft;
+  const scope = props.scopes.includes(draft.scope) ? draft.scope : (props.scopes[0] ?? '');
+  const setLabel = (value: string): void => edit({ label: value });
+  const setScope = (value: string): void => edit({ scope: value });
+  const setRefuses = (value: boolean): void => edit({ refuses: value });
   const labelRef = useRef<HTMLInputElement>(null);
-  const values = useCeilingAndExpiry();
+  const values = useCeilingAndExpiry(draft, edit);
   const add = (): void => {
     const filing = mandateOf({ label, scope, refuses, labelRef, values });
     if (filing === null) return;
-    props.file(filing, () => {
-      setLabel('');
-      labelRef.current?.focus();
-    });
+    props.file(filing, () => labelRef.current?.focus());
   };
   return (
     <div className="fieldrow psadd">
@@ -220,16 +253,16 @@ export function MandateForm(props: {
         placeholder="Write the rule the way you would say it out loud"
         aria-label="New standing approval sentence"
         value={label}
-        disabled={props.locked}
+        disabled={locked}
         onChange={(event) => setLabel(event.target.value)}
         data-mandate-label
       />
-      <ScopePicker scopes={props.scopes} {...{ scope, setScope, refuses, setRefuses }} />
-      <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...values} />
+      <ScopePicker scopes={props.scopes} {...{ scope, setScope, refuses, setRefuses, locked }} />
+      <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...{ locked, ...values }} />
       <button
         type="button"
         className="btn btn--sm btn--secondary"
-        disabled={props.locked}
+        disabled={locked}
         onClick={add}
         data-mandate-add
       >
