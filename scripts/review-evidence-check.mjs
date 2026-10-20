@@ -445,16 +445,15 @@ const companiesOf = (model) =>
 const builtBy = new Set(builders.flatMap((b) => companiesOf(b)));
 const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b).length === 0);
 if (deferring) {
-  // Each company that built part of the range owes the other's review. Only a
-  // pasted marker still in flight carries these labels; needs-sol keys a computed range.
-  const debts = [
-    ...(builtBy.has('OpenAI') ? ['needs-second-model'] : []),
-    ...(builtBy.has('OpenAI') && !builtBy.has('Anthropic') ? [] : ['needs-sol']),
-  ];
-  if (!computedDeferral && (!labels.has('unreviewed') || debts.some((d) => !labels.has(d)))) {
-    failures.push(
-      `legacy review deferral requires current labels unreviewed and ${debts.join(' and ')}.`,
-    );
+  // Retain the old debt label only for pasted markers already in flight. A
+  // build by both companies owes each one's review, so it carries both labels.
+  const mixed = builtBy.has('OpenAI') && builtBy.size > 1;
+  const debt = mixed ? 'needs-sol and needs-second-model' : 'needs-sol or needs-second-model';
+  const owing = mixed
+    ? labels.has('needs-sol') && labels.has('needs-second-model')
+    : labels.has('needs-sol') || labels.has('needs-second-model');
+  if (!computedDeferral && (!labels.has('unreviewed') || !owing)) {
+    failures.push(`legacy review deferral requires current labels unreviewed and ${debt}.`);
   }
   if (builtBy.size === 0) failures.push('review deferral requires actual builder provenance.');
 }
