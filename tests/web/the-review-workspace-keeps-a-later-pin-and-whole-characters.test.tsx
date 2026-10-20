@@ -48,7 +48,12 @@ it('an earlier pin answer cannot discard a later unsent pin', async () => {
   });
   const client = clientWith(async () => await pending);
   const view = await mount(
-    <ReviewWorkspaceScreen client={client} grantKey="alpha:member" reviewId={REVIEW_ID} />,
+    <ReviewWorkspaceScreen
+      client={client}
+      grantKey="alpha:member"
+      reviewId={REVIEW_ID}
+      navigate={() => {}}
+    />,
   );
   await tick();
   await tick();
@@ -61,18 +66,18 @@ it('an earlier pin answer cannot discard a later unsent pin', async () => {
     });
   }
   await mark(1480);
-  await view.type('textarea', 'First pin');
+  await view.type('form textarea', 'First pin');
   await view.click('form button[type="submit"]');
   await view.click('form button[type="button"]');
   await mark(390);
-  await view.type('textarea', 'Keep my next unsent pin');
-  expect((view.find('textarea') as HTMLTextAreaElement).value).toBe('Keep my next unsent pin');
+  await view.type('form textarea', 'Keep my next unsent pin');
+  expect((view.find('form textarea') as HTMLTextAreaElement).value).toBe('Keep my next unsent pin');
   await act(() => {
     answer(json({ recordId: 'c1', revision: 1 }));
   });
   await tick();
   await tick();
-  expect((view.find('textarea') as HTMLTextAreaElement | null)?.value).toBe(
+  expect((view.find('form textarea') as HTMLTextAreaElement | null)?.value).toBe(
     'Keep my next unsent pin',
   );
 });
@@ -97,7 +102,7 @@ it('a new person gets neither the previous read nor the unsent pin', async () =>
   await act(() => {
     picture.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 100, clientY: 100 }));
   });
-  await view.type('textarea', 'Private unsent words from ava');
+  await view.type('form textarea', 'Private unsent words from ava');
   const denied = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
@@ -110,7 +115,7 @@ it('a new person gets neither the previous read nor the unsent pin', async () =>
   );
   expect(view.text()).not.toContain('Say e-bikes');
   expect(view.text()).not.toContain('Private unsent words from ava');
-  expect(view.find('textarea')).toBeNull();
+  expect(view.find('form textarea')).toBeNull();
   await tick();
   expect(view.text()).toContain('NOT_FOUND');
   expect(view.text()).not.toContain('Say e-bikes');

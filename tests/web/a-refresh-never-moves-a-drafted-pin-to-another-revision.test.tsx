@@ -64,6 +64,7 @@ it('a floor refresh never moves a drafted pin to another revision', async () => 
       client={client}
       grantKey="alpha:member"
       reviewId={REVIEW_ID}
+      navigate={() => {}}
       rollup={{
         follow: (run) => {
           refresh = run;
@@ -80,7 +81,7 @@ it('a floor refresh never moves a drafted pin to another revision', async () => 
   await act(() => {
     picture.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 100, clientY: 100 }));
   });
-  await view.type('textarea', 'This spot on revision two needs fixing');
+  await view.type('form textarea', 'This spot on revision two needs fixing');
   world.current = {
     ...REVIEW,
     review: {
@@ -94,7 +95,7 @@ it('a floor refresh never moves a drafted pin to another revision', async () => 
   await tick();
   await tick();
   // Either retire the old draft, or keep it bound to the revision it was written against.
-  if (view.find('textarea') !== null) {
+  if (view.find('form textarea') !== null) {
     await view.click('form button[type="submit"]');
     await tick();
   }
