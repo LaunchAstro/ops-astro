@@ -25,6 +25,7 @@ import {
   tokenFor,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 let fixture: ApiFixture;
 let api: Hono;
@@ -52,6 +53,7 @@ const workerOn = (delegation: string) =>
     credential: agentToken,
     delegation,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
   });
 
 async function approved() {

@@ -27,6 +27,7 @@ import { writeSync } from 'node:fs';
 import { httpTransport, type Transport } from '../../apps/cli/client.ts';
 import { ProviderFault, SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
+import { COMPUTES_NOTHING } from './computes-nothing-runner.ts';
 
 /** The named points: after the call whose path ends so has answered with success. */
 export const PARK_POINTS = {
@@ -83,6 +84,7 @@ const worker = createWorker({
   credential: env['OPS_ASTRO_TOKEN'] ?? '',
   delegation: env['OPS_ASTRO_DELEGATION'] ?? '',
   reporter: SYNTHETIC_USAGE,
+  runner: COMPUTES_NOTHING,
   ...(fault === 'provider_unavailable' || fault === 'connection_lost'
     ? {
         provider: {

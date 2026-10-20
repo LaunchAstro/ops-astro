@@ -32,6 +32,7 @@ import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { launchThrough } from '../support/launch-worker.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 type Leg = 'cli' | 'app';
 type Name = Parameters<typeof pathOf>[0];
@@ -122,6 +123,7 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
       credential: world.agent.token,
       delegation: delegation.credential,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
     const proposed = await worker.proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);

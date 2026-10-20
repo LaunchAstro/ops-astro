@@ -62,6 +62,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -238,6 +239,7 @@ describe.skipIf(serverUrl === undefined)("the worker runs the owner's accepted p
       credential: agentToken,
       delegation,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
 
   /** The agent's delegation scoped to `taskId`, as its operator mints it. */

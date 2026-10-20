@@ -19,6 +19,7 @@ import { pathOf } from '../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../packages/core-wire/src/index.ts';
 import { streamText } from '../support/console-text.ts';
 import { SIGN_IN_SETTINGS } from '../support/stand-in-gotrue.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const PASSWORD = SIGN_IN_SETTINGS.OPS_ASTRO_PASSWORD;
 const DELEGATION = 'delegation-canary-0b7e';
@@ -281,6 +282,7 @@ describe('work held from one pass to the next keeps its lease alive', () => {
       credential: 'made-up-bearer',
       delegation: 'made-up-delegation',
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
     expect(await worker.applyOnce('task-1')).toStrictEqual({ fault: { status: 503 } });
     const first = sent.length;

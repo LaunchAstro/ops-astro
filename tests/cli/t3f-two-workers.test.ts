@@ -30,12 +30,14 @@ const WORKER = `
 import { httpTransport } from ${JSON.stringify(join(ROOT, 'apps/cli/client.ts'))};
 import { SYNTHETIC_USAGE } from ${JSON.stringify(join(ROOT, 'apps/worker/usage.ts'))};
 import { createWorker } from ${JSON.stringify(join(ROOT, 'apps/worker/worker.ts'))};
+import { COMPUTES_NOTHING } from ${JSON.stringify(join(ROOT, 'tests/support/computes-nothing-runner.ts'))};
 const worker = createWorker({
   transport: httpTransport(process.env.OPS_ASTRO_API_URL),
   businessKey: process.env.OPS_ASTRO_BUSINESS,
   credential: process.env.OPS_ASTRO_TOKEN,
   delegation: process.env.OPS_ASTRO_DELEGATION,
   reporter: SYNTHETIC_USAGE,
+  runner: COMPUTES_NOTHING,
 });
 process.stdout.write(JSON.stringify(await worker.applyOnce(process.env.T3F_TASK)));
 `;
