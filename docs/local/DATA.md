@@ -906,8 +906,15 @@ Installation-wide, no business, person, address or invitation. The send
 inserts it in its own transaction, after every check and before its token
 and attempt; a second send of the same message, from any business or hook
 process, waits on the first's transaction, finds the row and is refused
-`REPLAYED`, writing nothing. A refused send claims nothing. The application
-may insert and read the digest; nothing changes or deletes a row.
+`REPLAYED`, writing nothing. A refused send claims nothing. Each claim
+records when it was made (`claimed_at`, 20261020053037). The application may
+insert and read the digest column alone, so it cannot set a claim's time, and
+it changes and deletes nothing. A claim older than a day protects nothing,
+since the hook's signature check refuses a message more than five minutes
+from its timestamp, so the daily upkeep job deletes claims older than 24
+hours through `ops.expire_auth_hook_messages()`, a security definer with its
+search path pinned and no argument, run as `ops_astro_upkeep`, as the codes
+expiry above is.
 
 ## Overseas-services register (0052, C81)
 
@@ -949,10 +956,17 @@ SHA-256 of its secret (`credential_hash`), the scheme (`hmac-sha256-v1`) and
 the key id, when it was issued and when it expires (after issue), and the
 revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
 secret itself is stored nowhere. A guard keeps every issued column as written
-and lets the revocation be set once. The application may select, insert and
-update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+and lets the revocation be set once. An after-insert trigger
+(`agent_credentials_held_by_an_agent`, 20261020053037) asks that the agent is
+an actor of kind agent and the issuer the person actor of
+`issued_by_person_id`, so no person, the issuer included, holds a credential
+as its agent, and an actor a credential names keeps that kind and person
+(`actors_hold_their_credentials`; a change of an actor's kind or person is
+asked only at read committed and refused at any other isolation, where an
+older snapshot could miss a credential). The application may select, insert and update; nothing deletes
+a row. Tenancy-keyed with the restrictive policy.
 
-## Automations (20261004091552, C33)
+## Automations (20261005003850, C33)
 
 `automation_definitions` holds one skill or automation a business keeps (its
 kind and name). `definition_versions` holds each release of one: the bytes
@@ -972,7 +986,10 @@ and names a run only when it started one, at most one occurrence per run. Nothin
 an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
 standing approval (below) lets it through as `approved`. The application may
 select and insert all four, and update an activation's setting, pin, switch and
-revision by column grant; nothing deletes a row. Tenancy-keyed with the
+revision by column grant; a before-update trigger
+(`activations_change_one_step`, 20261020053037) refuses any revision but the
+next and stamps `changed_at` itself with the clock read once the row is
+locked. Nothing deletes a row. Tenancy-keyed with the
 restrictive policy. The records are `packages/core-records/src/automations/`.
 
 ## Standing approvals (20261005193201, C52-A)

@@ -33,16 +33,16 @@ describe('the column-grant contract, against the migrations', () => {
     const planted = [
       ...migrations,
       {
-        version: '20261018033724_planted',
+        version: '20261020053037_planted',
         statements: [
-          'grant select (message_digest), insert (message_digest) on ops.auth_hook_messages to ops_astro_app',
+          'grant select (planted_note), insert (planted_note) on ops.planted_records to ops_astro_app',
         ],
       },
     ];
     const found = planted.flatMap((migration) => migrationColumnGrants(migration));
     expect(found.filter((line) => !contract.has(line))).toStrictEqual([
-      'ops_astro_app SELECT ops.auth_hook_messages.message_digest',
-      'ops_astro_app INSERT ops.auth_hook_messages.message_digest',
+      'ops_astro_app SELECT ops.planted_records.planted_note',
+      'ops_astro_app INSERT ops.planted_records.planted_note',
     ]);
   });
 });

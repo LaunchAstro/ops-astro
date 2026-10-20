@@ -37,10 +37,11 @@
 // backup past the store's window, then asks the store whether a restore drill
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
-// Then, last and bounded in time, it deletes second-factor codes past their
-// horizon on staging's database, as the upkeep identity; that step's outcome
-// goes in the record as `secondFactorCodes`, and neither its failure nor a
-// stall holds up the backup expiry or the heartbeat.
+// Then, last and bounded in time, it deletes second-factor codes and hook
+// message claims past their horizon on staging's database, as the upkeep
+// identity; that step's outcome goes in the record as `secondFactorCodes`, the
+// claims as its `hookMessages`, and neither its failure nor a stall holds up
+// the backup expiry or the heartbeat.
 // What each may do is held by the server
 // (deploy/staging/backup-store.sql), which writes receipts. Both reach the
 // store only through psql on staging's network (backup-store-reach.mjs): it
@@ -114,9 +115,10 @@ export async function runBackup({
 }
 
 /**
- * Deletes second-factor codes past their horizon (migration 20261002105957) and answers
- * the step's outcome: the count, `failed` (with `config` when its login would
- * leave by another pooler) or `not set`. Never throws, and keeps no error text.
+ * Deletes second-factor codes (migration 20261002105957) and hook message claims
+ * (20261020053037) past their horizon and answers the step's outcome: both counts,
+ * `failed` (with `config` when its login would leave by another pooler) or
+ * `not set`. Never throws, and keeps no error text.
  */
 async function expireCodes(url, refused, reach) {
   if (url === undefined) return { outcome: 'not set' };
@@ -124,11 +126,16 @@ async function expireCodes(url, refused, reach) {
   try {
     const printed = await reach(
       url,
-      `${PURGE_LIMITS}set role ${UPKEEP_ROLE};\nselect ops.expire_second_factor_codes();\n`,
+      `${PURGE_LIMITS}set role ${UPKEEP_ROLE};\nselect ops.expire_second_factor_codes();\n` +
+        'select ops.expire_auth_hook_messages();\n',
     );
-    const count = Number(printed);
-    if (printed === '' || !Number.isSafeInteger(count)) return { outcome: 'failed' };
-    return { outcome: 'recorded', count };
+    const [count, hookMessages, ...rest] = printed
+      .split('\n')
+      .map((line) => (/^\d+$/u.test(line) ? Number(line) : NaN));
+    if (rest.length > 0 || !Number.isSafeInteger(count) || !Number.isSafeInteger(hookMessages)) {
+      return { outcome: 'failed' };
+    }
+    return { outcome: 'recorded', count, hookMessages };
   } catch {
     return { outcome: 'failed' };
   }

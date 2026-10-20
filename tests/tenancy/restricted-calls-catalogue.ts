@@ -69,7 +69,7 @@ const COLUMN_UPDATES: readonly {
  * `20261005003850_automations`) is `from` or later. Every four-digit ID sorts
  * before every fourteen-digit timestamp, so both are padded to fourteen.
  */
-const reached = (at: string, from: string): boolean =>
+export const reached = (at: string, from: string): boolean =>
   (at.split('_', 1)[0] ?? at).padStart(14, '0') >= from.padStart(14, '0');
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
@@ -170,22 +170,16 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   })),
   // C31: custody's select leaves out the three sealed columns (20261005023013).
   ...[
-    'business_id',
-    'cleared_at',
-    'cleared_by_actor_id',
-    'created_at',
-    'id',
-    'key_id',
-    'last_used_at',
-    'name',
-    'revision',
-    'scope_id',
-    'scope_kind',
-    'set_at',
-    'set_by_actor_id',
+    ...'business_id cleared_at cleared_by_actor_id created_at id key_id last_used_at'.split(' '),
+    ...'name revision scope_id scope_kind set_at set_by_actor_id'.split(' '),
   ].map((column) => ({
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
+  })),
+  // 20261020053037: a Send Email hook message is claimed and read by its digest alone.
+  ...['INSERT', 'SELECT'].map((act) => ({
+    from: '20261020053037',
+    line: `ops_astro_app ${act} ops.auth_hook_messages.message_digest`,
   })),
   ...PART_GRANTS,
 ];
