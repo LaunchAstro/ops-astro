@@ -11,7 +11,10 @@ import type {
   ReviewReadResult,
 } from '../../../core-wire/src/index.ts';
 
-/** One review with its revisions and captures; one landed picture; a client's own reviews; the reviews the caller reads. */
+/**
+ * One review with its revisions and captures; one landed picture; a client's own reviews; the
+ * reviews the caller reads.
+ */
 export interface ReviewReadOperands {
   readonly 'review.read': { readonly reviewId: string };
   readonly 'review.picture': { readonly pictureId: string };

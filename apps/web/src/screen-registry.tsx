@@ -30,10 +30,7 @@ import { EnrolScreen } from './screens/Enrol.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { MapsScreen } from './screens/Maps.tsx';
 import { MapScreen } from './screens/Map.tsx';
-import { ReviewsScreen } from './screens/review/Reviews.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
-import { ReviewWorkspaceScreen } from './screens/review/ReviewWorkspace.tsx';
-import { ClientReviewsScreen } from './screens/review/ClientReviews.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
@@ -43,6 +40,7 @@ import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
 import { TodosScreen } from './screens/todos/Todos.tsx';
+import { REVIEW_SCREENS } from './screens/review/review-screens.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
@@ -79,6 +77,7 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
 export const SCREENS: {
   readonly [Id in AuthenticatedRouteId]: (context: ScreenContext<Id>) => ReactElement;
 } = {
+  ...REVIEW_SCREENS,
   'agency:projects-board': (context) => (
     <>
       {context.notice === null ? null : (
@@ -184,9 +183,6 @@ export const SCREENS: {
   'agency:maps': (context) => (
     <MapsScreen client={context.client} grantKey={context.grantKey} rollup={tabRollupFloor()} />
   ),
-  'agency:reviews': (context) => (
-    <ReviewsScreen client={context.client} grantKey={context.grantKey} rollup={tabRollupFloor()} />
-  ),
   'agency:map': (context) => (
     <MapScreen
       key={`${context.grantKey}\u0000${context.params.key}`}
@@ -212,20 +208,6 @@ export const SCREENS: {
           })}
     />
   ),
-  // Keyed on the grant and the review, so a change of business, person or review starts the
-  // marked spot and an unsent pin over.
-  'agency:review-workspace': (context) => (
-    <ReviewWorkspaceScreen
-      key={`${context.grantKey}:${context.params.review}`}
-      client={context.client}
-      grantKey={context.grantKey}
-      reviewId={context.params.review}
-      rollup={tabRollupFloor()}
-      navigate={context.navigate}
-      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
-    />
-  ),
-  'portal:reviews': (c) => <ClientReviewsScreen client={c.client} grantKey={c.grantKey} />,
   'agency:task-unnamed': () => <TaskUnnamed />,
   'agency:todos': (context) => (
     <TodosScreen
