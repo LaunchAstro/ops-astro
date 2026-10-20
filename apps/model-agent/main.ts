@@ -27,7 +27,11 @@ const SETTINGS = 'MODEL_AGENT_SETTINGS';
 const REJOIN_MS = 20 * 60_000;
 const HEARTBEAT_MS = 30_000;
 
-const say = (kind: string): void => void process.stdout.write(`model agent: ${kind}\n`);
+/** One line of the agent's log: the UTC time it was written, then the kind of thing it did. */
+export const logLine = (kind: string, at: Date): string =>
+  `model agent: ${at.toISOString()} ${kind}\n`;
+
+const say = (kind: string): void => void process.stdout.write(logLine(kind, new Date()));
 
 /** The settings, from a file only its owner can read, or why not. */
 function settingsFrom(file: string | undefined): AgentSettings | string {
