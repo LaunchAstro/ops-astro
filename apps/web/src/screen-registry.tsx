@@ -28,6 +28,7 @@ import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { EnrolScreen } from './screens/Enrol.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
+import { MapsScreen } from './screens/Maps.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
@@ -175,6 +176,9 @@ export const SCREENS: {
       grantKey={context.grantKey}
       address={context.address}
     />
+  ),
+  'agency:maps': (context) => (
+    <MapsScreen client={context.client} grantKey={context.grantKey} rollup={tabRollupFloor()} />
   ),
   'agency:map': (context) => (
     <MapScreen
