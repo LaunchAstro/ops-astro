@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X (#2166): a review's first revision and a second revision with no pin before it land at both widths through the site runner, every land answers carryDue false, and the pass makes no review.carry_pins call and writes no carry."
+}

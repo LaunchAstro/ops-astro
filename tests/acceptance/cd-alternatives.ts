@@ -78,6 +78,7 @@ export const IDENTIFIER_BEARING: Readonly<
   // C35's worker writes go by the lease, as a check does; the landed picture by its id.
   'review.capture_claim': ['leaseId and revisionId', 'agent'],
   'review.capture_land': ['leaseId and revisionId', 'agent'],
+  'review.carry_pins': ['leaseId and revisionId', 'agent'],
   'review.picture': ['pictureId', 'review'],
   'review.propose_change': ['commentId', 'changeRequest'],
   'review.decide_change': ['changeRequestId', 'changeRequest'],
