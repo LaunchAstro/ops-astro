@@ -156,6 +156,32 @@ it('two calls past the last ask at once end the run once and raise one alert', a
   expect(await endOf(work)).toEqual(ENDED);
 });
 
+/** Polls until the racer waits on a lock the holder keeps. */
+async function waitsOn(pid: number | undefined, holderPid: number): Promise<void> {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    const waiting = await s.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from pg_stat_activity a
+        where a.pid = $1 and a.wait_event_type = 'Lock' and $2::int = any(pg_blocking_pids(a.pid))`,
+      [pid, holderPid],
+    );
+    if ((waiting[0]?.n ?? 0) === 1) return;
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    await delay(25);
+  }
+  throw new Error('the call never waited on the envelope');
+}
+
+/** The stopped hold's state and what its envelope still holds. */
+async function holdOf(reservationId: unknown) {
+  const [stopped] = await s.db.admin.execute(
+    `select r.state, env.held_minor::int as held from public.reservations r
+       join public.task_envelopes env on env.id = r.envelope_id where r.id = $1`,
+    [reservationId],
+  );
+  return stopped;
+}
+
 it('a call past the last ask behind a settlement holding the envelope gives the hold back with no deadlock', async () => {
   const work = await spentWork('last ask behind a settlement');
   world.provider.mode('answer');
@@ -181,18 +207,7 @@ it('a call past the last ask behind a settlement holding the envelope gives the 
   try {
     const [pid] = await pidsOf(racing);
     const call = callOn(racing, work);
-    for (let attempt = 0; attempt < 400; attempt += 1) {
-      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-      const waiting = await s.db.admin.execute<{ n: number }>(
-        `select count(*)::int as n from pg_stat_activity a
-          where a.pid = $1 and a.wait_event_type = 'Lock' and $2::int = any(pg_blocking_pids(a.pid))`,
-        [pid, holder.pid],
-      );
-      if ((waiting[0]?.n ?? 0) === 1) break;
-      if (attempt === 399) throw new Error('the call never waited on the envelope');
-      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-      await delay(25);
-    }
+    await waitsOn(pid, holder.pid);
     const [letGo, called] = await Promise.allSettled([holder.letGo(), call]);
     expect(letGo.status).toBe('fulfilled');
     expect(called.status === 'fulfilled' && called.value).toMatchObject({
@@ -205,12 +220,7 @@ it('a call past the last ask behind a settlement holding the envelope gives the 
   }
   expect(world.provider.seen.length).toBe(sent);
   expect(await endOf(work)).toEqual(ENDED);
-  const [stopped] = await s.db.admin.execute(
-    `select r.state, env.held_minor::int as held from public.reservations r
-       join public.task_envelopes env on env.id = r.envelope_id where r.id = $1`,
-    [reservationId],
-  );
-  expect(stopped).toEqual({ state: 'abandoned', held: 0 });
+  expect(await holdOf(reservationId)).toEqual({ state: 'abandoned', held: 0 });
 });
 
 it.each<CutPoint>(['before-commit', 'after-commit'])(
