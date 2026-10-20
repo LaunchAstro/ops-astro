@@ -34,8 +34,6 @@ export type Proposed =
     }
   /** Its own proposal, approved and in the queue: the next pass applies it. */
   | { readonly queued: { readonly taskId: string } }
-  /** An earlier proposal still waits for a person. */
-  | { readonly idle: { readonly taskId: string } }
   | Unanswered;
 
 /** This agent's own proposal of the step in the queue on `taskId`, if it waits there. */
@@ -157,11 +155,8 @@ async function proposeAlone(
   return answered(sent.recordId, proposed);
 }
 
-/** A proposal the server settled: its gate, or a refusal while an earlier one still waits. */
+/** A proposal the server settled: its gate, or its refusal. */
 function answered(taskId: string, proposed: Answered | Unanswered): Proposed {
-  if ('refused' in proposed && proposed.refused.code === 'TRANSITION_NOT_PERMITTED') {
-    return { idle: { taskId } };
-  }
   if (!('body' in proposed)) return proposed;
   return {
     proposed: {

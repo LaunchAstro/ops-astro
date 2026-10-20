@@ -30,6 +30,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -109,6 +110,7 @@ describe.skipIf(serverUrl === undefined)('T2h: the alert on every surface', () =
       credential: agentToken,
       delegation: credential,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
     const proposed = await worker.proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);

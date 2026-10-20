@@ -25,6 +25,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -69,6 +70,7 @@ export const workerOn = (
     credential: r.agentToken,
     delegation: credential,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
     ...(provider === undefined ? {} : { provider }),
   });
 

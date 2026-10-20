@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "#1623 R2: an accepted plan with no Launch runs its injected runner's compute under the plan's lease before review; a scripted success hands back once with one success row, and a tool refusal or a person's cancel never reaches review, comment or observe; the synthetic runner still works."
+  "why": "#1623 R2: an accepted plan with no Launch runs its injected runner's compute under the plan's lease before review; a scripted success hands back once with one success row, and a tool refusal or a person's cancel never reaches review, comment or observe; a runner that computes nothing still hands back and applies once launched."
 }
