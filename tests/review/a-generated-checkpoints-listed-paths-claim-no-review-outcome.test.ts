@@ -7,9 +7,13 @@ import { expect, test } from 'vitest';
 
 const checker = resolve('scripts/review-evidence-check.mjs');
 const preflight = resolve('scripts/review-preflight.mjs');
-function fixture(path: string, check: (dir: string, base: string, head: string, checkpoint: string) => void) {
+function fixture(
+  path: string,
+  check: (dir: string, base: string, head: string, checkpoint: string) => void,
+) {
   const dir = mkdtempSync(join(tmpdir(), 'sol1504-'));
-  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
   try {
     git('init', '-q', '-b', 'fixture-base');
     git('config', 'user.name', 'Sol proof');
@@ -26,20 +30,40 @@ function fixture(path: string, check: (dir: string, base: string, head: string, 
     git('add', '.');
     git('commit', '-qm', 'test: fixture\n\nAgent-model: claude-opus-5-5\nAgent-model: gpt-6.1-sol');
     const head = git('rev-parse', 'HEAD');
-    const output = execFileSync(process.execPath, [preflight, base], { cwd: dir, encoding: 'utf8' });
+    const output = execFileSync(process.execPath, [preflight, base], {
+      cwd: dir,
+      encoding: 'utf8',
+    });
     check(dir, base, head, output.slice(output.indexOf('Review checkpoint')));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
-function run(dir: string, base: string, head: string, checkpoint: string, labels: string, claim = '') {
+function run(
+  dir: string,
+  base: string,
+  head: string,
+  checkpoint: string,
+  labels: string,
+  claim = '',
+) {
   const env = { ...process.env };
   for (const key of ['CHANGED_FILES', 'AGENT_MODELS', 'RANGE_COMMITS']) delete env[key];
   return spawnSync(process.execPath, [checker], {
-    cwd: dir, encoding: 'utf8', env: {
-      ...env, HEAD_SHA: head, BASE_SHA: base, PR_LABELS: labels,
+    cwd: dir,
+    encoding: 'utf8',
+    env: {
+      ...env,
+      HEAD_SHA: head,
+      BASE_SHA: base,
+      PR_LABELS: labels,
       OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL: 'DOMAINFIRST20261008',
-      PR_BODY: '```\n' + checkpoint + '\n```\n\n' + claim + '\n\n' +
+      PR_BODY:
+        '```\n' +
+        checkpoint +
+        '\n```\n\n' +
+        claim +
+        '\n\n' +
         `Review deferral: DOMAINFIRST20261008 internal-stage1 ${base}..${head} stage1/SOL-OWED.md`,
     },
   });
@@ -69,5 +93,18 @@ test('a Git-quoted approval path in the generated checkpoint is not an approval 
     expect(checkpoint).toContain('"tests/x/approval-caf\\303\\251.test.ts"');
     const result = run(dir, base, head, checkpoint, both);
     expect(result.status, result.stderr).toBe(0);
+  });
+});
+test('a Git-quoted line in the checkpoint that names no changed file is still an approval claim', () => {
+  fixture('tests/x/approval-café.test.ts', (dir, base, head, checkpoint) => {
+    const listed = '    "tests/x/approval-caf\\303\\251.test.ts"';
+    const planted = checkpoint.replace(
+      listed,
+      `${listed}\n    "approved by the reviewer \\303\\251"`,
+    );
+    expect(planted).not.toBe(checkpoint);
+    const result = run(dir, base, head, planted, both);
+    expect(result.stderr).toContain('cannot carry review outcomes, records or approval claims');
+    expect(result.status).toBe(1);
   });
 });
