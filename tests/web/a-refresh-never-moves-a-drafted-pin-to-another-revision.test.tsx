@@ -13,8 +13,6 @@ import { tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
 
-const nothing = (): void => {};
-
 const original = REVIEW.review.after!;
 const third = {
   ...original,
@@ -57,7 +55,8 @@ function clientFor(world: World): OperationsClient {
 
 it('a floor refresh never moves a drafted pin to another revision', async () => {
   const world: World = { current: REVIEW, sent: [] };
-  let refresh: () => void = nothing;
+  // Every read that follows the floor: the review and who may approve it (#2142).
+  const refreshes: (() => void)[] = [];
   const client = clientFor(world);
   const view = await mount(
     <ReviewWorkspaceScreen
@@ -66,7 +65,7 @@ it('a floor refresh never moves a drafted pin to another revision', async () => 
       reviewId={REVIEW_ID}
       rollup={{
         follow: (run) => {
-          refresh = run;
+          refreshes.push(run);
           return () => {};
         },
       }}
@@ -90,7 +89,10 @@ it('a floor refresh never moves a drafted pin to another revision', async () => 
       after: third,
     },
   };
-  await act(() => Promise.resolve(refresh()));
+  await act(async () => {
+    for (const refresh of refreshes) refresh();
+    await Promise.resolve();
+  });
   await tick();
   await tick();
   // Either retire the old draft, or keep it bound to the revision it was written against.

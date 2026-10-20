@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1717 R8a, Sol S2090-1: a replacement attempt on the same accepted plan, picked up after an unmarked drop under a fresh attempt and delegation, is answered the plan's one correction and carries it into its next model turn; the broker binds a correction stored for the lease's own plan version."
+}

@@ -76,15 +76,16 @@ export async function endRun(
   return { ok: true, value: stopped };
 }
 
-/** Whether the server's records show the claimed code: a lost answer needs its call settled, a
- * definition mismatch the pinned read's own mismatch; the rest are facts only the worker sees. */
+/** Whether the server's records show the claimed code: a lost answer or a worker's call limit
+ * needs its call settled, a definition mismatch the pinned read's own mismatch; the rest are facts
+ * only the worker sees. */
 async function shown(
   tx: TenantQuery,
   code: WorkerEndCode,
   runId: string,
   leaseId: string,
 ): Promise<boolean> {
-  if (code === 'ANSWER_LOST') {
+  if (code === 'ANSWER_LOST' || code === 'CALL_LIMIT_REACHED') {
     const settled = await tx.query(
       `select 1 from public.model_calls
         where business_id = $1 and lease_id = $2 and state = 'settled' limit 1`,

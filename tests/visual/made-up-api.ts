@@ -104,6 +104,7 @@ const READS = {
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
       { collection: 'custody', action: 'manage' },
+      { collection: 'gate', action: 'decide' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,

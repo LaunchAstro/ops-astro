@@ -24,6 +24,8 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.capture_land',
   'review.carry_pins',
   'review.picture',
+  'review.decide',
+  'review.record_astra_review',
 ]);
 
 /** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
@@ -67,6 +69,24 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   if (opened.code !== 'ok') throw new Error(`matrix: review.open refused ${opened.code}`);
   const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
   if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
+  if (name === 'review.record_astra_review') {
+    return {
+      body: {
+        reviewId: detail['reviewId'],
+        digest: detail['digest'],
+        verdict: 'approve',
+        review: 'Astra: as asked',
+      },
+    };
+  }
+  if (name === 'review.decide') {
+    // The admin decides a revision another member wrote: their own is R5's case alone.
+    if (context.reviseAsAnother === undefined) {
+      return { exception: 'this harness writes no second revision (C35-X)' };
+    }
+    const next = await context.reviseAsAnother(open.body);
+    return { body: { reviewId: detail['reviewId'], digest: next.digest, response: 'approve' } };
+  }
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }
     : { body: { reviewId: detail['reviewId'] } };

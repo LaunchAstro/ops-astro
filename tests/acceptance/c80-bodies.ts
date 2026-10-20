@@ -22,6 +22,8 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/v
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import { revertBody, reviewBody } from './c80-revert-body.ts';
+import { reviseAsAnother } from './c35-x-seeds.ts';
+import type { C80Seeds } from './c80-seeds.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
@@ -141,12 +143,7 @@ const C80_REQUEST_ROW = {
 export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada'>,
   taskId: string,
-): Required<
-  Pick<
-    BodyContext,
-    'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
-  >
-> => {
+): Required<Pick<BodyContext, keyof C80Seeds | 'alphaTaskId' | 'adminPersonId'>> => {
   // Asked for by a member of its own, holding the run:write the request rests on,
   // so the matrix's callers keep exactly their declared grants.
   const asked = async () =>
@@ -171,6 +168,7 @@ export const taskBodyContext = (
         world.alpha,
         async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
       ),
+    reviseAsAnother: reviseAsAnother(world),
   };
 };
 

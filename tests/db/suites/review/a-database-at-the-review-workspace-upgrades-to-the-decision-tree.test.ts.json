@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X upgrade: a database migrated at #2105's review workspace, its review records applied as 20261019123500, upgrades to the tree that carries #2129's decision; an applied migration is never renamed."
+}

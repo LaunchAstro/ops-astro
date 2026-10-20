@@ -6,22 +6,27 @@
 // pins drawn on each, and what changed between their landed observations; the pin list
 // numbers every pin as the panes do. A first revision shows no before. A click on a landed
 // capture of the revision under review marks a spot, and the form beneath pins a comment on
-// it. The read is the team's, so the client never reaches this page; what a client sees of a
-// pin is the task's client projection.
+// it. The revision bar tells each revision's decision and approves the one under review
+// (#2142, `RevisionBar.tsx`). The read is the team's, so the client never reaches this page;
+// what a client sees of a pin is the task's client projection.
 
 import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Card, Chip, Empty, ListRow, SectionHead, sectionIndex } from '@launchastro/ui';
 import type {
+  CapabilitiesResult,
+  PersonListResult,
   ReviewReadResult,
   WidthDifference,
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
+import { ownerOf, useDesk, type Desk } from '../../data/owned.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { CapturePane } from './CapturePane.tsx';
 import { PinForm } from './PinForm.tsx';
-import type { Pin, Spot } from './review-geometry.ts';
+import { RevisionBar, holdsGateDecide } from './RevisionBar.tsx';
+import { short, type Pin, type Spot } from './review-geometry.ts';
 
 type Review = ReviewReadResult['review'];
 type Revision = NonNullable<Review['after']>;
@@ -30,44 +35,6 @@ const WIDTHS = [
   { width: 1480, name: 'Laptop' },
   { width: 390, name: 'Phone' },
 ] as const;
-
-const short = (digest: string | null): string =>
-  digest === null ? 'none' : digest.replace(/^sha256:/u, '').slice(0, 12);
-
-function RevisionBar(props: { readonly review: Review }): ReactElement {
-  const { review } = props;
-  const { after, before } = review;
-  return (
-    <Card title={review.pageUrl ?? 'A media review'} sub={review.path ?? undefined}>
-      <div className="stack" data-revision-bar>
-        <div className="spread">
-          {review.revisions.map((revision) => (
-            <span key={revision.revisionId} data-revision={revision.number}>
-              <Chip
-                tone={
-                  revision.revisionId === after?.revisionId
-                    ? 'info'
-                    : revision.revisionId === before?.revisionId
-                      ? 'idle'
-                      : undefined
-                }
-              >
-                Revision {revision.number}
-              </Chip>
-            </span>
-          ))}
-        </div>
-        <p className="t-2">
-          {after === null
-            ? 'No revision yet.'
-            : before === null
-              ? `Revision ${String(after.number)} is the first: there is nothing before it.`
-              : `Revision ${String(after.number)} under review, beside revision ${String(before.number)}.`}
-        </p>
-      </div>
-    </Card>
-  );
-}
 
 function Changed(props: {
   readonly difference: WidthDifference | undefined;
@@ -131,6 +98,12 @@ interface WorkspaceProps {
   readonly review: Review;
   readonly reload: () => void;
 }
+
+type Decides = WorkspaceProps & {
+  readonly desk: Desk;
+  readonly names: ReadonlyMap<string, string>;
+  readonly mayDecide: boolean;
+};
 
 type WidthProps = WorkspaceProps & {
   readonly order: number;
@@ -241,12 +214,12 @@ function PinList(props: {
   );
 }
 
-function Workspace(props: WorkspaceProps): ReactElement {
+function Workspace(props: Decides): ReactElement {
   const [marked, mark] = useState<Marked | null>(null);
   const numbered = props.review.pins.map((pin, at) => [at + 1, pin] as const);
   return (
     <>
-      <RevisionBar review={props.review} />
+      <RevisionBar {...props} />
       {WIDTHS.map(({ width, name }, at) => (
         <AtWidth
           key={width}
@@ -278,6 +251,21 @@ export function ReviewWorkspaceScreen(props: {
     deps: [props.client, props.reviewId],
     ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
   });
+  const desk = useDesk(ownerOf(props.client, props.grantKey));
+  const capabilities = useRead<CapabilitiesResult>({
+    grantKey: props.grantKey,
+    run: () => props.client.read<CapabilitiesResult>('session.capabilities', {}),
+    deps: [props.client],
+    // Who may approve is read again on the floor, as the review is: a revoked gate:decide
+    // withdraws the control (#2142).
+    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
+  });
+  const people = useRead<PersonListResult>({
+    grantKey: props.grantKey,
+    run: () => props.client.read<PersonListResult>('person.list', {}),
+    deps: [props.client],
+  });
+  const persons = people.state.outcome === 'ready' ? people.state.value.persons : [];
   return (
     <div className="secs" data-screen="review-workspace">
       <RecordState state={read.state} subject="review" onRetry={read.reload} keep>
@@ -287,6 +275,9 @@ export function ReviewWorkspaceScreen(props: {
             grantKey={props.grantKey}
             review={answer.review}
             reload={read.reload}
+            desk={desk}
+            names={new Map(persons.map((person) => [person.personId, person.name]))}
+            mayDecide={holdsGateDecide(capabilities.state)}
           />
         )}
       </RecordState>

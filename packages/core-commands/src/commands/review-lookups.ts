@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Where the door asks C35's open, capture and pin (#2011, #2012), spread into `prepare.ts`'s
+// Where the door asks C35's open, capture, pin and decisions (#2011, #2012, #2014), spread into `prepare.ts`'s
 // TARGET_LOOKUPS: at the review's holder, the task's client, or the business for a task with
 // none (R6), read in this business only. A task or revision that resolves to nothing is asked
 // of the business, so a foreign and a fabricated id answer alike.
@@ -22,9 +22,19 @@ const REVISION_HOLDER = holderOf(
     where v.business_id = $1 and v.id = $2`,
 );
 
-export const REVIEW_TARGET_LOOKUPS: Readonly<
-  Record<'review.open' | 'review.capture' | 'review.pin_comment', Lookup>
-> = {
+const REVIEW_HOLDER = holderOf(
+  `select case when party_id is null then 'business' else 'party' end as kind, party_id as id
+     from public.reviews where business_id = $1 and id = $2`,
+);
+
+type Looked =
+  | 'review.open'
+  | 'review.capture'
+  | 'review.pin_comment'
+  | 'review.decide'
+  | 'review.record_astra_review';
+
+export const REVIEW_TARGET_LOOKUPS: Readonly<Record<Looked, Lookup>> = {
   'review.open': [
     'taskId',
     holderOf(
@@ -34,4 +44,6 @@ export const REVIEW_TARGET_LOOKUPS: Readonly<
   ],
   'review.capture': ['revisionId', REVISION_HOLDER],
   'review.pin_comment': ['revisionId', REVISION_HOLDER],
+  'review.decide': ['reviewId', REVIEW_HOLDER],
+  'review.record_astra_review': ['reviewId', REVIEW_HOLDER],
 };

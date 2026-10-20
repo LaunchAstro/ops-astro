@@ -383,6 +383,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     const review = await seedForeignReview(w.h.world.db.admin, w.h.world.bravo, f.task.id, f.admin);
     byAda('review.read', 'reviewId', review.reviewId, (reviewId) => ({ reviewId }));
     byAda('review.capture', 'revisionId', review.revisionId, (revisionId) => ({ revisionId }));
+    const approval = { digest: 'sha256:0', response: 'approve' };
+    byAda('review.decide', 'reviewId', review.reviewId, (reviewId) => ({ ...approval, reviewId }));
+    const astra = { digest: 'sha256:0', verdict: 'approve', review: 'r' };
+    byAda('review.record_astra_review', 'reviewId', review.reviewId, (reviewId) => ({
+      ...astra,
+      reviewId,
+    }));
     const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
     byAda('review.open', 'taskId', f.task.id, (taskId) => ({ ...page, taskId }));
     // A picture bravo's worker landed on that revision, under bravo's lease.
@@ -709,11 +716,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 127 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 129 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(127);
-    expect(names).toHaveLength(127);
+    expect(new Set(names).size, 'distinct operations').toBe(129);
+    expect(names).toHaveLength(129);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

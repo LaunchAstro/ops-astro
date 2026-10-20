@@ -7,6 +7,7 @@ import { askReviewCapture, openReview } from './review-commands.ts';
 import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts';
 import { carryPinsAsPerson } from './review-carry.ts';
 import { pinComment } from './review-pin.ts';
+import { decideReview, recordAstraReview } from './review-decide.ts';
 
 type ReviewWrite =
   | 'review.open'
@@ -14,7 +15,9 @@ type ReviewWrite =
   | 'review.capture_claim'
   | 'review.capture_land'
   | 'review.carry_pins'
-  | 'review.pin_comment';
+  | 'review.pin_comment'
+  | 'review.decide'
+  | 'review.record_astra_review';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.open': openReview,
@@ -23,4 +26,6 @@ export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.capture_land': landCaptureAsPerson,
   'review.carry_pins': carryPinsAsPerson,
   'review.pin_comment': pinComment,
+  'review.decide': decideReview,
+  'review.record_astra_review': recordAstraReview,
 };

@@ -9,8 +9,16 @@
 // carries one priced operation more, OpenRouter's paid chat, on one route that
 // is cloud and an API key, whose key only the agent's custody holds; its
 // outside people must all be people the agent carries for.
+//
+// With one route on the owner's ChatGPT plan, cloud and his subscription
+// (#2091), the agent's turn is carried there too; at most one, and no other
+// install takes such a route.
 
-import { OLLAMA_PROVIDER, OPENROUTER_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import {
+  CHATGPT_PLAN_PROVIDER,
+  OLLAMA_PROVIDER,
+  OPENROUTER_PROVIDER,
+} from '../../packages/core-connectors/src/index.ts';
 import type { BrokerRoute, Carrier } from '../../packages/core-custody/src/index.ts';
 import { agentProvider, AGENT_PROVIDER_SETTING, routesOf } from './model-broker.ts';
 import { outsideOf, OUTSIDE_PEOPLE_SETTING, type Outside } from './outside-provider.ts';
@@ -87,10 +95,12 @@ function problemOf(
     (route) => route.provider === OLLAMA_PROVIDER && route.reach === 'local',
   );
   const on = outside.kind === 'openrouter';
-  return local && oneOutsideRoute(listed, on) && set('MODEL_BROKER_INSTALLATION')
+  const plans = listed.filter((route) => route.provider === CHATGPT_PLAN_PROVIDER).length;
+  return local && oneOutsideRoute(listed, on) && plans <= 1 && set('MODEL_BROKER_INSTALLATION')
     ? undefined
-    : 'needs MODEL_BROKER_ROUTES with an Ollama local route and exactly one cloud api_key ' +
-        'OpenRouter route with OPS_OUTSIDE_PROVIDER (none without), and MODEL_BROKER_INSTALLATION';
+    : 'needs MODEL_BROKER_ROUTES with an Ollama local route, exactly one cloud api_key ' +
+        'OpenRouter route with OPS_OUTSIDE_PROVIDER (none without), at most one cloud ' +
+        'subscription ChatGPT plan route, no two sharing a key, and MODEL_BROKER_INSTALLATION';
 }
 
 /** The carried deployment, or why it is refused; absent where `MODEL_BROKER_CARRIER` is unset. */
@@ -105,7 +115,7 @@ export function carrierSettings(
   const carrier = carrierOf(text);
   const outside = outsideOf(environment);
   const on = outside.kind === 'openrouter';
-  const routes = routesOf(environment['MODEL_BROKER_ROUTES'] ?? '', 'ollama', on);
+  const routes = routesOf(environment['MODEL_BROKER_ROUTES'] ?? '', 'ollama', on, true);
   const problem = problemOf(environment, carrier, routes, outside);
   if (problem !== undefined || carrier === undefined) {
     return { kind: 'invalid', problem: `${CARRIER_SETTING} ${problem ?? ''}` };

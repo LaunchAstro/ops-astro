@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1911 S1911-1: a worker-seen call limit ends through run.end CALL_LIMIT_REACHED as one call_limit row with the work retired, and only when the attempt has a settled call; with none it is refused and writes nothing."
+}

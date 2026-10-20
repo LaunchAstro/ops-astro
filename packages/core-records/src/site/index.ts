@@ -73,3 +73,4 @@ export {
   reviewApproves,
   type NewReview,
 } from './single-operator.ts';
+export { correctionOfPlan, planVersionOfDelegation } from './plan-corrections.ts';

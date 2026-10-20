@@ -26,6 +26,9 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
+  // C35-X (20261019150000): a decision and Astra's review of a revision, written once.
+  ['si', 'review_decisions'],
+  ['si', 'review_astra_reviews'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */

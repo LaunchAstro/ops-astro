@@ -20,6 +20,7 @@ export {
   type AdapterRequest,
   type Declaration,
   type ModelAnswer,
+  type ModelToolCall,
   type ModelOperation,
   type ModelOperationDeclaration,
   type Registration,
@@ -93,6 +94,9 @@ export {
   REPLAY_MODEL_WINDOW,
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
+  REPLAY_TURN,
+  AGENT_TURN_KEY,
+  REPLAY_AGENT_TURN,
   startReplayProvider,
   type ReplayLookupMode,
   type ReplayMode,
@@ -270,6 +274,7 @@ export {
   CHATGPT_PLAN_ANSWER_BYTES,
   CHATGPT_PLAN_BODY_LIMIT,
   CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_DEFAULT_MODEL,
   CHATGPT_PLAN_ISSUER,
   CHATGPT_PLAN_MODELS,
   CHATGPT_PLAN_ORIGIN,
@@ -287,3 +292,9 @@ export {
   type PlanTool,
   type PlanTurn,
 } from './chatgpt-plan.ts';
+export {
+  AGENT_TURN_INSTRUCTIONS,
+  CHATGPT_PLAN_TURN,
+  chatgptPlanTurnAdapter,
+  readChatgptPlanTurnAnswer,
+} from './chatgpt-plan-turn.ts';

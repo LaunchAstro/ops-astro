@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The shipped worker's agent turn reaches the owner's plan through the carried deployment's broker, the hub and the model agent's custody, the run hands back, and no plan token reaches any hosted setting, body, output, carried message or row."
+}

@@ -21,6 +21,7 @@ import { planRefused, type PlanCode, type PlanResult } from './plan-words.ts';
 import { holdsSecret } from './plan-fragments.ts';
 import { wellShaped } from './plan-shape.ts';
 import { redactedValue, redacterOf } from './redaction.ts';
+import { nestsTooDeep } from './json-depth.ts';
 
 export { FRAGMENT_RUN } from './plan-fragments.ts';
 
@@ -66,18 +67,6 @@ type Folded =
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Whether a parsed value nests deeper than MOST_DEPTH, judged from its own list, not the call stack. */
-function tooDeep(value: unknown): boolean {
-  const pending: [unknown, number][] = [[value, 0]];
-  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-    const [item, depth] = next;
-    if (typeof item !== 'object' || item === null) continue;
-    if (depth >= MOST_DEPTH) return true;
-    for (const child of Object.values(item)) pending.push([child, depth + 1]);
-  }
-  return false;
-}
-
 const field = (value: unknown, key: string): unknown => (record(value) ? value[key] : undefined);
 
 /** An event that names the plan's usage limit: its own code, its error's, or its response's error's. */
@@ -92,7 +81,7 @@ function terminal(event: Record<string, unknown>): Folded {
   if (event['type'] === 'error' || event['type'] === 'response.failed')
     return { kind: 'withheld', why: 'failed' };
   if (!record(response)) return { kind: 'withheld', why: 'malformed' };
-  if (tooDeep(response)) return { kind: 'withheld', why: 'too deep' };
+  if (nestsTooDeep(response, MOST_DEPTH)) return { kind: 'withheld', why: 'too deep' };
   if (event['type'] === 'response.incomplete' || response['status'] !== 'completed')
     return { kind: 'withheld', why: response['status'] === 'failed' ? 'failed' : 'incomplete' };
   if (!wellShaped(response)) return { kind: 'withheld', why: 'malformed' };

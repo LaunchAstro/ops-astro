@@ -70,7 +70,7 @@ export const doorBroker = (): ModelBroker => ({
 });
 
 /** Opens the world before the file's cases and closes it after them. */
-export function useDoorWorld(label: string): void {
+export function useDoorWorld(label: string, broker: () => ModelBroker = doorBroker): void {
   beforeAll(async () => {
     if (noDatabase) return;
     s = await openSchedules(label, 1_000_000);
@@ -89,7 +89,7 @@ export function useDoorWorld(label: string): void {
       executeRead,
       executeCommand,
       executeAgentCommand,
-      executeModelCall: modelCallExecutor(doorBroker()),
+      executeModelCall: modelCallExecutor(broker()),
     });
   }, 180_000);
   afterAll(async () => {
@@ -105,10 +105,15 @@ export interface SignedIn {
   readonly sessionId: string;
 }
 
-export async function signedIn(): Promise<SignedIn> {
+export async function signedIn(of: Schedules = s): Promise<SignedIn> {
   const sessionId = randomUUID();
   const exp = Math.floor(Date.now() / 1000) + 600;
-  const claims = { sub: s.agent.subject, aud: 'authenticated', iss: ISSUER, role: 'authenticated' };
+  const claims = {
+    sub: of.agent.subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+  };
   return { token: await signBearer({ ...claims, exp, session_id: sessionId }), sessionId };
 }
 
@@ -139,8 +144,9 @@ export async function asAgent(
   work: Work,
   body: Readonly<Record<string, unknown>>,
   as: SignedIn,
+  businessKey: string = key,
 ): Promise<Answer> {
-  return await post(door, `/api/a/b/${key}${path}`, body, {
+  return await post(door, `/api/a/b/${businessKey}${path}`, body, {
     authorization: `Bearer ${as.token}`,
     [DELEGATION_HEADER]: String(work.picked['credential']),
   });

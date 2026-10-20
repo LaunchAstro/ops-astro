@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a completed handback writes success once the attempt's own observation settled its marked step, the cost counted once, and still refuses a mark nothing settled"
+}

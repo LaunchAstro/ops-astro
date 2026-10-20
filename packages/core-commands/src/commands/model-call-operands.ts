@@ -30,6 +30,7 @@ const SOURCES: ReadonlySet<string> = new Set<FieldSource>([
 
 const FIXES: readonly string[] = [
   'Send leaseId and operation as strings, fence as the integer your pickup gave.',
+  'Send a model turn as kind turn with its turnOrdinal, tools and parts, and no fields.',
   'Send fields as a list of { name, source, value }, each a string, source one of business_internal, client_row, client_person, guest or outside, or of { name, from: { recordId, key } } to bind a field to its row.',
 ];
 
@@ -65,12 +66,23 @@ function fieldOf(entry: unknown): ModelCallRequest['fields'][number] | undefined
 }
 
 export function modelCallOperands(request: AgentRequest): ModelCallOperands | Refused {
-  const { leaseId, fence, operation, fields } = request as Record<string, unknown>;
+  const { leaseId, fence, operation, fields, kind, turnOrdinal, tools, parts } = request as Record<
+    string,
+    unknown
+  >;
   // A lease that is not a string names no lease, and is refused by the broker
   // as a made-up one is (`LEASE_NOT_OWNED`), in the same bytes.
   const lease = typeof leaseId === 'string' ? leaseId : '';
   if (typeof fence !== 'number' || !Number.isSafeInteger(fence)) return invalid('fence');
   if (typeof operation !== 'string') return invalid('operation');
+  // A turn's parts are the broker's to read, under its locks: a turn out of
+  // shape ends the attempt there (`TURN_MALFORMED`), as a refusal it records.
+  if (kind === 'turn') {
+    if (fields !== undefined) return invalid('fields');
+    return { leaseId: lease, fence, operation, fields: [], turn: { turnOrdinal, tools, parts } };
+  }
+  if (kind !== undefined || turnOrdinal !== undefined || tools !== undefined || parts !== undefined)
+    return invalid('kind');
   if (!Array.isArray(fields)) return invalid('fields');
   const parsed: ModelCallRequest['fields'][number][] = [];
   for (const entry of fields) {

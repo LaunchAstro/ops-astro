@@ -12,7 +12,8 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import type { Failure } from './broker-fault.ts';
 import { COUNTED_CAUSES, countedHold, giveBack } from './broker-give-back.ts';
 import type { Checked } from './broker-facts.ts';
-import type { Broker, BrokerRefusal } from './broker-types.ts';
+import type { CustodyOutcome } from './custody.ts';
+import type { Broker, BrokerRefusal, ProviderAdapter } from './broker-types.ts';
 
 /** The stored stop of one attempt. */
 export interface StoppedAs {
@@ -147,10 +148,28 @@ const CUSTODY_UNSENT: ReadonlySet<string> = new Set([
   'NOT_AT_ONCE',
 ]);
 
-/** `CALL_RELEASED`, normalised: a custody code or one of the operation's declared
- * nothing-happened codes maps to one end code; any other reason is `undefined`, held unknown. */
-export function releaseEndOf(reason: string, operation: ModelOperation): EndCode | undefined {
-  if (CUSTODY_UNSENT.has(reason)) {
+/**
+ * At the send, a built request over its adapter's body limit (#2091; a
+ * guard, since the start binds the bytes reserve sized): custody's own
+ * unsent refusal, which releases, or undefined to send it.
+ */
+export const tooLarge = (
+  adapter: ProviderAdapter,
+  built: { readonly body: string },
+): CustodyOutcome | undefined =>
+  adapter.bodyLimit !== undefined && Buffer.byteLength(built.body) > adapter.bodyLimit
+    ? { kind: 'refused', started: false, code: 'PROMPT_TOO_LARGE' }
+    : undefined;
+
+/** `CALL_RELEASED`, normalised: a custody code, a refusal this side judged before any write, or
+ * one of the operation's declared nothing-happened codes maps to one end code; any other reason
+ * is `undefined`, held unknown. */
+export function releaseEndOf(
+  released: { readonly reason: string; readonly judged?: boolean },
+  operation: ModelOperation,
+): EndCode | undefined {
+  const { reason } = released;
+  if (released.judged === true || CUSTODY_UNSENT.has(reason)) {
     return reason === 'CARRIAGE_UNAVAILABLE' || reason === 'PROMPT_TOO_LARGE'
       ? reason
       : 'CUSTODY_NOT_ADMITTED';
