@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017): the shepherd writes only under its run's live lease at its fence with the standing approval unrevoked, in the caller's one transaction; a replay or a raced second run writes nothing twice."
+}

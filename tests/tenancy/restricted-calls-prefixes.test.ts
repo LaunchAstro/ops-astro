@@ -620,6 +620,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
+  // C57 (20261019184700): the journey runs no review shepherd.
+  'public.review_shepherd_sends': {
+    occurrence_id: randomUUID(),
+    review_id: randomUUID(),
+    task_id: randomUUID(),
+    party_id: randomUUID(),
+    comment_id: randomUUID(),
+    recipient_person_ids: [randomUUID()],
+    digest: '0'.repeat(64),
+    worker_actor_id: randomUUID(),
+  },
   // 20261006074341: nothing in the journey opens a team conversation (C71-D).
   'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
   // WF-1: the journey charts no map.

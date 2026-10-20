@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017): the broker sends a shepherd item only under a person's approval of its exact digest or a live covering mandate with no live refusal, and only while the activation and its standing approval stand; otherwise SEND_NOT_APPROVED before any attempt or provider call."
+}

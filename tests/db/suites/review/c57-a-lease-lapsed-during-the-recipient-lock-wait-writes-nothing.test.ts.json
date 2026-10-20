@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017) race: a run's lease that expires while the shepherd's inbox insert waits on a recipient's row (its foreign key) writes no comment, inbox item, send or audit event."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C57 (#2017) races: a run's lease that expires while the shepherd waits on the review's lock, the task's foreign-key lock or the audit chain's lock writes nothing, and a sole mandate that expires while the broker waits on the client's weekly window sends nothing."
+}

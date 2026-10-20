@@ -9,3 +9,5 @@ export * from './review-reads.ts';
 export * from './storage.ts';
 export * from './pins.ts';
 export * from './change-requests.ts';
+export * from './shepherd.ts';
+export * from './shepherd-authority.ts';
