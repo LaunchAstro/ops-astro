@@ -4,7 +4,9 @@
 // verdict lands, a playback sign is refused by name and the store is asked to
 // sign nothing; once the scan passes, the sign is a GET of that one object
 // the store answers. A verdict lands once: a second land finds no
-// quarantined asset. The review read says quarantined, then playable.
+// quarantined asset. The review read says quarantined, then playable. A sign
+// for no time, part of a second or more than an hour is refused by name, and
+// a row that is not completed carries no admission.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -31,20 +33,17 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+const PNG_DECLARED = {
+  kind: 'image',
+  type: 'image/png',
+  codec: null,
+  byteCount: PNG_BYTES.byteLength,
+  digest: digestOf(PNG_BYTES),
+} as const;
+
 describe.skipIf(serverUrl === undefined)('C73 quarantine', () => {
   it('C73 a quarantined asset never signs: refused by name before the scan passes, allowed after', async () => {
-    const clean = await media.upload(
-      w.ava,
-      w.taskA,
-      {
-        kind: 'image',
-        type: 'image/png',
-        codec: null,
-        byteCount: PNG_BYTES.byteLength,
-        digest: digestOf(PNG_BYTES),
-      },
-      PNG_BYTES,
-    );
+    const clean = await media.upload(w.ava, w.taskA, PNG_DECLARED, PNG_BYTES);
     if (!('reviewId' in clean.completed)) throw new Error('the clean upload completed');
     expect(clean.completed.admission).toStrictEqual({ verdict: 'quarantined', probe: null });
 
@@ -77,3 +76,47 @@ describe.skipIf(serverUrl === undefined)('C73 quarantine', () => {
     ]);
   });
 });
+
+describe.skipIf(serverUrl === undefined)(
+  'C73 a sign within its life, a row within its state',
+  () => {
+    it('C73 a sign for no time, part of a second or past an hour is refused by name', async () => {
+      const clean = await media.upload(w.ava, w.taskA, PNG_DECLARED, PNG_BYTES);
+      expect(await media.scan(clean.assetId, testScanEngine)).toMatchObject({ verdict: 'passed' });
+      const signsBefore = store.calls.filter((call) => call === 'signRead').length;
+      const lives = [0, 1.5, 3601, Number.POSITIVE_INFINITY];
+      for (const life of lives)
+        // oxlint-disable-next-line no-await-in-loop -- each sign is its own transaction
+        expect(await media.sign(w.ava, clean.assetId, undefined, life)).toStrictEqual({
+          code: 'LIFE_OUT_OF_RANGE',
+        });
+      expect(store.calls.filter((call) => call === 'signRead')).toHaveLength(signsBefore);
+      expect(await media.sign(w.ava, clean.assetId, undefined, 3600)).toMatchObject({
+        method: 'GET',
+      });
+    });
+
+    it('C73 a media asset that is not completed carries no refusal or scan state', async () => {
+      const started = await media.start(w.ava, w.taskA, PNG_DECLARED);
+      if ('code' in started) throw new Error(`start refused ${started.code}`);
+      const admit = async (state: 'started' | 'abandoned') =>
+        await w.world.db.admin.execute(
+          `update public.review_media_assets
+            set state = $3, refusal = 'TYPE_MISMATCH', scan_state = 'quarantined'
+          where business_id = $1 and id = $2`,
+          [w.world.business, started.assetId, state],
+        );
+      await expect(admit('started')).rejects.toThrow(
+        /review_media_assets_completed_is_admitted_once/u,
+      );
+      await expect(admit('abandoned')).rejects.toThrow(
+        /review_media_assets_completed_is_admitted_once/u,
+      );
+      expect(
+        (await media.rows('review_media_assets', w.world.business)).find(
+          (row) => row['id'] === started.assetId,
+        ),
+      ).toMatchObject({ state: 'started', refusal: null, scan_state: null });
+    });
+  },
+);

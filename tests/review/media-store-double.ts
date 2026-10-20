@@ -125,7 +125,7 @@ export class MediaStoreDouble implements ObjectTransfers {
     const upload = this.#upload(key, uploadId);
     const bodies = partNumbers.map((n) => upload?.parts.get(n));
     if (upload === undefined || bodies.includes(undefined)) return Promise.resolve(UNKNOWN);
-    const joined = Buffer.concat(bodies as Uint8Array[]);
+    const joined = new Uint8Array(Buffer.concat(bodies as Uint8Array[]));
     this.#uploads.delete(uploadId);
     this.objects.set(key, joined);
     return Promise.resolve({ byteCount: joined.byteLength, digest: digestOf(joined) });

@@ -85,8 +85,13 @@ export interface MediaCalls {
     body: Uint8Array,
     business?: string,
   ): Promise<{ readonly assetId: string; readonly completed: CompleteAnswer }>;
-  /** A read signed for playback, as `member`. */
-  sign(member: Member, assetId: string, business?: string): ReturnType<typeof signMediaRead>;
+  /** A read signed for playback, as `member`, for `lifeSeconds` (300 unless given). */
+  sign(
+    member: Member,
+    assetId: string,
+    business?: string,
+    lifeSeconds?: number,
+  ): ReturnType<typeof signMediaRead>;
   /** The quarantined asset's object read through `scanner`, its verdict landed as the system. */
   scan(assetId: string, scanner: MediaScanner, business?: string): ReturnType<typeof landMediaScan>;
   /** The review as `member` reads it. */
@@ -145,21 +150,30 @@ function uploadCalls(w: C35World, store: MediaStoreDouble): UploadCalls {
         const from = (part.partNumber - 1) * store.partBytes;
         return store.send('PUT', part.url, body.subarray(from, from + store.partBytes)).status;
       }),
-    // A plain array: the driver's result carries its own fields, which a strict match counts.
-    rows: async (table, business) => [
-      ...(await w.world.db.admin.execute<Record<string, unknown>>(
-        table === 'reviews'
-          ? `select id, kind from public.reviews where business_id = $1 and kind = 'media'`
-          : table === 'review_revisions'
-            ? `select v.id, v.number, v.digest from public.review_revisions v
+    rows: async (table, business) => await mediaRows(w, table, business),
+  };
+}
+
+/** A column of the media rows of `business`, as the administrator reads it. */
+async function mediaRows(
+  w: C35World,
+  table: Parameters<MediaCalls['rows']>[0],
+  business: string,
+): ReturnType<MediaCalls['rows']> {
+  // A plain array: the driver's result carries its own fields, which a strict match counts.
+  return [
+    ...(await w.world.db.admin.execute<Record<string, unknown>>(
+      table === 'reviews'
+        ? `select id, kind from public.reviews where business_id = $1 and kind = 'media'`
+        : table === 'review_revisions'
+          ? `select v.id, v.number, v.digest from public.review_revisions v
                  join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
                 where v.business_id = $1 and c.kind = 'media' order by v.number`
-            : `select id, state, revision_id, refusal, scan_state, scan_engine
+          : `select id, state, revision_id, refusal, scan_state, scan_engine
                  from public.review_media_assets where business_id = $1 order by created_at`,
-        [business],
-      )),
-    ],
-  };
+      [business],
+    )),
+  ];
 }
 
 /** The upload contract's calls (#2039): a whole upload, a signed read, a scan, a review read. */
@@ -171,13 +185,13 @@ function contractCalls(
   const alpha = w.world.business;
   return {
     upload: wholeUpload(calls, alpha),
-    sign: async (member, assetId, business = alpha) =>
+    sign: async (member, assetId, business = alpha, lifeSeconds = 300) =>
       await w.world.db.app.withBusiness(
         business,
         async (tx) =>
           await signMediaRead(
             tx,
-            { assetId, covering: coveringOf(member, 'read'), lifeSeconds: 300 },
+            { assetId, covering: coveringOf(member, 'read'), lifeSeconds },
             store,
           ),
       ),
