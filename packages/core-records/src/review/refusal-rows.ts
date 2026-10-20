@@ -34,4 +34,10 @@ export const REVIEW_ROWS = [
     meaning: 'The picture is past the storage cap',
     source: 'C35, the storage seam',
   },
+  {
+    code: 'POOL_REVIEW_ALREADY_RECORDED',
+    status: 409,
+    meaning: 'This capture pool review is already recorded; its evidence stays as first recorded',
+    source: 'C35, the capture pool reviews (#2018, D17-14)',
+  },
 ] as const;
