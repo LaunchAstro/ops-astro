@@ -1,44 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type {
-  SearchHit,
-  TaskReadResult,
-  TaskTimeView,
-} from '../../../../../packages/core-wire/src/index.ts';
+import type { TaskReadResult, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { CallResult, CommandOutcome, OperationsClient } from '../../operations/client.ts';
 import { settle, type Settlement } from '../../records/use-command.ts';
+import type {
+  Attempt,
+  TimerBinding,
+  TimerCustody,
+  TimerState,
+  TimerTask,
+} from './task-timer-types.ts';
+export type { TimerState, TimerTask } from './task-timer-types.ts';
 
-export type TimerTask = Pick<SearchHit, 'id'> & Partial<Pick<SearchHit, 'key' | 'title'>>;
-export interface TimerBinding {
-  readonly task: TimerTask;
-  readonly running: TaskTimeView['running'];
-}
-export type TimerHold = Pick<TimerState, 'binding' | 'attempt'>;
-export type TimerDurability = 'none' | 'kept' | 'memory-only';
-export interface TimerCustody {
-  readonly restored: TimerHold | null;
-  readonly write: (hold: TimerHold) => TimerDurability;
-}
-interface Attempt {
-  readonly command: 'time.start' | 'time.stop';
-  readonly task: TimerTask;
-  readonly payload: Readonly<{ taskId: string; expectedEntryId?: string }>;
-  readonly operationId: string;
-  readonly status: 'pending' | 'unknown' | 'refused';
-  readonly because: string | null;
-  readonly uncertain: boolean;
-  readonly entryId: string | null;
-}
 interface ReadFlight {
   readonly ticket: number;
   readonly keys: Set<string>;
   answer: Promise<CallResult<TaskReadResult>> | null;
-}
-export interface TimerState {
-  readonly binding: TimerBinding | null;
-  readonly attempt: Attempt | null;
-  readonly changed: number;
-  readonly unavailable: boolean;
-  readonly durability: TimerDurability;
 }
 const initial = (): TimerState => ({
   binding: null,
@@ -57,6 +33,8 @@ export class TaskTimer {
   private readonly readers = new Set<Set<string>>();
   private readonly readFloors = new Map<string, ReadFlight>();
   private readonly listeners = new Set<() => void>();
+  /** A binding a current read found idle while an attempt was held. */
+  private idle: { readonly binding: TimerBinding; readonly version: number } | null = null;
   private client: OperationsClient;
   private readonly ownerOn: () => boolean;
   private readonly custody: TimerCustody | undefined;
@@ -69,10 +47,12 @@ export class TaskTimer {
     if (this.ownerOn()) this.state = this.keep(this.state);
   }
   private keep(next: TimerState): TimerState {
+    const hold = next.attempt?.status === 'abandoned' ? { ...next, attempt: null } : next;
     const durability =
-      this.custody?.write(next) ??
-      (next.binding === null && next.attempt === null ? 'none' : 'memory-only');
-    return { ...next, durability };
+      this.custody?.write(hold) ??
+      (hold.binding === null && hold.attempt === null ? 'none' : 'memory-only');
+    const leftBehind = durability === 'memory-only' && this.custody?.durable === true;
+    return { ...(leftBehind ? next : hold), durability };
   }
   /** Same owner, new admitted bearer. Old transport replies have no authority here. */
   rebind(client: OperationsClient): void {
@@ -114,13 +94,22 @@ export class TaskTimer {
     if (binding.running === null) return;
     this.begin('time.stop', binding.task, binding.running.entryId);
   };
+  /** A known refusal is registered under its id, so only a new id is judged afresh. Like begin(), a retry outdates reads already in flight. */
   readonly retry = (): void => {
     const attempt = this.state.attempt;
-    if (!this.ownerOn() || attempt === null || attempt.status === 'pending') return;
-    this.dispatch({ ...attempt, status: 'pending', because: null });
+    if (!this.ownerOn() || (attempt?.status !== 'unknown' && attempt?.status !== 'refused')) return;
+    this.version += 1;
+    const operationId = attempt.uncertain ? attempt.operationId : this.client.newOperationId();
+    this.dispatch({ ...attempt, operationId, status: 'pending', because: null, refusal: false });
   };
+  /** Clears a known refusal, or lets go of a refused unknown: `abandoned` until keep() clears its copy. */
   readonly dismiss = (): void => {
-    if (this.state.attempt?.status === 'refused') this.put({ ...this.state, attempt: null });
+    const attempt = this.state.attempt;
+    const idle = this.idle?.binding === this.state.binding && this.idle?.version === this.version;
+    const binding = idle ? null : this.state.binding;
+    if (attempt?.status === 'refused') this.put({ ...this.state, binding, attempt: null });
+    else if (attempt?.status === 'abandoned' || (attempt?.status === 'unknown' && attempt.refusal))
+      this.put({ ...this.state, binding, attempt: { ...attempt, status: 'abandoned' } });
   };
   private begin(command: Attempt['command'], task: TimerTask, expectedEntryId?: string): void {
     this.version += 1;
@@ -169,9 +158,14 @@ export class TaskTimer {
           ...current,
           status: outcome.kind === 'unknown' || attempt.uncertain ? 'unknown' : 'refused',
           uncertain: attempt.uncertain || outcome.kind === 'unknown',
+          refusal: outcome.kind !== 'unknown',
           because: outcome.because,
         },
       });
+      // A refused retry of a lost attempt reads the held task, wherever the
+      // person is, so Stop waiting is judged against its timer as it is.
+      if (attempt.uncertain && outcome.kind !== 'unknown')
+        void this.read(current.task.id, () => transport === this.client);
       return;
     }
     const detail = outcome.value.detail ?? {};
@@ -277,9 +271,9 @@ export class TaskTimer {
           binding: { task: { id: task.id, key: task.key, title: task.title }, running },
           unavailable: false,
         });
-      } else if (binding?.task.id === task.id && this.state.attempt === null) {
+      } else if (binding?.task.id === task.id && attempt === null) {
         this.put({ ...this.state, binding: null, unavailable: false });
-      }
+      } else if (binding?.task.id === task.id) this.idle = { binding, version: this.version };
       return;
     }
     if (!matches && !attempted) return;
