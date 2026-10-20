@@ -239,6 +239,16 @@ const answering =
     }
   };
 
+/** A tab reopened with no choice of its own shows the model its conversation kept (#2175). */
+const keptChoice = <C extends { readonly model: string | null }>(
+  chats: readonly C[],
+  open: C | undefined,
+  chosen: string | null,
+): readonly C[] =>
+  chats.map((each) =>
+    each === open && each.model === null && chosen !== null ? { ...each, model: chosen } : each,
+  );
+
 export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
@@ -255,11 +265,11 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
   const writes = useWrites(props, store, sender);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
-  const models = useModels(props.client, opened);
+  const { models, chosen } = useModels(props.client, opened);
   return (
     <AssistantPanel
       subject={subject}
-      chats={state.chats}
+      chats={keptChoice(state.chats, chat, chosen)}
       selected={state.selected}
       offer={modelOffer(subject, models, null)}
       address={
