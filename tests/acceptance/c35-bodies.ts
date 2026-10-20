@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's and C57's positive bodies for the role-case matrix (#2011, #2016), answered from `role-case-setup.ts`'s
+// C35's and C57's positive bodies for the role-case matrix (#2011, #2016, #2117), answered from `role-case-setup.ts`'s
 // `tableBody`: a review is opened by the admin on a task under a client of its own, for that
 // client's bound about page, so the capture and the read each name one the admin reaches.
 
@@ -13,6 +13,7 @@ import type { AdminConnection } from '../../packages/core-records/src/tenancy/da
 import type { Caller } from './cast.ts';
 import type { Answer } from './world.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
+import { makeTaskBody } from './c57b-bodies.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -24,6 +25,7 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.picture',
   'review.propose_change',
   'review.decide_change',
+  'review.make_change_task',
 ]);
 
 /** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
@@ -88,6 +90,10 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   if (opened.code !== 'ok') throw new Error(`matrix: review.open refused ${opened.code}`);
   const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
   if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
+  if (name === 'review.make_change_task') {
+    const decision = await changeBody(context, 'review.decide_change', detail['revisionId']);
+    return await makeTaskBody(context, open.body['taskId'], decision);
+  }
   if (name === 'review.propose_change' || name === 'review.decide_change') {
     return await changeBody(context, name, detail['revisionId']);
   }

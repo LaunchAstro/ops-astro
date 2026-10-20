@@ -7,6 +7,7 @@ import { askReviewCapture, openReview } from './review-commands.ts';
 import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts';
 import { pinComment } from './review-pin.ts';
 import { decideChange, proposeChange } from './review-change.ts';
+import { makeChangeTaskAsPerson } from './review-change-task.ts';
 
 type ReviewWrite =
   | 'review.open'
@@ -15,7 +16,8 @@ type ReviewWrite =
   | 'review.capture_land'
   | 'review.pin_comment'
   | 'review.propose_change'
-  | 'review.decide_change';
+  | 'review.decide_change'
+  | 'review.make_change_task';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.open': openReview,
@@ -25,4 +27,5 @@ export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.pin_comment': pinComment,
   'review.propose_change': proposeChange,
   'review.decide_change': decideChange,
+  'review.make_change_task': makeChangeTaskAsPerson,
 };

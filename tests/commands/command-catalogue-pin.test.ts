@@ -393,6 +393,10 @@ vi.mock('../../packages/core-commands/src/commands/review-change.ts', async (ori
   proposeChange: recorder('proposeChange'),
   decideChange: recorder('decideChange'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-change-task.ts', async (original) => ({
+  ...(await original<object>()),
+  makeChangeTaskAsPerson: recorder('makeChangeTaskAsPerson'),
+}));
 vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (original) => ({
   ...(await original<object>()),
   pinComment: recorder('pinComment'),
@@ -486,6 +490,7 @@ const PINNED_RUNTIME_SHAPED = {
   'run.end': 'leaseId',
   'review.capture_claim': 'leaseId',
   'review.capture_land': 'leaseId',
+  'review.make_change_task': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -538,6 +543,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
   'review.decide_change': ['changeRequestId'],
+  'review.make_change_task': ['leaseId', 'changeRequestId'],
   'review.open': ['taskId'],
   'review.pin_comment': ['revisionId'],
   'review.propose_change': ['commentId'],
@@ -702,6 +708,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture_claim',
   'review.capture_land',
   'review.decide_change',
+  'review.make_change_task',
   'review.open',
   'review.picture',
   'review.pin_comment',
@@ -771,6 +778,7 @@ const PINNED_AGENT_SURFACE = [
   'review.capture',
   'review.capture_claim',
   'review.capture_land',
+  'review.make_change_task',
   'review.open',
   'review.pin_comment',
   'review.propose_change',
@@ -1085,6 +1093,13 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'review.propose_change', operationId: 'op', commentId: 'c', text: 't' },
   { command: 'review.decide_change', operationId: 'op', changeRequestId: 'c', decision: 'approve' },
   {
+    command: 'review.make_change_task',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 1,
+    changeRequestId: 'c',
+  },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -1293,6 +1308,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.pin_comment': ['pinComment', 'request'],
   'review.propose_change': ['proposeChange', 'request'],
   'review.decide_change': ['decideChange', 'request'],
+  'review.make_change_task': ['makeChangeTaskAsPerson', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
@@ -1392,13 +1408,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and forty-one from an expected revision', () => {
+  it('exempts the same one hundred and forty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-seven, three of them before a pickup', () => {
+  it('lets an agent reach the same twenty-eight, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

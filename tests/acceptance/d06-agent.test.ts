@@ -59,12 +59,12 @@ if (serverUrl === undefined) {
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 // In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the take, C35 (no
-// `review`), C57's filing (no `proposal`, and refused CLIENT_MODEL_USE_OFF inside one).
+// `review`), C57's filing (no `proposal`, refused CLIENT_MODEL_USE_OFF inside one) and its task
+// making, which needs an approved request on the leased task (tests/review, #2117).
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
-  'task.decide',
-  'task.create',
-  'task.take_launch',
+  ...(['task.decide', 'task.create', 'task.take_launch'] as const),
   ...(['review.open', 'review.capture', 'review.pin_comment', 'review.propose_change'] as const),
+  'review.make_change_task',
 ]);
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),

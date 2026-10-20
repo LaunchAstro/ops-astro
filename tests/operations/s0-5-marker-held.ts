@@ -63,6 +63,7 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   // C57: a change request names its pin's task (#2016).
   'review.propose_change',
   'review.decide_change',
+  'review.make_change_task',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);
