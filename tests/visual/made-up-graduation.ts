@@ -10,12 +10,27 @@ import type {
   GraduationRowView,
 } from '../../packages/core-wire/src/index.ts';
 
-// Scopes as main's scopeChoices orders them: every class, then families, then classes.
-const MERIDIAN = { id: 'c-meridian', label: 'Meridian Dental', scopes: ['*', 'ads.*', 'review.*'] };
+// Scopes as main's scopeChoices derives them from each client's own rows:
+// every class, then families, then classes.
+const MERIDIAN = {
+  id: 'c-meridian',
+  label: 'Meridian Dental',
+  scopes: [
+    '*',
+    'connector.*',
+    'gbp.*',
+    'recommendation.*',
+    'review.*',
+    'connector.resync',
+    'gbp.post.publish',
+    'recommendation.send',
+    'review.chase.send',
+  ],
+};
 const HARBOUR = {
   id: 'c-harbour',
   label: 'Westshore Legal',
-  scopes: ['*', 'ads.*', 'connector.*'],
+  scopes: ['*', 'connector.*', 'connector.resync'],
 };
 const grad = (
   n: number,
