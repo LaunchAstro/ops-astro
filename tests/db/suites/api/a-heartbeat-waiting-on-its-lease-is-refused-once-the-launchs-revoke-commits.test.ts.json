@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a pickup child under a taken launch reads only its own purpose, and a heartbeat already waiting on its lease when the owner's revoke of the launch commits is refused DELEGATION_REVOKED and renews nothing"
+}
