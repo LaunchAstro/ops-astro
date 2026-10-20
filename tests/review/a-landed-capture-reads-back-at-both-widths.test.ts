@@ -76,6 +76,7 @@ async function landBoth(reviewed: Reviewed, lease: Lease): Promise<Landed[]> {
       width,
       pictureId: detail['pictureId'],
       pictureDigest: storedDigestOf(picture),
+      carryDue: false,
     });
     landed.push({ width, picture, pictureId: String(detail['pictureId']) });
   }
