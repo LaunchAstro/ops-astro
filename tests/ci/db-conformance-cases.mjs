@@ -677,3 +677,80 @@ test('on two lanes, a suite beside the database fails while its sibling moves th
     ),
   );
 });
+
+// Sol's proofs from the review of #1833 at d6b12eb (#1753). A fixture suite reaches
+// its server as tests/support/fresh-database.ts does, DATABASE_ADMIN_URL
+// first. With that set to the first lane's server, a suite on the second lane
+// used to make its databases on the first, and rule 7 rejected it: its own
+// server's counter never moved. `waits` makes each suite wait for the other
+// to start, so both lanes run at once.
+const REACHES_THE_FIXTURE_SERVER = (index, waits) => `// SPDX-License-Identifier: AGPL-3.0-only
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, test } from 'vitest';
+import pg from 'pg';
+import { databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
+
+test('the fixture server answers', async () => {
+  const client = new pg.Client({ connectionString: databaseUrlFromEnvironment() });
+  await client.connect();
+  try {
+    expect((await client.query('select 1 as n')).rows[0].n).toBe(1);
+  } finally {
+    await client.end();
+  }
+  if (${String(waits)}) {
+    writeFileSync(join(import.meta.dirname, 'ready-${String(index)}'), 'ready');
+    const other = join(import.meta.dirname, 'ready-${String(1 - index)}');
+    const until = Date.now() + 10_000;
+    while (!existsSync(other) && Date.now() < until) await new Promise((done) => setTimeout(done, 25));
+    expect(existsSync(other), 'the other lane starts before this suite ends').toBe(true);
+  }
+});
+`;
+
+for (const [name, adminConfigured] of [
+  ['on two lanes, each suite makes its fixture databases on its own lane’s server', true],
+  ['on two lanes, two suites run at once and each moves its own server', false],
+]) {
+  test(name, (t) => {
+    if (skipUnlessDocker(t)) return;
+    withDatabase((first) =>
+      withDatabase(
+        (second) =>
+          withSuites(
+            {
+              'first.test.ts': REACHES_THE_FIXTURE_SERVER(0, !adminConfigured),
+              'second.test.ts': REACHES_THE_FIXTURE_SERVER(1, !adminConfigured),
+            },
+            { invariant: ['first.test.ts', 'second.test.ts'] },
+            (m) => {
+              const env = {
+                ...process.env,
+                DATABASE_URL: first,
+                DATABASE_ADMIN_URL: first,
+                DATABASE_LANE_URLS: `${first},${second}`,
+              };
+              if (!adminConfigured) delete env.DATABASE_ADMIN_URL;
+              delete env.FIXTURE_PG_CONTAINERS;
+              const run = spawnSync(process.execPath, [runner, '--manifest', m], {
+                cwd: repoRoot,
+                encoding: 'utf8',
+                env,
+                maxBuffer: 32 * 1024 * 1024,
+              });
+              assert.match(run.stdout, /2 passed, 0 failed, 0 skipped/u, 'both fixture suites pass');
+              assert.equal(
+                run.status,
+                0,
+                /transaction movement above measurement cost and a new client session/u.test(run.stderr)
+                  ? `rule 7 rejected a passing fixture suite: its admin URL still points at lane 1\n${run.stderr}`
+                  : `runner failed: ${run.stderr}`,
+              );
+            },
+          ),
+        { fresh: true },
+      ),
+    );
+  });
+}
