@@ -10,17 +10,17 @@
 // focused, and nothing is sent.
 //
 // **One create, however many presses.** An outcome nobody knows keeps the
-// create's identity for the retry, so the server's replay answers it rather
-// than a second task; so does a created task whose draft the browser would
-// not remove. Until it is settled the fields are read-only, so no
-// edit can start a second create beside it; Cancel still discards it. The identity is stored with the draft before Create goes out, so
-// a reload or Back while it is out reopens the draft with it; a new Create
-// the browser cannot store is not sent. While Create is
+// create's identity for the retry, so the server's replay answers it rather than
+// a second task, as does a created draft the browser would not remove. Until it
+// is settled the fields are read-only, so no edit can start a second create
+// beside it; Cancel still discards it. The identity is stored with the draft
+// before Create goes out, so a reload or Back while it is out reopens the draft
+// with it; a new Create the browser cannot store is not sent. While Create is
 // out, the fields, Close, Cancel, Escape and the host's doors wait for it, so
-// the draft is never changed under it, reopened or created again; a Create
-// that lands after the session changed opens nothing. A close the dock refused
-// has already taken the panel out and put it back, which mounts the draft
-// again: the new mount finds the Create still out (`flights`) and waits too.
+// the draft is never changed under it, reopened or created again; a Create that
+// lands after the session changed opens nothing. A close the dock refused has
+// already taken the panel out and put it back, which mounts the draft again: the
+// new mount finds the Create still out (`flights`) and waits too.
 //
 // **Timer on the draft (DN-05).** The draft's own timer (`DraftTimer.tsx`) is
 // kept with it; Create stops a running one first, so its minutes go with the
@@ -32,14 +32,7 @@ import { DraftFields, Missed } from './DraftFields.tsx';
 import { useKeptDraft, type DraftEditorProps } from './draft-editor.ts';
 import { tell, useToldBy } from './draft-mounts.ts';
 export type { DraftScope } from './draft-editor.ts';
-import {
-  draftProblem,
-  dropDraft,
-  newAttempt,
-  readAttempt,
-  stopTimer,
-  type Attempt,
-} from './task-draft.ts';
+import { draftProblem, dropDraft, newAttempt, stopTimer, type Attempt } from './task-draft.ts';
 import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
 export interface DraftPanelProps extends DraftEditorProps {
@@ -238,13 +231,11 @@ function DraftHead(props: {
 
 /** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
 function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
-  if (outcome.kind !== 'created') {
-    if (outcome.kind !== 'unknown') kept.settled(at.id);
+  if (outcome.kind === 'refused') kept.settled(at.id);
+  if (outcome.kind !== 'created')
     return { refusal: outcome.because, missed: null, mayLetGo: outcome.retryRefused === true };
-  }
   dropDraft(props.storage, props.person);
-  // A draft storage would not remove keeps its create's id, so reopened it replays this task.
-  if (readAttempt(props.storage, props.person)?.id !== at.id) kept.settled(at.id);
+  kept.reread();
   if (outcome.missed.length > 0) {
     return { refusal: null, missed: { taskKey: outcome.key, parts: outcome.missed } };
   }
