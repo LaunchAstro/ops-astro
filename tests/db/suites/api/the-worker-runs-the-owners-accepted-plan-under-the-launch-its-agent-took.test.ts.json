@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the owner's approved plan on his own task, launched to his own agent and taken by it, is picked up by the worker under the launch's credential and run on the plan route to a recorded end, with no delegation minted by hand"
+}

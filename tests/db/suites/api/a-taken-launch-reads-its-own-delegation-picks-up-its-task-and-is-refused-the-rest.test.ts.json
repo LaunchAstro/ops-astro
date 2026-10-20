@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "under a taken launch's credential the agent reads its own delegation, which names its task alone, and picks up the owner's plan on that task; every other operation is refused DELEGATION_EXCLUDES_OPERATION writing nothing, another task's plan and record are out of purpose, the owner's correction is stored under the pickup's own credential and refused under the launch's, and in another business the credential reaches nothing"
+}

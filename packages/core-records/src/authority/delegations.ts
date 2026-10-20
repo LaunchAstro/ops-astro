@@ -419,7 +419,68 @@ export async function mintChildDelegation(
     scope: held.value.purposeScope,
   });
   if (!reach.ok) return reach;
-  if (!strictlyNarrower(request, held.value)) {
+  return await mintUnder(tx, held.value, request, keys);
+}
+
+/**
+ * The pickup's delegation under a taken launch's (#2178): a child of the
+ * launch's, so a revocation or lapse of the launch ends the run with it. It is
+ * the launch's own work, not a hand-off to a helper, so it asks no `run:write`
+ * of the parent; it is strictly narrower, on the parent's person, authoriser
+ * and task, and ends no later than the parent. Its collections are those
+ * asked that the launch carries; the person who approved the plan must be the
+ * one who launched it, whose authority the lease is judged on.
+ */
+export async function mintPickupChild(
+  tx: TenantQuery,
+  parentId: string,
+  request: ChildMintRequest & {
+    readonly delegatePersonId: string;
+    readonly mintedByActorId: string;
+    /** The task the claimed work is on, which must be the launch's own. */
+    readonly taskId: string;
+  },
+  keys: CredentialKeysDecision = configuredCredentialKeys(),
+): Promise<DelegationDecision<MintedDelegation>> {
+  const held = await parentStanding(tx, parentId, 'for share');
+  if (!held.ok) return held;
+  const parent = held.value;
+  if (parent.purposeScope.id !== request.taskId) {
+    return refuse(
+      'DELEGATION_OUT_OF_PURPOSE',
+      'this work is on a task the launch does not name: it was not claimed',
+      'pick up only the plan on the launched task',
+    );
+  }
+  if (
+    parent.delegatePersonId !== request.delegatePersonId ||
+    parent.mintedByActorId !== request.mintedByActorId
+  ) {
+    return refuse(
+      'DELEGATION_OUT_OF_PURPOSE',
+      'the launch was opened by someone other than the person who approved this plan',
+      'ask the person who approved the plan to launch it',
+    );
+  }
+  if (parent.parentDelegationId !== null || request.expiresAt > parent.expiresAt) {
+    return refuse(
+      'DELEGATION_WIDENS',
+      'a pickup under a launch ends no later than the launch, one level deep',
+      'take the launch again, or ask the owner to launch it again',
+    );
+  }
+  const collections = request.collections.filter((name) => parent.collections.includes(name));
+  return await mintUnder(tx, parent, { ...request, collections }, keys);
+}
+
+/** A child of `parent`, judged standing by the caller: strictly narrower, on the parent's person and task. */
+async function mintUnder(
+  tx: TenantQuery,
+  parent: Delegation,
+  request: ChildMintRequest,
+  keys: CredentialKeysDecision,
+): Promise<DelegationDecision<MintedDelegation>> {
+  if (!strictlyNarrower(request, parent)) {
     return refuse(
       'DELEGATION_WIDENS',
       "a child's operation set is a strict subset of its parent's",
@@ -430,16 +491,16 @@ export async function mintChildDelegation(
     tx,
     {
       agentActorId: request.agentActorId,
-      delegatePersonId: held.value.delegatePersonId,
-      mintedByActorId: held.value.mintedByActorId,
+      delegatePersonId: parent.delegatePersonId,
+      mintedByActorId: parent.mintedByActorId,
       purpose: request.purpose,
       collections: request.collections,
       actions: request.actions,
-      purposeScope: held.value.purposeScope,
+      purposeScope: parent.purposeScope,
       expiresAt: request.expiresAt,
     },
     keys,
-    held.value.id,
+    parent.id,
   );
 }
 
@@ -458,10 +519,11 @@ const PARENT_FIX = 'the work this helper was given has ended; hand back what it 
  * SQL that holds while the delegation aliased `d` stands: not revoked, handed
  * back or expired, nor its parent (children go one level deep), as
  * `checkDelegatedAuthority` asks at each of a child's calls. For what a read
- * lists or offers and what an assignment accepts; a call still asks
- * `checkDelegatedAuthority`.
+ * lists or offers and what an assignment accepts, and for a lease's
+ * re-check after its lock wait, judged at the instant read after the locks
+ * (#2195); a call still asks `checkDelegatedAuthority` at its start.
  */
-const standsAt = (
+export const delegationStandsAt = (
   clock: string,
 ): string => `(d.revoked_at is null and d.settled_at is null and d.expires_at > ${clock}
    and (d.parent_delegation_id is null
@@ -472,14 +534,14 @@ const standsAt = (
                       and stands_parent.expires_at > ${clock})))`;
 
 /** Judged as the statement starts, so a read after a lock wait sees an expiry during it. */
-export const DELEGATION_STANDS: string = standsAt('statement_timestamp()');
+export const DELEGATION_STANDS: string = delegationStandsAt('statement_timestamp()');
 
 /**
  * `DELEGATION_STANDS` on the clock as it is evaluated, not the statement's
  * start: for a write that may wait on a lock within the statement, so an
  * expiry during the wait counts.
  */
-export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
+export const DELEGATION_STANDS_AT_CHECK: string = delegationStandsAt('clock_timestamp()');
 
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
@@ -493,7 +555,7 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
  */
 const PARENT_ROW = 'select 1 from public.delegations where business_id = $1 and id = $2';
 
-async function parentStanding(
+export async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',

@@ -31,12 +31,13 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import { DELEGATION_STANDS, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { claimStopped, leaseReason, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
+import { mintAgentDelegation } from './pickup-mint.ts';
 import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, loseLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
@@ -150,6 +151,8 @@ export interface AgentPickupRequest extends PickupCommon {
   readonly agentActorId: string;
   /** The approving person's acting identity. The delegation's ceiling is their live grants. */
   readonly mintedByActorId: string;
+  /** The launch's delegation it was sent under: the pickup's is that one's child (#2178). */
+  readonly launchDelegationId?: string;
 }
 
 export interface PersonPickupRequest extends PickupCommon {
@@ -615,8 +618,8 @@ async function fenceLiveLease(
  * cap does not count.
  *
  * An agent: the delegation expires with the lease, minted against the
- * delegating person's live grants, which `mintDelegation` reads for itself;
- * nothing is copied here. `purposeScope` is R5's one-task ceiling.
+ * delegating person's live grants (`pickup-mint.ts`, a launch's child under
+ * a launch's credential); nothing is copied here. `purposeScope` is R5's one-task ceiling.
  * `mintDelegation` reads the delegating person's grants through `now()`, the
  * transaction's start, so they are judged here first at the locked instant,
  * with `mintDelegation`'s own refusal, and a grant that lapsed mints nothing.
@@ -630,19 +633,7 @@ async function authoriseClaimant(
 ): Promise<RuntimeResult<MintedDelegation | undefined>> {
   const may = await claimantMayWork(tx, request, found, lockedAt);
   if (!may.ok || request.claimant === 'person') return may;
-  const actions = ['read', 'comment', 'write'] as const;
-  const minted = await mintDelegation(tx, {
-    agentActorId: request.agentActorId,
-    delegatePersonId: request.authorisedByPersonId,
-    mintedByActorId: request.mintedByActorId,
-    purpose: found.purpose,
-    collections: await delegatedCollections(tx, request, lockedAt),
-    actions: [...actions],
-    expiresAt,
-    purposeScope: { kind: 'record', id: found.task_id },
-  });
-  if (!minted.ok) return { ok: false, refusal: minted.refusal };
-  return { ok: true, value: minted.value };
+  return await mintAgentDelegation(tx, request, found, expiresAt, lockedAt);
 }
 
 /**
@@ -694,26 +685,6 @@ async function claimantMayWork(
     }
   }
   return { ok: true, value: undefined };
-}
-
-/**
- * The collections the agent's delegation reaches: the work's own, and `run`
- * where the delegating person holds `run:write` at the locked instant, so the
- * agent may revise its run's state (MP-6-2). The mint holds `run` to `write`;
- * a person without it mints the task delegation it always was.
- */
-async function delegatedCollections(
-  tx: TenantQuery,
-  request: PickupRequest,
-  lockedAt: string,
-): Promise<readonly string[]> {
-  const runWrite = await checkAuthorityAt(
-    tx,
-    [{ kind: 'person', id: request.authorisedByPersonId }],
-    { collection: 'run', action: 'write', scope: { kind: 'business', id: null } },
-    lockedAt,
-  );
-  return runWrite.ok ? [request.collection, 'run'] : [request.collection];
 }
 
 interface NewLease {

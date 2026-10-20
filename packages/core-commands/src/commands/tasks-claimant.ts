@@ -12,6 +12,8 @@ export interface AgentClaimant {
   readonly claimant: 'agent';
   /** The agent's own actor: the lease holder, and a successor's proposer. */
   readonly actorId: string;
+  /** The launch's delegation a pickup was sent under: its delegation is minted as that one's child (#2178). */
+  readonly launchDelegationId?: string;
 }
 
 export interface PersonClaimant {
@@ -26,8 +28,12 @@ export interface PersonClaimant {
 
 export type Claimant = AgentClaimant | PersonClaimant;
 
-export function agentClaimant(actorId: string): AgentClaimant {
-  return { claimant: 'agent', actorId };
+export function agentClaimant(actorId: string, launchDelegationId?: string): AgentClaimant {
+  return {
+    claimant: 'agent',
+    actorId,
+    ...(launchDelegationId === undefined ? {} : { launchDelegationId }),
+  };
 }
 
 /** The verified person of this command, claiming under their own grants. */
