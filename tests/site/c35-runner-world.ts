@@ -14,7 +14,7 @@ import {
   type SizedBrowser,
 } from '../../apps/site-runner/review-captures.ts';
 import type { CapturePool, Transport } from '../../packages/core-connectors/src/index.ts';
-import type { BusinessId } from '../../packages/core-records/src/index.ts';
+import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { C35World, Reviewed } from '../review/c35-world.ts';
@@ -91,11 +91,13 @@ export const capturePass = async (
     readonly transport: Transport;
     readonly browserAt: SizedBrowser;
     readonly pool?: CapturePool;
+    /** The runner's login; the app's own unless told. */
+    readonly db?: Database;
   },
 ): Promise<readonly Captured[]> =>
   await reviewCaptures({
     call: at.call,
-    db: w.world.db.app,
+    db: at.db ?? w.world.db.app,
     business: w.world.business as BusinessId,
     capture: { pool: at.pool ?? AGENCY_POOL, resolve: publicResolver, transport: at.transport },
     browserAt: at.browserAt,
