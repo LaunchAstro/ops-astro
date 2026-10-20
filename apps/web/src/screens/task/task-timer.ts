@@ -94,10 +94,11 @@ export class TaskTimer {
     if (binding.running === null) return;
     this.begin('time.stop', binding.task, binding.running.entryId);
   };
-  /** A known refusal is registered under its id, so only a new id is judged afresh. */
+  /** A known refusal is registered under its id, so only a new id is judged afresh. Like begin(), a retry outdates reads already in flight. */
   readonly retry = (): void => {
     const attempt = this.state.attempt;
     if (!this.ownerOn() || (attempt?.status !== 'unknown' && attempt?.status !== 'refused')) return;
+    this.version += 1;
     const operationId = attempt.uncertain ? attempt.operationId : this.client.newOperationId();
     this.dispatch({ ...attempt, operationId, status: 'pending', because: null, refusal: false });
   };
