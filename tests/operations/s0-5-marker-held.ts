@@ -67,6 +67,8 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   // A decision and Astra's review name the review's revision (#2014).
   'review.decide',
   'review.record_astra_review',
+  // A pin's carry names the review's revision, which leads back to the task (#2075).
+  'review.carry_pins',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);

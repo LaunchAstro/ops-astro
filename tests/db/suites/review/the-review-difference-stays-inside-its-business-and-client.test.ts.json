@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 difference isolation: another client and another business read none of a review's text and stylesheet difference; the planted marker shows in no answer."
+}

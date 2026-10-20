@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X (#2166): the runner's lease runs out between the land that answered carryDue and its carry; the API refuses the carry LEASE_EXPIRED, the step logs that code and throws PinsUncarried after its hand-back so the pass fails, and nothing is carried."
+}

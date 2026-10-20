@@ -40,4 +40,13 @@ export const PAGE_ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // The Review workspace (C35, #2105): one review, under the projects' Reviews page. The
+  // manifest's row keeps it out of the rail; the Projects section is lit for it.
+  'agency:review-workspace': {
+    namespace: 'agency',
+    path: '/projects/reviews/:review',
+    title: 'Review workspace',
+    surface: 'none',
+    authenticated: true,
+  },
 } as const;

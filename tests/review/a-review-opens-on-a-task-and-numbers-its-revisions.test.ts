@@ -45,7 +45,6 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
     expect([one['number'], two['number']]).toStrictEqual([1, 2]);
     expect(one['digest']).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(two['digest']).not.toBe(one['digest']);
-
     expect(await w.read(w.ava, one['reviewId'])).toStrictEqual({
       ok: true,
       review: {
@@ -56,11 +55,14 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         pageUrl: PAGE,
         path: ABOUT,
         revisions: [shown(one, 1, []), shown(two, 2, [])],
-        // The latest beside the one before it, and no pins or change requests yet (#2012, #2117).
+        // The latest beside the one before it, nothing pinned, carried or filed yet.
         after: shown(two, 2, []),
         before: shown(one, 1, []),
         pins: [],
+        carried: [],
+        carryDue: false,
         changeRequests: [],
+        differences: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);

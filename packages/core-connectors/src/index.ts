@@ -158,6 +158,7 @@ export {
   type PictureRoute,
 } from './capture/picture.ts';
 export * from './site/index.ts';
+export * from './site/capture-changes.ts';
 export {
   LOCAL_GPT_BODY_LIMIT,
   LOCAL_GPT_COMPOSE,
