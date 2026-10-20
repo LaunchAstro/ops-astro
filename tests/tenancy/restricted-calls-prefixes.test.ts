@@ -512,6 +512,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     label: 'restricted calls seed',
     authored_by_actor_id: randomUUID(),
   },
+  'public.standing_mandate_drafts': {
+    client_id: randomUUID(),
+    draft_id: randomUUID(),
+    mandate_id: randomUUID(),
+  },
   // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),

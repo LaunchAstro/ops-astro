@@ -936,7 +936,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
   { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
-  { command: 'mandate.file', operationId: 'op', clientId: 'c' },
+  { command: 'mandate.file', operationId: 'op', clientId: 'c', draftId: 'd' },
   { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
   { command: 'graduation.promote', operationId: 'op', classId: 'g' },
   { command: 'graduation.demote', operationId: 'op', classId: 'g' },
