@@ -112,13 +112,15 @@ describe.skipIf(serverUrl === undefined)('a planted marker in an instruction fil
     // b. Mutation: drop the row's `stored` projection -> the text in the register, red.
     const [row] = await registered(flow.readOperation);
     expect(row?.result).toMatchObject({
-      path: flow.path,
-      leaseId: leaseOf(flow.on.work),
-      fence: flow.on.work.picked['fence'],
-      stepId: flow.on.stepId,
-      runId: flow.on.runId,
+      detail: {
+        path: flow.path,
+        leaseId: leaseOf(flow.on.work),
+        fence: flow.on.work.picked['fence'],
+        stepId: flow.on.stepId,
+        runId: flow.on.runId,
+      },
     });
-    expect(row?.result).not.toHaveProperty('text');
+    expect(row?.result).not.toHaveProperty(['detail', 'text']);
     expect((await textsOf('operations')).filter((text) => text.includes(MARKER))).toEqual([]);
     // c. Mutation: log the request or answer body at the door -> red.
     expect((await textsOf('audit_events')).filter((text) => text.includes(MARKER))).toEqual([]);
