@@ -197,6 +197,12 @@ proof_case pre-push-exports-published-scanners-not-replacements \
   "a pushed commit is judged by its published scanners, not a local replacement's"
 proof_case pre-push-ignores-uncommitted-canary-bytes \
   "uncommitted canary bytes in the checkout cannot refuse a clean pushed commit"
+proof_case path-sweep-withholds-denied-name-in-all-evidence \
+  "the path sweep withholds a denied file name in its summary as well"
+proof_case pre-push-cleanup-keeps-files-beside-a-spaced-tmpdir \
+  "the hook's cleanup keeps unrelated files when TMPDIR holds a space, and the scan still runs"
+proof_case sweep-refuses-denied-messages-and-symlinked-paths \
+  "a denied commit message under any display encoding, and a denied path through a symlinked folder, are refused"
 proof_case pre-push-refuses-without-private-list \
   "a push without the private list is refused, and one with it runs the literal sweep"
 proof_case pre-push-first-push-scans-unpassed-commits \
