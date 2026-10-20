@@ -205,6 +205,8 @@ export function alertEvent(
   return { ...base('warning', kind, where, release, id), message };
 }
 
+const SEND_MS = 10_000;
+
 const NOT_A_DSN =
   'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
 
@@ -235,7 +237,19 @@ export function dsnTransport(
   const store = new URL(`${url.protocol}//${url.host}/api/${project}/store/`);
   const auth = `Sentry sentry_version=7, sentry_client=ops-astro/1, sentry_key=${url.username}`;
   return async (event) => {
-    const addresses = await resolve(store.hostname);
+    // A hung sink is a sink that is down: one deadline for the whole send,
+    // the lookup included; give up, the watcher reports it.
+    const deadline = Date.now() + SEND_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('the error sink did not answer (timeout)')),
+        SEND_MS,
+      );
+    });
+    const addresses = await Promise.race([resolve(store.hostname), late]).finally(() =>
+      clearTimeout(timer),
+    );
     const [address] = addresses;
     if (address === undefined || addresses.some((each) => isDeniedAddress(each)))
       throw new Error(NOT_A_DSN);
@@ -246,8 +260,7 @@ export function dsnTransport(
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
       body: new TextEncoder().encode(JSON.stringify(event)),
-      // A hung sink is a sink that is down: give up, the watcher reports it.
-      timeoutMs: 10_000,
+      timeoutMs: Math.max(0, deadline - Date.now()),
       maxBytes: 64 * 1024,
     });
     if (answer.kind !== 'answer') throw new Error(`the error sink did not answer (${answer.kind})`);
