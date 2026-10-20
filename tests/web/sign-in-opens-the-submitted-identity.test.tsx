@@ -49,6 +49,7 @@ async function editedDuringProbe() {
   );
   await view.type('#signin-email', 'mia@alpha.local');
   await view.type('#signin-password', 'test-password');
+  await view.choose('#signin-business', 'alpha');
   await view.click(SUBMIT);
   await settle();
   await view.type('#signin-email', 'ada.bravo@example.test');
