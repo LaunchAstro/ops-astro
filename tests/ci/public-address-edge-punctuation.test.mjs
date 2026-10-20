@@ -47,3 +47,12 @@ for (const scope of ['blob', 'path', 'identity']) {
     });
   }
 }
+
+test('an unrelated plural possessive cannot exempt an unlisted complete address', () => {
+  const address = `'${approved}`;
+  assert.equal(scan(`${approved}; refer to the operators' guide.`, 'blob').status, 0);
+  assert.equal(scan(`${address}; refer to the guide.`, 'blob').status, 1);
+  const result = scan(`${address}; refer to the operators' guide.`, 'blob');
+  assert.equal(result.status, 1, result.output);
+  assert.ok(!result.output.includes(address), 'the contact value is withheld');
+});

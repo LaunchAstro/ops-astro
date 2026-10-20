@@ -61,3 +61,20 @@ test('resolving a parent symlink cannot erase a denied repository path', () => {
     );
   });
 });
+
+test('a symlink followed by dot-dot keeps the denied client path it reaches', () => {
+  fixture(({ repo, scan }) => {
+    mkdirSync(join(repo, 'fixtures/clients/child'), { recursive: true });
+    writeFileSync(join(repo, 'fixtures/clients/note.txt'), 'neutral bytes\n');
+    symlinkSync('fixtures/clients/child', join(repo, 'shortcut'));
+    assert.equal(scan('--path', 'fixtures/clients/note.txt').status, 1);
+    const results = ['shortcut/../note.txt', `${repo}/shortcut/../note.txt`].map((target) =>
+      scan('--path', target),
+    );
+    assert.deepEqual(
+      results.map((result) => result.status),
+      [1, 1],
+      results.map((result) => result.stdout + result.stderr).join('\n'),
+    );
+  });
+});
