@@ -113,6 +113,28 @@ describe('MP-4-8 Status select: Complete is the one completion transition', () =
   });
 });
 
+describe('MP-4-8 Status select: reopening into a chosen not-started state', () => {
+  it('leaving Complete for a second unstarted state reopens, then sets that state', async () => {
+    const ready = { id: 's-ready', key: 'ready', label: 'Ready', machineCategory: 'unstarted' };
+    const states = [REVIEW, ready, DONE].filter((one) => one !== undefined);
+    const { client, sent } = serving(
+      { state: DONE, completedAt: '2026-09-30T10:00:00Z' },
+      [],
+      [],
+      states,
+    );
+    const view = await panel(client);
+    await view.choose('#panel-field-status', 's-ready');
+    await tick();
+    await tick();
+    expect(sent.map((one) => [one.to, one.body['stateId']])).toStrictEqual([
+      ['/task/reopen', undefined],
+      ['/task/set_state', 's-ready'],
+    ]);
+    await view.unmount();
+  });
+});
+
 describe('MP-4-8 Status select on the task page', () => {
   it('offers the same states and sends the same command as the panel', async () => {
     const { client, sent } = at(ACTIVE);

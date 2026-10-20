@@ -14,7 +14,6 @@
 // screen owes is to ask only its own business, to name a client only from the
 // read's own records, and to draw a refusal as a refusal, never as an empty list.
 
-import { act as flushed } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { settle } from './mount.tsx';
 import {
@@ -183,12 +182,15 @@ describe('C32 isolation on the Access screen', () => {
   });
 });
 
+const CONFIRM_REVOKE = '[data-confirm="revoke-delegation"] [data-act="revoke"] button';
+
 describe('C32 agents on Settings ▸ Access', () => {
-  it('C32 agents: a live delegation is revoked by its own id, then the list is reread', async () => {
+  it('C32 agents: a live delegation is revoked by its own id once confirmed, then the list is reread', async () => {
     const api = server([json(access([ADA, MIA])), json(access([ADA, MIA], []))]);
     const view = await open(api.fetch);
     expect(view.find('[data-agent="d-1"]')?.closest('tr')?.textContent).toContain('task:write');
     await view.click('[data-revoke="d-1"] button');
+    await view.click(CONFIRM_REVOKE);
     await settle();
     await settle();
     expect(api.commands()).toEqual([
@@ -204,11 +206,12 @@ describe('C32 agents on Settings ▸ Access', () => {
     const held = heldAnswer();
     const api = server([json(access([ADA, MIA]))], () => held.promise);
     const view = await open(api.fetch);
-    const revoke = view.find('[data-revoke="d-1"] button') as HTMLElement;
-    await flushed(() => {
-      revoke.click();
-      revoke.click();
-    });
+    for (let press = 0; press < 2; press += 1) {
+      // eslint-disable-next-line no-await-in-loop -- one confirmed press after another, as a person makes them
+      await view.click('[data-revoke="d-1"] button');
+      // eslint-disable-next-line no-await-in-loop -- as above
+      await view.click(CONFIRM_REVOKE);
+    }
     const outcome = view.find('[data-access-outcome]');
     expect(outcome?.getAttribute('role')).toBe('alert');
     expect(outcome?.textContent).toContain('Not sent');

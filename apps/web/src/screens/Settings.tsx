@@ -113,14 +113,14 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
     );
   };
 
-  const conflictFor = (which: Which): ReactElement | null =>
+  const conflictFor = (which: Which, current?: readonly string[]): ReactElement | null =>
     model.conflict === null || model.conflict.which !== which ? null : (
       <ConflictBlock
-        conflict={model.conflict}
+        conflict={current === undefined ? model.conflict : { ...model.conflict, draft: current }}
         row={model.rowFor(which)}
         reading={model.read.outcome === 'loading'}
         disabled={model.disabledFor(which)}
-        onWriteOver={model.writeOver}
+        onWriteOver={() => model.writeOver(current)}
       />
     );
 
@@ -267,7 +267,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             {conflictFor('sign-off')}
           </div>
 
-          <PriorityStagesRow model={model} conflict={conflictFor('priority')} />
+          <PriorityStagesRow model={model} conflict={(chosen) => conflictFor('priority', chosen)} />
           <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>

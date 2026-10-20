@@ -150,3 +150,30 @@ export function ConfirmRevokeGrant(props: {
     </div>
   );
 }
+
+/** An agent's delegation, waiting on the confirmation before `delegation.revoke`. */
+export function ConfirmRevokeDelegation(props: {
+  readonly agent: AccessReadResult['agents'][number];
+  readonly onRevoke: () => void;
+  readonly onKeep: () => void;
+}): ReactElement {
+  return (
+    <div data-confirm="revoke-delegation">
+      <Card
+        title={`Revoke the delegation for ${props.agent.purpose}?`}
+        sub="The agent can no longer act under it; its other delegations stay."
+      >
+        <span data-act="revoke">
+          <Button variant="primary" onClick={props.onRevoke}>
+            Revoke delegation
+          </Button>
+        </span>
+        <span data-act="keep">
+          <Button variant="ghost" onClick={props.onKeep}>
+            Keep delegation
+          </Button>
+        </span>
+      </Card>
+    </div>
+  );
+}

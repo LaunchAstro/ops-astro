@@ -9,6 +9,7 @@ import type {
 import { useRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import type { useTaskAssignment } from './assignment-context.tsx';
+import { FormerAssignee } from './Lifecycle.tsx';
 
 /** A person or nobody, from the people this business can be assigned work. */
 export function AssigneeField(props: {
@@ -48,6 +49,7 @@ export function AssigneeField(props: {
             }
           >
             <option value="">Unassigned</option>
+            <FormerAssignee assignee={task.assignee} persons={value.persons} />
             {value.persons.map((person) => (
               <option key={person.personId} value={person.personId}>
                 {person.name}

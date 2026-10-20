@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { adoptFormerCreate } from './former-create.ts';
 import type { Prefill } from './task-prefill.ts';
 import {
-  dropDraft,
+  discardDraft,
   emptyDraft,
   keepDraft,
   prefilledDraft,
@@ -92,7 +92,7 @@ export function useKeptDraft(props: DraftEditorProps) {
     saveAttempt(storage, person, id, null);
   };
   const cancel = (): void => {
-    dropDraft(storage, person);
+    discardDraft(storage, person);
     props.onClose();
   };
   // A Create another mount sent has answered: its identity is as it left it.

@@ -123,7 +123,12 @@ import {
   type Perspective,
 } from './task/Perspectives.tsx';
 import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
-import { HeldOperations, type Held } from './task/held-operations.ts';
+import {
+  HeldOperations,
+  KeepTaskRead,
+  useKeepTaskRead,
+  type Held,
+} from './task/held-operations.ts';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { useTaskExecution } from '../views/task-execution.ts';
@@ -217,8 +222,10 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
   const [stepTitle, setStepTitle] = useHeld<string>(identity, denied);
   const [keep, setStepUp] = useKeep(held, identity, denied);
+  // An open time note keeps the page drawn through its save's reread.
+  const editing = useKeepTaskRead();
 
-  return (
+  const page = (
     <div className="stack">
       <RefreshRow held={held !== null} outcome={state.outcome} onRefresh={reload} />
       {/*
@@ -233,7 +240,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
             state={state}
             subject="task"
             onRetry={reload}
-            keep={keep || live || timerRefresh}
+            keep={keep || live || timerRefresh || editing.kept}
           >
             {(value) =>
               'sharedTask' in value ? (
@@ -287,6 +294,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
       )}
     </div>
   );
+  return <KeepTaskRead value={editing.take}>{page}</KeepTaskRead>;
 }
 
 /** The draft's callbacks for `Loaded`, bound to one task under one grant. */
