@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35 on the width-and-theme harness (#2105): the Review workspace with a made-up review of
-// two revisions, each landed at laptop and phone size, two pins and what changed, built from
-// the shared kit with no private style, in light and dark at 1480, 900 and 390 in the pinned
-// headless shell. No browser, no capture: the launch fails the test, never skips it.
+// two revisions, each landed at laptop and phone size, two pins, what changed and each
+// revision's decision with the approve control (#2142), built from the shared kit with no
+// private style, in light and dark at 1480, 900 and 390 in the pinned headless shell. No
+// browser, no capture: the launch fails the test, never skips it.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,6 +82,11 @@ async function workspaceDrawn(at: At): Promise<void> {
     );
     expect(await shown.locator('[data-pin-spot]').count()).toBe(2);
     expect(await shown.locator('[data-difference="1480"] ins').textContent()).toBe('e-');
+    // Each revision's decision (#2142): the first approved by Mia, the one under review not yet.
+    await shown.waitForSelector('[data-decision="1"] .chip.is-ok', { timeout: 10_000 });
+    expect(await shown.locator('[data-decision="1"]').textContent()).toContain('by Mia');
+    expect(await shown.locator('[data-decision="2"]').textContent()).toContain('Undecided');
+    expect(await shown.locator('[data-approve] button').textContent()).toBe('Approve revision 2');
     expect(await shown.locator('[data-screen="review-workspace"] [style]').count()).toBe(0);
   } finally {
     await side.context.close();
