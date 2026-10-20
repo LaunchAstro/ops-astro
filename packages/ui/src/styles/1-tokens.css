@@ -400,8 +400,12 @@ svg {
   letter-spacing: var(--type-mono-tracking);
   text-transform: var(--type-mono-case);
 }
+/* The ring is a shadow, which forced colours (Windows high contrast) drop. The
+   transparent outline paints nothing here, and forced colours paint it in the
+   system's own colour, so keyboard focus stays visible there too. */
 :focus-visible {
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
 }
 @media (prefers-reduced-motion: reduce) {
