@@ -90,6 +90,17 @@ export interface AssistantProposal {
   readonly refusal: string | null;
   /** An edit in a chat on no task: the tasks it may apply to. */
   readonly pick?: AssistantPick;
+  /** A site change played back (#1988): the create's description is this plan's section. */
+  readonly site?: AssistantSitePlan;
+}
+
+/** A site change's plan as the card plays it back: the site, the page, the text before and after, who for. */
+export interface AssistantSitePlan {
+  readonly repository: string;
+  readonly page: string;
+  readonly before: string;
+  readonly after: string;
+  readonly client: string;
 }
 
 export interface AssistantCite {
