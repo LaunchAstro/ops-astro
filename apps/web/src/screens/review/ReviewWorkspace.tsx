@@ -4,7 +4,10 @@
 // revision bar says which revision is under review and which one it is compared with; each
 // width, laptop and phone, shows the revision before beside the one under review with the
 // pins drawn on each, and what changed between their landed observations; the pin list
-// numbers every pin as the panes do. A first revision shows no before. A click on a landed
+// numbers every pin as the panes do. Pins carried onto the revision under review (#2140) draw
+// there by their carried anchor; a lost one draws nowhere under review and sits first in the
+// list, flagged and still open, and a carry still to come says so. A first revision shows no
+// before. A click on a landed
 // capture of the revision under review marks a spot, and the form beneath pins a comment on
 // it. The read is the team's, so the client never reaches this page; what a client sees of a
 // pin is the task's client projection.
@@ -21,7 +24,8 @@ import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { CapturePane } from './CapturePane.tsx';
 import { PinForm } from './PinForm.tsx';
-import type { Pin, Spot } from './review-geometry.ts';
+import { drawnPins, PinList, type Numbered } from './PinList.tsx';
+import type { Spot } from './review-geometry.ts';
 
 type Review = ReviewReadResult['review'];
 type Revision = NonNullable<Review['after']>;
@@ -136,7 +140,8 @@ type WidthProps = WorkspaceProps & {
   readonly order: number;
   readonly width: number;
   readonly name: string;
-  readonly numbered: readonly (readonly [number, Pin])[];
+  /** Each pin by its number, and each pin found again by its carried anchor too. */
+  readonly drawn: Numbered;
   readonly marked: Marked | null;
   readonly mark: Dispatch<SetStateAction<Marked | null>>;
 };
@@ -151,7 +156,7 @@ function Panes(props: WidthProps & { readonly after: Revision }): ReactElement {
       title={`${when}, revision ${String(revision.number)}`}
       width={width}
       capture={revision.captures.find((each) => each.width === width)}
-      pins={props.numbered.filter(
+      pins={props.drawn.filter(
         ([, pin]) => pin.anchor.source === revision.revisionId && pin.anchor.width === width,
       )}
       marked={takesSpot ? markedOn(props.marked, revision, width) : null}
@@ -209,41 +214,10 @@ function AtWidth(props: WidthProps): ReactElement {
   );
 }
 
-function PinList(props: {
-  readonly review: Review;
-  readonly numbered: readonly (readonly [number, Pin])[];
-}): ReactElement {
-  const numberOf = (source: string): string =>
-    String(props.review.revisions.find((each) => each.revisionId === source)?.number ?? '?');
-  return (
-    <Card title="Pins" flush>
-      {props.numbered.length === 0 ? (
-        <Empty
-          title="No pins yet"
-          description="Click a spot on a capture under review to pin a comment there."
-          look="inline"
-        />
-      ) : (
-        <ul>
-          {props.numbered.map(([number, pin]) => (
-            <ListRow
-              key={pin.commentId}
-              look="record"
-              lead={<span className="marker">{number}</span>}
-              title={pin.body}
-              meta={`${pin.anchor.width === 390 ? 'Phone' : 'Laptop'}, revision ${numberOf(pin.anchor.source)}`}
-              trail={<Chip>{pin.audience === 'client' ? 'Client sees it' : 'Team only'}</Chip>}
-            />
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
 function Workspace(props: WorkspaceProps): ReactElement {
   const [marked, mark] = useState<Marked | null>(null);
   const numbered = props.review.pins.map((pin, at) => [at + 1, pin] as const);
+  const drawn = drawnPins(props.review, numbered);
   return (
     <>
       <RevisionBar review={props.review} />
@@ -254,7 +228,7 @@ function Workspace(props: WorkspaceProps): ReactElement {
           order={at + 1}
           width={width}
           name={name}
-          numbered={numbered}
+          drawn={drawn}
           marked={marked}
           mark={mark}
         />

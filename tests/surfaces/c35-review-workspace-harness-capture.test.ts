@@ -23,7 +23,7 @@ import { answerMadeUp } from '../visual/made-up-api.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
 import { addressOf, report } from '../visual/report.ts';
-import { REVIEW } from '../visual/made-up-review.ts';
+import { CARRIED_REVIEW } from '../visual/made-up-review.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'c35-captures-'));
 afterAll(() => {
@@ -41,7 +41,7 @@ type At = {
   readonly session: string;
 };
 
-const ANSWERS = { 'review/read': REVIEW };
+const ANSWERS = { 'review/read': CARRIED_REVIEW };
 
 /** The page at every width and theme: the report passes and each dark picture differs. */
 async function capturedEverywhere(at: At, out: string): Promise<void> {
@@ -66,10 +66,14 @@ async function capturedEverywhere(at: At, out: string): Promise<void> {
   }
 }
 
-/** The pictures are of the workspace: four captures with the pins on them, no private style. */
-async function workspaceDrawn(at: At): Promise<void> {
+/**
+ * The pictures are of the workspace at `width` in `theme`: four captures with the pins on them,
+ * revision 1's lost pin first in the pin list (#2140), and no private style.
+ */
+async function workspaceDrawn(at: At, width: number, theme: string): Promise<void> {
   const { browser, packet, app, session } = at;
-  const side = await openSide(browser, packet, 390, { app, session });
+  const colorScheme = theme === 'dark' ? 'dark' : 'light';
+  const side = await openSide(browser, packet, width, { app, session, colorScheme });
   try {
     await answerMadeUp(side.context);
     await answer(side, ANSWERS);
@@ -79,7 +83,12 @@ async function workspaceDrawn(at: At): Promise<void> {
     await shown.waitForFunction(
       () => document.querySelectorAll('[data-capture-picture]').length === 4,
     );
-    expect(await shown.locator('[data-pin-spot]').count()).toBe(2);
+    expect(await shown.locator('[data-pin-spot]').count()).toBe(6);
+    const rows = shown.locator('[data-pin-row]');
+    expect(await rows.first().getAttribute('data-pin-lost'), `${String(width)} ${theme}`).toBe('');
+    expect(await shown.locator('li:has([data-pin-row])').first().textContent()).toContain(
+      'Anchor lost',
+    );
     expect(await shown.locator('[data-difference="1480"] ins').textContent()).toBe('e-');
     expect(await shown.locator('[data-screen="review-workspace"] [style]').count()).toBe(0);
   } finally {
@@ -96,7 +105,12 @@ async function c35HarnessCapture(): Promise<void> {
     const out = join(scratch, 'review');
     const at = { browser, packet, app, session: madeUpSession(app, out) };
     await capturedEverywhere(at, out);
-    await workspaceDrawn(at);
+    for (const width of WIDTHS) {
+      for (const theme of themesOf(packet)) {
+        // oxlint-disable-next-line no-await-in-loop -- one page at a time
+        await workspaceDrawn(at, width, theme);
+      }
+    }
   } finally {
     await browser.close();
     await close();
@@ -105,7 +119,7 @@ async function c35HarnessCapture(): Promise<void> {
 
 describe('C35 Review workspace on the width-and-theme harness (MP-1-7)', () => {
   it(
-    'C35 harness captures: the Review workspace with its captures, pins and changes, in light and dark at 1480, 900 and 390',
+    'C35 harness captures: the Review workspace with its captures, pins, lost pins first and changes, in light and dark at 1480, 900 and 390',
     c35HarnessCapture,
     600_000,
   );
