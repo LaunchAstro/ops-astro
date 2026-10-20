@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Agency pages kept apart from `routes.ts` so it stays under its line cap;
+// Agency and portal pages kept apart from `routes.ts` so it stays under its line cap;
 // `ROUTES` spreads them in place and checks them as it checks its own.
 
 export const PAGE_ROUTES = {
@@ -39,6 +39,16 @@ export const PAGE_ROUTES = {
     namespace: 'agency',
     path: '/projects/reviews/:review',
     title: 'Review workspace',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The client's own reviews (PROTO-GAPS row 7), drawn from `review.client_list`: what the
+  // client may see of each, never the team's review. The read is the gate; the address's
+  // client only names the face.
+  'portal:reviews': {
+    namespace: 'portal',
+    path: '/portal/:client/projects/reviews/',
+    title: 'Reviews',
     surface: 'none',
     authenticated: true,
   },

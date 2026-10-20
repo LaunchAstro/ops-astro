@@ -38,6 +38,7 @@ export const PINNED_SHAPE = {
   'preference.read': { spine: false, subject: false, authority: 'self' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
+  'review.client_list': { spine: true, subject: false, authority: 'holds-any-grant' },
   'review.picture': { spine: false, subject: false, authority: 'holds-any-grant' },
   'review.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },

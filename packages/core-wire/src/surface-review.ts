@@ -42,6 +42,7 @@ const DECIDE_AT_REVIEW = {
 export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
   read('review.read', REVIEW_COLLECTION),
   read('review.picture', REVIEW_COLLECTION),
+  read('review.client_list', REVIEW_COLLECTION),
   declare('review.open', 'write', {
     collection: REVIEW_COLLECTION,
     targetsExistingRecord: false,

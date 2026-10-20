@@ -289,3 +289,4 @@ export type {
   ReviewReadResult,
   WidthDifference,
 } from './views-review.ts';
+export type * from './views-review-client.ts';

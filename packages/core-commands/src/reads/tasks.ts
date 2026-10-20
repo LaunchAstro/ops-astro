@@ -226,7 +226,7 @@ export function isInternalReader(roleKey: string | null): boolean {
 export type CommentReader =
   { readonly internal: true; readonly actorId: string } | { readonly internal: false };
 
-async function commentsFor(
+export async function commentsFor(
   tx: TenantQuery,
   commentTypeId: string | undefined,
   taskId: string,
