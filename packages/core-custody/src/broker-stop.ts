@@ -161,6 +161,14 @@ export const tooLarge = (
     ? { kind: 'refused', started: false, code: 'PROMPT_TOO_LARGE' }
     : undefined;
 
+/** Declared nothing-happened codes that end the run in their own code: the plan's (#1625 R9). */
+const OWN_END: readonly EndCode[] = [
+  'LOCAL_PLAN_LIMIT',
+  'SUBSCRIPTION_PLAN_ALLOWANCE',
+  'SUBSCRIPTION_PLAN_UNAVAILABLE',
+  'SUBSCRIPTION_SIGN_IN_NEEDED',
+];
+
 /** `CALL_RELEASED`, normalised: a custody code, a refusal this side judged before any write, or
  * one of the operation's declared nothing-happened codes maps to one end code; any other reason
  * is `undefined`, held unknown. */
@@ -176,7 +184,7 @@ export function releaseEndOf(
   }
   const declared = operation.nothingHappened;
   if (declared === 'not_reconcilable' || !declared.includes(reason)) return undefined;
-  return reason === 'LOCAL_PLAN_LIMIT' ? 'LOCAL_PLAN_LIMIT' : 'PROVIDER_NOTHING_HAPPENED';
+  return OWN_END.find((code) => code === reason) ?? 'PROVIDER_NOTHING_HAPPENED';
 }
 
 /**

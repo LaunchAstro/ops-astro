@@ -44,10 +44,13 @@ fresh context store, so no inherited configure hook can install a handler.
 Diagnostics go to self-hosted Langfuse through the no-content exporter (#1622),
 kept apart from framework callbacks.
 
-**Seven outcomes.** Every attempt that stops ends in exactly one outcome,
+**Eight outcomes.** Every attempt that stops ends in exactly one outcome,
 `success`, `budget_wait`, `call_limit`, `cancelled`, `lease_lost`,
-`unknown_provider_outcome` or `waiting_plan_allowance`, with one typed end
-code. There is no eighth outcome and no free-text code.
+`unknown_provider_outcome`, `waiting_plan_allowance` or `plan_unavailable`,
+with one typed end code. There is no free-text code. The eighth,
+`plan_unavailable`, is the owner's ruling of 19 October 2026 (register 107):
+the ChatGPT plan answering 503 ends the run there, with no retry, and a person
+restarts the task.
 
 | Outcome                    | End codes                                                                                                                                                                                                                                                |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -56,12 +59,13 @@ code. There is no eighth outcome and no free-text code.
 | `call_limit`               | `CALL_LIMIT_REACHED`                                                                                                                                                                                                                                     |
 | `cancelled`, person        | `TASK_CANCELLED`, `PLAN_SUPERSEDED`, `DECISION_STALE`, `AUTHORITY_LOST`                                                                                                                                                                                  |
 | `cancelled`, broker        | `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`, `LOCAL_MODEL_REQUIRED`, `CLIENT_MODEL_USE_OFF`, `SOURCE_UNREADABLE`, `RATE_LIMITED`, `COPY_NOT_REGISTERED`, `CARRIAGE_UNAVAILABLE`, `PROMPT_TOO_LARGE`, `CUSTODY_NOT_ADMITTED` and the turn codes |
-| `cancelled`, provider      | `PROVIDER_NOTHING_HAPPENED`                                                                                                                                                                                                                              |
+| `cancelled`, provider      | `PROVIDER_NOTHING_HAPPENED`, `SUBSCRIPTION_SIGN_IN_NEEDED`                                                                                                                                                                                               |
 | `cancelled`, door          | `SCOPE_NOT_GRANTED`, `GATE_SHUT`, `DELEGATION_EXCLUDES_OPERATION`, `OPERATION_ID_REUSED`                                                                                                                                                                 |
 | `cancelled`, worker        | `TOOL_NOT_CATALOGUED`, `TOOL_REFUSED`, `TURN_MALFORMED`, `TRACING_NOT_ALLOWED`, `DEFINITION_MISMATCH`                                                                                                                                                    |
 | `lease_lost`               | `LEASE_EXPIRED`, `LEASE_NOT_OWNED`                                                                                                                                                                                                                       |
 | `unknown_provider_outcome` | `LIABILITY_UNKNOWN`, `OPEN_CALL_AT_STOP`, `ANSWER_LOST`, `STILL_ANSWERING`                                                                                                                                                                               |
-| `waiting_plan_allowance`   | `LOCAL_PLAN_LIMIT`                                                                                                                                                                                                                                       |
+| `waiting_plan_allowance`   | `LOCAL_PLAN_LIMIT`, `SUBSCRIPTION_PLAN_ALLOWANCE`                                                                                                                                                                                                        |
+| `plan_unavailable`         | `SUBSCRIPTION_PLAN_UNAVAILABLE`                                                                                                                                                                                                                          |
 
 The turn codes (`TURN_ORDINAL_STALE`, `TURN_MALFORMED`, `PROVENANCE_UNBOUND`)
 arrive with the turn in #1623's third piece. One total function, `outcomeOf`,
@@ -74,8 +78,10 @@ it has a row.
   uncertain end is `unknown_provider_outcome`; nothing is charged, retried or
   settled on a guess. A released call counts as nothing happening only for a
   reason the operation declares; any other reason is `LIABILITY_UNKNOWN` with
-  the maximum held. Only an explicit `LOCAL_PLAN_LIMIT` is plan allowance,
-  never a bare rate answer. There is no retry and no saved pause; a fresh
+  the maximum held. Only an explicit `LOCAL_PLAN_LIMIT` or the plan's own
+  `SUBSCRIPTION_PLAN_ALLOWANCE` is plan allowance, never a bare rate answer;
+  each of the plan's codes counts only where its operation declares it
+  (`CHATGPT_PLAN_NOTHING_HAPPENED`). There is no retry and no saved pause; a fresh
   attempt is the existing `task.restart`.
 - **The transaction that stops the work writes the outcome**, inside the
   same transaction that retires the work, never later by a worker whose

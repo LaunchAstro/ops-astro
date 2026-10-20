@@ -49,6 +49,19 @@ export const CHATGPT_PLAN_BODY_LIMIT: number = 64 * 1024;
 export const CHATGPT_PLAN_TIMEOUT_MS = 120_000;
 export const CHATGPT_PLAN_ANSWER_BYTES: number = 1024 * 1024;
 
+/**
+ * Custody's plan answers that prove nothing was kept (#1625 R9), for the plan
+ * operation's `nothingHappened` (#1971): the usage allowance (429 or a
+ * mid-stream usage limit), the plan unavailable (503) and signing in again
+ * (401). Each ends the run in its own code, never retried. Any other plan
+ * answer proves nothing and is held unknown.
+ */
+export const CHATGPT_PLAN_NOTHING_HAPPENED: readonly string[] = [
+  'SUBSCRIPTION_PLAN_ALLOWANCE',
+  'SUBSCRIPTION_PLAN_UNAVAILABLE',
+  'SUBSCRIPTION_SIGN_IN_NEEDED',
+];
+
 export interface PlanTurn {
   readonly role: 'user' | 'assistant';
   readonly content: string;
