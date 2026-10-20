@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A Create refused while its draft is held: the draft is not removed, and the
-// answered id is settled whether or not the browser could rewrite the copy.
+// A Create refused while its draft is held: the draft is not removed. The
+// answered id is settled when the browser can rewrite the copy; when it
+// cannot, a reload retries that id, the register replays the refusal, and the
+// person may stop waiting.
 
 import { describe, expect, it } from 'vitest';
 import { dropOtherDrafts } from '../../apps/web/src/screens/task/task-draft.ts';
@@ -39,7 +41,7 @@ describe('a refused Create', () => {
 });
 
 describe('a refused Create settled while storage would not write', () => {
-  it('keeps the words, and one Retry settles it under its id', async () => {
+  it('keeps the words, and its Retry replays the refusal under its id', async () => {
     const storage = store();
     const api = server();
     const { view } = await openDraft(api, storage);
@@ -69,8 +71,9 @@ describe('a refused Create settled while storage would not write', () => {
     await settle();
     await settle();
     expect(api.creates).toEqual([first, first]);
-    expect(api.tasks).toHaveLength(1);
-    expect(heldId(storage)).toBeNull();
+    expect(api.tasks).toEqual([]);
+    expect(heldId(storage)).toBe(first);
+    expect(reloaded.view.find('[data-draft="let-go"]')).not.toBeNull();
     await reloaded.view.unmount();
   });
 });

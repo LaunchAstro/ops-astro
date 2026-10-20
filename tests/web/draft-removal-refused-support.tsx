@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Shared by the suites on a held Create whose draft the browser will not
-// remove or rewrite: a server that keeps one task per operation id, the draft
-// mounted, and the gestures they share.
+// remove or rewrite: a server that keeps one answer per operation id, a
+// refusal included, as the register does; the draft mounted, and the gestures
+// they share.
 //
 // A harness, not a suite: nothing here runs on its own.
 
@@ -33,6 +34,7 @@ export interface Next {
 export function server() {
   const tasks: string[] = [];
   const creates: string[] = [];
+  const refused = new Set<string>();
   const held: (() => void)[] = [];
   const next: Next = { unreachable: false, lose: false, refuse: false, hold: false };
   const answer = (response: Response): Promise<Response> =>
@@ -48,8 +50,9 @@ export function server() {
       return Promise.reject(new TypeError('Failed to fetch'));
     }
     creates.push(id);
-    if (next.refuse) {
-      next.refuse = false;
+    if (next.refuse && !tasks.includes(id)) refused.add(id);
+    next.refuse = false;
+    if (refused.has(id)) {
       return answer(json(REFUSED, 403));
     }
     if (!tasks.includes(id)) tasks.push(id);
