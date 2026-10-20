@@ -724,6 +724,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.client_list',
   'review.decide',
   'review.decide_change',
+  'review.list',
   'review.make_change_task',
   'review.open',
   'review.picture',

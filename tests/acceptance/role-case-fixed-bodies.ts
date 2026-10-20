@@ -50,6 +50,8 @@ const EMPTY: readonly CommandName[] = [
   'live_correction.list',
   // A client's own reviews under review:read: no operand.
   'review.client_list',
+  // The reviews the reader's review:read covers: no operand.
+  'review.list',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {

@@ -150,6 +150,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['live_correction.list', {}],
   // A client's own reviews, which names no row.
   ['review.client_list', {}],
+  // The Reviews page: the business's reviews the caller reads, which names no row.
+  ['review.list', {}],
   // The Workflow triggers registry (C33) names no row.
   ['automation.registry', {}],
   // Assign to AI: the caller makes an agent of their own, and lists their own.

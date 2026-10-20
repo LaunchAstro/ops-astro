@@ -107,6 +107,7 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'live_correction.list': NONE,
   'live_correction.receipts': { correctionId: 'id' },
   'review.read': { reviewId: 'id' },
+  'review.list': NONE,
   'review.picture': { pictureId: 'id' },
   'review.client_list': NONE,
   'automation.registry': NONE,
