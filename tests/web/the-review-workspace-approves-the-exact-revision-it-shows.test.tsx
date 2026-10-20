@@ -242,7 +242,8 @@ it('drops an answer for a revision the screen has moved past', async () => {
   await refresh();
   await settled();
   expect(view.find('[data-decision="3"]')?.textContent).toContain('Undecided');
-  answer(refusal('VERSION_STALE', ['Read the review again.']));
+  // Revision 2's approval, answered once revision 3 is shown: drawn as nothing, reread as nothing.
+  answer(json({ recordId: REVIEW_ID, revision: null, decisionId: 'd1', digest: second.digest }));
   await settled();
   expect(decides()[0]?.body['digest']).toBe(second.digest);
   expect(view.find('[data-approve-refusal]')).toBeNull();
