@@ -194,8 +194,10 @@ export function ChangeRequestDock(props: {
   readonly client: DockClient;
   readonly reviewId: string;
   readonly onOpenTask: (taskId: string) => void;
+  /** The host's own read of the review, when it has one: a new one reads the panel again. */
+  readonly changes?: unknown;
 }): ReactElement {
-  const model = useChangeRequests(props.client, props.reviewId);
+  const model = useChangeRequests(props.client, props.reviewId, props.changes);
   return (
     <ChangeRequestPanel
       load={model.load}

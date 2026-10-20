@@ -112,11 +112,15 @@ function useScoped(scope: string) {
   return { current: drawn.visit === visit ? drawn : blank(scope, visit), latest, intents, update };
 }
 
-export function useChangeRequests(client: DockClient, reviewId: string): ChangeRequestModel {
+/** `changes` is the host's own read of the review: each new one reads the panel again. */
+export function useChangeRequests(
+  client: DockClient,
+  reviewId: string,
+  changes?: unknown,
+): ChangeRequestModel {
   const scope = `${String(clientKey(client))}\u0000${client.businessKey}\u0000${reviewId}`;
   const { current, latest, intents, update } = useScoped(scope);
   const { visit } = current;
-
   const reread = useCallback(async () => {
     // A write answered after the panel moved on reads nothing, so it cannot drop the new read.
     if (latest.current.visit !== visit) return;
@@ -128,7 +132,7 @@ export function useChangeRequests(client: DockClient, reviewId: string): ChangeR
   useEffect(() => {
     void reread();
     void readCanDecide(client).then((canDecide) => update(visit, { canDecide }));
-  }, [client, visit, reread, update]);
+  }, [client, visit, reread, update, changes]);
 
   const send = useCallback(
     async (intent: string, busy: string, write: Write) => {

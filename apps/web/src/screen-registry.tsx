@@ -217,6 +217,7 @@ export const SCREENS: {
       reviewId={context.params.review}
       rollup={tabRollupFloor()}
       navigate={context.navigate}
+      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
     />
   ),
   'agency:task-unnamed': () => <TaskUnnamed />,
