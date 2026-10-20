@@ -6,6 +6,9 @@
 // its own, meet behind a third holding the lease row; and one call's commit
 // is cut at a named point, then the call is made again. Either way the run
 // ends once, no fourth ask is raised, one alert is raised and nothing is sent.
+// A settlement holding the task's envelope, then reaching for the lease as
+// settlement does, meets a call past the last ask with no deadlock: the call
+// waits on the envelope before it takes the lease, then gives the hold back.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -151,6 +154,63 @@ it('two calls past the last ask at once end the run once and raise one alert', a
   }
   expect(world.provider.seen.length).toBe(sent);
   expect(await endOf(work)).toEqual(ENDED);
+});
+
+it('a call past the last ask behind a settlement holding the envelope gives the hold back with no deadlock', async () => {
+  const work = await spentWork('last ask behind a settlement');
+  world.provider.mode('answer');
+  const sent = world.provider.seen.length;
+  const reservationId = work.decision['reservationId'];
+  const holder = await hold(
+    s.db,
+    async (execute) => {
+      await execute(
+        `select 1 from public.task_envelopes e
+           join public.reservations r on r.business_id = e.business_id and r.envelope_id = e.id
+          where r.id = $1 for update of e`,
+        [reservationId],
+      );
+    },
+    async (execute) => {
+      await execute('select id from public.leases where id = $1 for update', [
+        work.picked['leaseId'],
+      ]);
+    },
+  );
+  const racing = racer(s);
+  try {
+    const [pid] = await pidsOf(racing);
+    const call = callOn(racing, work);
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+      const waiting = await s.db.admin.execute<{ n: number }>(
+        `select count(*)::int as n from pg_stat_activity a
+          where a.pid = $1 and a.wait_event_type = 'Lock' and $2::int = any(pg_blocking_pids(a.pid))`,
+        [pid, holder.pid],
+      );
+      if ((waiting[0]?.n ?? 0) === 1) break;
+      if (attempt === 399) throw new Error('the call never waited on the envelope');
+      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+      await delay(25);
+    }
+    const [letGo, called] = await Promise.allSettled([holder.letGo(), call]);
+    expect(letGo.status).toBe('fulfilled');
+    expect(called.status === 'fulfilled' && called.value).toMatchObject({
+      ok: false,
+      code: 'BUDGET_UNAVAILABLE',
+    });
+  } finally {
+    await holder.letGo().catch(() => null);
+    await racing.close();
+  }
+  expect(world.provider.seen.length).toBe(sent);
+  expect(await endOf(work)).toEqual(ENDED);
+  const [stopped] = await s.db.admin.execute(
+    `select r.state, env.held_minor::int as held from public.reservations r
+       join public.task_envelopes env on env.id = r.envelope_id where r.id = $1`,
+    [reservationId],
+  );
+  expect(stopped).toEqual({ state: 'abandoned', held: 0 });
 });
 
 it.each<CutPoint>(['before-commit', 'after-commit'])(
