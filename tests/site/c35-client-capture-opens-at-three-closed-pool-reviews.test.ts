@@ -48,16 +48,18 @@ const CLIENT_SITE = {
   [B_SHEET]: answer('text/css', CSS),
 };
 
-/** A browser that asks for the page and its stylesheet through the fence, then renders. */
+/**
+ * A browser that asks for the page, its stylesheet and the copy that sheet's answer imports
+ * through the fence, as a browser does, then renders.
+ */
 const rendering = (opened: number[]) => (width: 1480 | 390) => {
   opened.push(width);
   const browser: PictureBrowser = async (url, route) => {
     await route({ url, kind: 'document', mainFrame: true });
-    await route({
-      url: new URL('/_astro/site.css', url).href,
-      kind: 'stylesheet',
-      mainFrame: false,
-    });
+    const sheet = new URL('/_astro/site.css', url).href;
+    const sheetAnswer = await route({ url: sheet, kind: 'stylesheet', mainFrame: false });
+    const copy = /^@import "([^"]*)";/u.exec(sheetAnswer?.body ?? '')?.[1];
+    if (copy !== undefined) await route({ url: copy, kind: 'stylesheet', mainFrame: false });
     return pictureBytes(width);
   };
   return browser;

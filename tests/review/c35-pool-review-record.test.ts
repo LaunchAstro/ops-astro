@@ -82,7 +82,8 @@ onDatabase('C35 a recorded pool review is audited', () => {
     expect(codeOf(await w.as(w.ava, { operationId, ...poolReview(review) }))).toBe('applied');
 
     const { rows, audited, whole } = await recordedAndAudited(w, review, operationId);
-    expect(rows).toStrictEqual([
+    // The driver's rows are not plain objects: compared by value.
+    expect(rows).toEqual([
       {
         review,
         pool_version: CAPTURE_POOL_VERSION,
@@ -95,7 +96,7 @@ onDatabase('C35 a recorded pool review is audited', () => {
         operation: operationId,
       },
     ]);
-    expect(audited).toStrictEqual([
+    expect(audited).toEqual([
       { business: w.world.business, actor: w.ava.actorId, command: RECORD, outcome: 'applied' },
     ]);
     // The request is kept as its digest: no evidence link and no reviewer in the chain.
@@ -136,7 +137,7 @@ onDatabase('C35 pool reviews across businesses, clients and people', () => {
       async (tx) =>
         await tx.query('select review from ops.capture_pool_reviews where review = $1', [marker]),
     );
-    expect(visible).toStrictEqual([{ review: marker }]);
+    expect(visible).toEqual([{ review: marker }]);
   });
 });
 
