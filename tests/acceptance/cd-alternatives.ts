@@ -27,6 +27,8 @@ export const CASE = {
   liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   review: 'refuses a foreign and a fabricated task, revision, review or picture alike (C35)',
   changeRequest: 'refuses a foreign and a fabricated pin or change request alike (C57)',
+  reviewDecision:
+    'refuses a foreign and a fabricated review alike on the decision commands (C35-X)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
@@ -80,6 +82,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'review.propose_change': ['commentId', 'changeRequest'],
   'review.decide_change': ['changeRequestId', 'changeRequest'],
   'review.make_change_task': ['changeRequestId', 'changeRequest'],
+  'review.decide': ['reviewId', 'reviewDecision'],
+  'review.record_astra_review': ['reviewId', 'reviewDecision'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

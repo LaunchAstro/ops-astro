@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35's reads (#2011): one review with its revisions and their captures, the latest paired
-// with the one before it, and its pins (#2012); and one landed picture's bytes. Each filters
+// with the one before it, its pins (#2012), and each revision's decision (#2014): a revision
+// with none, a new one included, is undecided; and one landed picture's bytes. Each filters
 // by the caller's grant at the review's holder inside the query (`covering.ts`), so a party
 // grant reads no other client's review and a picture of another business or out of reach is
 // one answer with a picture that is not there. The review's change requests (C57) carry their
@@ -13,6 +14,7 @@ import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
 import { DATABASE_STORAGE } from './storage.ts';
 import { readChangeRequests, type ChangeRequestView } from './change-requests.ts';
+import { decisionsOf, type DecisionView } from './decisions.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -27,6 +29,8 @@ export interface RevisionView {
   readonly number: number;
   readonly digest: string;
   readonly captures: readonly CaptureView[];
+  /** Its approval on its exact digest, or null: undecided. */
+  readonly decision: DecisionView | null;
 }
 
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
@@ -70,11 +74,13 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
+  const decisions = await decisionsOf(tx, reviewId);
   const views = revisions.map((revision) => ({
     revisionId: revision.id,
     number: revision.number,
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
+    decision: decisions.get(revision.id) ?? null,
   }));
   return {
     reviewId,
