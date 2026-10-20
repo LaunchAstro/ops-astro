@@ -137,8 +137,15 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
   return selecting({ ...state, chats }, chats[Math.max(0, at - 1)]?.key ?? '');
 }
 
-/** The tab's model; a change after its first question is marked in the transcript (#2175). */
 export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
+  change(state, key, (chat) => ({ ...chat, model }));
+
+/** Whether choosing `model` changes the model of a tab that has asked already (#2175). */
+export const switching = (chat: Chat | undefined, model: string): boolean =>
+  chat !== undefined && chat.model !== model && chat.messages.some((one) => one.role === 'user');
+
+/** A change of model the server kept, after the tab's first question, marked in the transcript (#2175). */
+export const markSwitch = (state: AssistantState, key: string, model: string): AssistantState =>
   change(state, key, (chat) => switched(chat, model));
 
 /** The page in scope; a second one replaces the first, and its note with it (`page-note.ts`). */
