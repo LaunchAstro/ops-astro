@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a pickup at a spent hold whose agent already holds a live delegation for the purpose is refused and raises no budget ask"
+}

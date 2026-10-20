@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "custody ends an invitation send by its link's expiry, and a send whose answer was lost is never sent again"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two pickups of a spent-whole hold on separate connections, and a pickup whose commit is cut or whose writes throw then sent again under its operation id, leave one budget ask on a waiting run"
+}

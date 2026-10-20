@@ -32,11 +32,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
-import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
+import type { TenantQuery, MintedDelegation } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { leaseReason, personWriteLive } from './lease-ownership.ts';
+import { leaseReason } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
+import { authoritySubjects, claimantMayWork, keptStop } from './pickup-authority.ts';
 import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
@@ -245,18 +246,6 @@ function taskLeaseLocks(row: TaskLease): readonly LockRequest[] {
   ];
 }
 
-function authoritySubjects(request: PickupRequest): readonly Subject[] {
-  return request.claimant === 'person'
-    ? [
-        { kind: 'person', id: request.personId },
-        { kind: 'actor', id: request.actorId },
-      ]
-    : [
-        { kind: 'person', id: request.authorisedByPersonId },
-        { kind: 'actor', id: request.mintedByActorId },
-      ];
-}
-
 export async function pickup(
   tx: TenantQuery,
   request: AgentPickupRequest,
@@ -294,11 +283,7 @@ export async function pickup(
   // holder's live lease refuses it, and that refusal takes the stop back.
   const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
   if (fenced !== null) return fenced;
-  if (!claimed.ok) {
-    // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
-    const may = await claimantMayWork(tx, request, found, lockedAt);
-    return may.ok ? claimed : may;
-  }
+  if (!claimed.ok) return await keptStop(tx, request, found, claimed);
 
   // From the database instant above, not the process clock. Whole
   // milliseconds, so the `Date` the delegation is minted with and the lease
@@ -643,57 +628,6 @@ async function authoriseClaimant(
   });
   if (!minted.ok) return { ok: false, refusal: minted.refusal };
   return { ok: true, value: minted.value };
-}
-
-/**
- * The claimant's authority at the locked instant, read and never written: a
- * person's live write on the task, or the delegating person's live grants for
- * every action the agent's delegation would carry. Asked before a stop at a
- * spent hold commits its ask (`claimHold`), so a caller without it moves nothing.
- */
-async function claimantMayWork(
-  tx: TenantQuery,
-  request: PickupRequest,
-  found: Found,
-  lockedAt: string,
-): Promise<RuntimeResult<undefined>> {
-  if (request.claimant === 'person') {
-    const person = { subjects: authoritySubjects(request), collection: request.collection };
-    if (!(await personWriteLive(tx, person, found.task_id, lockedAt))) {
-      return refuse(
-        'SCOPE_NOT_GRANTED',
-        'no live grant of yours covers work on this task',
-        'Ask a manager for write on this task, or leave it for a holder who has it.',
-      );
-    }
-    return { ok: true, value: undefined };
-  }
-  const actions = ['read', 'comment', 'write'] as const;
-  for (const action of actions) {
-    // Sequential, as the authority module's own check is: one transaction,
-    // one connection.
-    // oxlint-disable-next-line no-await-in-loop
-    const delegable = await checkAuthorityAt(
-      tx,
-      [{ kind: 'person', id: request.authorisedByPersonId }],
-      { collection: request.collection, action, scope: { kind: 'business', id: null } },
-      lockedAt,
-    );
-    if (!delegable.ok) {
-      return {
-        ok: false,
-        refusal: refuseCommand(
-          'DELEGATION_WIDENS',
-          [],
-          [
-            `the delegating person holds no live ${action} grant on ${request.collection}`,
-            'narrow the purpose, or grant the person that authority first',
-          ],
-        ),
-      };
-    }
-  }
-  return { ok: true, value: undefined };
 }
 
 /**

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The end at the last budget ask keeps the whole hold while an attempt is still open, here an applied effect awaiting observation, so its unresolved cost is never given back to the cap; judged on real runs, attempts, reservations and envelopes."
+}

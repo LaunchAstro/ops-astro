@@ -5,11 +5,13 @@
 //   node scripts/security/findings.mjs --report <scan>=<zap.json> [--report ...]
 //        --out <dir> [--redact-env <NAME> ...] [--signed-in <scan> ...]
 //
-// Writes findings.md and findings.json. Each --redact-env names a setting whose
-// value (the scan login's token) is replaced wherever a report echoes it; a scan
-// named by --signed-in fails the run when most of its answers were 401. Exit 0
-// with no blocker or major open, 1 with one or a missing, unreadable or
-// signed-out report, 2 on a usage mistake. It prints counts, never contents.
+// Writes findings.md and findings.json; the JSON says whether the run fails and
+// names each problem beside the severity counts. Each --redact-env names a
+// setting whose value (the scan login's token) is replaced wherever a report
+// echoes it; a scan named by --signed-in fails the run when most of its answers
+// were 401. Exit 0 with no blocker or major open, 1 with one or a missing,
+// unreadable or signed-out report, 2 on a usage mistake. It prints counts,
+// never contents.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,9 +62,11 @@ for (const problem of problems) console.error(`findings: ${problem}`);
 mkdirSync(out, { recursive: true });
 const gate = severityGate(scans);
 writeFileSync(join(out, 'findings.md'), findingsTable(scans, problems));
-writeFileSync(join(out, 'findings.json'), `${JSON.stringify({ gate, scans }, undefined, 2)}\n`);
+const fails = gate.fails || problems.length > 0;
+const saved = { fails, problems, gate, scans };
+writeFileSync(join(out, 'findings.json'), `${JSON.stringify(saved, undefined, 2)}\n`);
 console.log(
   `findings: blockers ${gate.blocker}, majors ${gate.major}, minors ${gate.minor}, ` +
     `informational ${gate.info}`,
 );
-process.exit(gate.fails || problems.length > 0 ? 1 : 0);
+process.exit(fails ? 1 : 0);

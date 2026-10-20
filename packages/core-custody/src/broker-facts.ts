@@ -44,6 +44,22 @@ interface LeaseRow {
 }
 
 /**
+ * The lease's task envelope, first, as settlement takes it before the lease
+ * (`lockCall`): a stop past the run's last ask gives its hold back to it
+ * (`broker-wait.ts`). A made-up lease locks nothing.
+ */
+async function lockEnvelope(tx: TenantQuery, leaseId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.task_envelopes e
+       join public.reservations r on r.business_id = e.business_id and r.envelope_id = e.id
+       join public.leases l on l.business_id = r.business_id and l.reservation_id = r.id
+      where l.business_id = $1 and l.id = $2
+      for update of e`,
+    [tx.businessId, leaseId],
+  );
+}
+
+/**
  * The run, after its task and before its lease (the contract's order): a call
  * that reaches the ceiling moves it into the budget wait (AW-05,
  * `broker-wait.ts`), so two calls on one run stop it once.
@@ -136,7 +152,7 @@ async function lockHeld(
 
 /**
  * The six facts and the client link, read under the contract's lock order
- * (task, lease, delegation, reservation). Settlement takes the same locks by
+ * (envelope, task, run, lease, delegation, reservation). Settlement takes the same locks by
  * the call's own rows instead (`lockCall`), less the task: what it settles was
  * already sent.
  */
@@ -149,6 +165,7 @@ export async function lockFacts(
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
+  await lockEnvelope(tx, request.leaseId);
   const task = await lockTask(tx, request.leaseId);
   if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   await lockRun(tx, task.runId);

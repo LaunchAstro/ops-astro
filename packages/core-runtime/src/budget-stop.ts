@@ -128,17 +128,22 @@ export async function observedRefusal(
   reservationId: string,
 ): Promise<RuntimeResult<never> | null> {
   if (reservationState !== 'held') return null;
-  const kept = await tx.query(
-    `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'`,
+  const [kept] = await tx.query<{ readonly trashed: boolean }>(
+    `select task.deleted_at is not null as trashed from public.attempts a
+       join public.planned_runs run on run.business_id = a.business_id and run.id = a.run_id
+       join public.records task on task.business_id = run.business_id and task.id = run.task_id
+      where a.business_id = $1 and a.reservation_id = $2 and a.state = 'liability_unknown'`,
     [tx.businessId, reservationId],
   );
-  if (kept.length === 0) return null;
+  if (kept === undefined) return null;
+  // The outcome does not reach a task in the trash (`budget.record_outcome`): restore it first.
   return refuse(
     'TRANSITION_NOT_PERMITTED',
     "this step's cost is not resolved yet: it ran above the hold, " +
       'or a call on it is still open or was lost',
-    'Record the step’s outcome first, then end the work.',
+    kept.trashed
+      ? 'Restore the task from the trash, record the step’s outcome, then end the work.'
+      : 'Record the step’s outcome first, then end the work.',
   );
 }
 
@@ -245,13 +250,18 @@ export async function remainingOf(tx: TenantQuery, reservationId: string): Promi
   return { heldMinor, spentMinor, leftMinor: heldMinor - spentMinor, leaseId: row.lease_id };
 }
 
+const NO_OTHER_ASK =
+  'This run already waits for a person at its budget, or has ended, so no other ask is raised.';
+
 /**
  * The run stops at its budget and asks (AW-05). Under the caller's locks on
  * the run, the stopped hold's lease and its reservation. A run put back to
  * `planned` is claimed for the stop, which 0193 enters from `claimed` only.
- * When its asks are spent the run ends, as a person's end does, with no hold
- * left to release, and a person is told on the task. Returns the words for
- * the refusal or the resume's note.
+ * When its asks are spent the run ends, its held hold with it as a person's end
+ * does, and a person is told on the task. A run already waiting
+ * at its budget, or ended, raises nothing more: a person's outcome can resume
+ * a waiting run's step with nothing left to hold. Returns the words for the
+ * refusal or the resume's note.
  */
 export async function stopAtSpentHold(
   tx: TenantQuery,
@@ -266,6 +276,11 @@ export async function stopAtSpentHold(
   const { leaseId, heldMinor, spentMinor } = stop.remaining;
   // A hold spends only through calls under its lease (AW-01), so a spent hold has one.
   if (leaseId === null) throw new Error('budget stop: a spent hold with no lease');
+  const [run] = await tx.query<{ readonly state: string }>(
+    'select state from public.planned_runs where business_id = $1 and id = $2',
+    [tx.businessId, stop.runId],
+  );
+  if (run?.state !== 'planned' && run?.state !== 'claimed') return NO_OTHER_ASK;
   await tx.query(
     `update public.planned_runs set state = 'claimed'
       where business_id = $1 and id = $2 and state = 'planned'`,

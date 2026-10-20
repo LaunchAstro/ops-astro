@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a spent-hold pickup waiting on the agent's delegation row judges that delegation and the delegating person's grants after the wait, on separate connections"
+}

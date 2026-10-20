@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A call past the ceiling after the last ask ends the run and its stopped hold, the unused rest back on the envelope; judged on real runs, reservations and envelopes."
+}

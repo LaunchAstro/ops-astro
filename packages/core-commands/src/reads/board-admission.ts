@@ -47,7 +47,9 @@ export async function boardAdmission(
   const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
   const pool = typeof board === 'object' && board !== null ? board : { board };
   if ('mode' in pool && !scope.business) return { refusal: refuseScope() };
-  const selected = 'board' in pool ? pool.board : null;
+  // Either spelling of a board's UUID names the one board; grants hold it lower-case.
+  const named = 'board' in pool ? pool.board : null;
+  const selected = typeof named === 'string' ? named.toLowerCase() : named;
   const unreadable = (one: string | null): boolean =>
     !scope.business && (one === null ? scope.records.length === 0 : !scope.records.includes(one));
   if (unreadable(null)) return { refusal: refuseScope() };
