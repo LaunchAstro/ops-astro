@@ -16,4 +16,11 @@ export const REVIEW_OPERANDS = {
     picture: 'any',
     observation: 'any',
   },
+  'review.pin_comment': {
+    revisionId: 'any',
+    width: 'any',
+    selector: 'any',
+    body: 'any',
+    audience: 'any',
+  },
 } as const;

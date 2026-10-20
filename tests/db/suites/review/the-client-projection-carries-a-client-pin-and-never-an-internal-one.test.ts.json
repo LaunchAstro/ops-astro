@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 pin projection: a client reading the shared task sees the client pin with its anchor and no trace of the internal pin's body, anchor or id."
+}
