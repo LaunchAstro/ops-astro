@@ -9,6 +9,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_MODELS,
   CONVERSATION_ANSWER,
   CONVERSATION_MODELS,
   conversationModelsOf,
@@ -33,17 +35,19 @@ const modelIn = (body: string): unknown => (JSON.parse(body) as Record<string, u
 
 // oxlint-disable-next-line max-lines-per-function -- the catalogue, the provider rule and the adapters
 describe('CS-7.30 the conversation model catalogue', () => {
-  it('lists only the replay model, the laptop runner’s default, the M5’s Ollama models and OpenRouter’s paid ones, each priced', () => {
+  it('lists only the replay model, the laptop runner’s default, the M5’s Ollama models, OpenRouter’s paid ones and the plan’s two, each priced', () => {
     expect(CONVERSATION_MODELS.map((model) => model.id)).toStrictEqual([
       REPLAY_MODEL_WINDOW.model,
       LOCAL_GPT_DEFAULT_MODEL,
       ...OLLAMA_MODELS,
       ...OPENROUTER_MODELS.map((model) => model.id),
+      ...CHATGPT_PLAN_MODELS,
     ]);
     const operations = new Map([
       [CONVERSATION_ANSWER.provider, CONVERSATION_ANSWER],
       [LOCAL_GPT_CONVERSATION.provider, LOCAL_GPT_CONVERSATION],
       [OLLAMA_PROVIDER, OLLAMA_CONVERSATION],
+      [CHATGPT_PLAN_CONVERSATION.provider, CHATGPT_PLAN_CONVERSATION],
     ]);
     // #1508: every free provider's model is unpriced; the stand-in's is priced, and refused;
     // OpenRouter's are priced at their own hold, and never offered to a client's conversation.

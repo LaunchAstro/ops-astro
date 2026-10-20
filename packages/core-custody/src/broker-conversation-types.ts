@@ -4,6 +4,7 @@
 // one-call-per-message module both read it. Types only, apart so neither
 // module imports the other's.
 
+import type { PlanAsk } from './broker-conversation-plan.ts';
 import type { ClaimedField, PaidSeams } from './broker-types.ts';
 import type { Handoff } from './carriage.ts';
 
@@ -39,4 +40,6 @@ export interface ConversationCallRequest {
   readonly carry?: (callId: string) => Handoff;
   /** A paid call's seams to the caller's own transactions (#1508); absent, nothing paid is sent. */
   readonly paid?: PaidSeams;
+  /** On the owner's plan (#2175): who wrote each turn sent, the page and the earlier tasks. */
+  readonly plan?: PlanAsk;
 }

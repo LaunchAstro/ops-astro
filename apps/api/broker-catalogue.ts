@@ -5,13 +5,16 @@
 // outside provider (#1508) adds OpenRouter's paid conversation operation and
 // its adapter beside any of them, only where `OPS_OUTSIDE_PROVIDER` is
 // `openrouter` (`outside-provider.ts`). The carried deployment with the owner's
-// plan route set (#2091) adds the agent's turn on the plan and its adapter,
-// under the plan's own provider key, so the route stays the plan's.
+// plan route set (#2091) adds the agent's turn on the plan and the owner's
+// typed message on it (#2175), with one adapter under the plan's own provider
+// key, so the route stays the plan's.
 
 import {
   catalogue,
   CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_CONVERSATION,
   CHATGPT_PLAN_PROVIDER,
+  chatgptPlanAdapter,
   CHATGPT_PLAN_TURN,
   chatgptPlanTurnAdapter,
   readReplayLookup,
@@ -84,14 +87,17 @@ const OUTSIDE_ADAPTER: ProviderAdapter = {
 };
 
 /**
- * The agent's turn on the owner's plan and its one adapter. It is the only
- * operation on the plan's provider key, since the broker finds an adapter by
- * that key: the plan's conversation operation, beside it, would need one
- * adapter for both.
+ * The agent's turn on the owner's plan and the owner's typed message, with
+ * one adapter for both, since the broker finds an adapter by the provider
+ * key: a turn's `turn` field is the turn, anything else the conversation's
+ * pinned call for the model chosen.
  */
-const PLAN_OPERATIONS = catalogue([CHATGPT_PLAN_TURN]);
+const PLAN_OPERATIONS = catalogue([CHATGPT_PLAN_TURN, CHATGPT_PLAN_CONVERSATION]);
 const PLAN_ADAPTER: ProviderAdapter = {
-  build: chatgptPlanTurnAdapter,
+  build: (values, operationId, model) =>
+    Object.hasOwn(values, 'turn')
+      ? chatgptPlanTurnAdapter(values, operationId)
+      : chatgptPlanAdapter(values, operationId, model),
   price: () => 0,
   bodyLimit: CHATGPT_PLAN_BODY_LIMIT,
 };

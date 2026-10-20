@@ -191,6 +191,7 @@ export type {
   AllowanceResult,
   AttributionResult,
   ConversationModelsResult,
+  ConversationModelUnavailableView,
   ConversationModelView,
   ConversationTargetsView,
   PlanningAllowanceView,

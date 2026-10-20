@@ -196,6 +196,7 @@ export {
   conversationOperationOf,
   conversationProviderOf,
   outsidePeopleOf,
+  planRouteSet,
   type ConversationModel,
 } from './conversation-models.ts';
 export {

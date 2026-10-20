@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Money rule P4 in the side chat (#2175): only the owner's own typed message goes on his ChatGPT plan, with the owner role read under the membership's lock after the wait on a separate connection; a member sees the plan unavailable, a client's conversation never lists it, a page task the owner did not create keeps it from the message, and the plan's refusals reach the chat by name."
+}

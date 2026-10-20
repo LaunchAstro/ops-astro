@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { writeCarriers } from './broker-carriage.ts';
+import { carriesOnPlan } from './carry-rule.ts';
 import type { ConversationCallRequest } from './broker-conversation-types.ts';
 import { registerPromptCopy } from './broker-reserve.ts';
 import type { BrokerRoute, Carrier, ModelCallResult } from './broker-types.ts';
@@ -71,7 +72,9 @@ async function replyLanded(
  * The row, started: nothing held, the conversation and its message, no task
  * fact. A message that has a call already gets none (the unique index decides
  * a race), and undefined comes back. A carried deployment's call is written
- * with its carriers row, naming the agent.
+ * with its carriers row, naming the agent. A call on the owner's plan names the
+ * model asked from the start (#2175), so a call the plan refuses still says
+ * which model it refused; a settled answer's own model replaces it.
  */
 export async function insertStarted(
   tx: TenantQuery,
@@ -86,8 +89,8 @@ export async function insertStarted(
     `insert into public.model_calls
        (business_id, id, conversation_id, conversation_message_id, operation_key, state,
         reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref, account,
-        started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', 0, $6, $7, $8, $9, $10, $11, clock_timestamp())
+        model_id, started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', 0, $6, $7, $8, $9, $10, $11, $12, clock_timestamp())
      on conflict (business_id, conversation_message_id) where conversation_message_id is not null
      do nothing
      returning id`,
@@ -103,6 +106,7 @@ export async function insertStarted(
       route.provider,
       route.credentialRef,
       account,
+      carriesOnPlan(route) ? (request.model ?? null) : null,
     ],
   );
   if (inserted.length === 0) return undefined;
