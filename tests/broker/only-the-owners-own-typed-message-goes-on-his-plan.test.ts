@@ -226,7 +226,8 @@ describe.skipIf(serverUrl === undefined)("the owner's typed message on his plan"
         route_key: 'chatgpt_plan',
         route_reach: 'cloud',
         credential_kind: 'subscription',
-        reserved_minor: 0,
+        // A bigint comes back from the store as text.
+        reserved_minor: '0',
         model_id: SOL,
         operation_key: CHATGPT_PLAN_CONVERSATION.key,
       }),
