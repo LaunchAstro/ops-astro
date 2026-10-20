@@ -74,7 +74,7 @@ const LEASE_WORK: readonly CommandName[] = [
 ];
 
 /** A pinned read's own operands, beside its lease (#1904): a path no run of this world pins. */
-const READ = { stepId: null, path: 'skills/brief/SKILL.md' } as const;
+const READ = { stepId: randomUUID(), path: 'skills/brief/SKILL.md' } as const;
 
 /** A check's own fields, beside the lease it is recorded under (MP-6-1). */
 const CHECK = { name: 'a check for the audit', outcome: 'passed' } as const;
@@ -350,7 +350,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   async function readCell(): Promise<Cell> {
     const agent = await freshAgent();
     const p = await pickUpBy(w.h.world.ada, agent, 'work whose worker reads a file');
-    const body = { leaseId: p.leaseId, fence: p.fence, ...READ };
+    const [step] = await w.h.world.db.admin.execute<{ readonly step_id: string }>(
+      'select step_id from public.attempts where id = $1',
+      [p.attemptId],
+    );
+    const body = { leaseId: p.leaseId, fence: p.fence, ...READ, stepId: step?.step_id };
     return agentCell(agent, 'definition.read', body, p.credential, 'DEFINITION_UNAVAILABLE');
   }
 

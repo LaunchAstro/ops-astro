@@ -826,7 +826,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               : {}),
             ...(declaration.name === 'run.end' ? { endCode: 'TOOL_REFUSED' } : {}),
             ...(declaration.name === 'definition.read'
-              ? { stepId: null, path: 'skills/brief/SKILL.md' }
+              ? { stepId: randomUUID(), path: 'skills/brief/SKILL.md' }
               : {}),
             leaseId: siblingLease['leaseId'],
             fence: siblingLease['fence'],

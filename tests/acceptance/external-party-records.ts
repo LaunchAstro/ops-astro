@@ -97,7 +97,7 @@ export function revocationBodies(): Readonly<Record<string, Readonly<Record<stri
     'definition.read': {
       leaseId: randomUUID(),
       fence: 1,
-      stepId: null,
+      stepId: randomUUID(),
       path: 'skills/brief/SKILL.md',
     },
     // The launched agent's take, named by its launch and never by a record.

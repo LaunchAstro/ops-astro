@@ -113,7 +113,7 @@ export function probeOperands(name: CommandName): Body {
   if (name === 'run.child_handback') return { outcome: 'completed' };
   // #1904: its four operands well formed, so what answers is authority.
   if (name === 'definition.read') {
-    return { leaseId: randomUUID(), fence: 1, stepId: null, path: 'skills/brief/SKILL.md' };
+    return { leaseId: randomUUID(), fence: 1, stepId: randomUUID(), path: 'skills/brief/SKILL.md' };
   }
   if (name === 'chat.messages') return { conversationId: randomUUID() };
   if (name === 'automation.history') return { activationId: randomUUID() };

@@ -728,7 +728,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         // A code it may end on, so the lease is what is compared (#1623 R1).
         ['run.end', { endCode: 'TOOL_REFUSED' }],
         // A path well formed, so the lease is what is compared (#1904).
-        ['definition.read', { stepId: null, path: 'skills/brief/SKILL.md' }],
+        ['definition.read', { stepId: randomUUID(), path: 'skills/brief/SKILL.md' }],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

@@ -156,7 +156,12 @@ describe.skipIf(serverUrl === undefined)(
               }
             : {}),
           ...(declaration.name === 'definition.read'
-            ? { leaseId: randomUUID(), fence: 1, stepId: null, path: 'skills/brief/SKILL.md' }
+            ? {
+                leaseId: randomUUID(),
+                fence: 1,
+                stepId: randomUUID(),
+                path: 'skills/brief/SKILL.md',
+              }
             : {}),
           ...AW_11_OPERANDS[declaration.name],
         });

@@ -37,6 +37,8 @@ interface Claim {
   readonly lease: { readonly leaseId: string; readonly fence: unknown };
   readonly taskId: string;
   readonly runId: string;
+  /** The lease's own step, where the call should get past the lease; else a made-up one. */
+  readonly stepId?: string;
 }
 
 /** A field write on `record`, at a revision the crossing never reaches. */
@@ -123,7 +125,11 @@ const bodies = (claim: Claim): Record<string, Body> => ({
     knowledge: ['made-up'],
     unknowns: [],
   }),
-  'definition.read': () => ({ ...claim.lease, stepId: null, path: 'skills/brief/SKILL.md' }),
+  'definition.read': () => ({
+    ...claim.lease,
+    stepId: claim.stepId ?? randomUUID(),
+    path: 'skills/brief/SKILL.md',
+  }),
   // No crossing target: the helper's handback answers to its own child credential.
   'run.child_handback': () => ({ outcome: 'completed' }),
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
@@ -242,7 +248,16 @@ export function delegationCrossing(): void {
   }, 60_000);
 
   it('API-1 isolation: the agent reaches the lease and run operations on its own delegated task', async () => {
-    const ours = bodies({ lease: ownLease, taskId: delegatedTask, runId: ownRunId });
+    const [step] = await fixture.db.admin.execute<{ readonly step_id: string }>(
+      'select step_id from public.attempts where lease_id = $1',
+      [ownLease.leaseId],
+    );
+    const ours = bodies({
+      lease: ownLease,
+      taskId: delegatedTask,
+      runId: ownRunId,
+      ...(step !== undefined && { stepId: step.step_id }),
+    });
     for (const command of [...RUN_AND_LEASE, 'definition.read']) {
       const row = rows.find((one) => one.command === command) as CatalogueRow;
       // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list

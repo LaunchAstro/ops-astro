@@ -651,7 +651,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ],
       ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ['run.end', { endCode: 'TOOL_REFUSED' }],
-      ['definition.read', { stepId: null, path: 'skills/brief/SKILL.md' }],
+      ['definition.read', { stepId: randomUUID(), path: 'skills/brief/SKILL.md' }],
     ];
     // The helper's handback: another business's real credential, and a made-up one.
     out.push({

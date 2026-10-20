@@ -176,7 +176,19 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential: String(detail['credential']),
       };
     }
-    // A stop names a code that needs no proof in the run's records; a read, a file by its path.
+    if (name === 'definition.read') {
+      // A read names its lease's own step and a file by its path.
+      const [step] = await harness.world.db.admin.execute<{ readonly step_id: string }>(
+        'select step_id from public.attempts where id = $1',
+        [held.attemptId],
+      );
+      const read = { stepId: step?.step_id, path: 'skills/brief/SKILL.md' };
+      return {
+        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...read },
+        credential,
+      };
+    }
+    // A stop names a code that needs no proof in the run's records.
     const leased =
       name === 'task.check'
         ? { name: 'the agent checks', outcome: 'passed' }
@@ -184,9 +196,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
           ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
           : name === 'run.end'
             ? { endCode: 'TOOL_REFUSED' }
-            : name === 'definition.read'
-              ? { stepId: null, path: 'skills/brief/SKILL.md' }
-              : { outcome: 'completed', report: { wrote: 'a draft' } };
+            : { outcome: 'completed', report: { wrote: 'a draft' } };
     const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...leased };
     return { body, credential };
   }
