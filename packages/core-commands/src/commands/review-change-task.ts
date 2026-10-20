@@ -105,7 +105,14 @@ async function makeTask(
   if (!still.ok) return refused(REFUSALS[still.code]);
   const taskId = String(created.recordId);
   await linkChangeTask(tx, held.id, taskId);
-  return made(held, taskId, created.revision);
+  // The agent path waits on its actor, login and audit chain after this returns (its last waits,
+  // `agent-standing.ts`), so the lease, its delegation and the person's grants are judged once
+  // more after them: a lapsed one rolls the task and its link back.
+  const lastCheck = async () => {
+    const after = await holdApprovedChange(tx, at, held.id);
+    return after.ok ? undefined : REFUSALS[after.code];
+  };
+  return { ...made(held, taskId, created.revision), lastCheck };
 }
 
 /** The one path: the request held under the lease, then its task made or the one already made. */
