@@ -218,7 +218,9 @@ as $$
                  and ga.kind = 'person'
                where g.business_id = pl.business_id
                  and g.revoked_at is null
-                 and (g.expires_at is null or g.expires_at > now())
+                 -- The time now, not the transaction's start: begin asks after
+                 -- waiting on the login's factor lock, and a share may lapse meanwhile.
+                 and (g.expires_at is null or g.expires_at > clock_timestamp())
                  and ((g.subject_kind = 'person' and g.subject_id = pl.person_id)
                       or (g.subject_kind = 'actor' and ga.person_id = pl.person_id))))
      and not exists (
