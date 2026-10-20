@@ -56,6 +56,7 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'run.delegate_child',
   'run.child_handback',
   'run.end',
+  'definition.read',
   'task.take_launch',
 ]);
 
@@ -805,7 +806,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // lease. C80's request names its task through `taskId`, never a stray
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too, and so does the worker's own stop
-      // (#1623 R1), with a code it may end on; the helper's handback by its credential.
+      // (#1623 R1), with a code it may end on, and its read of a pinned file (#1904);
+      // the helper's handback by its credential.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -815,6 +817,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'model.call',
         'run.delegate_child',
         'run.end',
+        'definition.read',
       ].includes(declaration.name)
         ? {
             ...probe,
@@ -822,6 +825,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               ? { name: 'a check on the sibling', outcome: 'passed' }
               : {}),
             ...(declaration.name === 'run.end' ? { endCode: 'TOOL_REFUSED' } : {}),
+            ...(declaration.name === 'definition.read'
+              ? { stepId: randomUUID(), path: 'skills/brief/SKILL.md' }
+              : {}),
             leaseId: siblingLease['leaseId'],
             fence: siblingLease['fence'],
             ...(declaration.name === 'task.observe'

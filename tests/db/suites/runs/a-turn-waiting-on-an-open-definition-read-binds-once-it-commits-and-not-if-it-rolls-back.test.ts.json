@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P13: a turn naming a definition whose read is still open on another connection waits on the lease row and reads the ledger after the wait: it binds and settles once the read commits, and is refused PROVENANCE_UNBOUND before any hold when it rolls back."
+}

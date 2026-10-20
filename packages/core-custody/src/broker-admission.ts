@@ -15,7 +15,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import type { ReservedCall } from './broker-reserve.ts';
-import { lockTask } from './broker-task.ts';
+import { readTask, shareTask } from './broker-task.ts';
 import { fieldsOf } from './broker-turn.ts';
 import type { ModelCallRequest } from './broker-types.ts';
 import type { Admission, Admit } from './custody.ts';
@@ -89,11 +89,13 @@ export function taskAdmission(
     async (work) => await database.withBusiness(businessId, work),
     async (tx) => {
       if (!(await stillDispatched(tx, reserved.callId))) return false;
-      const task = await lockTask(tx, request.leaseId);
-      if (task === undefined || task.clientId !== null) return false;
+      const runId = await shareTask(tx, request.leaseId);
+      const task = runId === undefined ? undefined : await readTask(tx, request.leaseId);
+      if (runId === undefined || task === undefined || task.clientId !== null) return false;
       // A turn is bound again, as at the start, against the task held here.
       const resolved = await fieldsOf(tx, request, reserved.operation, {
         leaseId: request.leaseId,
+        runId,
         source: task.source,
       });
       if (!resolved.ok) return false;

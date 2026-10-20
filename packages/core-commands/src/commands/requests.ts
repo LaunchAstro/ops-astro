@@ -271,6 +271,7 @@ export type CommandRequest =
   // Read by its own parser (`model-call.ts`), never by a person handler.
   | ({ readonly command: 'model.call' } & Envelope)
   | ({ readonly command: 'run.end' } & Envelope)
+  | ({ readonly command: 'definition.read' } & Envelope)
   | RunRequest
   | SelfRequest<Envelope>
   | ConnectionsRequest<Envelope>

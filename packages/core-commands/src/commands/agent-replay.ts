@@ -30,6 +30,7 @@ import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
 import { replayOwnWork, replayRefusal } from './live-correction-agent.ts';
 import { presentedCredential } from './tasks-take-launch.ts';
+import { replayDefinitionRead } from './definition-read-replay.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -43,6 +44,10 @@ async function releaseReplay(
   presented: VerifiedSubject,
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
+    case 'definitionRead':
+      return await operation.open(
+        async (row) => await replayDefinitionRead(tx, call, row, stored, presented),
+      );
     case 'pickup':
       return await replayPickup(tx, call, stored);
     case 'serveAgain':

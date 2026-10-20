@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `model.call` and `run.end` on the person prefix. Their own module, apart from
+// `model.call`, `run.end` and `definition.read` on the person prefix. Their own module, apart from
 // the broker's executor, so the person handlers never import the agent entry.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -30,4 +30,18 @@ export function refuseRunEndAsPerson(
   _context: CommandContext,
 ): Promise<HandlerOutcome> {
   return Promise.resolve(refused(refuseCommand('SCOPE_NOT_GRANTED', ['run.end'], END_FIXES)));
+}
+
+const READ_FIXES: readonly string[] = [
+  "A pinned file is read by the run's worker, under its lease. A person reads the run's ledger.",
+];
+
+/** A person has no `definition.read` (#1904): the bytes go only to the lease's holder. */
+export function refuseDefinitionReadAsPerson(
+  _tx: TenantQuery,
+  _context: CommandContext,
+): Promise<HandlerOutcome> {
+  return Promise.resolve(
+    refused(refuseCommand('SCOPE_NOT_GRANTED', ['definition.read'], READ_FIXES)),
+  );
 }

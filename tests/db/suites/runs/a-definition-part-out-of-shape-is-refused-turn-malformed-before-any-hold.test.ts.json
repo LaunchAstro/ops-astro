@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P4: a definition part with no text, an extra key, a number for text, out of first place, an uppercase or short digest, a lone surrogate standing for U+FFFD, or over 262,144 UTF-8 bytes is refused TURN_MALFORMED before any hold or send, on a run that read the file; 262,144 bytes binds."
+}

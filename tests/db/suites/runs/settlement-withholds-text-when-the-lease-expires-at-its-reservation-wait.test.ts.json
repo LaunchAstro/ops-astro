@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1940 S1940-2: a settlement whose lease expires during its reservation wait answers LEASE_EXPIRED and releases no text."
+}

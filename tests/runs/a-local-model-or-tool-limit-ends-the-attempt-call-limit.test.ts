@@ -11,7 +11,7 @@ import { reads, scripted, TASK } from './agent-ports.ts';
 
 it('a local model limit maps to call_limit', async () => {
   const run = scripted((n) => reads(n));
-  const end = await runAttempt(run.state, run.ports, 3, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, 3, 'The task.');
   expect(run.sent).toHaveLength(3);
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
 });
@@ -26,7 +26,7 @@ it('a tool limit before the server model limit maps to call_limit', async () => 
       args: { taskId: TASK },
     })),
   }));
-  const end = await runAttempt(run.state, run.ports, 3, undefined, 'The task.');
+  const end = await runAttempt(run.state, run.ports, 3, 'The task.');
   expect(run.sent).toHaveLength(1);
   expect(end).toEqual({ outcome: 'call_limit', endCode: 'CALL_LIMIT_REACHED' });
 });

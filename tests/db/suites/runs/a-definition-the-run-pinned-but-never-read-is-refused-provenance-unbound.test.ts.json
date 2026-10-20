@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P6: a definition part with the genuine bytes and digest of a file the run pinned but never read has no ledger row and is refused PROVENANCE_UNBOUND before any hold: the bind reads the ledger, not the manifest."
+}

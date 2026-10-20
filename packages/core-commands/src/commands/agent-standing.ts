@@ -33,7 +33,7 @@ import {
 import { inSavepoint } from './agent-applied.ts';
 import type { AgentCall } from './agent-call.ts';
 import type { AgentOperation } from './agent-operations.ts';
-import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
+import { isRefused, refused, type Applied, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 const NOT_LIVE_FIXES: readonly string[] = ['ask the authorising person for a current delegation'];
@@ -57,6 +57,9 @@ export async function workJudged(
   tx: TenantQuery,
   judged: Judged,
   work: () => Promise<HandlerOutcome>,
+  // Run once standing has passed, its waits included, inside the same
+  // savepoint: `definition.read`'s final lease check (D1904-1).
+  final?: (tx: TenantQuery, ran: Applied) => Promise<CommandRefusal | undefined>,
 ): Promise<HandlerOutcome | { readonly ended: CommandRefusal }> {
   const standing: { ended: CommandRefusal | undefined } = { ended: undefined };
   const outcome = await inSavepoint(tx, async () => {
@@ -68,7 +71,7 @@ export async function workJudged(
     standing.ended = await agentStanding(tx, judged, retained, handsOver);
     if (standing.ended !== undefined) return refused(standing.ended);
     if (retained) return ran;
-    const last = await ran.lastCheck?.();
+    const last = (await ran.lastCheck?.()) ?? (await final?.(tx, ran));
     return last === undefined ? ran : refused(last);
   });
   return standing.ended === undefined ? outcome : { ended: standing.ended };

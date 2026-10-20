@@ -1803,6 +1803,15 @@ its event, and raises the business's one `audit_copy_missing` row for that
 digest on the outage report (`raiseMissingCopy`, 0106, AW-04 missing audit
 copy); a later miss of the digest joins it. `setDigest` is the path-sorted set digest over a run's reads.
 
+Its caller on the agent door is `definition.read` (#1904, [API.md](API.md)),
+which takes the model call's lock path first (`lockFacts`), so the read's own
+lease check finds the row already held, and checks the lease once more on the
+database clock as its last statement, after the door's standing check. The
+worker carries the text it returned in a turn's definition part; the broker
+never reads the copy back (0086), and binds the part by the text's sha256 and
+this run's ledger row for that path and digest, under the call's locks, so a
+read still open is waited for and one rolled back is never seen.
+
 The accept itself is `acceptPlan` (`core-runtime/src/plan-accept.ts`, AW-04):
 one person's approval of the plan's gate, in the caller's one transaction. It
 admits the activation as that person's manual act, captures the manifest (the

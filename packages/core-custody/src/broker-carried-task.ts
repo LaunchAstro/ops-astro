@@ -129,6 +129,7 @@ export async function judgeCarriedTask(
   // A turn is bound again here, as at the start, so a task written in the M5's wait sends nothing (#2091).
   const resolved = await fieldsOf(tx, task.request, operation, {
     leaseId: facts.leaseId,
+    runId: facts.runId,
     source: facts.source,
   });
   if (!resolved.ok) return resolved;

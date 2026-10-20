@@ -32,6 +32,7 @@ const WITH_TOOLS = operationOf({
 
 const facts = {
   leaseId: LEASE,
+  runId: 'the-run',
   source: {
     id: TASK,
     live: true,

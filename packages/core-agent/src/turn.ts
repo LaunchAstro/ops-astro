@@ -39,8 +39,11 @@ export interface AttemptState {
   readonly taskId: string;
   /** The task's revision as the run read it before its first turn. */
   readonly revision: number;
-  /** The pinned file the system message stands for, when the run has one. */
-  readonly definition?: { readonly path: string; readonly digest: string };
+  /**
+   * The pinned file the system message is, when the run has one: as
+   * `definition.read` answered it, kept only in this attempt's store (#1904).
+   */
+  readonly definition?: { readonly path: string; readonly digest: string; readonly text: string };
   /** The tools the catalogue offers this attempt, by name. */
   readonly catalogue: readonly string[];
   /** The next turn's ordinal: the calls this attempt has sent. */

@@ -214,6 +214,7 @@ export const DECLARED: Readonly<
   'model.call': { carry: 'not carried', plant: 'needs a lease' },
   // The worker's own stop (#1623 R1): an outcome on the attempt, never task content.
   'run.end': { carry: 'not carried', plant: 'needs a lease' },
+  'definition.read': { carry: 'not carried', plant: 'needs a lease on a pinned run' },
   'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.end_at_budget_stop': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.revise_state': { carry: 'not carried', plant: 'needs a run' },

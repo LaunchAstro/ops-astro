@@ -29,6 +29,10 @@ import {
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { enrol, type Member } from './fixture.ts';
 import { COMMAND_SURFACE, READS, pathOf } from '../../packages/core-wire/src/surface.ts';
+import { probeOperands } from '../acceptance/role-case-fixed-bodies.ts';
+
+/** Reads that refuse a stray recordId: the capabilities read, and a pinned read (#1904). */
+const NO_RECORD: ReadonlySet<string> = new Set(['session.capabilities', 'definition.read']);
 
 // Like the other database files, these cases skip without a database
 // rather than fail in beforeAll (the CI local checks job has none).
@@ -143,7 +147,7 @@ describe.skipIf(serverUrl === undefined)(
           // Each operand the agent entry reads before the delegation (Sol 6
           // AUTHORITY-2 and -3) is well formed, so the answer is the exclusion:
           // no stray recordId on the capabilities read, and a typed handback.
-          ...(declaration.name === 'session.capabilities' ? {} : { recordId: randomUUID() }),
+          ...(NO_RECORD.has(declaration.name) ? {} : { recordId: randomUUID() }),
           ...(declaration.name === 'task.handback'
             ? { leaseId: randomUUID(), fence: 1, outcome: 'completed' }
             : {}),
@@ -155,6 +159,7 @@ describe.skipIf(serverUrl === undefined)(
                 fields: [],
               }
             : {}),
+          ...(declaration.name === 'definition.read' ? probeOperands('definition.read') : {}),
           ...AW_11_OPERANDS[declaration.name],
         });
         answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });

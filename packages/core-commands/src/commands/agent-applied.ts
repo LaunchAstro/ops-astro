@@ -38,6 +38,13 @@ export async function recordApplied(
   request: IdentifiedRequest,
   digest: string,
   outcome: Applied,
+  // The row's own storage and event (#1904): `stored` keeps a projection of
+  // the detail, after the credential is removed; `ownEvent` says the handler
+  // wrote the call's one audit event.
+  kept: {
+    readonly stored?: (detail: Applied['detail']) => Applied['detail'];
+    readonly ownEvent?: true;
+  } = {},
 ): Promise<CommandHandle> {
   const handle: CommandHandle = {
     command: request.command,
@@ -48,16 +55,20 @@ export async function recordApplied(
   // The audit subject rides beside the answer, as the person envelope keeps
   // it, so the replay's audit event names the same record.
   const { auditSubjectId } = outcome;
-  const kept: CommandHandle & { readonly auditSubjectId?: string } =
-    auditSubjectId === undefined ? storable(handle) : { ...storable(handle), auditSubjectId };
+  const safe = storable(handle);
+  const projected =
+    kept.stored === undefined ? safe : { ...safe, detail: kept.stored(safe.detail) };
+  const result: CommandHandle & { readonly auditSubjectId?: string } =
+    auditSubjectId === undefined ? projected : { ...projected, auditSubjectId };
   await registerAttempt(tx, {
     operationId: request.operationId,
     command: request.command,
     actorId: session.actorId,
     digest,
-    result: kept,
+    result,
     recordId: outcome.recordId,
   });
+  if (kept.ownEvent === true) return handle;
   await writeAppliedEvents(
     tx,
     {

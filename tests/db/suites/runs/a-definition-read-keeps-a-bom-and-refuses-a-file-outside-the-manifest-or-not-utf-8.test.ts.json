@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P3: definition.read refuses a path outside the run's manifest and a file that is not UTF-8, writing no ledger row, copy or audit event, and reads a file starting with a byte order mark with U+FEFF kept, so its turn binds."
+}

@@ -65,10 +65,7 @@ function expectShape(
   });
   expect(shape['outcomes']).toStrictEqual(['completed', 'failed', 'dropped']);
   expect(shape['lease']).toMatchObject({ leaseId: detail['leaseId'], fence: detail['fence'] });
-  expect(shape['versionBinding']).toMatchObject({
-    operand: null,
-    versionId: detail['versionId'],
-  });
+  expect(shape['versionBinding']).toMatchObject({ operand: null, versionId: detail['versionId'] });
   // Nothing the handback does not consume is advertised as an operand.
   const text = JSON.stringify(shape);
   expect(Object.keys(shape['operands'] as object)).not.toContain('expectedVersions');
@@ -184,6 +181,7 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
       'task.handback',
       'model.call',
       'run.end',
+      'definition.read',
     ]);
     const excluded = detail['excludedOperations'] as { operation: string; reason: string }[];
     expect(excluded.map((entry) => entry.operation)).toStrictEqual([

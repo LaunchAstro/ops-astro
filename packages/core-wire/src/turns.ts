@@ -2,7 +2,8 @@
 //
 // A model turn on the wire (#1623 R3, design R4 and R7). The worker sends a
 // turn as references to what the broker owns, never as free text: the system
-// part names a pinned file the run read, the task part the run's own task at
+// part a pinned file the run read, with the text the read returned for the
+// broker to hash against the run's ledger (#1904), the task part the run's own task at
 // a revision, a tool result that same task under the call it answers, and an
 // assistant part an earlier answer by its call, carrying the bytes the broker
 // returned so the broker can check them against the digest it kept. Each send
@@ -28,7 +29,13 @@ export interface ToolCall {
 }
 
 export type TurnPart =
-  | { readonly ref: 'definition'; readonly path: string; readonly digest: string }
+  | {
+      readonly ref: 'definition';
+      readonly path: string;
+      readonly digest: string;
+      /** The file as `definition.read` returned it; the broker binds it by its hash (#1904). */
+      readonly text: string;
+    }
   | {
       readonly ref: 'task';
       readonly taskId: string;
