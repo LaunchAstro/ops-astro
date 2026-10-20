@@ -95,8 +95,14 @@ function today(): string {
   return `${String(now.getFullYear())}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
 }
 
-/** The start line's words, read without following a link: undefined unless it is the owner's own. */
-function ownersLine(file: string): string | undefined {
+/** A start line as read: its words, and which file it was, down to when it was made and written. */
+interface Read {
+  readonly text: string;
+  readonly identity: string;
+}
+
+/** The start line, read without following a link: undefined unless it is the owner's own. */
+function ownersLine(file: string): Read | undefined {
   let fd: number;
   try {
     fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -104,9 +110,13 @@ function ownersLine(file: string): string | undefined {
     return undefined;
   }
   try {
-    const stat = fstatSync(fd);
-    const own = stat.isFile() && stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0;
-    return own && stat.size <= START_LINE_BYTES ? readFileSync(fd, 'utf8') : undefined;
+    const stat = fstatSync(fd, { bigint: true });
+    const own =
+      stat.isFile() && stat.uid === BigInt(process.getuid?.() ?? -1) && (stat.mode & 0o077n) === 0n;
+    if (!own || stat.size > BigInt(START_LINE_BYTES)) return undefined;
+    // A line written anew is another file, or the same inode made and written at another instant.
+    const identity = [stat.dev, stat.ino, stat.birthtimeNs, stat.mtimeNs].join(':');
+    return { text: readFileSync(fd, 'utf8'), identity };
   } finally {
     closeSync(fd);
   }
@@ -118,9 +128,9 @@ function ownersLine(file: string): string | undefined {
  */
 export function ownerStarted(home: string, set: string): string | undefined {
   const file = join(home, '.ops-astro', 'agent-tests-start.json');
-  const text = ownersLine(file);
-  if (text === undefined) return 'the owner has not started this run: no start line of theirs';
-  const line = parsed(text);
+  const read = ownersLine(file);
+  if (read === undefined) return 'the owner has not started this run: no start line of theirs';
+  const line = parsed(read.text);
   const fits =
     typeof line === 'object' &&
     line !== null &&
@@ -128,25 +138,26 @@ export function ownerStarted(home: string, set: string): string | undefined {
     (line as Record<string, unknown>)['set'] === set &&
     (line as Record<string, unknown>)['date'] === today();
   if (!fits) return `the owner has not started this run: the start line is not for ${set} today`;
-  if (!claimed(file, text))
+  if (!claimed(file, read))
     return 'the owner has not started this run: the start line was already used';
   return undefined;
 }
 
 /**
  * Takes away the start line judged, and only that one. It is renamed aside at
- * once, so one run alone holds it, and kept only when its words are still
- * the ones judged. A line written since, say for another set, is put back,
- * unless a newer one is already there.
+ * once, so one run alone holds it, and kept only when it is still the file
+ * judged, with the words judged. A line written since, for another set or
+ * word for word the same, is put back, unless a newer one is already there.
  */
-function claimed(file: string, text: string): boolean {
+function claimed(file: string, judged: Read): boolean {
   const aside = `${file}.${String(process.pid)}`;
   try {
     renameSync(file, aside);
   } catch {
     return false;
   }
-  const same = ownersLine(aside) === text;
+  const held = ownersLine(aside);
+  const same = held?.identity === judged.identity && held.text === judged.text;
   if (!same) {
     try {
       linkSync(aside, file);
