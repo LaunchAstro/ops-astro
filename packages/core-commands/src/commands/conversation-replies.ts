@@ -70,10 +70,29 @@ const WORDS: Readonly<Record<string, string>> = {
   STILL_ANSWERING: 'The answer to this message is still on its way.',
   DECISION_STALE:
     'The answer did not finish, so nothing was kept. Your message is kept; ask again.',
+  SUBSCRIPTION_SIGN_IN_NEEDED:
+    'The ChatGPT plan needs the owner to sign in again, so nothing was sent. ' +
+    'Your message is kept; choose another model, or ask the owner to sign in.',
+  SUBSCRIPTION_REFRESH_FAILED:
+    'The ChatGPT plan’s sign-in could not be renewed in time, so nothing was sent. ' +
+    'Your message is kept; ask again shortly, or choose another model.',
+  SUBSCRIPTION_STORE_FAILED:
+    'The ChatGPT plan’s sign-in could not be kept safely, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
+  SUBSCRIPTION_TOKEN_FILE_OPEN:
+    'The ChatGPT plan’s sign-in is open to other users on its machine, so it was not used ' +
+    'and nothing was sent. Your message is kept; choose another model.',
+  SUBSCRIPTION_NOT_OWNER_STARTED:
+    'The ChatGPT plan answers only work the owner started, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
+  SUBSCRIPTION_OTHER_TENANT:
+    'The ChatGPT plan belongs to another installation, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
 };
 
 /** Release reasons told in their own words; any other reads as a release. */
 const OWN_WORDS: ReadonlySet<string> = new Set([
+  'LOCAL_MODEL_REQUIRED',
   'LOCAL_PLAN_LIMIT',
   'GPT_SIGNED_OUT',
   'GPT_WEEK_RESERVED',
@@ -84,6 +103,12 @@ const OWN_WORDS: ReadonlySet<string> = new Set([
   'AUTHORITY_BUSY',
   'SEND_LAPSED',
   'CUSTODY_NOT_ADMITTED',
+  'SUBSCRIPTION_SIGN_IN_NEEDED',
+  'SUBSCRIPTION_REFRESH_FAILED',
+  'SUBSCRIPTION_STORE_FAILED',
+  'SUBSCRIPTION_TOKEN_FILE_OPEN',
+  'SUBSCRIPTION_NOT_OWNER_STARTED',
+  'SUBSCRIPTION_OTHER_TENANT',
 ]);
 
 const UNUSABLE =
@@ -102,6 +127,51 @@ export const refusedWith = (code: string): ConversationReply => ({
  */
 export const releasedWith = (reason: string): ConversationReply =>
   refusedWith(OWN_WORDS.has(reason) ? reason : 'CALL_RELEASED');
+
+/** After the plan's call went out: no answer kept, nothing retried, the message kept. */
+const PLAN_HELD: Readonly<Record<string, string>> = {
+  SUBSCRIPTION_PLAN_ALLOWANCE:
+    'The ChatGPT plan has reached its usage allowance, so no answer was kept and nothing was ' +
+    'retried. Your message is kept; ask again once the plan resets.',
+  SUBSCRIPTION_PLAN_UNAVAILABLE:
+    'ChatGPT is unavailable just now, so no answer was kept and nothing was retried. ' +
+    'Your message is kept; ask again shortly.',
+  SUBSCRIPTION_NOT_ELIGIBLE:
+    'The ChatGPT plan refused this account or model, so no answer was kept and nothing was ' +
+    'retried. Your message is kept; choose another model.',
+  SUBSCRIPTION_UNSUPPORTED_CAPABILITY:
+    'The ChatGPT plan does not support what this message asked of it, so no answer was kept ' +
+    'and nothing was retried. Your message is kept; choose another model.',
+  SUBSCRIPTION_SIGN_IN_NEEDED:
+    'The ChatGPT plan needs the owner to sign in again, so no answer was kept and nothing was ' +
+    'retried. Your message is kept; choose another model, or ask the owner to sign in.',
+  SUBSCRIPTION_ANSWER_WITHHELD:
+    'The ChatGPT plan’s call did not end in a clean answer, so no answer was kept and nothing ' +
+    'was retried. Your message is kept; ask again.',
+};
+
+/** What the plan answered, as a named result. */
+const heldCode = (providerCode: string | null): string => {
+  if (providerCode === 'http_429') return 'SUBSCRIPTION_PLAN_ALLOWANCE';
+  if (providerCode !== null && /^http_5\d\d$/u.test(providerCode)) {
+    return 'SUBSCRIPTION_PLAN_UNAVAILABLE';
+  }
+  if (providerCode === 'http_403') return 'SUBSCRIPTION_NOT_ELIGIBLE';
+  if (providerCode === 'http_400') return 'SUBSCRIPTION_UNSUPPORTED_CAPABILITY';
+  if (providerCode === 'http_401') return 'SUBSCRIPTION_SIGN_IN_NEEDED';
+  return 'SUBSCRIPTION_ANSWER_WITHHELD';
+};
+
+/**
+ * A call on the ChatGPT plan held unknown after its write, told by what the
+ * plan answered (`providerCode`, such as `http_429`, or null): the call went
+ * out, so the words say no answer was kept and nothing was retried, never
+ * that nothing was sent.
+ */
+export const planHeldWith = (providerCode: string | null): ConversationReply => {
+  const code = heldCode(providerCode);
+  return { answered: false, code, words: PLAN_HELD[code] ?? UNUSABLE };
+};
 
 /** Whole AUD cents as the panel shows money: `AUD 12.34`. */
 const aud = (minor: number): string =>

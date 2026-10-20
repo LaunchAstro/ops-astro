@@ -237,10 +237,23 @@ export interface ConversationModelView {
   readonly label?: string;
 }
 
+/** A model the picker shows but cannot offer now, with why in the panel's words (#2175). */
+export interface ConversationModelUnavailableView {
+  readonly id: string;
+  readonly provider: string;
+  /** The picker's words for the model; absent, the id is shown. */
+  readonly label?: string;
+  /** The refusal code a question to it would meet now. */
+  readonly code: string;
+  readonly words: string;
+}
+
 /** `conversation.models`' answer: what the picker offers, and the conversation's choice. */
 export interface ConversationModelsResult {
   readonly ok: true;
   readonly models: readonly ConversationModelView[];
+  /** Models shown but not on offer now, each with its reason; present only when there are some. */
+  readonly unavailable?: readonly ConversationModelUnavailableView[];
   /** The model chosen for the conversation, or null: the default, the first offered. */
   readonly chosen: string | null;
 }
