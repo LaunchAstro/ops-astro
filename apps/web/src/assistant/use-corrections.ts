@@ -159,6 +159,7 @@ const askedOf = (correctionId: string, ask: CorrectionAsk): Correction => ({
   readAt: null,
   reason: null,
   refusal: null,
+  reviewMissingFor: null,
   receipts: null,
 });
 
@@ -268,6 +269,8 @@ export function useCorrections(
     const settled = settle(
       await client.mutate('live_correction.decide', { correctionId: id, versionId, decision }),
     );
+    if (failedCode(settled) === 'ASTRA_REVIEW_MISSING')
+      amend(key, id, { reviewMissingFor: versionId });
     await read(key, id, settled.kind === 'ok' ? null : failureWords(settled));
   };
   return {

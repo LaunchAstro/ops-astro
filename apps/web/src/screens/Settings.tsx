@@ -55,6 +55,8 @@ import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
 import { PriorityStagesRow } from './settings/priority-stages-row.tsx';
+import { SignOffRow } from './settings/sign-off-row.tsx';
+import { SingleOperatorRow } from './settings/single-operator-row.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -74,7 +76,6 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
   // the business holds. The server's value is drawn beside them, from the read.
   const [threshold, setThreshold] = useState('');
   const [off, setOff] = useState(false);
-  const [signOff, setSignOff] = useState(false);
 
   const saveFourEyes = (): void => {
     // Null is a real value and not an absence: the band is off, which is what
@@ -229,47 +230,15 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             {conflictFor('four-eyes')}
           </div>
 
-          <div className="setrow" data-set="sign-off">
-            <div className="setrow__t">
-              <h3 className="setrow__k">Client sign-off</h3>
-              <p className="setrow__note">
-                Whether the client is to agree before work is counted as complete.{' '}
-                {/* Storage without a consumer, as the band above: nothing asks for it. */}
-                <span data-settings="not-applied">
-                  Stored and shown only: no operation applies it yet.
-                </span>
-              </p>
-              {model.answered ? <Written which="sign-off" row={model.rowFor('sign-off')} /> : null}
-              {confirmedLine('sign-off')}
-            </div>
-            <div className="setrow__ctl">
-              <OnOff
-                label="Require client sign-off"
-                id="settings-sign-off"
-                idFor="on"
-                on={signOff}
-                disabled={model.disabledFor('sign-off')}
-                onChange={setSignOff}
-              />
-              <button
-                className="btn btn--sm btn--primary"
-                type="button"
-                data-settings="save-sign-off"
-                disabled={model.disabledFor('sign-off')}
-                onClick={() => {
-                  model.save('sign-off', signOff);
-                }}
-              >
-                {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
-              </button>
-              {model.answered ? <Held which="sign-off" row={model.rowFor('sign-off')} /> : null}
-            </div>
-            {conflictFor('sign-off')}
-          </div>
-
+          <SignOffRow
+            model={model}
+            known={confirmedLine('sign-off')}
+            conflict={conflictFor('sign-off')}
+          />
           <PriorityStagesRow model={model} conflict={conflictFor('priority')} />
           <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
+          <SingleOperatorRow model={model} conflict={conflictFor('single-operator')} />
         </div>
       </section>
 
