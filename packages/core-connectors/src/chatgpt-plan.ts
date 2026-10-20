@@ -38,9 +38,13 @@ export const CHATGPT_PLAN_PATH = '/v1/responses';
 export const CHATGPT_PLAN_ORIGIN = 'https://api.openai.com';
 export const CHATGPT_PLAN_ISSUER = 'https://auth.openai.com';
 
-/** The plan's two models: the smaller for basic checks, the larger for harder ones (spec #1612 story 20). */
-export const CHATGPT_PLAN_DEFAULT_MODEL = 'gpt-6.1-luna';
-export const CHATGPT_PLAN_MODELS: readonly string[] = [CHATGPT_PLAN_DEFAULT_MODEL, 'gpt-6.1-sol'];
+/**
+ * The plan's model. Spec #1612 story 20 names two, the smaller for basic
+ * checks; the plan's Responses route refuses gpt-6.1-luna with a 400 on a
+ * ChatGPT account (register 284), so only gpt-6.1-sol is offered until then.
+ */
+export const CHATGPT_PLAN_DEFAULT_MODEL = 'gpt-6.1-sol';
+export const CHATGPT_PLAN_MODELS: readonly string[] = [CHATGPT_PLAN_DEFAULT_MODEL];
 
 /** The most bytes one request body may hold. */
 export const CHATGPT_PLAN_BODY_LIMIT: number = 64 * 1024;

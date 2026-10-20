@@ -6,7 +6,7 @@
 // exactly as the broker pins it (`openrouterRequest`), every value checked
 // nested, within its declaration's wait and answer size, so nothing can widen
 // what a reply may cost. The owner's ChatGPT plan's Responses call, exactly
-// as `chatgptPlanBody` writes it (#1620 P4): one of the plan's two models, the
+// as `chatgptPlanBody` writes it (#1620 P4): one of the plan's offered models, the
 // instructions, `{ role, content }` turns, unstored and streamed, and nothing
 // else but offered tools, each a strict function tool within its depth and
 // size, with the model's earlier calls and their outputs. Anything else is

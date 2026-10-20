@@ -27,7 +27,7 @@ import { openAgentWorld, type AgentWorld } from './model-agent-world.ts';
 const PINNED_KEYS = ['input', 'instructions', 'model', 'store', 'stream'];
 
 const ASK = {
-  model: 'gpt-6.1-luna',
+  model: 'gpt-6.1-sol',
   instructions: 'Draft the About page change the task asks for.',
   input: [
     { role: 'user' as const, content: 'Fix the opening hours on the About page.' },
@@ -56,7 +56,7 @@ function changed(change: (body: Record<string, unknown>) => void): string {
 }
 
 describe('the pinned plan request', () => {
-  it("is admitted as built, for each of the plan's two models", () => {
+  it("is admitted as built, for each of the plan's models", () => {
     for (const model of CHATGPT_PLAN_MODELS) {
       const request = planRequest(chatgptPlanBody({ ...ASK, model }));
       expect(chatOf(request)).toEqual(request);
@@ -107,7 +107,8 @@ describe('a plan request with a pinned value changed is refused', () => {
     ['stream left out', (body) => delete body['stream']],
     ['instructions left out', (body) => delete body['instructions']],
     ['another model', (body) => (body['model'] = 'gpt-6.1-sol-pro')],
-    ['a model written in capitals', (body) => (body['model'] = 'GPT-6.1-LUNA')],
+    ['a model written in capitals', (body) => (body['model'] = 'GPT-6.1-SOL')],
+    ['the model the plan does not serve', (body) => (body['model'] = 'gpt-6.1-luna')],
     ['instructions that are not text', (body) => (body['instructions'] = ['a'])],
     ['input as text', (body) => (body['input'] = 'hello')],
     ['no turn', (body) => (body['input'] = [])],

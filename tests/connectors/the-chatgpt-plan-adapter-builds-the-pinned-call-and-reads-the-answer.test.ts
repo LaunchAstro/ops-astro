@@ -58,9 +58,9 @@ describe('the adapter', () => {
     expect(chatOf(request)).toStrictEqual(request);
   });
 
-  it('asks the smaller of the plan’s two models when none is named', () => {
+  it('asks gpt-6.1-sol, the model the plan serves, when none is named', () => {
     const body = JSON.parse(chatgptPlanAdapter(VALUES).body) as Record<string, unknown>;
-    expect(body['model']).toBe('gpt-6.1-luna');
+    expect(body['model']).toBe('gpt-6.1-sol');
   });
 });
 

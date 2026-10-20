@@ -77,7 +77,7 @@ const planTask = (values: Readonly<Record<string, string>>) => ({
   path: CHATGPT_PLAN_PATH,
   method: 'POST' as const,
   body: chatgptPlanBody({
-    model: 'gpt-6.1-luna',
+    model: 'gpt-6.1-sol',
     instructions: 'Draft the change the task asks for.',
     input: [{ role: 'user', content: values['instruction'] ?? '' }],
   }),
