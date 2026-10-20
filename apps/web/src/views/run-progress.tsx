@@ -215,7 +215,12 @@ function AttemptReceipt(props: {
     deps: [attemptId, props.readOf],
   });
   if (state.outcome === 'loading') return null;
-  if (state.outcome !== 'ready' && state.outcome !== 'empty') {
+  if (
+    (state.outcome !== 'ready' && state.outcome !== 'empty') ||
+    // A success that carries no receipt is unreadable, not a receipt.
+    typeof state.value.receipt !== 'object' ||
+    state.value.receipt === null
+  ) {
     return (
       <div data-receipt="unavailable" data-receipt-attempt={attemptId}>
         <Banner tone="bad" lead={`The receipt for attempt ${attemptId} could not be read.`}>

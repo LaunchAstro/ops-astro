@@ -41,19 +41,29 @@ export function useTaskExecution(props: TaskExecutionOptions): TaskExecutionRead
   return read.own ? read.state : initialState(props.grantKey);
 }
 
-// An answer without the run list, or with a graph not whole, draws as
-// unavailable, never as no run or a throw. No graph: its runs and no map.
+const isObject = (value: unknown): boolean => value !== null && typeof value === 'object';
+
+/** Every field the run section and the Agent pane's log draw, in its own type. */
+const isEvent = (event: ExecutionEvent): boolean =>
+  isObject(event) &&
+  typeof event.eventId === 'string' &&
+  typeof event.runId === 'string' &&
+  typeof event.kind === 'string' &&
+  typeof event.attemptId === 'string' &&
+  typeof event.at === 'string' &&
+  typeof event.position === 'number';
+
+// An answer without the run list, with a run or event out of shape, or with a
+// graph not whole, draws as unavailable, never as no run or a throw. No graph:
+// its runs and no map.
 export function isReadable(value: NonNullable<TaskExecutionResult['execution']>): boolean {
   return (
     Array.isArray(value.runs) &&
     value.runs.every(
-      (run) =>
-        run !== null &&
-        typeof run === 'object' &&
-        typeof run.runId === 'string' &&
-        typeof run.state === 'string',
+      (run) => isObject(run) && typeof run.runId === 'string' && typeof run.state === 'string',
     ) &&
     Array.isArray(value.events) &&
+    value.events.every(isEvent) &&
     (value.graph === undefined || isExecutionGraph(value.graph))
   );
 }
@@ -108,7 +118,7 @@ export function activityOf(state: TaskExecutionRead): RunActivity | undefined {
   if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
   const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
   if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
-  if (!execution.events.every(placed)) return undefined;
+  if (!execution.events.every((event) => isEvent(event) && placed(event))) return undefined;
   return { plans: execution.plans, events: execution.events };
 }
 
