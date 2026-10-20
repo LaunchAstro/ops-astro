@@ -15,8 +15,8 @@
 //   place in the conversation where the plan was approved is AW-04's origin.
 // - The rows are the persisted count. A run asks three times at most, and the
 //   third ask is the consolidated decision (execution decisions 15.2); a stop
-//   after it raises no fourth ask: the call is refused, the run ends and a
-//   person is told on the task.
+//   after it raises no fourth ask: the call is refused, the run ends, its hold
+//   ends with it as a person's end does, and a person is told on the task.
 // - The lease ends and its delegation is retired, so nothing can spend while
 //   the run waits. The reservation stays held: the approved ceiling is
 //   reserved for the person's answer, and restart recovery leaves a waiting
@@ -28,6 +28,7 @@
 import { randomUUID } from 'node:crypto';
 import { revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
 import type { Facts } from './broker-facts.ts';
+import { giveBackReleased } from './broker-give-back.ts';
 
 /** The most asks one run may raise; the last is the consolidated decision. */
 export const MAX_BUDGET_ASKS = 3;
@@ -60,6 +61,8 @@ export async function raiseBudgetWait(tx: TenantQuery, stop: BudgetStop): Promis
   const askNumber = (asked?.n ?? 0) + 1;
   const raised = askNumber <= MAX_BUDGET_ASKS;
   if (raised) await insertAsk(tx, stop, askNumber, askNumber === MAX_BUDGET_ASKS);
+  // Past the last ask the hold ends: its envelope before the lease, as settlement takes them.
+  else await endHold(tx, stop);
   await tx.query(
     `update public.leases set state = 'released', released_at = now()
       where business_id = $1 and id = $2 and state = 'live'`,
@@ -95,6 +98,46 @@ async function endAtLastAsk(tx: TenantQuery, stop: BudgetStop): Promise<void> {
      on conflict (business_id, cause_id, kind) do nothing`,
     [tx.businessId, randomUUID(), run.task_id, stop.reservationId],
   );
+}
+
+/**
+ * The stopped hold ends as a person's end does (`core-runtime/src/budget-end.ts`):
+ * abandoned at its spend to date, its open calls counted at their maximum (each
+ * gives back what it did not spend when it ends, `broker-give-back.ts`), the
+ * rest back to the envelope. A hold already classified is left as it is; one
+ * with a step's cost unknown stays held for a person's outcome. The reserve
+ * holds the envelope's row from before the task (`lockFacts`).
+ */
+async function endHold(tx: TenantQuery, stop: BudgetStop): Promise<void> {
+  const [ended] = await tx.query<{ readonly unsent: string[] | null }>(
+    `with counted as (
+       select coalesce(sum(case when state = 'settled' then actual_minor
+                                when state in ('reserved', 'dispatched', 'liability_unknown')
+                                  then reserved_minor
+                                else 0 end), 0) as spent,
+              array_agg(id::text) filter (where state = 'reserved') as unsent
+         from public.model_calls where business_id = $1 and reservation_id = $2
+     ), ended as (
+       update public.reservations r
+          set state = 'abandoned', classified_cause = 'budget_stop_ended',
+              classified_cause_id = $3, terminal_at = now()
+        where r.business_id = $1 and r.id = $2 and r.state = 'held'
+          and not exists (select 1 from public.attempts a
+                           where a.business_id = r.business_id and a.reservation_id = r.id
+                             and a.state = 'liability_unknown')
+       returning r.envelope_id, r.held_minor
+     ), envelope as (
+       update public.task_envelopes env
+          set held_minor = env.held_minor - ended.held_minor,
+              actual_minor = env.actual_minor + counted.spent
+         from ended, counted
+        where env.business_id = $1 and env.id = ended.envelope_id
+     )
+     select counted.unsent from ended, counted`,
+    [tx.businessId, stop.reservationId, stop.runId],
+  );
+  // A call the sweep released since the count read it is spent no longer.
+  if (ended !== undefined) await giveBackReleased(tx, ended.unsent ?? []);
 }
 
 /**

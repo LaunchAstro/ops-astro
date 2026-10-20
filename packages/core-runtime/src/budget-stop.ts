@@ -257,8 +257,8 @@ const NO_OTHER_ASK =
  * The run stops at its budget and asks (AW-05). Under the caller's locks on
  * the run, the stopped hold's lease and its reservation. A run put back to
  * `planned` is claimed for the stop, which 0193 enters from `claimed` only.
- * When its asks are spent the run ends, as a person's end does, with no hold
- * left to release, and a person is told on the task. A run already waiting
+ * When its asks are spent the run ends, its held hold with it as a person's end
+ * does, and a person is told on the task. A run already waiting
  * at its budget, or ended, raises nothing more: a person's outcome can resume
  * a waiting run's step with nothing left to hold. Returns the words for the
  * refusal or the resume's note.
