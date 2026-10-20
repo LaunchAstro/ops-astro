@@ -8,8 +8,10 @@
 // there by their carried anchor; a lost one draws nowhere under review and sits first in the
 // list, flagged and still open, and a carry still to come says so. A first revision shows no
 // before. A click on a landed capture of the revision under review marks a spot, and the form
-// beneath pins a comment on it. The live view of the bound page stands beside each capture under review, and the
-// review's change requests sit under the pin list. The read is the team's, so the client
+// beneath pins a comment on it. Capture again under the revision bar asks the revision's
+// captures, or opens the next revision and asks its own (`CaptureAgain.tsx`). The live view of
+// the bound page stands beside each capture under review, and the review's change requests sit
+// under the pin list. The read is the team's, so the client
 // never reaches this page; what a client sees of a pin is the task's client projection.
 
 import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
