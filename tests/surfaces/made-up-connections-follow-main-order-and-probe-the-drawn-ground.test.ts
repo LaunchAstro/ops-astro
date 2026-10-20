@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* oxlint-disable no-shadow, unicorn/no-array-sort -- Sol's proof, kept as written */
 import { expect, it } from 'vitest';
+import { scopeChoices } from '../../packages/core-records/src/mandates/mandates.ts';
 import { GRADUATION } from '../visual/made-up-connections.ts';
 import { CONNECTIONS } from '../visual/look/connections.ts';
 
@@ -26,11 +27,12 @@ it('made-up clients follow the main name order', () => {
   );
 });
 
-it('made-up scopes start with star and then sorted families and classes', () => {
+it('made-up scopes are the choices main derives from each client own rows', () => {
   for (const client of GRADUATION.clients) {
-    const family = client.scopes.filter((scope) => scope.endsWith('.*')).sort();
-    const classes = client.scopes.filter((scope) => scope !== '*' && !scope.endsWith('.*')).sort();
-    expect(client.scopes, client.label).toEqual(['*', ...family, ...classes]);
+    const own = GRADUATION.rows
+      .filter((row) => row.clientId === client.id)
+      .map((row) => row.actionClass);
+    expect(client.scopes, client.label).toEqual(scopeChoices(own));
   }
 });
 
