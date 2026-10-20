@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a share permission that expires or is revoked while the share waits on its lock grants nothing: refused, and no read grant committed"
+}

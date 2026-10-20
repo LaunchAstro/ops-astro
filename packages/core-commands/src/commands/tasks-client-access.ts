@@ -25,11 +25,17 @@
 // (`surface.ts`) before either handler runs; an agent never holds it. The
 // envelope locks the task row for update, so two turns at once on one task
 // run one after the other and leave one share per person (`issueShare` reuses
-// a live one).
+// a live one). Sharing then takes the share keys (`holdShares`, the one order
+// every share path takes) and asks the door's grant and each person's
+// standing again after those waits, so neither can lapse between its check
+// and the share it admits.
 
 import {
+  checkAuthority,
   effectiveGrants,
+  holdShares,
   issueShare,
+  subjectsOf,
   isWayfinderRecord,
   withdrawShares,
   type TenantQuery,
@@ -62,7 +68,17 @@ export async function shareWithClient(
   const client = await clientOf(tx, context.spine.taskTypeId, target.id);
   if (client === null)
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['client'], NO_CLIENT_FIXES));
-  const people = await clientPeople(tx, client);
+  // The share locks, in every share path's order, then every grant judged
+  // after them: the door's own and each person's standing on the client.
+  const candidates = await clientCandidates(tx, client);
+  await holdShares(tx, target.id, candidates);
+  const door = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: context.declaration.collection,
+    action: context.declaration.action,
+    scope: { kind: 'record', id: target.id },
+  });
+  if (!door.ok) return refused(door.refusal);
+  const people = await standingOn(tx, client, candidates);
   if (people.length === 0) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['client'], NOBODY_FIXES));
   }
@@ -114,11 +130,12 @@ async function clientOf(
  * client through a party-scoped `task:read` that is live by the one
  * live-grant expression (`effectiveGrants`), so a grant cut from a revoked
  * parent counts for nothing. Candidates first, each grant and the parents it
- * is cut from held `for share` to the end of the transaction, then each
- * person confirmed: a revocation that committed first is seen here, and one
- * that comes later waits for the shares (#443, OW-033.6).
+ * is cut from held `for share` to the end of the transaction: a revocation
+ * that committed first is seen here, and one that comes later waits for the
+ * shares (#443, OW-033.6). Each is confirmed by `standingOn`, after the
+ * share locks.
  */
-async function clientPeople(tx: TenantQuery, client: string): Promise<readonly string[]> {
+async function clientCandidates(tx: TenantQuery, client: string): Promise<readonly string[]> {
   const candidates = await tx.query<{ readonly person_id: string }>(
     `with recursive standing as (
        select g.id, g.parent_grant_id, g.subject_id
@@ -144,9 +161,18 @@ async function clientPeople(tx: TenantQuery, client: string): Promise<readonly s
         for share of g`,
     [tx.businessId, client],
   );
-  const people: string[] = [];
   // Locked in grant order, served in person order.
-  for (const personId of [...new Set(candidates.map((row) => row.person_id))].toSorted()) {
+  return [...new Set(candidates.map((row) => row.person_id))].toSorted();
+}
+
+/** The candidates whose party-scoped `task:read` on the client is live now, judged after the waits. */
+async function standingOn(
+  tx: TenantQuery,
+  client: string,
+  candidates: readonly string[],
+): Promise<readonly string[]> {
+  const people: string[] = [];
+  for (const personId of candidates) {
     // oxlint-disable-next-line no-await-in-loop
     const live = await effectiveGrants(tx, [{ kind: 'person', id: personId }], {
       collection: TASK,
