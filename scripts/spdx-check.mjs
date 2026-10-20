@@ -49,7 +49,11 @@ const SYNTAX = { '.sql': ['--', '/*'], '.py': ['#'], '.sh': ['#'], '': ['#'] };
  */
 function leadingComments(path, text) {
   const [line, block] = SYNTAX[extname(path)] ?? ['//', '/*'];
-  const head = text.split(/\r?\n/u).slice(0, 6).join('\n');
+  // CR, LS and PS end a line as LF does: a line comment stops at each.
+  const head = text
+    .split(/\r\n|[\n\r\u2028\u2029]/u)
+    .slice(0, 6)
+    .join('\n');
   const comments = [];
   let at = 0;
   for (;;) {

@@ -40,24 +40,24 @@ const TEXT = new Set([
   'letter-spacing',
   'text-transform',
 ]);
-/**
- * At-rules whose blocks hold rules that apply, and keyframes, whose frames set
- * text as a rule does; every other block (font faces) is skipped.
- */
+/** At-rules whose blocks hold rules that apply, and keyframes; every other block (font faces) is skipped. */
 const CONDITIONAL = new Set(['media', 'supports', 'container', 'layer', 'scope', 'starting-style']);
 const NUMBER = /^--type-num-/u;
 const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
 const LIMIT = 20;
+/** A CSS name as the browser matches it, each escape spelt out (CSS Syntax Level 3, 4.3.7). */
+const ESCAPE = /\\(?:([\da-f]{1,6})(?:\r\n|[ \t\n\r\f])?|([^\n\r\f]))/giu;
+const point = (hex) => String.fromCodePoint(Math.min(Number(`0x${hex}`), 0x10ffff));
+const unescaped = (name) => name.replaceAll(ESCAPE, (_, hex, ch) => ch ?? point(hex));
 
 /**
- * One declaration's property, its value without `!important` and whether it carried it;
- * undefined for no colon.
- * A custom property keeps its case, as the browser does; every other property is lower-cased.
+ * One declaration's property, its value without `!important` and whether it carried it; undefined
+ * for no colon. A custom property keeps its case, as the browser does; every other is lower-cased.
  */
 function declOf(text) {
   const at = text.indexOf(':');
   if (at < 0) return;
-  const prop = text.slice(0, at).trim();
+  const prop = unescaped(text.slice(0, at).trim());
   const raw = text.slice(at + 1);
   const priority = /!\s*important\s*$/iu;
   return {
@@ -75,7 +75,7 @@ function blockOf(prelude, parent) {
     const keyframe = parent.keyframes === true;
     return { kind: 'rule', selector: prelude, context, keyframe, decls: [], comments: [] };
   }
-  const name = prelude.slice(1).split(/[\s(]/u)[0].toLowerCase();
+  const name = unescaped(prelude.slice(1)).split(/[\s(]/u)[0].toLowerCase();
   const keyframes = name.endsWith('keyframes');
   return CONDITIONAL.has(name) || keyframes
     ? { kind: 'at', context: `${context}${prelude} `, keyframes }
