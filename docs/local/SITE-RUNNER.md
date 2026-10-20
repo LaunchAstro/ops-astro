@@ -121,9 +121,16 @@ corrections. It never treats a correction's claim as a capture's.
    `PICTURE_BROWSER_ARGS`, a fresh context 1480 by 900 or 390 by 844, no
    script, service workers blocked, every request handed to the fence's
    route. The browser is closed whatever happens.
-5. It renews the lease with `task.heartbeat`, lands each width
-   (`review.capture_land`), and hands the lease back: `completed` once both
-   landed, else `failed` with the code in its report.
+5. It renews the lease with `task.heartbeat` and lands each width
+   (`review.capture_land`).
+6. When a land answers `carryDue` (it completed the revision and a pin
+   before it is not yet carried there), the runner calls
+   `review.carry_pins` for that revision under the same lease, as a call of
+   its own (#2166). The land never carries, so the carry's audit is its own
+   operation, and the API judges the lease again after the carry's last
+   lock wait.
+7. It hands the lease back: `completed` once both widths landed and any due
+   carry was applied, else `failed` with the code in its report.
 
 The fence's pool for captures holds the configured site's pages only when
 that site is the business's own (`reviewPool`, TR-P-1). A runner configured
@@ -132,7 +139,9 @@ the pool's reviews are recorded (#2018). A refused page lands nothing and
 its lease goes back `failed` with the fence's code. A queue the captures
 cannot read fails the pass and pings no heartbeat, as the corrections' does,
 and so does a claim refused or never answered: it logs its code, lands
-nothing and hands the lease back `failed`. The captures are spare work, so
+nothing and hands the lease back `failed`. A due carry refused or never
+answered fails the pass the same way: it logs its code (`CARRY_FAULT` when
+there is none), carries nothing and hands the lease back `failed`. The captures are spare work, so
 they never keep a pass healthy: when the locate and the corrections both
 failed, the pass fails however the captures went.
 Only codes are printed or reported, never a path or a credential.
