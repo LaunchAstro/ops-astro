@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2154: review.capture with no revisionId is refused FIELD_VALUE_INVALID for that field, a malformed id NOT_FOUND, and neither stores a capture."
+}

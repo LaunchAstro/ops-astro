@@ -16,6 +16,7 @@ import type { TypedOperation } from './agent-operations.ts';
 import type { AgentCall, AgentRequest } from './agent-call.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { taskOfLease } from './prepare.ts';
+import { reviewTaskOf } from './review-agent.ts';
 
 export const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
@@ -45,6 +46,9 @@ export type Authorisation<O extends object> =
       readonly attempted?: Readonly<Record<string, unknown>>;
     }
   | { readonly run: (operands: O) => Promise<HandlerOutcome> };
+
+/** Where a `record` row's check finds its task. */
+type SubjectTask = Extract<TypedOperation<object>, { readonly authority: 'record' }>['subjectTask'];
 
 const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> => ({ refusal });
 
@@ -192,8 +196,13 @@ function unreachable(): never {
 async function namedTaskId(
   tx: TenantQuery,
   request: AgentRequest,
-  subjectTask: 'lease' | 'record',
+  subjectTask: SubjectTask,
 ): Promise<string | undefined> {
+  // A review body names its task by the open's task or the capture's revision, never by
+  // `recordId`. One naming no task in this business is checked on none: the empty id is no
+  // record, so the one-task check refuses it as it refuses another task's, and a malformed, a
+  // foreign and a fabricated id answer alike.
+  if (subjectTask === 'review') return (await reviewTaskOf(tx, request)) ?? '';
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter.
   const leaseId = request['leaseId'];

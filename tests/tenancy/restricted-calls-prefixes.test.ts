@@ -214,6 +214,37 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'live',
     observations: {},
   },
+  // C35: the journey opens no review; a media review names no page.
+  'public.reviews': {
+    task_id: randomUUID(),
+    kind: 'media',
+    opened_by_actor_id: randomUUID(),
+    opened_by_person_id: randomUUID(),
+  },
+  'public.review_revisions': {
+    review_id: randomUUID(),
+    number: 1,
+    digest: 'sha256:seed',
+    created_by_actor_id: randomUUID(),
+    created_by_person_id: randomUUID(),
+  },
+  'public.review_captures': {
+    revision_id: randomUUID(),
+    width: 1480,
+    asked_by_actor_id: randomUUID(),
+    asked_by_person_id: randomUUID(),
+  },
+  // C35: the journey lands no picture; one stored object of four bytes.
+  'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
+  // C57: the journey files no change request.
+  'public.review_change_requests': {
+    review_id: randomUUID(),
+    comment_id: randomUUID(),
+    task_id: randomUUID(),
+    request_text: 'seed',
+    proposed_by_actor_id: randomUUID(),
+    proposed_by_person_id: randomUUID(),
+  },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),

@@ -8,9 +8,9 @@ import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
 import { AGENT_RUN_OPERANDS } from './write-operands-agent-run.ts';
 import { CHAT_OPERANDS } from './write-operands-chat.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
+import { REVIEW_OPERANDS } from './write-operands-review.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
-
 /**
  * The JSON kind of one operand: `id` and `text` are strings, `count` a finite number, `flag` a
  * boolean, `map` an object that is not an array, `any` whatever the command checks by value
@@ -19,12 +19,11 @@ import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
 export type OperandSpec = Readonly<Record<string, Operand>>;
-// Each write's operands, as `requests.ts` types them. `recordId` is here on
-// every targeted command, and `operationId` and `expectedRevision` nowhere:
-// the envelope reads those two itself. An operand whose kind its command
-// already answers in its own words (a comment's `comment_type`, a pickup's
-// reservation, a revocation's absent id, a reparent's parent after its task)
-// is `any` here, so the caller keeps that answer and its place.
+// Each write's operands, as `requests.ts` types them. `recordId` is here on every targeted command,
+// and `operationId` and `expectedRevision` nowhere: the envelope reads those two itself. An operand
+// whose kind its command already answers in its own words (a comment's `comment_type`, a pickup's
+// reservation, a revocation's absent id, a reparent's parent after its task) is `any` here, so the
+// caller keeps that answer and its place.
 const TARGET = { recordId: 'id' } as const;
 const FIELDS = { ...TARGET, fields: 'map' } as const;
 export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
@@ -281,4 +280,5 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'approval.revoke': { approvalId: 'id' },
   ...SETUP_OPERANDS,
   ...LIVE_CORRECTION_OPERANDS,
+  ...REVIEW_OPERANDS,
 };
