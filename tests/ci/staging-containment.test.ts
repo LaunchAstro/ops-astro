@@ -401,6 +401,18 @@ const settle = async (port: number, tries: number): Promise<void> => {
   await settle(port, tries - 1);
 };
 
+/** The kernel's OOM kill count in a cgroup's memory.events; NaN when it cannot be read. */
+const oomKills = (events: string) => Number(/^oom_kill (\d+)$/mu.exec(events)?.[1]);
+/** Waits, a second at a time, until the named store answers inside its container. */
+const storeBack = async (container: string, tries: number): Promise<void> => {
+  if (docker(['exec', container, 'pg_isready', '-h', '127.0.0.1']).status === 0) return;
+  expect(tries, `${container} did not answer in time`).toBeGreaterThan(0);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 1_000);
+  });
+  await storeBack(container, tries - 1);
+};
+
 // eslint-disable-next-line max-lines-per-function -- one live stack, the checks that share it
 live('S0-1 containment and resource limits, live', () => {
   const project = `s01b-${process.pid}`;
@@ -514,6 +526,7 @@ live('S0-1 containment and resource limits, live', () => {
 
   afterAll(() => {
     compose(['down', '-v', '--timeout', '1']);
+    docker(['rm', '-f', names('worker-hog')]);
     docker(['rm', '-f', '-v', prod]);
     docker(['network', 'rm', prod, names('dual')]);
     rmSync(scratch, { recursive: true, force: true });
@@ -672,25 +685,33 @@ live('S0-1 containment and resource limits, live', () => {
     inStaging('for i in 1 2 3 4 5 6 7 8; do timeout 5 sh -c "while :; do :; done" & done; wait');
     await productionGreen();
 
-    // Memory: a hog past the limit is killed; the store survives it. The kernel's
-    // own count in staging's cgroup says what was killed, not the shell's text:
-    // when the kernel picks the store instead, its PID 1 takes the shell with it,
-    // the shell prints nothing and the restarted store's count starts again at 0.
-    expect(Number(cgroup('memory.max'))).toBe(bytes(db.mem_limit!));
-    const oomKills = () => Number(/^oom_kill (\d+)$/mu.exec(cgroup('memory.events'))?.[1]);
+    // Memory: a hog past the workload's limit, in a worker container (the worker
+    // service as staging defines it, kept up by a sleep), is killed in its own
+    // cgroup; the store, in its own, is not touched. The kernel's own counts say
+    // what was killed, not the shell's text.
+    const worker = load().services['worker']!;
+    const hogBox = names('worker-hog');
+    const run = compose(['run', '-d', '--no-deps', '--name', hogBox, 'worker', 'sleep', '600']);
+    expect(run.status, run.out).toBe(0);
+    const inHogBox = (script: string) => docker(['exec', hogBox, 'sh', '-c', script]);
+    const workerKills = () => oomKills(inHogBox('cat /sys/fs/cgroup/memory.events').out);
+    const storeKills = () => oomKills(cgroup('memory.events'));
     const store = () =>
       docker(['inspect', names('backups'), '--format', '{{.State.StartedAt}} {{.RestartCount}}'])
         .out;
-    const before = { kills: oomKills(), store: store() };
-    const hog = inStaging(
-      `head -c ${bytes(db.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null`,
+    expect(Number(inHogBox('cat /sys/fs/cgroup/memory.max').out)).toBe(bytes(worker.mem_limit!));
+    const before = { worker: workerKills(), store: storeKills(), process: store() };
+    const hog = inHogBox(
+      `head -c ${bytes(worker.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null`,
     );
-    expect({ hog: hog.status, kills: oomKills() - before.kills, store: store() }).toEqual({
-      hog: 137,
-      kills: 1,
-      store: before.store,
-    });
+    expect({
+      hog: hog.status,
+      worker: workerKills() - before.worker,
+      store: storeKills() - before.store,
+      process: store(),
+    }).toEqual({ hog: 137, worker: 1, store: 0, process: before.process });
     expect(docker(['exec', `${project}-backups`, 'pg_isready', '-h', '127.0.0.1']).status).toBe(0);
+    docker(['rm', '-f', hogBox]);
     await productionGreen();
 
     // Process count: forks stop at the limit.
@@ -730,5 +751,38 @@ live('S0-1 containment and resource limits, live', () => {
     // Staging itself rode every limit out: no container of it was restarted.
     for (const service of ['backups'])
       expect(docker(['inspect', names(service), '--format', '{{.RestartCount}}']).out).toBe('0');
-  }, 240_000);
+
+    // The store's own limit, saturated last: a hog inside the store's container.
+    // A docker exec takes the container's oom_score_adj, so the hog and the store
+    // tie and the kernel may kill either (hosted runners on kernel 7.0 have lost
+    // the store). So this claims only that the limit held and the store came back:
+    // a restart by its `unless-stopped` policy is allowed, and is printed. The kill
+    // is counted from Docker's oom events, which a restart does not reset the way
+    // it resets the cgroup's own count.
+    expect(Number(cgroup('memory.max'))).toBe(bytes(db.mem_limit!));
+    const since = String(Math.floor(Date.now() / 1000) - 1);
+    const startedAs = store();
+    inStaging(`head -c ${bytes(db.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null`);
+    await productionGreen();
+    const storeOoms = docker([
+      'events',
+      '--since',
+      since,
+      '--until',
+      String(Math.ceil(Date.now() / 1000) + 1),
+      '--filter',
+      `container=${names('backups')}`,
+      '--filter',
+      'event=oom',
+      '--format',
+      '{{.Action}}',
+    ]).out.split('\n');
+    expect(storeOoms.filter((action) => action === 'oom').length).toBeGreaterThanOrEqual(1);
+    // Back within 90 s: a restart and Postgres's crash recovery at 0.5 CPU.
+    const back = Date.now();
+    await storeBack(names('backups'), 90);
+    const outcome = `S0-1 store limit: ${store() === startedAs ? 'the store kept its process' : 'the store was restarted'}, back in ${Date.now() - back} ms`;
+    process.stderr.write(`${outcome}\n`);
+    await productionGreen();
+  }, 360_000);
 });
