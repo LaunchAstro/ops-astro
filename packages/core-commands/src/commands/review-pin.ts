@@ -9,8 +9,16 @@
 //
 // The comment itself is `task.comment`'s (`writeTaskComment`): body, audience and storability
 // are judged there. The task is locked before the review, the order `review.open` takes.
+//
+// A pin made on the live view (#2120) names `liveViewport`, the frame's width, and is kept on
+// the capture only where the live view corresponds to it: at the capture's own width, on the
+// review's newest revision with that width's capture landed, read after the review's lock, and
+// with no text quoted, since a quote would be the live page's word, not the capture's. A nonce
+// proves only which frame said hello, never that the page is the one captured. Anything else
+// asks a fresh capture.
 
 import {
+  capturedNewest,
   delegatingSubjects,
   lockPinnedReview,
   REVIEW_COLLECTION,
@@ -18,6 +26,7 @@ import {
   taskOfRevision,
 } from '../../../core-records/src/index.ts';
 import type {
+  Anchor,
   Covering,
   Delegation,
   EntryPoint,
@@ -53,6 +62,21 @@ const NO_CAPTURE = refuseCommand(
   'FIELD_VALUE_INVALID',
   ['width'],
   ['This revision has no capture asked at that width; ask its capture first.'],
+);
+const NOT_AT_WIDTH = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['liveViewport'],
+  ['Pin on the live view only at the capture’s own width, or pin on the capture itself.'],
+);
+const LIVE_QUOTE = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['selector'],
+  ['A pin on the live view marks a spot only; quote text on the capture itself.'],
+);
+const FRESH_CAPTURE = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['revisionId'],
+  ['The live view no longer matches this capture: ask a fresh capture and pin again on it.'],
 );
 const OUT_OF_PURPOSE = refuseCommand(
   'DELEGATION_OUT_OF_PURPOSE',
@@ -92,9 +116,20 @@ function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | Ha
   );
 }
 
+/** A live-view pin's own refusal before any record is read: its width and its selectors. */
+function liveRefusal(sent: Sent, anchor: Anchor): HandlerOutcome | undefined {
+  const viewport = sent['liveViewport'];
+  if (viewport === undefined) return undefined;
+  if (viewport !== anchor.width) return refused(NOT_AT_WIDTH);
+  const marksOnly = anchor.selector.every((selector) => selector.type === 'FragmentSelector');
+  return marksOnly ? undefined : refused(LIVE_QUOTE);
+}
+
 async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<HandlerOutcome> {
   const anchor = anchorOf(sent);
   if (!('source' in anchor)) return anchor;
+  const live = liveRefusal(sent, anchor);
+  if (live !== undefined) return live;
   const named = await taskOfRevision(tx, anchor.source);
   if (named === undefined) return refused(refuseNotFound());
   if (by.delegation !== undefined && by.delegation.purposeScope.id !== named.taskId) {
@@ -111,6 +146,8 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<HandlerOutc
   const locked = await lockPinnedReview(tx, named.reviewId, anchor.source, covering);
   if (locked === undefined) return refused(refuseNotFound());
   if (!locked.widths.includes(anchor.width)) return refused(NO_CAPTURE);
+  const stale = 'liveViewport' in sent && !(await capturedNewest(tx, anchor.source, anchor.width));
+  if (stale) return refused(FRESH_CAPTURE);
   const written = await writeTaskComment(
     tx,
     {

@@ -46,4 +46,10 @@ export const REVIEW_ROWS = [
     meaning: 'The change request is approved or refused already',
     source: 'C57, the change-request record',
   },
+  {
+    code: 'REVIEW_ALREADY_DECIDED',
+    status: 409,
+    meaning: "The review's latest revision is approved already",
+    source: 'C35-X, the review decision',
+  },
 ] as const;

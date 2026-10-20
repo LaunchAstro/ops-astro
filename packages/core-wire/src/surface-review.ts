@@ -9,7 +9,8 @@
 // agent's inside a delegation for the review's own task. The claim and the land are the
 // worker's: asked of the lease's task like `task.check`, the lease the authority, never a
 // person's grant beyond the one the lease stands on. The reads are `review:read` at the
-// holder, asked inside the query.
+// holder, asked inside the query. `review.decide` and `review.record_astra_review` (#2014)
+// are `gate:decide` there, a person's alone.
 //
 // C57's change requests (#2016) are `proposal:write` and `proposal:decide` there. A filing
 // is a person's: an agent inside a delegation for the review's task reaches it only to be
@@ -30,6 +31,14 @@ const AT_THE_LEASE = {
   agent: 'delegated',
 } as const;
 
+/** A decision on the review's latest revision, asked at the review's holder, never an agent's. */
+const DECIDE_AT_REVIEW = {
+  collection: 'gate',
+  targetsExistingRecord: false,
+  authorisedOn: 'target',
+  untargetedIdentifiers: ['reviewId'],
+} as const;
+
 export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
   read('review.read', REVIEW_COLLECTION),
   read('review.picture', REVIEW_COLLECTION),
@@ -37,7 +46,8 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     collection: REVIEW_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'target',
-    untargetedIdentifiers: ['taskId'],
+    // #2120: the live correction a revision names is its own operand, not a correction target.
+    untargetedIdentifiers: ['taskId', 'correctionId'],
     agent: 'delegated',
   }),
   declare('review.capture', 'write', {
@@ -76,4 +86,6 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  declare('review.decide', 'decide', DECIDE_AT_REVIEW),
+  declare('review.record_astra_review', 'decide', DECIDE_AT_REVIEW),
 ];

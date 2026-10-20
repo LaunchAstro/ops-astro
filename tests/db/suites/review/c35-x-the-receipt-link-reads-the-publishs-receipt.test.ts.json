@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X Receipt link: a revision names a correction only on its own task and page that the opener run:write reaches; the receipt is read through live_correction.receipts unchanged."
+}

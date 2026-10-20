@@ -14,6 +14,7 @@ import type { Caller } from './cast.ts';
 import type { Answer } from './world.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { makeTaskBody } from './c57b-bodies.ts';
+import { decisionBody } from './c35-x-seeds.ts';
 
 export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.open',
@@ -26,6 +27,8 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.propose_change',
   'review.decide_change',
   'review.make_change_task',
+  'review.decide',
+  'review.record_astra_review',
 ]);
 
 /** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
@@ -96,6 +99,9 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   }
   if (name === 'review.propose_change' || name === 'review.decide_change') {
     return await changeBody(context, name, detail['revisionId']);
+  }
+  if (name === 'review.decide' || name === 'review.record_astra_review') {
+    return await decisionBody(name, context, open.body, detail);
   }
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }

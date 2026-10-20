@@ -5,7 +5,13 @@
 // handler (`review-commands.ts`, `review-captures.ts`).
 
 export const REVIEW_OPERANDS = {
-  'review.open': { taskId: 'any', pageUrl: 'any', path: 'any', sourceRevision: 'any' },
+  'review.open': {
+    taskId: 'any',
+    pageUrl: 'any',
+    path: 'any',
+    sourceRevision: 'any',
+    correctionId: 'any',
+  },
   'review.capture': { revisionId: 'any' },
   'review.capture_claim': { leaseId: 'any', fence: 'any', revisionId: 'any' },
   'review.capture_land': {
@@ -22,8 +28,11 @@ export const REVIEW_OPERANDS = {
     selector: 'any',
     body: 'any',
     audience: 'any',
+    liveViewport: 'any',
   },
   'review.propose_change': { commentId: 'any', text: 'any' },
   'review.decide_change': { changeRequestId: 'any', decision: 'any' },
   'review.make_change_task': { leaseId: 'any', fence: 'any', changeRequestId: 'any' },
+  'review.decide': { reviewId: 'any', digest: 'any', response: 'any' },
+  'review.record_astra_review': { reviewId: 'any', digest: 'any', verdict: 'any', review: 'any' },
 } as const;

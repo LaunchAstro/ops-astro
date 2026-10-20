@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35's reads (#2011): one review with its revisions and their captures, the latest paired
-// with the one before it, and its pins (#2012); and one landed picture's bytes. Each filters
+// with the one before it, its pins (#2012), and each revision's decision (#2014): a revision
+// with none, a new one included, is undecided; and one landed picture's bytes. Each filters
 // by the caller's grant at the review's holder inside the query (`covering.ts`), so a party
 // grant reads no other client's review and a picture of another business or out of reach is
 // one answer with a picture that is not there. The review's change requests (C57) carry their
@@ -13,6 +14,7 @@ import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
 import { DATABASE_STORAGE } from './storage.ts';
 import { readChangeRequests, type ChangeRequestView } from './change-requests.ts';
+import { decisionsOf, type DecisionView } from './decisions.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -27,6 +29,10 @@ export interface RevisionView {
   readonly number: number;
   readonly digest: string;
   readonly captures: readonly CaptureView[];
+  /** Its approval on its exact digest, or null: undecided. */
+  readonly decision: DecisionView | null;
+  /** The live correction whose published page it captures (#2120), or null. */
+  readonly correctionId: string | null;
 }
 
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
@@ -39,6 +45,13 @@ export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   readonly pins: readonly PinView[];
   /** C57's change requests (#2016, #2117): proposed, approved and pending or made, refused. */
   readonly changeRequests: readonly ChangeRequestView[];
+}
+
+interface RevisionRow {
+  readonly id: string;
+  readonly number: number;
+  readonly digest: string;
+  readonly correction_id: string | null;
 }
 
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
@@ -60,21 +73,20 @@ export async function readCoveredReview(
     [tx.businessId, ...coveringParameters(covering), reviewId],
   );
   if (review === undefined) return undefined;
-  const revisions = await tx.query<{
-    readonly id: string;
-    readonly number: number;
-    readonly digest: string;
-  }>(
-    `select id, number, digest from public.review_revisions
+  const revisions = await tx.query<RevisionRow>(
+    `select id, number, digest, correction_id from public.review_revisions
       where business_id = $1 and review_id = $2 order by number`,
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
+  const decisions = await decisionsOf(tx, reviewId);
   const views = revisions.map((revision) => ({
     revisionId: revision.id,
     number: revision.number,
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
+    decision: decisions.get(revision.id) ?? null,
+    correctionId: revision.correction_id,
   }));
   return {
     reviewId,

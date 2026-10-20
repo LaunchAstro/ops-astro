@@ -245,6 +245,25 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     proposed_by_actor_id: randomUUID(),
     proposed_by_person_id: randomUUID(),
   },
+  // C35-X: the journey decides no review and records no Astra review of one.
+  'public.review_astra_reviews': {
+    review_id: randomUUID(),
+    revision_id: randomUUID(),
+    digest: 'sha256:seed',
+    verdict: 'approve',
+    review: 'seed',
+    recorded_by_actor_id: randomUUID(),
+    recorded_by_person_id: randomUUID(),
+  },
+  'public.review_decisions': {
+    review_id: randomUUID(),
+    revision_id: randomUUID(),
+    digest: 'sha256:seed',
+    response: 'approve',
+    author_person_id: randomUUID(),
+    decided_by_actor_id: randomUUID(),
+    decided_by_person_id: randomUUID(),
+  },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),
