@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1904 P2j (S1940-3): a first definition read held on the business lock past its lease expiry is refused with no text, its refusal's audit event allowed."
+}
