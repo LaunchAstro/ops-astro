@@ -33,6 +33,8 @@ function NoteBox(props: {
   readonly onDraft: (next: string) => void;
   readonly onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
 }): ReactElement {
+  // While the box is open, its save's reread keeps the task page drawn (#1455).
+  useHoldTaskRead(true);
   return (
     <input
       className="field__input"
@@ -83,8 +85,6 @@ function EntryNote(props: {
   const { entry } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const held = useHeldOperations();
-  // The save's reread keeps the page drawn while the box is open (#1455).
-  useHoldTaskRead(draft !== null);
   const open = (event: KeyboardEvent<HTMLSpanElement>): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();

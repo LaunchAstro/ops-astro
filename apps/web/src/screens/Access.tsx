@@ -40,11 +40,10 @@
 // (`access/credential.tsx`). A business or person switch answers that read
 // loading, so the section goes and its secret and what it made go with it.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type { SubmitResult } from '../records/submit.ts';
-import { settle } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type {
   AccessReadResult,
@@ -63,7 +62,7 @@ import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx'
 import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
-import { useAct, type Act } from './access/use-act.tsx';
+import { useAct, useHeldSend, type Act, type Send } from './access/use-act.tsx';
 
 export interface AccessScreenProps {
   readonly client: OperationsClient;
@@ -71,28 +70,6 @@ export interface AccessScreenProps {
 }
 
 type Agent = AccessReadResult['agents'][number];
-
-type ListCommand =
-  'delegation.revoke' | 'access.grant' | 'access.end' | 'access.revoke' | 'client.set_privacy';
-
-/** Sends one list write: under the lost write's id when it is the same act, else a new one. */
-type Send = (
-  command: ListCommand,
-  body: Readonly<Record<string, unknown>>,
-) => Promise<SubmitResult>;
-
-/** The list writes' sender, holding the last write whose answer was lost. */
-function useHeldSend(client: OperationsClient): Send {
-  const held = useRef<{ readonly act: string; readonly id: string } | null>(null);
-  return async (command, body) => {
-    const words = JSON.stringify([command, body]);
-    const id = held.current?.act === words ? held.current.id : client.newOperationId();
-    held.current = { act: words, id };
-    const answer = await client.mutate(command, body, { operationId: id });
-    if (settle(answer).kind !== 'unknown') held.current = null;
-    return answer;
-  };
-}
 
 const giveWith =
   (send: Send, act: Act) =>
@@ -120,6 +97,29 @@ const actOnInvitationWith =
     );
   };
 
+/** Revoking an agent's delegation, sent once its confirmation is pressed. */
+function usePendingDelegation(send: Send, act: Act) {
+  const [delegation, setDelegation] = useState<Agent | null>(null);
+  const revoke = (agent: Agent): void => {
+    setDelegation(null);
+    void act(
+      () => send('delegation.revoke', { delegationId: agent.delegationId }),
+      `Revoked the delegation for ${agent.purpose}.`,
+    );
+  };
+  // A confirmation whose delegation a reread no longer lists closes.
+  const confirmation = (result: AccessReadResult): ReactElement | null =>
+    delegation === null ||
+    !result.agents.some((agent) => agent.delegationId === delegation.delegationId) ? null : (
+      <ConfirmRevokeDelegation
+        agent={delegation}
+        onKeep={() => setDelegation(null)}
+        onRevoke={() => revoke(delegation)}
+      />
+    );
+  return { confirmation, onRevokeDelegation: setDelegation };
+}
+
 /**
  * The three acts that wait on a confirmation before anything is sent: ending a
  * person's access (`access.end`), revoking one grant (`access.revoke`) and
@@ -128,7 +128,6 @@ const actOnInvitationWith =
 function usePending(send: Send, act: Act) {
   const [ending, setEnding] = useState<PersonView | null>(null);
   const [revoking, setRevoking] = useState<Revoking | null>(null);
-  const [delegation, setDelegation] = useState<Agent | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
     void act(
@@ -143,27 +142,10 @@ function usePending(send: Send, act: Act) {
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
   };
-  const revokeDelegation = (agent: Agent): void => {
-    setDelegation(null);
-    void act(
-      () => send('delegation.revoke', { delegationId: agent.delegationId }),
-      `Revoked the delegation for ${agent.purpose}.`,
-    );
-  };
-  // A confirmation whose delegation a reread no longer lists closes.
-  const listed = (result: AccessReadResult): Agent | null =>
-    result.agents.some((agent) => agent.delegationId === delegation?.delegationId)
-      ? delegation
-      : null;
+  const delegation = usePendingDelegation(send, act);
   const confirmations = (result: AccessReadResult): ReactElement => (
     <>
-      {listed(result) === null || delegation === null ? null : (
-        <ConfirmRevokeDelegation
-          agent={delegation}
-          onKeep={() => setDelegation(null)}
-          onRevoke={() => revokeDelegation(delegation)}
-        />
-      )}
+      {delegation.confirmation(result)}
       {revoking === null ? null : (
         <ConfirmRevokeGrant
           revoking={revoking}
@@ -183,7 +165,12 @@ function usePending(send: Send, act: Act) {
   );
   const onRevokeGrant = (person: PersonView, grant: Revoking['grant']): void =>
     setRevoking({ person, grant });
-  return { confirmations, onEnd: setEnding, onRevokeGrant, onRevokeDelegation: setDelegation };
+  return {
+    confirmations,
+    onEnd: setEnding,
+    onRevokeGrant,
+    onRevokeDelegation: delegation.onRevokeDelegation,
+  };
 }
 
 function AccessLists(props: {

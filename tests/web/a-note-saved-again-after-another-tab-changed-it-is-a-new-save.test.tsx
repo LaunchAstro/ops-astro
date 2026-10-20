@@ -6,6 +6,7 @@
 // lost save's id, which the server would answer with its stored receipt.
 
 import { afterEach, expect, it } from 'vitest';
+import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TimeLog } from '../../apps/web/src/screens/task/Time.tsx';
 import { mount, press, typeInto, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
@@ -13,37 +14,40 @@ import { raceServer, stored } from './write-race-support.tsx';
 
 afterEach(unmountAll);
 
+/** The time log in one tab, its one entry showing `note`. */
+const showIn = (client: OperationsClient) => (note: string) => (
+  <TimeLog
+    client={client}
+    taskId="task"
+    time={{
+      entries: [
+        {
+          id: 'a',
+          startedAt: '2026-09-30T01:00:00Z',
+          endedAt: '2026-09-30T02:00:00Z',
+          minutes: 60,
+          note,
+          adHoc: false,
+          source: 'log',
+        },
+      ],
+      running: null,
+      totalMinutes: 60,
+    }}
+    estimateMinutes={null}
+    showAll={false}
+    onShowAll={() => {}}
+    onChanged={() => {}}
+  />
+);
+
 it('a note saved again after another tab changed it is a new save, not the lost one replayed', async () => {
   let saved = 'Original';
   const api = raceServer((_path, body) => {
     saved = String(body['note']);
     return stored(1);
   });
-  const show = (note: string) => (
-    <TimeLog
-      client={api.client}
-      taskId="task"
-      time={{
-        entries: [
-          {
-            id: 'a',
-            startedAt: '2026-09-30T01:00:00Z',
-            endedAt: '2026-09-30T02:00:00Z',
-            minutes: 60,
-            note,
-            adHoc: false,
-            source: 'log',
-          },
-        ],
-        running: null,
-        totalMinutes: 60,
-      }}
-      estimateMinutes={null}
-      showAll={false}
-      onShowAll={() => {}}
-      onChanged={() => {}}
-    />
-  );
+  const show = showIn(api.client);
   const a = await mount(show('Original'));
   const b = await mount(show('Original'));
   const box = 'input[data-time-note-edit]';
@@ -66,7 +70,7 @@ it('a note saved again after another tab changed it is a new save, not the lost 
   await typeInto(a, box, 'First note');
   await press(a, box, 'Enter');
   await tick();
-  expect(a.find(box)).toBeNull();
+  expect(a.find('input[data-time-note-edit]')).toBeNull();
   expect(saved, 'this explicit save must restore First note after seeing Second note').toBe(
     'First note',
   );

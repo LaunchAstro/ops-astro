@@ -13,17 +13,23 @@ import { task, tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
 
-it('a time note typed while its save was out survives the task page reread after the answer', async () => {
-  let reads = 0;
-  let note = 'Original';
-  let releaseSave: ((response: Response) => void) | undefined;
-  let releaseRead: ((response: Response) => void) | undefined;
+/**
+ * A task page server: the first read answers, a later read and the note's
+ * save wait for their release; the note is what the last save sent.
+ */
+function noteWorld() {
+  const at = {
+    reads: 0,
+    note: 'Original',
+    releaseSave: undefined as ((response: Response) => void) | undefined,
+    releaseRead: undefined as ((response: Response) => void) | undefined,
+  };
   const entry = () => ({
     id: 'a',
     startedAt: '2026-09-30T01:00:00Z',
     endedAt: '2026-09-30T02:00:00Z',
     minutes: 60,
-    note,
+    note: at.note,
     adHoc: false,
     source: 'log',
   });
@@ -38,23 +44,28 @@ it('a time note typed while its save was out survives the task page reread after
     signedIn: true,
     fetch: async (url, init) => {
       if (String(url).endsWith('/task/read')) {
-        reads += 1;
-        if (reads === 1) return answer();
+        at.reads += 1;
+        if (at.reads === 1) return answer();
         return await new Promise<Response>((resolve) => {
-          releaseRead = resolve;
+          at.releaseRead = resolve;
         });
       }
       if (String(url).endsWith('/time/set_note')) {
         const body = JSON.parse(String(init?.body));
-        note = body.note;
+        at.note = body.note;
         return await new Promise<Response>((resolve) => {
-          releaseSave = resolve;
+          at.releaseSave = resolve;
         });
       }
       if (String(url).endsWith('/person/list')) return json({ ok: true, persons: [] });
       return new Response(null, { status: 503 });
     },
   });
+  return { at, answer, client };
+}
+
+it('a time note typed while its save was out survives the task page reread after the answer', async () => {
+  const { at, answer, client } = noteWorld();
   const view = await mount(
     <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
   );
@@ -62,15 +73,15 @@ it('a time note typed while its save was out survives the task page reread after
   await view.click('[data-time-note="a"]');
   await typeInto(view, 'input[data-time-note-edit]', 'First edit');
   await press(view, 'input[data-time-note-edit]', 'Enter');
-  expect(note).toBe('First edit');
+  expect(at.note).toBe('First edit');
   await typeInto(view, 'input[data-time-note-edit]', 'Second edit');
   await act(() => {
-    releaseSave?.(json({ recordId: 'a', revision: 5 }));
+    at.releaseSave?.(json({ recordId: 'a', revision: 5 }));
   });
   await tick();
-  expect(reads).toBe(2);
+  expect(at.reads).toBe(2);
   await act(() => {
-    releaseRead?.(answer());
+    at.releaseRead?.(answer());
   });
   await tick();
   expect(
