@@ -662,7 +662,7 @@ live('S0-1 containment and resource limits, live', () => {
     // Thirteen containers and probes: a hosted runner needs more than 120 s.
   }, 900_000);
 
-  // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
+  // eslint-disable-next-line max-lines-per-function -- one test, every limit saturated in turn on one stack
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
     const db = load().services['backups']!;
     const cgroup = (file: string) => inStaging(`cat /sys/fs/cgroup/${file}`).out;
@@ -672,12 +672,24 @@ live('S0-1 containment and resource limits, live', () => {
     inStaging('for i in 1 2 3 4 5 6 7 8; do timeout 5 sh -c "while :; do :; done" & done; wait');
     await productionGreen();
 
-    // Memory: a hog past the limit is killed; the store survives it.
+    // Memory: a hog past the limit is killed; the store survives it. The kernel's
+    // own count in staging's cgroup says what was killed, not the shell's text:
+    // when the kernel picks the store instead, its PID 1 takes the shell with it,
+    // the shell prints nothing and the restarted store's count starts again at 0.
     expect(Number(cgroup('memory.max'))).toBe(bytes(db.mem_limit!));
+    const oomKills = () => Number(/^oom_kill (\d+)$/mu.exec(cgroup('memory.events'))?.[1]);
+    const store = () =>
+      docker(['inspect', names('backups'), '--format', '{{.State.StartedAt}} {{.RestartCount}}'])
+        .out;
+    const before = { kills: oomKills(), store: store() };
     const hog = inStaging(
-      `head -c ${bytes(db.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null; echo $?`,
+      `head -c ${bytes(db.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null`,
     );
-    expect(hog.out).toMatch(/137|Killed/u);
+    expect({ hog: hog.status, kills: oomKills() - before.kills, store: store() }).toEqual({
+      hog: 137,
+      kills: 1,
+      store: before.store,
+    });
     expect(docker(['exec', `${project}-backups`, 'pg_isready', '-h', '127.0.0.1']).status).toBe(0);
     await productionGreen();
 
