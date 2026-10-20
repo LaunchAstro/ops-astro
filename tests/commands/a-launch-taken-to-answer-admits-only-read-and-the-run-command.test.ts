@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A launch taken to answer runs under its own delegation, and the server holds
-// it to reading its task: a comment, an update or a proposal under that
+// it to reading its task and that delegation (the whole matrix is
+// `tests/api/a-taken-launch-reads-its-own-delegation-picks-up-its-task-and-is-refused-the-rest.test.ts`):
+// a comment, an update or a proposal under that
 // credential is refused `DELEGATION_EXCLUDES_OPERATION` and writes nothing,
 // whatever the delegation's actions would allow. A launch's credential used
 // before any take keeps the actions it was minted with, so a proposal still

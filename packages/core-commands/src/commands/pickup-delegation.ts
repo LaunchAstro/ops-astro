@@ -52,3 +52,18 @@ export async function delegationReaches(
   if (purposeScope.id.toLowerCase() === taskId?.toLowerCase()) return undefined;
   return refuseCommand('DELEGATION_OUT_OF_PURPOSE', ['task.pickup'], OUT_OF_PURPOSE_FIXES);
 }
+
+/** The launch's delegation `credential` resolves to, for a pickup sent under it (#2178); undefined for any other. */
+export async function launchDelegationOf(
+  tx: TenantQuery,
+  agentActorId: string,
+  credential: string,
+): Promise<string | undefined> {
+  const resolved = await resolveDelegation(tx, agentActorId, credential);
+  if (!resolved.ok) return undefined;
+  const rows = await tx.query(
+    'select 1 from public.task_launches where business_id = $1 and delegation_id = $2',
+    [tx.businessId, resolved.value.id],
+  );
+  return rows.length > 0 ? resolved.value.id : undefined;
+}

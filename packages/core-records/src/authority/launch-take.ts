@@ -228,17 +228,37 @@ export async function takeLaunch(
 
 /**
  * The commands a run taken to answer may send under its credential: it reads
- * its task, and the run's own command writes what lands. Nothing else, so the
- * actions the delegation was minted with (read, comment, write) are never
- * spent by the run directly.
+ * its task and which task this delegation names (`session.capabilities`), so
+ * the worker can pick up the owner's plan there (#2178). Nothing else, so the
+ * actions the delegation was minted with are never spent by the run directly.
  */
-export const ANSWER_RUN_COMMANDS: ReadonlySet<string> = new Set(['task.read']);
+export const ANSWER_RUN_COMMANDS: ReadonlySet<string> = new Set([
+  'task.read',
+  'session.capabilities',
+]);
+
+/**
+ * What a pickup sent under a launch's credential may send under its own, a
+ * child of the launch's (`mintPickupChild`, #2178): the reads above, its
+ * lease's own commands and the owner's correction. Not a task update, a
+ * comment or a proposal, whatever its read and write would reach.
+ */
+export const PICKUP_RUN_COMMANDS: ReadonlySet<string> = new Set([
+  ...ANSWER_RUN_COMMANDS,
+  'task.dispatch',
+  'task.heartbeat',
+  'task.observe',
+  'task.handback',
+  'run.end',
+  'live_correction.request',
+]);
 
 /**
  * Whether a call under this delegation is outside what a launch taken to
  * answer may send. A launch leaves `waiting` only by a take, which records it
  * taken to answer, or by being ended once its delegation no longer stands, so
- * any launch past `waiting` holds its delegation to the run's commands.
+ * any launch past `waiting` holds its delegation to the run's commands. A
+ * pickup's child of a launch is held to its own, whatever the launch's state.
  */
 export async function excludedFromTakenLaunch(
   tx: TenantQuery,
@@ -246,11 +266,16 @@ export async function excludedFromTakenLaunch(
   command: string,
 ): Promise<boolean> {
   if (ANSWER_RUN_COMMANDS.has(command)) return false;
-  const launches = await tx.query<{ readonly task_id: string }>(
-    `select task_id from public.task_launches where business_id = $1 and delegation_id = $2`,
+  const launches = await tx.query<{ readonly task_id: string; readonly own: boolean }>(
+    `select l.task_id, l.delegation_id = $2 as own from public.task_launches l
+      where l.business_id = $1
+        and (l.delegation_id = $2
+             or l.delegation_id = (select d.parent_delegation_id from public.delegations d
+                                    where d.business_id = $1 and d.id = $2))`,
     [tx.businessId, delegationId],
   );
   if (launches.length === 0) return false;
+  if (!launches.some((launch) => launch.own)) return !PICKUP_RUN_COMMANDS.has(command);
   // The global lock order (`core-runtime/src/locks.ts`): the business's caps,
   // then the launch's task, as a take takes it, then the launch read afresh.
   // The caps come first because the write this call admits may go on to take
