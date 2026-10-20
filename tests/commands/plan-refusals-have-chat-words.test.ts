@@ -53,7 +53,7 @@ function plain(words: string): void {
   expect(words).toContain('Your message is kept');
 }
 
-describe('#2175 a plan refusal before the call', () => {
+describe('a plan refusal before the call', () => {
   it.each(BEFORE_SEND)('%s has its own words: nothing was sent, the message kept', (code) => {
     const reply = refusedWith(code);
     expect(reply).toMatchObject({ answered: false, code });
@@ -81,7 +81,7 @@ describe('#2175 a plan refusal before the call', () => {
   });
 });
 
-describe('#2175 a plan call held unknown after its write', () => {
+describe('a plan call held unknown after its write', () => {
   it.each(HELD)('%s reads as %s', (providerCode, code) => {
     const reply = planHeldWith(providerCode);
     expect(reply).toMatchObject({ answered: false, code });

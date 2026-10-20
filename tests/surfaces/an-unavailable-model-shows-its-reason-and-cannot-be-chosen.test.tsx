@@ -89,7 +89,7 @@ const picker = (page: Awaited<ReturnType<typeof view>>['page']): HTMLSelectEleme
   return found;
 };
 
-describe('#2175 an unavailable model in the picker', () => {
+describe('an unavailable model in the picker', () => {
   it('shows after the offered ones, labelled unavailable, with its reason as the title', async () => {
     const { page } = await view(OFFERED);
     const options = [...picker(page).options];
