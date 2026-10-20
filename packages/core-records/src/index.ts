@@ -17,6 +17,7 @@ export {
   DELEGATION_STANDS_AT_CHECK,
   digestOf,
   mintChildDelegation,
+  mintPickupChild,
   mintDelegation,
   resolveDelegation,
   resolveHistoricalDelegation,
@@ -230,6 +231,7 @@ export {
 } from './authority/launches.ts';
 export {
   ANSWER_RUN_COMMANDS,
+  PICKUP_RUN_COMMANDS,
   excludedFromTakenLaunch,
   TAKEN_FOR,
   takeLaunch,

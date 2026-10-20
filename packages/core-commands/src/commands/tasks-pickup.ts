@@ -13,7 +13,7 @@ import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand } from './refusal.ts';
-import { delegationReaches } from './pickup-delegation.ts';
+import { delegationReaches, launchDelegationOf } from './pickup-delegation.ts';
 import {
   applied,
   refused,
@@ -23,7 +23,12 @@ import {
 } from './outcome.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
-import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
+import {
+  agentClaimant,
+  personClaimant,
+  type AgentClaimant,
+  type Claimant,
+} from './tasks-claimant.ts';
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
@@ -76,7 +81,13 @@ export async function pickupReservation(
       ),
     );
   }
-  const claimed = await claim(tx, collection, fields, agentClaimant(agentActorId));
+  // Under a launch's credential the pickup's delegation is that launch's child,
+  // held to the run's commands and ended with it (#2178).
+  const launch =
+    credential === undefined || credential === ''
+      ? undefined
+      : await launchDelegationOf(tx, agentActorId, credential);
+  const claimed = await claim(tx, collection, fields, agentClaimant(agentActorId, launch));
   if (credential === undefined || credential === '' || 'refusal' in claimed) return claimed;
   const taskId = claimed.recordId;
   return {
@@ -127,6 +138,16 @@ function notClaimable(): Refused {
   );
 }
 
+/** The agent's side of its pickup: the approver's acting identity, and the launch it was sent under. */
+const agentRequest = (claimant: AgentClaimant, mintedByActorId: string) => ({
+  claimant: 'agent' as const,
+  agentActorId: claimant.actorId,
+  mintedByActorId,
+  ...(claimant.launchDelegationId === undefined
+    ? {}
+    : { launchDelegationId: claimant.launchDelegationId }),
+});
+
 async function claim(
   tx: TenantQuery,
   collection: string,
@@ -165,12 +186,7 @@ async function claim(
           personId: claimant.personId,
           actorId: claimant.actorId,
         })
-      : await pickup(tx, {
-          ...common,
-          claimant: 'agent',
-          agentActorId: claimant.actorId,
-          mintedByActorId: approver.actorId,
-        });
+      : await pickup(tx, { ...common, ...agentRequest(claimant, approver.actorId) });
   // A pickup that stopped the run at its budget keeps the stop and its ask (AW-05).
   if (!result.ok) {
     return result.retains === true ? refusedRetaining(result.refusal) : refused(result.refusal);

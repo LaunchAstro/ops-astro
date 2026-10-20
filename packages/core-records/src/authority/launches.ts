@@ -29,6 +29,7 @@ import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Subject } from './grants.ts';
 import { mintDelegation, revokeDelegation } from './delegations.ts';
+import { effectiveGrants } from './grants.ts';
 
 /** How long a launch's delegation lives: the runner takes it, and works, inside it. */
 export const LAUNCH_HOURS = 8;
@@ -107,14 +108,22 @@ async function closeLapsed(tx: TenantQuery, taskId: string): Promise<CommandRefu
 export async function launchRun(tx: TenantQuery, request: LaunchRequest): Promise<LaunchResult> {
   const open = await closeLapsed(tx, request.taskId);
   if (open !== undefined) return { ok: false, refusal: open };
+  const purposeScope = { kind: 'record', id: request.taskId } as const;
+  // `run` too when the launcher writes runs on the task, so the pickup minted
+  // under this launch may carry the owner's correction (#2178).
+  const runs = await effectiveGrants(tx, request.subjects, {
+    collection: 'run',
+    action: 'write',
+    scope: purposeScope,
+  });
   const minted = await mintDelegation(tx, {
     agentActorId: request.agentActorId,
     delegatePersonId: request.personId,
     mintedByActorId: request.actorId,
     purpose: launchPurpose(request.taskId),
-    collections: ['task'],
+    collections: runs.length > 0 ? ['task', 'run'] : ['task'],
     actions: ['read', 'comment', 'write'],
-    purposeScope: { kind: 'record', id: request.taskId },
+    purposeScope,
     expiresAt: new Date(Date.now() + LAUNCH_HOURS * 3_600_000),
     holders: request.subjects,
   });

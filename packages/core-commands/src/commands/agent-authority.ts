@@ -23,7 +23,7 @@ export const NO_DELEGATION_FIXES: readonly string[] = [
 ];
 
 const TAKEN_LAUNCH_FIXES: readonly string[] = [
-  'A run taken to answer reads its task and its own delegation, and picks up the plan on that task, and nothing else under its credential.',
+  'A run taken to answer reads its task and its own delegation and picks up the plan on that task; its pickup sends the run’s own commands and the correction; nothing else.',
   'What it answers is written by the run itself, not by a separate call.',
 ];
 
@@ -91,9 +91,9 @@ export async function authorise<O extends object>(
   const resolved = await resolveDelegation(tx, session.actorId, credential);
   if (!resolved.ok) return refusing(resolved.refusal);
   const delegation = resolved.value;
-  // A launch taken to answer reads its task and its own delegation, and the
-  // run's own commands go under its pickup's credential, whatever actions its
-  // delegation carries (`launch-take.ts`).
+  // A launch taken to answer reads its task and its own delegation; its
+  // pickup's child sends the run's own commands and the correction, whatever
+  // actions either delegation carries (`launch-take.ts`).
   if (await excludedFromTakenLaunch(tx, delegation.id, request.command)) {
     return refusing(
       refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], TAKEN_LAUNCH_FIXES),
