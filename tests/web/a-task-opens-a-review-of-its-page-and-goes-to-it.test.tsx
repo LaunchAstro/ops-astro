@@ -33,9 +33,9 @@ async function openFor(client: OperationsClient, opened: string[]) {
   const view = await mount(
     <OpenReview client={client} taskId={TASK} onOpened={(id) => opened.push(id)} />,
   );
-  await view.click('[data-open-review="start"]');
-  await view.type('input[name="pageUrl"]', 'https://bikes.example/about');
-  await view.type('input[name="path"]', 'src/pages/about.astro');
+  await view.click('[data-open-review="start"] button');
+  await view.type('[data-open-review="pageUrl"] input', 'https://bikes.example/about');
+  await view.type('[data-open-review="path"] input', 'src/pages/about.astro');
   return view;
 }
 

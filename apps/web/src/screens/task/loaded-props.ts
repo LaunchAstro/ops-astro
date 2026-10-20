@@ -89,6 +89,7 @@ export interface LoadedProps {
   readonly onShowAllTime: (next: boolean) => void;
   readonly onOpenPanel: PanelOpener | undefined;
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
+  readonly onOpenReview?: ((reviewId: string) => void) | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;

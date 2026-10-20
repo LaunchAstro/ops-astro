@@ -22,6 +22,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { RecordState } from '../../views/record-state.tsx';
+import { CaptureAgain } from './CaptureAgain.tsx';
 import { CapturePane } from './CapturePane.tsx';
 import { PinForm } from './PinForm.tsx';
 import { drawnPins, PinList, type Numbered } from './PinList.tsx';
@@ -221,6 +222,7 @@ function Workspace(props: WorkspaceProps): ReactElement {
   return (
     <>
       <RevisionBar review={props.review} />
+      <CaptureAgain client={props.client} review={props.review} onAsked={props.reload} />
       {WIDTHS.map(({ width, name }, at) => (
         <AtWidth
           key={width}
