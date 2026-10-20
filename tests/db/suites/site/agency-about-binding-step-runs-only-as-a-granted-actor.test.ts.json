@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "The agency About binding step runs only as a person holding operations:manage over the whole business, on the application's connection: a person without the grant, another business's operator and an owner connection are refused with nothing written, and another business binding the same site in its own business is refused and reads none of it, against a real database."
+}
