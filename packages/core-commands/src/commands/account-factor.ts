@@ -26,7 +26,7 @@ import {
   recordFactorRemoved,
   recordFactorVerified,
 } from '../../../core-records/src/index.ts';
-import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import {
   providerRefusal,
   type EnrolAnswer,
@@ -116,23 +116,22 @@ export async function enrolSecondFactor(
     await recordFactorEnrolled(tx, { ...enrolment, providerFactorId: issued.value.factorId });
     return undefined;
   });
-  // Issued there, refused here: held removed for the login, then removed there (#300).
-  if (issued.ok && recorded !== undefined) {
-    await letStrayGo(caller, provider, { providerFactorId: issued.value.factorId }, sending.operation);
-  }
-  // Its answer refused: the factor it names stays at the provider, reported.
-  const stray = strayOf(issued);
-  if (stray !== undefined) await reportOrphan(caller, stray, sending.operation, stray.code);
+  // Issued there, refused here, its record or its answer: held removed for the
+  // login, then removed there (#300).
+  const stray = strayOf(issued, recorded);
+  if (stray !== undefined) await letStrayGo(caller, provider, stray, sending.operation);
   return recorded ?? (issued.ok ? issued.value : providerRefusal('malformed', 'answer'));
 }
 
-/** The factor an enrolment's refused answer left at the provider, and why. */
+/** The factor an enrolment left at the provider with no record here. */
 function strayOf(
   issued: EnrolAnswer,
-): { readonly providerFactorId: string; readonly code: RefusalCode } | undefined {
-  return !issued.ok && 'strayFactorId' in issued
-    ? { providerFactorId: issued.strayFactorId, code: 'PROVIDER_ANSWER_INVALID' }
-    : undefined;
+  recorded: CommandRefusal | undefined,
+): { readonly providerFactorId: string } | undefined {
+  if (!issued.ok) {
+    return 'strayFactorId' in issued ? { providerFactorId: issued.strayFactorId } : undefined;
+  }
+  return recorded === undefined ? undefined : { providerFactorId: issued.value.factorId };
 }
 
 /**

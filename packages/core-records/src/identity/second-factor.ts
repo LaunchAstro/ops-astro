@@ -220,13 +220,16 @@ export async function loginRemovedFactors(
 /**
  * A factor the provider issued to the login that no business recorded and
  * none will: held removed for the login, under its lock, so it may go at the
- * provider now or on the login's next proven code.
+ * provider now or on the login's next proven code. One the login holds
+ * verified is never a stray: false, and nothing is written.
  */
 export async function recordStrayRemoved(
   tx: TenantQuery,
   stray: { readonly subject: string; readonly providerFactorId: string },
-): Promise<void> {
+): Promise<boolean> {
   await lockLoginFactors(tx, stray.subject);
+  const verified = await loginVerifiedFactors(tx, stray.subject);
+  if (verified.includes(factorDigest(stray.providerFactorId))) return false;
   await tx.query(
     `insert into ops.second_factor_subjects (subject_digest, factor_digest, state)
      select ${DIGEST('$1')}, ${DIGEST('$2')}, 'removed'
@@ -236,6 +239,7 @@ export async function recordStrayRemoved(
            and state = 'removed')`,
     [stray.subject, stray.providerFactorId],
   );
+  return true;
 }
 
 /** Whether the login has a factor verified, and not removed, through any business (0064). */

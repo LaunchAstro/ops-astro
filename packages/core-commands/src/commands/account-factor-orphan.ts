@@ -3,7 +3,8 @@
 // A factor removed at the provider once this product's committed record holds
 // it removed for the login (0064; removed is final): an enrolment that lost
 // under the record lock, a removal the record has committed, a factor issued
-// to an enrolment the record refused (held removed first), and a good code
+// to an enrolment refused here, its record or its answer (held removed first,
+// never one the login holds verified), and a good code
 // for a factor the record has since removed. One the provider will not remove
 // is reported, and asked again on the login's next proven code (`catchUp`).
 // A factor the record has not decided on stays where it is: it may be another
@@ -60,17 +61,25 @@ export async function heldRemoved(
   return removed.includes(factorDigest(providerFactorId));
 }
 
-/** A factor issued to an enrolment the record refused: held removed, then removed there. */
+/**
+ * A factor issued to an enrolment refused here, its record or its answer: held
+ * removed, then removed there. Only the attempt's own unverified factor goes;
+ * one the provider or the record holds verified stays, and one the provider
+ * cannot say of is reported.
+ */
 export async function letStrayGo(
   caller: FactorCaller,
   provider: FactorProvider,
   stray: { readonly providerFactorId: string },
   attempt: string,
 ): Promise<void> {
-  await caller.database.withBusiness(caller.businessId, (tx) =>
+  const verified = await provider.verifiedFactors(caller.accessToken);
+  if (!verified.ok) return await reportOrphan(caller, stray, attempt, 'PROVIDER_ANSWER_INVALID');
+  if (verified.value.includes(stray.providerFactorId)) return;
+  const held = await caller.database.withBusiness(caller.businessId, (tx) =>
     recordStrayRemoved(tx, { subject: caller.presented.subject, ...stray }),
   );
-  await removeAtProvider(caller, provider, caller, stray, attempt);
+  if (held) await removeAtProvider(caller, provider, caller, stray, attempt);
 }
 
 /**

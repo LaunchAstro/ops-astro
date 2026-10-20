@@ -162,7 +162,7 @@ async function listedFactors(
 }
 
 // A factor id the answer carries is kept when the rest is refused: the
-// provider issued that factor, and the act reports it.
+// provider issued that factor, and the act removes it there.
 async function enrol(call: Call, accessToken: string): Promise<EnrolAnswer> {
   const answer = await call('POST', '/factors', accessToken, { factor_type: 'totp' });
   if (!answer.ok) return answer;

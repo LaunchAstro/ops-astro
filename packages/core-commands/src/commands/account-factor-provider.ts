@@ -25,7 +25,7 @@ export interface IssuedFactor {
 
 /**
  * An enrolment's answer. One refused with the id of the factor the provider
- * issued names it, so the factor left there is reported, not lost.
+ * issued names it, so the factor left there is removed, not lost.
  */
 export type EnrolAnswer =
   | ProviderAnswer<IssuedFactor>
