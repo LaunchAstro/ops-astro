@@ -144,3 +144,23 @@ describe.skipIf(serverUrl === undefined)('C73 the probe on completion', () => {
     expect(await media.sign(w.ava, disagreeing.assetId)).toStrictEqual({ code: 'ASSET_REFUSED' });
   });
 });
+
+describe.skipIf(serverUrl === undefined)('C73 a wide probe on completion', () => {
+  it('C73 a probe whose timescale is past 2^31 is recorded and read back exactly', async () => {
+    const wide = mp4Of({ codec: 'avc1', timescale: 3_000_000_000, delta: 300_000_000, frames: 10 });
+    const probe = {
+      codec: 'avc1',
+      fps: { num: 10, den: 1 },
+      startTimecode: '00:00:00:00',
+      duration: 3_000_000_000,
+      timescale: 3_000_000_000,
+    };
+    const recorded = await media.upload(w.ava, w.taskA, renderOf(wide), wide);
+    expect(recorded.completed).toMatchObject({ admission: { verdict: 'quarantined', probe } });
+    if (!('reviewId' in recorded.completed)) throw new Error('the wide render completed');
+    const review = await media.read(w.ava, recorded.completed.reviewId);
+    expect(
+      review?.revisions.find((revision) => revision.media?.assetId === recorded.assetId)?.media,
+    ).toMatchObject({ why: 'quarantined', probe });
+  });
+});

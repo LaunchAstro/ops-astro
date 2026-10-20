@@ -86,8 +86,13 @@ export interface MediaCalls {
     body: Uint8Array,
     business?: string,
   ): Promise<{ readonly assetId: string; readonly completed: CompleteAnswer }>;
-  /** A read signed for playback, as `member`. */
-  sign(member: Member, assetId: string, business?: string): ReturnType<typeof signMediaRead>;
+  /** A read signed for playback, as `member`, for `lifeSeconds` (300 unless given). */
+  sign(
+    member: Member,
+    assetId: string,
+    business?: string,
+    lifeSeconds?: number,
+  ): ReturnType<typeof signMediaRead>;
   /** The quarantined asset's object read through `scanner`, its verdict landed as the system. */
   scan(assetId: string, scanner: MediaScanner, business?: string): ReturnType<typeof landMediaScan>;
   /** The review as `member` reads it. */
@@ -172,13 +177,13 @@ function contractCalls(
   const alpha = w.world.business;
   return {
     upload: wholeUpload(calls, alpha),
-    sign: async (member, assetId, business = alpha) =>
+    sign: async (member, assetId, business = alpha, lifeSeconds = 300) =>
       await w.world.db.app.withBusiness(
         business,
         async (tx) =>
           await signMediaRead(
             tx,
-            { assetId, covering: coveringOf(member, 'read'), lifeSeconds: 300 },
+            { assetId, covering: coveringOf(member, 'read'), lifeSeconds },
             store,
           ),
       ),
