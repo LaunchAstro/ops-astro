@@ -177,3 +177,93 @@ export async function readCoveredPicture(
     body: Buffer.from(stored.body).toString('base64'),
   };
 }
+
+/** One row of the Reviews page: a review the caller's grant covers, without its revisions. */
+export interface ReviewSummary {
+  readonly reviewId: string;
+  readonly taskId: string;
+  /** The task's client; null for the business's own site. */
+  readonly partyId: string | null;
+  readonly kind: 'page' | 'media';
+  readonly pageUrl: string | null;
+  readonly path: string | null;
+  readonly revisionCount: number;
+  /** Live pins on any of its revisions not yet filed as a change request. */
+  readonly openPins: number;
+  /** Change requests still waiting for a decision (`proposed`). */
+  readonly openChangeRequests: number;
+  /** The latest revision approved on its exact digest, waiting for a decision, or none yet. */
+  readonly latest: 'approved' | 'undecided' | null;
+  readonly updatedAt: string;
+}
+
+/** The most rows the Reviews page reads at once. */
+export const REVIEW_LIST_LIMIT = 200;
+
+type ListedRow = {
+  readonly id: string;
+  readonly task_id: string;
+  readonly party_id: string | null;
+  readonly kind: 'page' | 'media';
+  readonly page_url: string | null;
+  readonly path: string | null;
+  readonly revision_count: number;
+  readonly open_pins: number;
+  readonly open_requests: number;
+  readonly latest_id: string | null;
+  readonly approved: boolean;
+  readonly updated_at: Date;
+};
+
+/** Each covered review with its latest revision's approval, its open pins and open requests. */
+const LIST_SQL = `${EFFECTIVE_AT}
+     select c.id, c.task_id, c.party_id, c.kind, c.page_url, c.path, c.revision_count,
+            c.updated_at, v.id as latest_id,
+            (select count(*)::int from public.records r
+               join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+              where r.business_id = c.business_id and t.key = 'task_comment'
+                and r.data ->> 'task' = c.task_id::text and r.deleted_at is null
+                and r.data ? 'anchor'
+                and r.data -> 'anchor' ->> 'source' in (
+                  select s.id::text from public.review_revisions s
+                   where s.business_id = c.business_id and s.review_id = c.id)
+                and not exists (select 1 from public.review_change_requests q
+                                 where q.business_id = c.business_id and q.comment_id = r.id))
+              as open_pins,
+            (select count(*)::int from public.review_change_requests q
+              where q.business_id = c.business_id and q.review_id = c.id and q.state = 'proposed')
+              as open_requests,
+            exists (select 1 from public.review_decisions d
+                     where d.business_id = c.business_id and d.revision_id = v.id
+                       and d.digest = v.digest) as approved
+       from public.reviews c
+       left join lateral (select r.id, r.digest from public.review_revisions r
+                           where r.business_id = c.business_id and r.review_id = c.id
+                           order by r.number desc limit 1) v on true
+      where c.business_id = $1 and ${COVERED}
+      order by c.updated_at desc, c.id
+      limit ${REVIEW_LIST_LIMIT}`;
+
+/** The business's reviews the caller's grant covers, newest change first, filtered in the query. */
+export async function listCoveredReviews(
+  tx: TenantQuery,
+  covering: Covering,
+): Promise<readonly ReviewSummary[]> {
+  const rows = await tx.query<ListedRow>(LIST_SQL, [
+    tx.businessId,
+    ...coveringParameters(covering),
+  ]);
+  return rows.map((row) => ({
+    reviewId: row.id,
+    taskId: row.task_id,
+    partyId: row.party_id,
+    kind: row.kind,
+    pageUrl: row.page_url,
+    path: row.path,
+    revisionCount: row.revision_count,
+    openPins: row.open_pins,
+    openChangeRequests: row.open_requests,
+    latest: row.latest_id === null ? null : row.approved ? 'approved' : 'undecided',
+    updatedAt: new Date(row.updated_at).toISOString(),
+  }));
+}

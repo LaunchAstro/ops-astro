@@ -28,6 +28,7 @@ import {
   pathOf,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
+import { DECLARED_READS } from './declared-reads.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) {
@@ -85,60 +86,6 @@ describe('the surface as a table', () => {
   });
 });
 
-/** The reads the surface declares, sorted. */
-const DECLARED_READS = [
-  'access.read',
-  'agent.mine',
-  'automation.history',
-  'automation.registry',
-  'chat.conversations',
-  'chat.messages',
-  'client.list',
-  'connection.fleet',
-  'connection.graduation',
-  'connection.signal',
-  'conversation.allowance',
-  'conversation.list',
-  'conversation.models',
-  'conversation.read',
-  'definition.attribution',
-  'finance.agent_costs',
-  'finance.skill_costs',
-  'gate.pending',
-  'inbox.count',
-  'inbox.read',
-  'inbox.unattended',
-  'invitation.list',
-  'live_correction.list',
-  'live_correction.read',
-  'live_correction.receipts',
-  'map.frontier',
-  'map.list',
-  'map.view',
-  'operations.read',
-  'person.list',
-  'preference.read',
-  'preset.plan',
-  'privacy.draft_breach_notices',
-  'review.client_list',
-  'review.picture',
-  'review.read',
-  'secret.list',
-  'session.capabilities',
-  'session.person',
-  'settings.read',
-  'tag.list',
-  'task.board',
-  'task.execution',
-  'task.ledger',
-  'task.queue',
-  'task.read',
-  'task.receipt',
-  'task.search',
-  'task.todos',
-  'team.list',
-  'trace.read',
-];
 describe('the surface as a table', () => {
   it('declares the forty-eight reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);

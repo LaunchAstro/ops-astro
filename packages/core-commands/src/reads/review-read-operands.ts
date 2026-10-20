@@ -6,15 +6,21 @@
 
 import type {
   ClientReviewListResult,
+  ReviewListResult,
   ReviewPictureResult,
   ReviewReadResult,
 } from '../../../core-wire/src/index.ts';
 
-/** One review with its revisions and captures; one landed picture; a client's own reviews. */
+/**
+ * One review with its revisions and captures; one landed picture; a client's own reviews; the
+ * reviews the caller reads.
+ */
 export interface ReviewReadOperands {
   readonly 'review.read': { readonly reviewId: string };
   readonly 'review.picture': { readonly pictureId: string };
   readonly 'review.client_list': Readonly<Record<never, never>>;
+  readonly 'review.list': Readonly<Record<never, never>>;
 }
 
-export type ReviewReadsResult = ReviewReadResult | ReviewPictureResult | ClientReviewListResult;
+export type ReviewReadsResult =
+  ReviewReadResult | ReviewPictureResult | ClientReviewListResult | ReviewListResult;

@@ -30,6 +30,7 @@ export const REVIEW_EFFECTS: {
     ...MAP_READ_MODEL,
   ]),
   'review.read': writing([]),
+  'review.list': writing([]),
   'review.picture': writing([]),
   'review.client_list': writing([]),
   'review.decide': writing(client('review_decisions')),

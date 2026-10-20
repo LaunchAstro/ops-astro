@@ -11,6 +11,14 @@ export const PAGE_ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The business's reviews the reader's grant covers (MP-8-1), each linked to its workspace.
+  'agency:reviews': {
+    namespace: 'agency',
+    path: '/projects/reviews/',
+    title: 'Reviews',
+    surface: 'none',
+    authenticated: true,
+  },
   // The Executive page: section 005, what our agents cost us, reads for real
   // and 001 to 004 stand in. The manifest's Dashboard section already lists
   // this address, so it adds no rail door.

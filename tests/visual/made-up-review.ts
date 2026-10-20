@@ -6,7 +6,11 @@
 // lines of text, so a capture reads as a page. Every name and address is made up.
 
 import { crc32, deflateSync } from 'node:zlib';
-import type { ReviewPictureResult, ReviewReadResult } from '../../packages/core-wire/src/index.ts';
+import type {
+  ReviewListResult,
+  ReviewPictureResult,
+  ReviewReadResult,
+} from '../../packages/core-wire/src/index.ts';
 
 export const REVIEW_ID = '55555555-5555-4555-8555-555555555555';
 const FIRST = '55555555-5555-4555-8555-000000000001';
@@ -260,8 +264,31 @@ export function pictureOf(id: unknown): ReviewPictureResult {
   return picture(2, 1480);
 }
 
-/** The reads' default answers: the review, and the laptop capture under review. */
+/** The Reviews page's list: the made-up review, its second revision waiting for a decision. */
+const LISTED: ReviewListResult = {
+  ok: true,
+  reviews: [
+    {
+      reviewId: REVIEW_ID,
+      taskId: CARRIED_REVIEW.review.taskId,
+      partyId: CARRIED_REVIEW.review.partyId,
+      kind: 'page',
+      pageUrl: CARRIED_REVIEW.review.pageUrl,
+      path: CARRIED_REVIEW.review.path,
+      revisionCount: CARRIED_REVIEW.review.revisions.length,
+      openPins: CARRIED_REVIEW.review.pins.length,
+      openChangeRequests: CARRIED_REVIEW.review.changeRequests.filter(
+        (request) => request.state === 'proposed',
+      ).length,
+      latest: 'undecided',
+      updatedAt: '2026-10-19T09:00:00.000Z',
+    },
+  ],
+};
+
+/** The reads' default answers: the review list, the review, and the laptop capture under review. */
 export const REVIEW_READS: {
+  readonly 'review.list': ReviewListResult;
   readonly 'review.read': ReviewReadResult;
   readonly 'review.picture': ReviewPictureResult;
-} = { 'review.read': CARRIED_REVIEW, 'review.picture': picture(2, 1480) };
+} = { 'review.list': LISTED, 'review.read': CARRIED_REVIEW, 'review.picture': picture(2, 1480) };

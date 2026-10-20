@@ -5,22 +5,30 @@
 // `review.read`: one review, its revisions in number order and each revision's captures by
 // width, with the landed pictures' ids and the observations, and what changed at each width
 // since the revision before (`review-difference.ts`). `review.picture`: one landed
-// picture's bytes. The grant is `review:read`, asked at the review's holder inside the query,
-// so a party grant reads no other client's review. A caller holding `review:read` nowhere is
-// refused `SCOPE_NOT_GRANTED` before any id is looked at; for everyone else, not there, in
-// another business, out of reach, a client's or malformed is one `NOT_FOUND`. They are the
+// picture's bytes. `review.list`: the business's reviews the caller's grant covers, newest
+// change first, for the Reviews page; a reviewer with no team role is refused as one holding
+// no grant, so the list never says whether any review exists. The grant is `review:read`,
+// asked at the review's holder inside the query, so a party grant reads no other client's
+// review. A caller holding `review:read` nowhere is refused `SCOPE_NOT_GRANTED` before any id
+// is looked at; for everyone else, not there, in another business, out of reach, a client's
+// or malformed is one `NOT_FOUND`. They are the
 // team's, as the live correction's reads are, and never an agent's.
 
 import {
   holdsAnywhere,
   isUuid,
+  listCoveredReviews,
   readCoveredPicture,
   readCoveredReview,
   REVIEW_COLLECTION,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
-import type { ReviewPictureResult, ReviewReadResult } from '../../../core-wire/src/index.ts';
+import type {
+  ReviewListResult,
+  ReviewPictureResult,
+  ReviewReadResult,
+} from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
 import { differencesOf } from './review-difference.ts';
@@ -56,7 +64,7 @@ async function admitted(
 }
 
 export const REVIEW_READS: {
-  readonly [K in 'review.read' | 'review.picture']: ReadRow<K>;
+  readonly [K in 'review.read' | 'review.picture' | 'review.list']: ReadRow<K>;
 } = {
   'review.read': {
     identifiers: ['reviewId'],
@@ -86,6 +94,18 @@ export const REVIEW_READS: {
       if (refusal !== undefined) return refusal;
       const picture = await readCoveredPicture(tx, pictureId.toLowerCase(), reviewRead(session));
       return picture === undefined ? refuseNotFound() : { ok: true, picture };
+    },
+  },
+  'review.list': {
+    identifiers: [],
+    parse: () => ({ ok: true, operands: {} }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session): Promise<ReviewListResult | CommandRefusal> => {
+      if (!(await holdsAnywhere(tx, reviewRead(session)))) return NO_REVIEW_READ;
+      if (!isInternalReader(session.roleKey)) return NO_REVIEW_READ;
+      return { ok: true, reviews: await listCoveredReviews(tx, reviewRead(session)) };
     },
   },
 };

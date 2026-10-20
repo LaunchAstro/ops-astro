@@ -14,66 +14,11 @@
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
-import { PINNED_SHAPE } from './read-catalogue-shape.ts';
+import { PINNED_IDENTIFIERS, PINNED_SHAPE } from './read-catalogue-shape.ts';
 
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
 const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
 const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
-
-const PINNED_IDENTIFIERS = {
-  'access.read': [],
-  'agent.mine': [],
-  'automation.history': ['activationId'],
-  'automation.registry': [],
-  'chat.conversations': [],
-  'chat.messages': ['conversationId'],
-  'client.list': [],
-  'connection.fleet': [],
-  'connection.graduation': [],
-  'connection.signal': [],
-  'conversation.allowance': ['conversationId'],
-  'conversation.list': [],
-  'conversation.models': ['conversationId'],
-  'conversation.read': ['conversationId'],
-  'definition.attribution': [],
-  'finance.agent_costs': [],
-  'finance.skill_costs': [],
-  'gate.pending': [],
-  'inbox.count': [],
-  'inbox.read': [],
-  'inbox.unattended': [],
-  'invitation.list': [],
-  'live_correction.list': [],
-  'live_correction.read': ['correctionId'],
-  'live_correction.receipts': ['correctionId'],
-  'map.frontier': ['recordId'],
-  'map.list': [],
-  'map.view': ['recordId'],
-  'operations.read': [],
-  'person.list': [],
-  'preference.read': [],
-  'preset.plan': [],
-  'privacy.draft_breach_notices': ['incidentId'],
-  'review.client_list': [],
-  'review.picture': ['pictureId'],
-  'review.read': ['reviewId'],
-  'secret.list': [],
-  'session.capabilities': [],
-  'session.person': [],
-  'settings.read': [],
-  'tag.list': [],
-  'task.board': ['board', 'person', 'client'],
-  'task.execution': ['recordId'],
-  'task.ledger': [],
-  'task.queue': [],
-  'task.read': ['recordId'],
-  'task.receipt': ['attemptId'],
-  'task.search': [],
-  // A teammate or a client (MP-7-2), one at a time.
-  'task.todos': ['person', 'client'],
-  'team.list': [],
-  'trace.read': ['recordId'],
-};
 
 // MP-7-10: `team.list` is staff only; a client is told NOT_FOUND. So are
 // C71-D's two conversation reads.
@@ -249,6 +194,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
   // C35's review, which none of these bodies carries.
   'review.read': unsent('reviewId', 'Send reviewId as the review.'),
+  'review.list': BODIES.map(() => null),
   'review.picture': unsent('pictureId', 'Send pictureId as the landed picture.'),
   'review.client_list': BODIES.map(() => null),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
