@@ -17,6 +17,9 @@ import { MOST_RANGE_BYTES, rangeReader } from './upload-contract.ts';
 
 export type ScanVerdict = 'passed' | 'failed';
 
+/** The longest a playback or delivery read is signed for. */
+export const MOST_READ_LIFE_SECONDS = 3600;
+
 /** A malware scanner: a stored object's bytes in, in order, and its verdict out. */
 export interface MediaScanner {
   readonly engine: string;
@@ -27,7 +30,11 @@ export type SignRefusal =
   | MediaRefusal
   | {
       readonly code:
-        'ASSET_NOT_COMPLETE' | 'ASSET_REFUSED' | 'ASSET_QUARANTINED' | 'ASSET_SCAN_FAILED';
+        | 'LIFE_OUT_OF_RANGE'
+        | 'ASSET_NOT_COMPLETE'
+        | 'ASSET_REFUSED'
+        | 'ASSET_QUARANTINED'
+        | 'ASSET_SCAN_FAILED';
     };
 
 interface QuarantinedRow {
@@ -90,14 +97,19 @@ export async function landMediaScan(
 
 /**
  * A GET of an asset signed for `lifeSeconds`, for playback or delivery, only once its scan has
- * passed: the review judged by the caller's grant under its lock, then the asset's own state read
- * in the same transaction. Each other state is refused by its name.
+ * passed: a life that is not a whole number of seconds from one to `MOST_READ_LIFE_SECONDS` is
+ * refused before anything is read, then the review is judged by the caller's grant under its
+ * lock, then the asset's own state read in the same transaction. Each other state is refused by
+ * its name.
  */
 export async function signMediaRead(
   tx: TenantQuery,
   input: { readonly assetId: string; readonly covering: Covering; readonly lifeSeconds: number },
   store: ObjectTransfers,
 ): Promise<SignedTransfer | SignRefusal> {
+  const life = input.lifeSeconds;
+  if (!Number.isInteger(life) || life < 1 || life > MOST_READ_LIFE_SECONDS)
+    return { code: 'LIFE_OUT_OF_RANGE' };
   const [named] = await tx.query<{ readonly review_id: string }>(
     'select review_id from public.review_media_assets where business_id = $1 and id = $2',
     [tx.businessId, input.assetId],
