@@ -80,3 +80,7 @@ export function spotAround(x: number, y: number, size: Size): Spot {
 
 export const xywh = (spot: Spot): string =>
   `xywh=${String(spot.x)},${String(spot.y)},${String(spot.width)},${String(spot.height)}`;
+
+/** A digest's first twelve characters, for a person to tell revisions and stylesheets apart. */
+export const short = (digest: string | null): string =>
+  digest === null ? 'none' : digest.replace(/^sha256:/u, '').slice(0, 12);

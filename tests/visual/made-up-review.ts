@@ -3,7 +3,8 @@
 // A made-up review for the Review workspace (C35, #2105): a page with two revisions, each
 // landed at laptop and phone size, two pins on the revision under review and what changed
 // between them; and the pictures, small PNGs drawn here as a page's header, headline and
-// lines of text, so a capture reads as a page. Every name and address is made up.
+// lines of text, so a capture reads as a page. The first revision is approved by Mia, a second
+// person, and the one under review is undecided (#2142). Every name and address is made up.
 
 import { crc32, deflateSync } from 'node:zlib';
 import type { ReviewPictureResult, ReviewReadResult } from '../../packages/core-wire/src/index.ts';
@@ -38,7 +39,16 @@ const revision = (number: 1 | 2, id: string, text: string) => ({
   number,
   digest: `sha256:${String(number + 4).repeat(64)}`,
   captures: [landed(number, 1480, text), landed(number, 390, text)],
-  decision: null,
+  decision:
+    number === 1
+      ? {
+          response: 'approve' as const,
+          digest: `sha256:${'5'.repeat(64)}`,
+          decidedByPersonId: 'p-mia',
+          singleOperatorSelfApproval: false,
+          decidedAt: '2026-10-19T03:00:00.000Z',
+        }
+      : null,
 });
 
 const before = revision(1, FIRST, 'Harbour Bikes fixes bikes in Townsville.');
