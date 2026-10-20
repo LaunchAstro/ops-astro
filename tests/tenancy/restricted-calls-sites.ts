@@ -21,7 +21,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'reviews'],
   ['si', 'review_revisions'],
   ['si', 'review_captures'],
-  // U89 (20261019160000): a media asset is written when its upload starts, never removed.
+  // U89 (20261020052900): a media asset is written when its upload starts, never removed.
   ['si', 'review_media_assets'],
   // C35 (20261019142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
@@ -59,7 +59,7 @@ export const SITE_UPDATES = [
   // A media upload moves only its state, and names its revision once completed.
   {
     table: 'public.review_media_assets',
-    from: '20261019160000',
+    from: '20261020052900',
     columns: ['revision_id', 'state', 'updated_at'],
   },
   // A capture is claimed and landed by these columns; its trigger keeps its revision and width.
