@@ -59,6 +59,8 @@ function Renaming(props: {
         setValue(event.target.value);
       }}
       onKeyDown={(event) => {
+        // Enter that commits an IME word belongs to the composition, not the rename.
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') finish(value, 'key');
         if (event.key === 'Escape') finish(null, 'key');
       }}
