@@ -5,7 +5,8 @@
 // the next item in the runner's lane order (scripts/db-shards.ts `laneOrder`)
 // to the first free of three lanes. Sol's copy took them in manifest order,
 // which the runner then did, and nine shards came to 538 to 570 s. The second
-// reads the isolation shards' job bound, now ten minutes.
+// reads the isolation shards' job bound, now ten minutes. Main has run 13 database
+// shards since DIRSHARD13 (19 October), so the first splits the plan 13 ways.
 
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -30,7 +31,7 @@ it('every database shard, run in three lanes in the runner’s order, fits nine 
     readIsolationSuites(root).invariant,
   );
   const weight = shardWeight(plan.seconds);
-  const walls = assignShards(items, plan.seconds, 12).map((shard) => {
+  const walls = assignShards(items, plan.seconds, 13).map((shard) => {
     const lanes = [0, 0, 0];
     // The runner gives the next item in its lane order to the first free lane.
     for (const index of laneOrder(shard, plan.seconds)) {

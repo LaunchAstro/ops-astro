@@ -739,11 +739,17 @@ for (const [name, adminConfigured] of [
                 env,
                 maxBuffer: 32 * 1024 * 1024,
               });
-              assert.match(run.stdout, /2 passed, 0 failed, 0 skipped/u, 'both fixture suites pass');
+              assert.match(
+                run.stdout,
+                /2 passed, 0 failed, 0 skipped/u,
+                'both fixture suites pass',
+              );
               assert.equal(
                 run.status,
                 0,
-                /transaction movement above measurement cost and a new client session/u.test(run.stderr)
+                /transaction movement above measurement cost and a new client session/u.test(
+                  run.stderr,
+                )
                   ? `rule 7 rejected a passing fixture suite: its admin URL still points at lane 1\n${run.stderr}`
                   : `runner failed: ${run.stderr}`,
               );

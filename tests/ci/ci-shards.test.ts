@@ -84,16 +84,23 @@ it('the plan reads the measured times, and refuses a key it does not know or a v
 });
 
 /**
- * An isolation shard's wall in seconds: the runner takes its suites in three lanes (#1753),
- * and the steps beside the runner run after it.
+ * The slowest isolation shard's wall in seconds: the runner takes a shard's suites in three
+ * lanes (#1753), and the steps beside the runner run after it.
  */
-const isolationWall = (shard: readonly string[]): number =>
-  laneWall(
-    shard.filter((item) => items.includes(item)),
-    plan.isolation,
-    3,
-  ) +
-  shard.filter((item) => !items.includes(item)).reduce((t, s) => t + (plan.isolation[s] ?? 0), 0);
+const slowestIsolationWall = (shards: readonly (readonly string[])[]): number =>
+  Math.max(
+    ...shards.map(
+      (shard) =>
+        laneWall(
+          shard.filter((item) => items.includes(item)),
+          plan.isolation,
+          3,
+        ) +
+        shard
+          .filter((item) => !items.includes(item))
+          .reduce((t, s) => t + (plan.isolation[s] ?? 0), 0),
+    ),
+  );
 
 describe('isolation tests', () => {
   it('every isolation suite and every step beside the runner in exactly one shard, near its share', () => {
@@ -104,8 +111,7 @@ describe('isolation tests', () => {
     for (const shard of shards) expect(shard.some((item) => items.includes(item))).toBe(true);
     const { heaviest, bound } = balance(shards, shardWeight(plan.isolation));
     expect(heaviest).toBeLessThanOrEqual(bound);
-    const wall = Math.max(...shards.map((shard) => isolationWall(shard)));
-    expect(fitsItsJob(wall, ISOLATION_JOB_SECONDS), `slowest shard, ${String(wall)} s`).toBe(true);
+    expect(fitsItsJob(slowestIsolationWall(shards), ISOLATION_JOB_SECONDS)).toBe(true);
     const added = 'tests/tenancy/named-later.test.ts';
     const later = isolationShards([...items, added], plan, ISOLATION_COUNT);
     expect(later.filter((shard) => shard.includes(added))).toHaveLength(1);
