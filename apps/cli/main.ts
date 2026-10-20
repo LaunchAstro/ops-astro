@@ -19,11 +19,10 @@
 // saved, so a terminal log or a shell history never holds it.
 
 import { randomUUID } from 'node:crypto';
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { signIn } from '../web/src/session/sign-in.ts';
 import { withProviderKey } from '../web/src/session/provider-key.ts';
-import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
 import {
   accepts,
   createCli,
@@ -39,7 +38,15 @@ import {
 } from './client.ts';
 import { handoffOf } from '../../packages/core-wire/src/index.ts';
 import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
-import { createVerbCli, prepare, takesValue, VERB_TABLE, verbHelp } from './verbs.ts';
+import {
+  createVerbCli,
+  operationBody as body,
+  prepare,
+  takesValue,
+  UsageError,
+  VERB_TABLE,
+  verbHelp,
+} from './verbs.ts';
 import { stepUp } from './second-factor.ts';
 import {
   beginSave,
@@ -77,8 +84,6 @@ interface Parsed {
 /** Flags that take a value; every other `--name` is a switch. */
 const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web', 'env']);
 const SWITCHES = new Set(['help', 'agent', 'second-factor']);
-
-class UsageError extends Error {}
 
 const REPLAY = 'send it again with this operationId to replay';
 
@@ -191,40 +196,6 @@ function assertWritable(file: string, what: string): void {
   } catch (cause) {
     throw new UsageError(`cannot save ${what} to ${file}: ${(cause as Error).message}`);
   }
-}
-
-function body(flags: Parsed['flags']): Record<string, unknown> {
-  const inline = text(flags, 'json');
-  const file = text(flags, 'body-file');
-  if (inline !== undefined && file !== undefined) {
-    throw new UsageError('pass --json or --body-file, not both');
-  }
-  let source = '{}';
-  if (inline !== undefined) source = inline;
-  else if (file !== undefined) {
-    try {
-      source = readFileSync(file, 'utf8');
-    } catch {
-      throw new UsageError(`cannot read --body-file ${file}`);
-    }
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source);
-  } catch {
-    throw new UsageError('the body is not valid JSON');
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new UsageError('the body must be a JSON object');
-  }
-  // The door's own check. JSON.stringify would send a number too large for a
-  // double, such as 1e400, as null, and the API would take null as meant.
-  try {
-    canonicalPayload(parsed);
-  } catch (cause) {
-    throw new UsageError(`the body has no canonical form: ${(cause as Error).message}`);
-  }
-  return parsed as Record<string, unknown>;
 }
 
 const HELP = [
