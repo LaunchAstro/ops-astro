@@ -6,13 +6,14 @@
 /**
  * A person or a delegated agent opens a review, asks a capture of a revision and pins a
  * comment on a spot of one (#2012); a worker claims the capture and lands it under its
- * lease; the review, with its revisions, captures and pins, and a landed picture are read.
+ * lease, and carries the pins onto the new revision (#2075); the review, with its revisions, captures and pins, and a landed picture are read.
  */
 export type ReviewCommandName =
   | 'review.open'
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.carry_pins'
   | 'review.pin_comment'
   | 'review.read'
   | 'review.picture';

@@ -4,15 +4,16 @@
 // table's own closure, kept apart for its line cap. A pickup's delegation reaches one task
 // and never carries `review`, so the open and the capture ask are `business` rows, refused
 // outside the delegation's purpose as `task.create` is; an agent credential reaches them
-// through the person envelope with its ticked keys (API-2). The claim and the land are
-// the worker's, asked of the lease's task and served under the delegation `authorise`
-// resolved, as `task.check` is. A pin (#2012) is a `record` row: `review:comment` on the
+// through the person envelope with its ticked keys (API-2). The claim, the land and the
+// pin carry (#2075) are the worker's, asked of the lease's task and served under the
+// delegation `authorise` resolved, as `task.check` is. A pin (#2012) is a `record` row: `review:comment` on the
 // delegation's own task, served on that task alone (`review-pin.ts`).
 
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentCall, NoOperands } from './agent-call.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { claimCapture, landCapture } from './review-captures.ts';
+import { carryPins } from './review-carry.ts';
 import { PIN_COMMENT } from './review-pin.ts';
 
 /** A row a pickup's delegation never reaches: no operands, no `serve`. */
@@ -42,7 +43,9 @@ export interface UnderLease {
   ) => Promise<HandlerOutcome>;
 }
 
-const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease => ({
+const underLease = (
+  serve: typeof claimCapture | typeof landCapture | typeof carryPins,
+): UnderLease => ({
   authority: 'record',
   subjectTask: 'lease',
   replay: 'reauthorise',
@@ -57,6 +60,7 @@ const underLease = (serve: typeof claimCapture | typeof landCapture): UnderLease
         width: request['width'],
         picture: request['picture'],
         observation: request['observation'],
+        operationId: request['operationId'],
       },
       { claimant: 'agent', holderActorId: session.actorId, delegation },
     ),
@@ -67,6 +71,7 @@ type ReviewAgentName =
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.carry_pins'
   | 'review.pin_comment';
 
 export const reviewAgentRows = <T>(
@@ -76,5 +81,6 @@ export const reviewAgentRows = <T>(
   ['review.capture', close(OUTSIDE_PURPOSE)],
   ['review.capture_claim', close(underLease(claimCapture))],
   ['review.capture_land', close(underLease(landCapture))],
+  ['review.carry_pins', close(underLease(carryPins))],
   ['review.pin_comment', close(PIN_COMMENT)],
 ];
