@@ -907,7 +907,7 @@ inserts it in its own transaction, after every check and before its token
 and attempt; a second send of the same message, from any business or hook
 process, waits on the first's transaction, finds the row and is refused
 `REPLAYED`, writing nothing. A refused send claims nothing. Each claim
-records when it was made (`claimed_at`, 20261018033724). The application may
+records when it was made (`claimed_at`, 20261020053037). The application may
 insert and read the digest column alone, so it cannot set a claim's time, and
 it changes and deletes nothing. A claim older than a day protects nothing,
 since the hook's signature check refuses a message more than five minutes
@@ -957,7 +957,7 @@ the key id, when it was issued and when it expires (after issue), and the
 revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
 secret itself is stored nowhere. A guard keeps every issued column as written
 and lets the revocation be set once. An after-insert trigger
-(`agent_credentials_held_by_an_agent`, 20261018033724) asks that the agent is
+(`agent_credentials_held_by_an_agent`, 20261020053037) asks that the agent is
 an actor of kind agent and the issuer the person actor of
 `issued_by_person_id`, so no person, the issuer included, holds a credential
 as its agent, and an actor a credential names keeps that kind and person
@@ -987,7 +987,7 @@ an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
 standing approval (below) lets it through as `approved`. The application may
 select and insert all four, and update an activation's setting, pin, switch and
 revision by column grant; a before-update trigger
-(`activations_change_one_step`, 20261018033724) refuses any revision but the
+(`activations_change_one_step`, 20261020053037) refuses any revision but the
 next and stamps `changed_at` itself with the clock read once the row is
 locked. Nothing deletes a row. Tenancy-keyed with the
 restrictive policy. The records are `packages/core-records/src/automations/`.

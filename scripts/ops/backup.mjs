@@ -116,7 +116,7 @@ export async function runBackup({
 
 /**
  * Deletes second-factor codes (migration 20261002105957) and hook message claims
- * (20261018033724) past their horizon and answers the step's outcome: both counts,
+ * (20261020053037) past their horizon and answers the step's outcome: both counts,
  * `failed` (with `config` when its login would leave by another pooler) or
  * `not set`. Never throws, and keeps no error text.
  */

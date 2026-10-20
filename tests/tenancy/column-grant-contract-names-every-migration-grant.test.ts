@@ -33,7 +33,7 @@ describe('the column-grant contract, against the migrations', () => {
     const planted = [
       ...migrations,
       {
-        version: '20261018033724_planted',
+        version: '20261020053037_planted',
         statements: [
           'grant select (planted_note), insert (planted_note) on ops.planted_records to ops_astro_app',
         ],

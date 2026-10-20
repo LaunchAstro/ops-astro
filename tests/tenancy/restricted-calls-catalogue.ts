@@ -176,9 +176,9 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
-  // 20261018033724: a Send Email hook message is claimed and read by its digest alone.
+  // 20261020053037: a Send Email hook message is claimed and read by its digest alone.
   ...['INSERT', 'SELECT'].map((act) => ({
-    from: '20261018033724',
+    from: '20261020053037',
     line: `ops_astro_app ${act} ops.auth_hook_messages.message_digest`,
   })),
   ...PART_GRANTS,
