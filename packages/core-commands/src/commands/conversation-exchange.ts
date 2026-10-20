@@ -18,7 +18,10 @@
 //    AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
-//    is written or sent (AW-03 egress off). It asks for the conversation's
+//    is written or sent (AW-03 egress off), save the owner's ChatGPT plan for
+//    his own typed message (#2175, P4): the request names who wrote each turn
+//    sent, the page and the earlier exchanges' tasks, and the broker judges
+//    them again under its locks. It asks for the conversation's
 //    model (CS-7.30), the default when none is chosen; a chosen model no
 //    longer offered it (`offeredModels`) is refused first, nothing sent. Where
 //    the caller takes pieces, the answer's display text goes to it as the
@@ -199,7 +202,7 @@ async function answerOnce(
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
-  if (!result.ok) return await unanswered(result, reread);
+  if (!result.ok) return await unanswered(result, reread, operation);
   if (paid !== undefined) return paid.replied(question.context.cites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');
