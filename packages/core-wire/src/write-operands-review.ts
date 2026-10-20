@@ -24,4 +24,11 @@ export const REVIEW_OPERANDS = {
     body: 'any',
     audience: 'any',
   },
+  // #2018: a closed review of the capture pool, recorded by the operator (`pool-review-write.ts`).
+  'operations.record_capture_pool_review': {
+    review: 'any',
+    poolVersion: 'any',
+    evidence: 'any',
+    company: 'any',
+  },
 } as const;

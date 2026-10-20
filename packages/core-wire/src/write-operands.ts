@@ -158,12 +158,6 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   },
   'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
-  'operations.record_capture_pool_review': {
-    review: 'any',
-    poolVersion: 'any',
-    evidence: 'any',
-    company: 'any',
-  },
   'client.create': { name: 'any' },
   // Type and outcome are checked by value in the command; `recordId` is `any` so a missing one is refused by name.
   'record.create': { type: 'any', fields: 'map' },

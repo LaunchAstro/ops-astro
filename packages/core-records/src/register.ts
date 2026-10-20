@@ -455,13 +455,6 @@ const ROWS_HEAD = [
     meaning: 'This gate item is already done; its evidence stays as first recorded',
     source: 'S0-5 ORCH38',
   },
-  // C35 (#2018): the capture pool's reviews.
-  {
-    code: 'POOL_REVIEW_ALREADY_RECORDED',
-    status: 409,
-    meaning: 'This capture pool review is already recorded; its evidence stays as first recorded',
-    source: 'C35 D17-14',
-  },
   {
     code: 'INSTALLATION_NOT_READY',
     status: 409,
