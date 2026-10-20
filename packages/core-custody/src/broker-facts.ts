@@ -217,9 +217,8 @@ export async function lockCall(
     [tx.businessId, callId],
   );
   if (call === undefined) throw new Error(`model call ${callId}: no row to settle`);
-  const [lease] = await tx.query<Omit<LeaseRow, 'run_id' | 'reservation_id'>>(
-    `select delegation_id, holder_actor_id, fence::text as fence,
-            (state = 'live' and expires_at > clock_timestamp()) as live
+  const [lease] = await tx.query<Omit<LeaseRow, 'run_id' | 'reservation_id' | 'live'>>(
+    `select delegation_id, holder_actor_id, fence::text as fence
        from public.leases where business_id = $1 and id = $2 for update`,
     [tx.businessId, call.lease_id],
   );
@@ -240,7 +239,14 @@ export async function lockCall(
   ) {
     return 'LEASE_NOT_OWNED';
   }
-  return lease.live ? 'stands' : 'LEASE_EXPIRED';
+  // Judged after the reservation's wait, on the database clock: a lease that
+  // expired while settlement waited releases no text (S1940-2).
+  const [live] = await tx.query<{ readonly live: boolean }>(
+    `select state = 'live' and expires_at > clock_timestamp() as live
+       from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, call.lease_id],
+  );
+  return live?.live === true ? 'stands' : 'LEASE_EXPIRED';
 }
 
 /** What the run's calls already hold or spent out of its reservation. */
