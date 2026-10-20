@@ -10,7 +10,7 @@
 // exclusion never held, and refused under the launch's.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, installSpine } from '../commands/fixture.ts';
@@ -18,6 +18,7 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { SYNTHETIC_STEP } from '../../apps/worker/worker.ts';
 import { applied, ownerLaunchWorld, type OwnerLaunchWorld } from './owner-launch-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -74,6 +75,53 @@ const refusalOf = (name: string): { readonly status: number; readonly code: stri
         ? { status: 401, code: 'DELEGATION_NOT_LIVE' }
         : { status: 403, code: 'DELEGATION_EXCLUDES_OPERATION' };
 
+/** Under the pickup's credential: the reads, its lease's own commands and the correction (`PICKUP_RUN_COMMANDS`). */
+const PICKUP_ADMITTED: ReadonlySet<string> = new Set([
+  ...ADMITTED,
+  'task.dispatch',
+  'task.heartbeat',
+  'task.observe',
+  'task.handback',
+  'run.end',
+  'live_correction.request',
+]);
+
+/** Every registry command outside `admitted`, sent under `credential`, whose answer is not its refusal. */
+async function outsideOf(
+  w: OwnerLaunchWorld,
+  credential: string,
+  taskId: string,
+  admitted: ReadonlySet<string>,
+): Promise<readonly (readonly [string, { status: number; code: unknown }])[]> {
+  const expectedRevision = await w.revisionOf(taskId);
+  const answers = new Map<string, { status: number; code: unknown }>();
+  for (const declaration of COMMAND_SURFACE) {
+    if (admitted.has(declaration.name)) continue;
+    // Sequential: one agent actor and one register.
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await w.asAgent(
+      declaration.name,
+      declaration.name === 'live_correction.request'
+        ? correction(taskId)
+        : declaration.name === 'task.take_launch' || declaration.name === 'run.child_handback'
+          ? { operationId: randomUUID(), ...OPERANDS[declaration.name] }
+          : {
+              operationId: randomUUID(),
+              recordId: taskId,
+              expectedRevision,
+              ...OPERANDS[declaration.name],
+            },
+      credential,
+    );
+    answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });
+  }
+  expect(answers.size).toBe(COMMAND_SURFACE.length - admitted.size);
+  return [...answers].filter(
+    ([name, answer]) =>
+      answer.status !== refusalOf(name).status || answer.code !== refusalOf(name).code,
+  );
+}
+
 const codeOf = (result: CommandResult): string => ('code' in result ? result.code : 'applied');
 
 // eslint-disable-next-line max-lines-per-function -- one served API, one business and its neighbour
@@ -86,6 +134,15 @@ describe.skipIf(serverUrl === undefined)('a taken launch’s credential', () => 
 
   afterAll(async () => {
     await w?.fixture.drop();
+  });
+
+  // One live delegation per agent and purpose: settle each case's pickup.
+  afterEach(async () => {
+    await w.fixture.db.admin.execute(
+      `update public.delegations set settled_at = clock_timestamp()
+        where business_id = $1 and purpose = $2 and settled_at is null`,
+      [w.fixture.business, SYNTHETIC_STEP.kind],
+    );
   });
 
   it('reads its own delegation, which names its task and nothing wider', async () => {
@@ -104,36 +161,27 @@ describe.skipIf(serverUrl === undefined)('a taken launch’s credential', () => 
   it('refuses every other operation under it, and writes nothing', async () => {
     const taskId = await w.ownersPlan(`Refuse the rest ${randomUUID()}`);
     const credential = await w.takenLaunch(taskId);
-    const expectedRevision = await w.revisionOf(taskId);
     const before = await w.footprint();
-    const answers = new Map<string, { status: number; code: unknown }>();
-    for (const declaration of COMMAND_SURFACE) {
-      if (ADMITTED.has(declaration.name)) continue;
-      // Sequential: one agent actor and one register.
-      // eslint-disable-next-line no-await-in-loop
-      const answer = await w.asAgent(
-        declaration.name,
-        declaration.name === 'live_correction.request'
-          ? correction(taskId)
-          : declaration.name === 'task.take_launch' || declaration.name === 'run.child_handback'
-            ? { operationId: randomUUID(), ...OPERANDS[declaration.name] }
-            : {
-                operationId: randomUUID(),
-                recordId: taskId,
-                expectedRevision,
-                ...OPERANDS[declaration.name],
-              },
-        credential,
-      );
-      answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });
-    }
-    const unlike = [...answers].filter(
-      ([name, answer]) =>
-        answer.status !== refusalOf(name).status || answer.code !== refusalOf(name).code,
-    );
 
-    expect(unlike).toStrictEqual([]);
-    expect(answers.size).toBe(COMMAND_SURFACE.length - ADMITTED.size);
+    expect(await outsideOf(w, credential, taskId, ADMITTED)).toStrictEqual([]);
+    expect(await w.footprint()).toStrictEqual(before);
+  });
+
+  it('holds its pickup’s credential to the run and the correction, refusing the rest and writing nothing', async () => {
+    const taskId = await w.ownersPlan(`Pickup refuses the rest ${randomUUID()}`);
+    const credential = await w.takenLaunch(taskId);
+    const picked = applied(
+      await w.asAgent(
+        'task.pickup',
+        { operationId: randomUUID(), reservationId: await w.reservationOn(taskId) },
+        credential,
+      ),
+    );
+    const before = await w.footprint();
+
+    expect(await outsideOf(w, String(picked['credential']), taskId, PICKUP_ADMITTED)).toStrictEqual(
+      [],
+    );
     expect(await w.footprint()).toStrictEqual(before);
   });
 
