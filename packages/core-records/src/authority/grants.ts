@@ -29,14 +29,20 @@ export interface Subject {
    * for an agent credential's call (API-2); absent, every key it holds.
    */
   readonly within?: readonly string[];
-  /**
-   * An acting identity whose grants count only while it is active, judged in
-   * the statement that reads them (#1499): a delegation's minting identity
-   * (`delegatingSubjects`). A dormant identity grants nothing, as
-   * `heldPermissions` shows it.
-   */
-  readonly whileActive?: true;
+  /** Never set on a `Subject`: a marked one is a `DelegatingSubject`. */
+  readonly whileActive?: never;
 }
+
+/**
+ * A subject a delegation draws on (`delegatingSubjects`). One marked
+ * `whileActive` is an acting identity whose grants count only while it is
+ * active, judged in the statement that reads them (#1499): a Launch's minting
+ * identity. A dormant identity grants nothing, as `heldPermissions` shows it.
+ * Only `effectiveGrants` and `grantFingerprint` judge the mark, so only they,
+ * and what asks through them, take it (#1760); every other reach read takes a
+ * plain `Subject` and is never asked with a minting identity.
+ */
+export type DelegatingSubject = Omit<Subject, 'whileActive'> & { readonly whileActive?: true };
 
 /** `id` is null exactly at business scope, which is the whole tenant. */
 export interface Scope {
@@ -97,10 +103,10 @@ export function subjectsOf(session: Session): readonly Subject[] {
 export { EFFECTIVE };
 
 /** The subjects that may be asked about this key: every one not held within other keys. */
-export function askedFor(
-  subjects: readonly Subject[],
+export function askedFor<S extends DelegatingSubject>(
+  subjects: readonly S[],
   request: { readonly collection: string; readonly action: string },
-): readonly Subject[] {
+): readonly S[] {
   const key = `${request.collection}:${request.action}`;
   return subjects.filter((subject) => subject.within?.includes(key) ?? true);
 }
@@ -108,7 +114,7 @@ export function askedFor(
 /** Every grant that authorises this request right now. Empty is a refusal, not an answer. */
 export async function effectiveGrants(
   tx: TenantQuery,
-  every: readonly Subject[],
+  every: readonly DelegatingSubject[],
   request: ScopeRequest,
 ): Promise<readonly EffectiveGrant[]> {
   const subjects = askedFor(every, request);
@@ -141,12 +147,13 @@ export async function effectiveGrants(
 /**
  * Every grant the subjects hold right now, as one opaque value. It changes
  * whenever one of them is issued, revoked or expires, or loses the parent it
- * was delegated under, so a cache keyed by it never outlives the authority it
- * was worked out under (C4 rollup scope).
+ * was delegated under, or a subject marked `whileActive` goes dormant, so a
+ * cache keyed by it never outlives the authority it was worked out under (C4
+ * rollup scope, #1760).
  */
 export async function grantFingerprint(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  subjects: readonly DelegatingSubject[],
 ): Promise<string> {
   // One row per ticked key for a subject held within keys (API-2), so only
   // those keys' grants count; a key of null stands for every key.
@@ -160,8 +167,17 @@ export async function grantFingerprint(
        from effective e
       where exists (select 1 from unnest($1::text[], $2::uuid[], $3::text[]) as s (kind, id, key)
                      where s.kind = e.subject_kind and s.id = e.subject_id
-                       and (s.key is null or s.key = e.collection || ':' || e.action))`,
-    [asked.map((s) => s.kind), asked.map((s) => s.id), asked.map((s) => s.key)],
+                       and (s.key is null or s.key = e.collection || ':' || e.action))
+        and (e.subject_kind <> 'actor' or not (e.subject_id = any($4::uuid[]))
+             or exists (select 1 from public.actors a
+                         where a.business_id = e.business_id and a.id = e.subject_id
+                           and a.active))`,
+    [
+      asked.map((s) => s.kind),
+      asked.map((s) => s.id),
+      asked.map((s) => s.key),
+      subjects.filter((subject) => subject.whileActive === true).map((subject) => subject.id),
+    ],
   );
   if (row === undefined) throw new Error('grant fingerprint answered no row');
   return row.fingerprint;
@@ -197,7 +213,7 @@ export async function grantRowsFingerprint(
  */
 export async function checkAuthority(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  subjects: readonly DelegatingSubject[],
   request: ScopeRequest,
 ): Promise<Decision<readonly EffectiveGrant[]>> {
   const grants = await effectiveGrants(tx, subjects, request);

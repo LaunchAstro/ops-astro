@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a cache keyed by the grant fingerprint moves when a Launch's launcher identity goes dormant, and then counts only the person's own grants (#1760)"
+}

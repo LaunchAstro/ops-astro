@@ -19,7 +19,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { checkAuthority } from '../../core-records/src/index.ts';
-import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
+import type { DelegatingSubject, TenantQuery } from '../../core-records/src/index.ts';
 import { readBusinessCapId } from './runtime-config.ts';
 import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
 import { releasedOnClosing } from './budget-ledger.ts';
@@ -51,7 +51,7 @@ export interface ProposeRequest {
   readonly proposedByActorId: string;
   /** The Launch delegation an agent proposes under (`ProposalWrite`); else absent. */
   readonly launchDelegationId?: string;
-  readonly subjects: readonly Subject[];
+  readonly subjects: readonly DelegatingSubject[];
   readonly purpose: string;
   /** The finite ceiling this proposal asks to be allowed to spend, in minor units. */
   readonly maximumMinor: number;
