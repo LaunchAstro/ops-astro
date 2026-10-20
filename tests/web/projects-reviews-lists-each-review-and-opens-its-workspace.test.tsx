@@ -20,6 +20,7 @@ const REVIEW = {
   pageUrl: 'https://alpha.example/about',
   path: 'src/pages/about.astro',
   revisionCount: 2,
+  latest: 'undecided',
   updatedAt: '2026-10-20T06:00:00.000Z',
 };
 
@@ -38,6 +39,7 @@ it('Projects > Reviews lists each review and links it to its workspace', async (
   const link = page.view.find(`a[href="/projects/reviews/${REVIEW.reviewId}"]`);
   expect(link?.textContent).toContain('https://alpha.example/about');
   expect(page.view.text()).toContain('Revision 2');
+  expect(page.view.text()).toContain('Waiting for a decision');
 });
 
 it('an empty list says no review is open, and a refusal shows the refusal', async () => {

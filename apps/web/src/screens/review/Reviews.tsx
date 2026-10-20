@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Projects > Reviews (MP-8-1): the business's reviews the reader's grant covers, read through
-// `review.list`, newest change first, each linked to its workspace at `/projects/reviews/<id>`.
+// `review.list`, newest change first, each linked to its workspace at `/projects/reviews/<id>`
+// with its revision count and whether the latest revision is approved.
 
 import type { ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Chip, Empty } from '@launchastro/ui';
 import type { ReviewListResult } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
@@ -56,6 +57,11 @@ export function ReviewsScreen(props: {
                 <p className="muted">
                   {review.path === null ? '' : `${review.path} · `}Revision {review.revisionCount}
                 </p>
+                {review.latest === null ? null : (
+                  <Chip tone={review.latest === 'approved' ? 'ok' : 'idle'}>
+                    {review.latest === 'approved' ? 'Approved' : 'Waiting for a decision'}
+                  </Chip>
+                )}
               </li>
             ))}
           </ul>
