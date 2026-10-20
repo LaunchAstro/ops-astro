@@ -34,8 +34,12 @@ function framed(text, index, address) {
   const quote = /^['`]/u.exec(address)?.[0];
   // The next such quote closes it, unless a letter or digit follows that one:
   // then it opens more code, or sits inside a word (`don't`), and frames nothing.
+  // Nor does a straight quote right after an `s`, a plural possessive
+  // (`operators'`), so the address stays whole.
   const close = quote === undefined ? -1 : after.indexOf(quote);
-  if (close >= 0 && !/^[\p{L}\p{N}]/u.test(after.slice(close + 1))) return address.slice(1);
+  const possessive = quote === "'" && close > 0 && /s$/iu.test(after.slice(0, close));
+  if (close >= 0 && !possessive && !/^[\p{L}\p{N}]/u.test(after.slice(close + 1)))
+    return address.slice(1);
   const emphasis = /^(?:\*\*?|__?)/u.exec(address)?.[0];
   if (emphasis !== undefined && after.startsWith(emphasis)) return address.slice(emphasis.length);
   if (address.startsWith('//') && text[index - 1] === ':') return address.slice(2);
