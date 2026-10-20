@@ -2,7 +2,9 @@
 //
 // Sol's proofs on #2180 (COV2180), made two-connection: a pickup child reads
 // only its own purpose, and a heartbeat already waiting on its lease when the
-// owner's revoke of the launch commits is refused, renewing nothing (#2195).
+// owner's revoke of the launch commits is refused, renewing nothing. Then the
+// other order (#2195): a heartbeat or dispatch sent while a revoke of the
+// launch holds its row waits for it and is refused.
 
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -186,5 +188,108 @@ describe.skipIf(serverUrl === undefined)('a pickup child under a taken launch', 
       [w.fixture.business, picked['leaseId']],
     );
     expect(lease!.expires_at.toISOString()).toBe(picked['expiresAt']);
+  }, 60_000);
+
+  // The other order: a revoke of the launch that holds its row first. The
+  // call takes the launch's lock with its own, so it waits for the revoke to
+  // commit and reads it, rather than renewing or dispatching on the launch as
+  // it stood before. Without that lock it answers at once.
+  // eslint-disable-next-line max-lines-per-function -- one race, set up and judged in order
+  async function revokedWhileQueued(command: 'task.heartbeat' | 'task.dispatch') {
+    const { taskId, picked, credential } = await pickup();
+    const [launch] = await w.fixture.db.admin.execute<{ delegation_id: string }>(
+      'select delegation_id from public.task_launches where business_id = $1 and task_id = $2',
+      [w.fixture.business, taskId],
+    );
+    const pool = connect(w.fixture.db.appUrl, { max: 2 });
+    const side = connect(w.fixture.db.appUrl);
+    const api = w.fixture.compose(undefined, undefined, pool);
+    const agentToken = await tokenFor(w.fixture.agent.subject);
+    let release!: () => void;
+    let ready!: () => void;
+    const held = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const free = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const revoke = side.withBusiness(w.fixture.business, async (tx) => {
+      await tx.query(
+        'select 1 from public.delegations where business_id = $1 and id = $2 for update',
+        [w.fixture.business, launch!.delegation_id],
+      );
+      ready();
+      await free;
+      await tx.query(
+        `update public.delegations set revoked_at = now(), revocation_cause = 'delegation_revoked'
+          where business_id = $1 and id = $2`,
+        [w.fixture.business, launch!.delegation_id],
+      );
+    });
+    let early: { status: number; code: unknown } | undefined;
+    let call: Promise<{ status: number; body: Record<string, unknown> }> | undefined;
+    try {
+      await held;
+      call = post(
+        api,
+        `/api/a/b/${BUSINESS_KEY}${pathOf(command)}`,
+        command === 'task.heartbeat'
+          ? {
+              operationId: randomUUID(),
+              leaseId: picked['leaseId'],
+              fence: picked['fence'],
+              leaseSeconds: 3600,
+            }
+          : { operationId: randomUUID(), leaseId: picked['leaseId'], fence: picked['fence'] },
+        { ...authorised(agentToken), 'x-agent-delegation': credential },
+      );
+      void call.then((answer) => {
+        early = { status: answer.status, code: answer.body['code'] };
+        return answer;
+      });
+      await expect
+        .poll(
+          async () => {
+            if (early !== undefined)
+              throw new Error(`${command} did not wait on the launch: ${JSON.stringify(early)}`);
+            const rows = await w.fixture.db.admin.execute(
+              `select pid from pg_stat_activity where datname = current_database()
+                 and state = 'active' and wait_event_type = 'Lock'
+                 and query like '%public.delegations%' and query like '%for update%'`,
+            );
+            return rows.length;
+          },
+          { timeout: 10_000 },
+        )
+        .toBeGreaterThan(0);
+    } finally {
+      release();
+      await revoke;
+    }
+    const answer = await call!;
+    await pool.close();
+    await side.close();
+    return { picked, answer: { status: answer.status, code: answer.body['code'] } };
+  }
+
+  it('makes a heartbeat wait on a revoke of the launch already holding it, then refuses it', async () => {
+    const { picked, answer } = await revokedWhileQueued('task.heartbeat');
+    expect(answer).toEqual({ status: 403, code: 'DELEGATION_REVOKED' });
+    const [lease] = await w.fixture.db.admin.execute<{ expires_at: Date }>(
+      'select expires_at from public.leases where business_id = $1 and id = $2',
+      [w.fixture.business, picked['leaseId']],
+    );
+    expect(lease!.expires_at.toISOString()).toBe(picked['expiresAt']);
+  }, 60_000);
+
+  it('makes a dispatch wait on a revoke of the launch already holding it, then marks nothing', async () => {
+    const { picked, answer } = await revokedWhileQueued('task.dispatch');
+    expect(answer).toEqual({ status: 409, code: 'AUTHORITY_LOST' });
+    const [marked] = await w.fixture.db.admin.execute<{ marked: number }>(
+      `select count(*)::int as marked from public.attempts
+        where business_id = $1 and lease_id = $2 and dispatch_marker`,
+      [w.fixture.business, picked['leaseId']],
+    );
+    expect(marked!.marked).toBe(0);
   }, 60_000);
 });
