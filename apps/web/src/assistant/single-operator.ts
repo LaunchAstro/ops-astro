@@ -6,8 +6,8 @@
 // only while a card offers a decision: a drawer with nothing to decide sends
 // nothing more. A reader refused the read, an outage or an answer without the
 // row is told nothing about it, and an answer for a business or grant the
-// sidebar has left is never drawn. The line is information only: whether a
-// Launch is taken stays the server's.
+// sidebar has left is never drawn; a later refusal withdraws an earlier answer.
+// The line is information only: whether a Launch is taken stays the server's.
 
 import { useEffect, useState } from 'react';
 import type { SettingsReadResult } from '../../../../packages/core-wire/src/index.ts';
@@ -20,7 +20,9 @@ export function useSingleOperatorMode(
   wanted: boolean,
 ): boolean | null {
   const owner = JSON.stringify([client.businessKey, grantKey ?? null]);
-  const [held, setHeld] = useState<{ readonly owner: string; readonly on: boolean } | null>(null);
+  const [held, setHeld] = useState<{ readonly owner: string; readonly on: boolean | null } | null>(
+    null,
+  );
   useEffect(() => {
     if (!wanted) return;
     let current = true;
@@ -30,7 +32,8 @@ export function useSingleOperatorMode(
       const row = Array.isArray(rows)
         ? rows.find((each) => each.key === 'single_operator_mode')
         : undefined;
-      if (current && typeof row?.value === 'boolean') setHeld({ owner, on: row.value });
+      // A refusal, an outage or no row withdraws what an earlier answer showed.
+      if (current) setHeld({ owner, on: typeof row?.value === 'boolean' ? row.value : null });
     };
     void reading();
     return () => {

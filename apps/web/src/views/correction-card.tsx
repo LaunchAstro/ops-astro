@@ -23,7 +23,7 @@ import { useCorrections, type Corrections } from '../assistant/use-corrections.t
 import { useLaunchClock } from '../assistant/use-launch-clock.ts';
 import { useSingleOperatorMode } from '../assistant/single-operator.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { Decisions, Notes } from './correction-decisions.tsx';
+import { Decisions, Notes, reviewHeld } from './correction-decisions.tsx';
 
 const capture = (label: string, taken: CorrectionReceiptView['afterCapture']): ReactElement =>
   taken === null ? (
@@ -115,7 +115,7 @@ export function CorrectionCard(props: {
         <Decisions
           busy={busy}
           launchable={launchable}
-          held={correction.launchHeld}
+          held={reviewHeld(correction)}
           singleOperator={props.singleOperator ?? null}
           onDecide={onDecide}
         />

@@ -729,9 +729,11 @@ under `settings:manage` (`settings/single-operator-row.tsx`); its
 sentence on the refusal line, never the code. The drawer's correction cards
 say the mode beside Launch, read from the same `settings.read` row only while
 a card offers a decision, and a Launch the server refuses with
-`ASTRA_REVIEW_MISSING` stays drawn, disabled, with that reason until the card
-reads its correction again (`views/correction-decisions.tsx`). Neither changes
-who may Launch: the server decides.
+`ASTRA_REVIEW_MISSING` stays drawn, disabled, with that reason while the card
+shows that version; rereads and failed reads keep it, and a new version or a
+fresh drawer drops it (`views/correction-decisions.tsx`). A later refusal of the
+settings read withdraws the mode it had shown. Neither changes who may Launch:
+the server decides.
 
 The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
 the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms
