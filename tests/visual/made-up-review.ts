@@ -109,6 +109,67 @@ export const REVIEW: ReviewReadResult = {
   },
 };
 
+const FRAGMENT = 'http://www.w3.org/TR/media-frags/';
+const spot = (value: string) => ({
+  type: 'FragmentSelector' as const,
+  conformsTo: FRAGMENT,
+  value,
+});
+const quote = (exact: string) => ({ type: 'TextQuoteSelector' as const, exact });
+
+/** Three pins made on revision 1, before the page changed (#2140). */
+const EARLIER = [
+  {
+    commentId: '99999999-9999-4999-8999-000000000011',
+    audience: 'internal' as const,
+    body: 'Warmer opening line, please',
+    anchor: { source: FIRST, width: 1480 as const, selector: [spot('xywh=120,200,700,16')] },
+  },
+  {
+    commentId: '99999999-9999-4999-8999-000000000012',
+    audience: 'client' as const,
+    body: 'Is fixes bikes still the right promise?',
+    anchor: {
+      source: FIRST,
+      width: 1480 as const,
+      selector: [spot('xywh=120,96,520,64'), quote('fixes bikes')],
+    },
+  },
+  {
+    commentId: '99999999-9999-4999-8999-000000000013',
+    audience: 'internal' as const,
+    body: 'Keep Townsville in this line',
+    anchor: {
+      source: FIRST,
+      width: 390 as const,
+      selector: [spot('xywh=24,200,300,40'), quote('Townsville')],
+    },
+  },
+];
+
+const carriedFrom = (at: number, anchor: (typeof EARLIER)[number]['anchor'] | null) => {
+  const { commentId, audience, body } = EARLIER[at] ?? EARLIER[0]!;
+  return { commentId, audience, body, fromRevisionId: FIRST, lost: anchor === null, anchor };
+};
+
+/**
+ * The review with revision 1's pins carried onto revision 2 (#2140), lost first as the read
+ * sends them: the promise's quote is gone from the new text, so it is lost; the opening line
+ * is found again at its spot; Townsville is found by its text alone, with no coordinate.
+ */
+export const CARRIED_REVIEW: ReviewReadResult = {
+  ok: true,
+  review: {
+    ...REVIEW.review,
+    pins: [...EARLIER, ...REVIEW.review.pins],
+    carried: [
+      carriedFrom(1, null),
+      carriedFrom(0, { source: SECOND, width: 1480, selector: [spot('xywh=120,200,700,16')] }),
+      carriedFrom(2, { source: SECOND, width: 390, selector: [quote('Townsville')] }),
+    ],
+  },
+};
+
 /** The same review at its first revision: nothing before it and nothing changed. */
 export const FIRST_REVIEW: ReviewReadResult = {
   ok: true,
@@ -200,4 +261,4 @@ export function pictureOf(id: unknown): ReviewPictureResult {
 export const REVIEW_READS: {
   readonly 'review.read': ReviewReadResult;
   readonly 'review.picture': ReviewPictureResult;
-} = { 'review.read': REVIEW, 'review.picture': picture(2, 1480) };
+} = { 'review.read': CARRIED_REVIEW, 'review.picture': picture(2, 1480) };
