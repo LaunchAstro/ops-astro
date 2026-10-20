@@ -184,6 +184,9 @@ export function scramVerifier(
   return `SCRAM-SHA-256$${String(iterations)}:${salt.toString('base64')}$${stored}:${server}`;
 }
 
+/** How long a transaction on a Vercel login may sit idle before the server ends its session. */
+export const IDLE_IN_TRANSACTION = '60s';
+
 /**
  * The statements for one step, each login made if absent and its password set
  * every run. Role names are this file's constants; the only other text is a
@@ -210,6 +213,13 @@ export function statementsFor(step: Step, addresses: readonly LoginAddress[]): s
       // Since Postgres 16 the membership's own option decides inheriting; set every run.
       `grant ${login.group} to ${login.role} with inherit ${String(login.inherit)}`,
     );
+    if (login.port === 6543) {
+      // A Vercel instance may be frozen mid-transaction once it answers, and its
+      // session then holds its row locks until the server ends it (#2240).
+      statements.push(
+        `alter role ${login.role} set idle_in_transaction_session_timeout = '${IDLE_IN_TRANSACTION}'`,
+      );
+    }
   }
   if (step === 'before-reset') {
     // As db-up.sh: a temporary table outlives the transaction on a pooled backend.
