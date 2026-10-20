@@ -46,7 +46,8 @@ function theOtherClientIsRefused(): void {
       expect(scoped.length).toBeGreaterThan(40);
       for (const page of scoped) {
         const mine = await open(filled(page.path, own), { businessKey: business });
-        expect(mine.view.find('[data-outcome="placeholder"]'), page.path).not.toBeNull();
+        // Its own page: the placeholder, or the screen once one is built.
+        expect(mine.view.find(`[data-page="${page.id}"]`), page.path).not.toBeNull();
         await mine.view.unmount();
 
         const theirs = await open(filled(page.path, other), { businessKey: business });
