@@ -7,7 +7,9 @@
 -- failed. Nothing can sign a read of an asset that has not passed. An MP4's
 -- probe (codec, frame rate as a rational, start timecode, duration in its
 -- timescale) is written once at completion; the scan's engine and time land
--- with its answer.
+-- with its answer. A row not completed carries neither a refusal nor a scan
+-- state. The probe's numbers are an MP4's unsigned 32-bit fields (its
+-- duration a safe integer), so they are bigint.
 
 alter table public.review_media_assets
   add column refusal         text,
@@ -15,17 +17,17 @@ alter table public.review_media_assets
   add column scan_engine     text,
   add column scanned_at      timestamptz,
   add column probe_codec     text,
-  add column probe_fps_num   integer,
-  add column probe_fps_den   integer,
+  add column probe_fps_num   bigint,
+  add column probe_fps_den   bigint,
   add column probe_timecode  text,
   add column probe_duration  bigint,
-  add column probe_timescale integer,
+  add column probe_timescale bigint,
   add constraint review_media_assets_refusal_known
     check (refusal in ('TYPE_MISMATCH', 'PROBE_DISAGREES', 'PROBE_UNREADABLE')),
   add constraint review_media_assets_scan_state_known
     check (scan_state in ('quarantined', 'passed', 'failed')),
   add constraint review_media_assets_completed_is_admitted_once
-    check ((state = 'completed') = (num_nonnulls(refusal, scan_state) = 1)),
+    check (num_nonnulls(refusal, scan_state) = case when state = 'completed' then 1 else 0 end),
   add constraint review_media_assets_scan_answer_named
     check (((scan_state in ('passed', 'failed')) is true) = (scan_engine is not null)
        and (scan_engine is null) = (scanned_at is null)),

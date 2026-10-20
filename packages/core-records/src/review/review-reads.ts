@@ -107,11 +107,11 @@ interface MediaRow {
   readonly refusal: ContractRefusal | null;
   readonly scan_state: 'quarantined' | 'passed' | 'failed' | null;
   readonly probe_codec: string | null;
-  readonly probe_fps_num: number;
-  readonly probe_fps_den: number;
+  readonly probe_fps_num: string;
+  readonly probe_fps_den: string;
   readonly probe_timecode: string;
   readonly probe_duration: string;
-  readonly probe_timescale: number;
+  readonly probe_timescale: string;
 }
 
 const WHY_NOT_PLAYABLE = {
@@ -132,18 +132,18 @@ const mediaViewOf = (row: MediaRow): MediaView => ({
       ? null
       : {
           codec: row.probe_codec,
-          fps: { num: row.probe_fps_num, den: row.probe_fps_den },
+          fps: { num: Number(row.probe_fps_num), den: Number(row.probe_fps_den) },
           startTimecode: row.probe_timecode,
           duration: Number(row.probe_duration),
-          timescale: row.probe_timescale,
+          timescale: Number(row.probe_timescale),
         },
 });
 
 /** Each completed asset of a media review, by the revision it is. */
 async function mediaOf(tx: TenantQuery, reviewId: string): Promise<ReadonlyMap<string, MediaView>> {
   const rows = await tx.query<MediaRow>(
-    `select id, revision_id, kind, refusal, scan_state, probe_codec, probe_fps_num, probe_fps_den,
-            probe_timecode, probe_duration::text, probe_timescale
+    `select id, revision_id, kind, refusal, scan_state, probe_codec, probe_fps_num::text,
+            probe_fps_den::text, probe_timecode, probe_duration::text, probe_timescale::text
        from public.review_media_assets
       where business_id = $1 and review_id = $2 and state = 'completed'`,
     [tx.businessId, reviewId],
