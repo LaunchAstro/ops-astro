@@ -102,20 +102,40 @@ async function keptOn(client: OperationsClient, conversationId: string) {
   return isRefusal(answer) || isUnavailable(answer) ? undefined : (answer.value.chosen ?? null);
 }
 
+/** Why a question waits unsent: its tab's model is not known since a switch's answer was lost. */
+export const UNREAD_MODEL =
+  'Not sent: this conversation’s model could not be read back after the switch. Ask again shortly.';
+
+/** Whether a tab's model is known before its next question goes (`useModelChoice`). */
+export type Confirm = (key: string, conversationId: string) => Promise<boolean>;
+
+interface Tab {
+  /** The model the server has, null for the default; undefined while a lost answer is unread. */
+  readonly kept: string | null | undefined;
+  readonly last: number;
+  /** The switch whose answer is unread, marked once the server says it kept it. */
+  readonly unread?: { readonly model: string; readonly since: string[] | null };
+}
+
 /**
- * A tab's choice of model (#2175), shown at once and sent in the tab's turn. Once the server keeps
+ * Each tab's choice of model (#2175), shown at once and sent in the tab's turn. Once the server keeps
  * it, a switch is marked before any question asked since, as those waited for it. Once refused, the
- * tab shows again the model the server still has, unless another was chosen since. A lost answer
- * is read back first (S2194-9), and while that read fails too the tab claims nothing new. A tab with
- * no conversation yet holds the choice for its start.
+ * tab shows again the model the server still has, unless another was chosen since. A lost answer is
+ * read back (S2194-9); while that read fails too, the tab's model is unread, and `confirm` reads it
+ * again before the tab's next question goes, which waits unsent until it is known (S2194-10). A tab
+ * with no conversation yet holds the choice for its start.
  */
-export function useModelChoice(
-  client: OperationsClient,
-  store: Store,
-  written: Written,
-): (key: string, model: string) => void {
-  const [tabs] = useState(() => new Map<string, { kept: string | null; last: number }>());
-  return (key, model) => {
+export function useModelChoice(client: OperationsClient, store: Store) {
+  const [tabs] = useState(() => new Map<string, Tab>());
+  // The server has `server` after the switch to `model`: marked if kept, else shown if latest.
+  const settled = (key: string, server: string | null, to: Tab['unread'], latest: boolean) => {
+    tabs.set(key, { kept: server, last: tabs.get(key)?.last ?? 0 });
+    const { model, since } = to ?? { model: undefined, since: null };
+    if (server === model && since !== null)
+      store.update((current) => markSwitch(current, key, server, since));
+    if (server !== model && latest) store.update((current) => chooseModel(current, key, server));
+  };
+  const choose = (key: string, model: string, written: Written): void => {
     const chat = store.chat(key);
     const since = switching(chat, model) ? askedSoFar(chat) : null;
     const was = tabs.get(key) ?? { kept: chat?.model ?? null, last: 0 };
@@ -129,14 +149,25 @@ export function useModelChoice(
         outcome === 'unknown' && conversationId !== null
           ? await keptOn(client, conversationId)
           : undefined;
-      if (outcome === 'unknown' && read === undefined) return;
       const now = tabs.get(key) ?? was;
-      const server = outcome === 'refused' ? now.kept : outcome === 'unknown' ? read : model;
-      tabs.set(key, { ...now, kept: server ?? null });
-      if (server === model && outcome !== 'held' && since !== null)
-        store.update((current) => markSwitch(current, key, model, since));
-      if (server !== model && now.last === choice)
-        store.update((current) => chooseModel(current, key, server ?? null));
+      const latest = now.last === choice;
+      if (outcome === 'unknown' && read === undefined)
+        tabs.set(key, { ...now, kept: undefined, unread: { model, since } });
+      else if (outcome === 'unknown') settled(key, read ?? null, { model, since }, latest);
+      else if (outcome === 'refused' && now.kept !== undefined)
+        settled(key, now.kept, { model, since: null }, latest);
+      else if (outcome !== 'refused')
+        settled(key, model, { model, since: outcome === 'held' ? null : since }, latest);
     });
   };
+  // Whether tab `key`'s model is known, reading it back first while unread (S2194-10).
+  const confirm: Confirm = async (key, conversationId) => {
+    const tab = tabs.get(key);
+    if (tab === undefined || tab.kept !== undefined) return true;
+    const read = await keptOn(client, conversationId);
+    if (read === undefined) return false;
+    settled(key, read, tab?.unread, true);
+    return true;
+  };
+  return { choose, confirm };
 }
