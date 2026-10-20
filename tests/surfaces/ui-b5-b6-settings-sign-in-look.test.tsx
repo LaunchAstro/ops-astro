@@ -37,6 +37,7 @@ const answered = ((url: string | URL) =>
             { key: 'priority_stages', valueType: 'stage_ids', value: ['trust'], revision: 7 },
             { key: 'conversation_window_days', value: 30, revision: 1 },
             { key: 'retention_window_days', value: 365, revision: 1 },
+            { key: 'single_operator_mode', value: false, revision: 1 },
           ],
         })
       : json({
@@ -113,6 +114,7 @@ describe('B5 settings, as the mockup draws settings rows', () => {
       'priority',
       'conversation',
       'retention',
+      'single-operator',
     ]);
     for (const row of rows.filter(
       (one) => one instanceof HTMLElement && one.dataset['set'] !== 'priority',
