@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a credential issue asks the grants for its ticked keys after its audit chain wait: a grant that runs out during that wait mints nothing"
+}

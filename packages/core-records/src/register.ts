@@ -497,7 +497,8 @@ const ROWS_HEAD = [
   {
     code: 'CREDENTIAL_ACTION_EXCLUDED',
     status: 403,
-    meaning: 'An agent credential never carries decide, share or manage',
+    meaning:
+      'An agent credential never carries decide, share or manage, nor a key no agent may hold (account:write, chat:comment, conversation:read, credential:write, operations:read)',
     source: 'API-2',
   },
   {

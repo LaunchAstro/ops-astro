@@ -285,6 +285,7 @@ const FREE_OPERANDS: readonly string[] = [
   'step',
   'successor',
   'trainsOnIt',
+  'value',
   'whatHappened',
   'where',
 ];
@@ -727,7 +728,9 @@ const ACCESS_LOCKERS =
  * A revocation cannot commit in that wait (the access lock is held), but time
  * passes. A write on authority itself (`ACCESS_LOCKERS`) is judged by its
  * handler under the exclusive access lock, and asked after the act the door
- * would read the act's own change, so only its step-up is asked again.
+ * would read the act's own change, so only its step-up is asked again. An
+ * issue changes no grant, so its own is asked again; its handler asks its
+ * ticked keys again (`lastCheck`).
  */
 export async function askedAtCommit(
   tx: TenantQuery,
@@ -736,7 +739,9 @@ export async function askedAtCommit(
   declaration: CommandDeclaration,
   asked: ScopeRequest | undefined,
 ): Promise<CommandRefusal | undefined> {
-  if (asked !== undefined && !ACCESS_LOCKERS.test(declaration.name)) {
+  const judgedByHandler =
+    ACCESS_LOCKERS.test(declaration.name) && declaration.name !== 'credential.issue';
+  if (asked !== undefined && !judgedByHandler) {
     const still = await askCovered(tx, session, request, declaration, asked);
     if ('refusal' in still) return still.refusal;
   }

@@ -111,8 +111,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // before its session-ending keys, as the ending's own writer does.
   'packages/core-commands/src/commands/agent-standing.ts',
   // C52-A: a change's last ask after its session takes the business's audit
-  // chain key before `sessionEndedSince`, so no ending commits between them.
+  // chain key before `sessionEndedSince`, so no ending commits between them;
+  // availability's own entry point and an issue replay ask it the same way.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  'packages/core-commands/src/commands/availability.ts',
   // Route B's carriage judgement: the subject's and the session's ending keys,
   // shared, held through a carried call's offer and send, as a write's last ask holds them.
   'packages/core-commands/src/commands/carriage-origin.ts',
@@ -121,6 +123,7 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // its grant and page-read re-asks come after every wait.
   'packages/core-commands/src/commands/conversation-context.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
+  'packages/core-commands/src/commands/credential-write.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
   // C80 (#1002 F3-F6): a correction write takes the audit chain's key after

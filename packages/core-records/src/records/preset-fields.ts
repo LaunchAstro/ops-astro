@@ -10,7 +10,8 @@ interface CheckedField {
   readonly label: string;
   readonly valueType: string;
   readonly searchable?: boolean;
-  readonly owningOperations?: readonly string[];
+  /** A list of operation names on a good request; the body is the caller's, so anything here. */
+  readonly owningOperations?: unknown;
 }
 
 const FIELD_KEY = /^[a-z][a-z0-9_]{0,62}$/u;
@@ -21,10 +22,15 @@ const OPERATION_NAME = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
  * promises them (#867): a key outside its shape (`field_defs_key_present`), a
  * blank label (`field_defs_label_present`), a searchable field that is not
  * text, which alone is slotted for search (`field_defs_searchable_is_slotted_text`),
- * and an owning operation that is not an operation name
- * (`field_defs_operation_names_are_operations`).
+ * owning operations that are not a list, and an owning operation that is not
+ * an operation name (`field_defs_operation_names_are_operations`), or names no
+ * write the command catalogue has (`operations`, passed in: records may not
+ * import the wire).
  */
-export function invalidFields(fields: readonly CheckedField[]): readonly string[] {
+export function invalidFields(
+  fields: readonly CheckedField[],
+  operations: ReadonlySet<string>,
+): readonly string[] {
   return fields
     .filter(
       (field) =>
@@ -32,7 +38,17 @@ export function invalidFields(fields: readonly CheckedField[]): readonly string[
         typeof field.label !== 'string' ||
         field.label.trim().length === 0 ||
         (field.searchable === true && field.valueType !== 'text') ||
-        (field.owningOperations ?? []).some((name) => !OPERATION_NAME.test(name)),
+        !ownedByCatalogueWrites(field.owningOperations ?? [], operations),
     )
     .map((field) => field.key);
+}
+
+function ownedByCatalogueWrites(owning: unknown, operations: ReadonlySet<string>): boolean {
+  return (
+    Array.isArray(owning) &&
+    owning.every(
+      (name: unknown) =>
+        typeof name === 'string' && OPERATION_NAME.test(name) && operations.has(name),
+    )
+  );
 }

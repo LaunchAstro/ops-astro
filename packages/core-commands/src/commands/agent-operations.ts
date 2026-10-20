@@ -49,6 +49,7 @@ import { setAdHoc } from './tasks-adhoc.ts';
 import { setCategory } from './tasks-category.ts';
 import { assignTaskAsAgent, updateTaskAsAgent } from './tasks-write.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { askedAgain, askedLast } from './agent-asked-again.ts';
 import {
   claimedSystemFields,
   expectedRevisionOf,
@@ -284,24 +285,29 @@ export async function capabilitiesOf(
 
 /** The person entry's answer for a task that is not there (`refuseNotFound`), word for word. */
 const NOT_FOUND = (): Refused => refused(refuseNotFound());
+
 async function serveComment(
   tx: TenantQuery,
-  { session, request, declaration }: AgentCall,
+  call: AgentCall,
   _operands: NoOperands,
   delegation: Delegation,
   taskId: string | undefined,
 ) {
-  // The agent's own picked-up task: `authorise` has already held the
-  // delegation's purpose scope to this record and its `comment` action to
-  // the delegating person's live grant. The task is locked by the person
-  // path's own `lockTask`, the same statement and filter, and the
+  // The agent's own picked-up task, held by `authorise` to the delegation's
+  // purpose scope and its `comment` action to the person's live grant. The
+  // task is locked by the person path's own `lockTask`, and authority asked
+  // again under it (#1009): a grant revoked during that wait refuses. The
   // comment commits with its own identity. `internal` only: a note to the
   // team, never text a client reads without a person having written it.
   if (taskId === undefined) return NOT_FOUND();
+  const { session, request, declaration } = call;
   const spine = await readTaskSpine(tx);
   const task = await lockTask(tx, spine.taskTypeId, taskId);
   if (task === undefined) return NOT_FOUND();
-  return await writeTaskComment(
+  // Holding the delegation chain here also keeps it before the audit chain key.
+  const narrowed = await askedAgain(tx, call, delegation, task);
+  if (narrowed !== undefined) return refused(narrowed);
+  const written = await writeTaskComment(
     tx,
     {
       commentTypeId: spine.taskCommentTypeId,
@@ -320,6 +326,7 @@ async function serveComment(
     request['parentId'],
     request['mentions'],
   );
+  return askedLast(written, async () => await askedAgain(tx, call, delegation, task));
 }
 
 /**
@@ -398,7 +405,8 @@ const serveCommentChange =
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();
-    return await change(
+    const stillAuthorised = async () => await askedAgain(tx, call, delegation, task);
+    const changed = await change(
       tx,
       {
         commentTypeId: spine.taskCommentTypeId,
@@ -406,47 +414,12 @@ const serveCommentChange =
         target: task,
         actorId: call.session.actorId,
         onBehalfOfPersonId: delegation.delegatePersonId,
-        stillAuthorised: async () => await askedAgain(tx, call, delegation, task),
+        stillAuthorised,
       },
       call.request,
     );
+    return askedLast(changed, stillAuthorised);
   };
-
-/**
- * The agent entry's authority asked again once the task or comment is locked,
- * as `authorise` asked it. The delegation and, for a helper, its parent are
- * held `for share` first, after the task (the global order's delegation
- * class): a `delegation.revoke` writes the row, so one that has not committed
- * waits for the change. The grants are read, not held: `grant.revoke` takes
- * its grant before the task (`LOCK_ORDER`), so holding them here would invert
- * that order. A helper has no lease of its own and revoking it takes no task
- * lock, so nothing else orders that revocation with this change.
- */
-async function askedAgain(
-  tx: TenantQuery,
-  { session, declaration, credential }: AgentCall,
-  delegation: Delegation,
-  task: { readonly id: string },
-): Promise<CommandRefusal | undefined> {
-  const chain = [delegation.id, delegation.parentDelegationId].filter(
-    (id): id is string => id !== null,
-  );
-  await tx.query(
-    `select id from public.delegations
-      where business_id = $1 and id = any($2::uuid[])
-      order by id
-      for share`,
-    [tx.businessId, chain],
-  );
-  const again = await resolveDelegation(tx, session.actorId, credential ?? '');
-  if (!again.ok) return again.refusal;
-  const decision = await checkDelegatedAuthority(tx, again.value, {
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: { kind: 'record', id: task.id },
-  });
-  return decision.ok ? undefined : decision.refusal;
-}
 
 /**
  * A field write an agent makes on its own task: the three marks
@@ -494,7 +467,8 @@ const serveOwnedWrite =
     // The agent writes for its delegating person, so an assignment raises no
     // item to them (INB-1), as their own write would not.
     const session = { personId: delegation.delegatePersonId };
-    return await write(tx, { spine, target, session }, fields);
+    const written = await write(tx, { spine, target, session }, fields);
+    return askedLast(written, async () => await askedAgain(tx, call, delegation, target));
   };
 
 async function serveHeartbeat(

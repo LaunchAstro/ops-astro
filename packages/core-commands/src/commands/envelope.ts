@@ -573,7 +573,10 @@ async function refusedAtCommit(
 ): Promise<CommandRefusal | undefined> {
   if (isRefused(outcome) && outcome.retains !== true) return undefined;
   if (isRefused(outcome) || outcome.endsOwnAccess !== true) {
-    return await standsNow(tx, session, request, declaration, standing, asked);
+    return (
+      (await standsNow(tx, session, request, declaration, standing, asked)) ??
+      (isRefused(outcome) ? undefined : await outcome.lastCheck?.())
+    );
   }
   return standing.presented === undefined ? undefined : await signedOut(tx, session);
 }
@@ -581,6 +584,12 @@ async function refusedAtCommit(
 /**
  * The door's refusal of this caller now, or nothing: the sign-in first, then
  * the credential, then the grant and step-up the door asked.
+ *
+ * The sign-in is asked with its session's ending keys held to commit, after
+ * the business's audit chain key, in the one order an ending takes them
+ * (`ending-keys.ts`): a sign-out either committed before this read and
+ * refuses the write, or waits for the write to commit (#1291). An unaudited
+ * write (a preference) takes the chain key here; an audited one already holds it.
  */
 async function standsNow(
   tx: TenantQuery,
@@ -591,6 +600,9 @@ async function standsNow(
   asked: ScopeRequest | undefined,
 ): Promise<CommandRefusal | undefined> {
   if (presented !== undefined) {
+    await advisoryLock(tx, tx.businessId.toLowerCase());
+    const ended = await signedOut(tx, session);
+    if (ended !== undefined) return ended;
     const signedIn = await standingOf(tx, presented, 'required');
     if ('refused' in signedIn) return signedIn;
   }

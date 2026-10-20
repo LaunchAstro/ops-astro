@@ -85,6 +85,12 @@ export type {
   SpineRow,
 } from './read-row.ts';
 import type { ReadName, ReadRow } from './read-row.ts';
+import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
+
+/** The writes a preset field may name as its owning operations (#142). */
+const PRESET_OWNERS: ReadonlySet<string> = new Set(
+  COMMAND_SURFACE.filter((row) => row.kind === 'write').map((row) => row.name),
+);
 
 /**
  * An array of field maps. That is all a read checks of a preset's fields: the
@@ -621,6 +627,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
           recordTypeKey: operands.recordTypeKey,
           presetKey: operands.presetKey,
           fields: operands.fields,
+          operations: PRESET_OWNERS,
         },
       );
       if (!planned.ok) return planned.refusal;
