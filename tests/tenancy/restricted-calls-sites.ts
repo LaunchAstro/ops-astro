@@ -26,7 +26,19 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C35-X (20261028174900): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
+  // C35 (#2018, 20261020032000): a closed capture pool review, installation-wide, written once
+  // and never changed or removed; its column grants are in `SITE_GRANTS`.
+  ['si', 'ops.capture_pool_reviews'],
 ];
+
+/** Column grants: the application reads a pool review's identity and pool version alone. */
+export const SITE_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  'pool_version',
+  'review',
+].map((column) => ({
+  from: '20261020032000',
+  line: `ops_astro_app SELECT ops.capture_pool_reviews.${column}`,
+}));
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
 export const SITE_EXECUTES: readonly string[] = ['public.party_site_under_correction'];
