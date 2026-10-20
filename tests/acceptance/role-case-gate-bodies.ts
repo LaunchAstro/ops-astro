@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { CAPTURE_POOL_VERSION } from '../../packages/core-connectors/src/index.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
 
 type GateCommand = 'operations.record_gate_item' | 'operations.change_installation_mode';
@@ -198,5 +199,16 @@ export function createGateBody(context: BodyContext): (name: GateCommand) => Pro
     }
     allDone = true;
     return { body: { mode: 'real' } };
+  };
+}
+
+/** C35 (#2018): a closed review of the capture pool, under an identity of its own each time. */
+export function poolReviewBody(): Record<string, string> {
+  const review = `pool-${randomUUID().slice(0, 8)}`;
+  return {
+    review,
+    poolVersion: CAPTURE_POOL_VERSION,
+    evidence: `https://evidence.example/pool/${review}`,
+    company: 'Other Company Pty Ltd',
   };
 }

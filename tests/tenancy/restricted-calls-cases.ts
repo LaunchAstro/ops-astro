@@ -65,6 +65,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005190651 (C39-T): a Send Email hook message claimed by its send, by
   // id digest, for every business; the application inserts and reads it only.
   ['si', 'ops.auth_hook_messages'],
+  // 20261020032000 (C35, #2018): a closed review of the capture pool, installation-wide; the
+  // application inserts it and reads its identity and pool version alone, and changes nothing.
+  ['si', 'ops.capture_pool_reviews'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A map's versions are history; its components are retired by version, never deleted.
