@@ -47,6 +47,9 @@ import { composedWith } from '../api/aw-03-exchange-fixture.ts';
 import { conversationWorld, detail, type ConversationWorld } from '../api/aw-03-fixture.ts';
 import { createApiFixture } from '../api/fixture.ts';
 import { hold, waiterOf } from '../support/lock-wait-race.ts';
+import { carriedApi } from '../api/carried-exchange-fixture.ts';
+import { post, authorised, tokenFor } from '../api/fixture.ts';
+import { personPath } from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -410,5 +413,94 @@ describe.skipIf(serverUrl === undefined)("the owner's typed message on his plan"
         expect.objectContaining({ id: SOL, code: 'SUBSCRIPTION_NOT_ELIGIBLE' }),
       ]),
     );
+  });
+  it('plan choices reveal no other persons or businesses conversation', async () => {
+    const asked = askedOf(
+      await w.as(w.owner, 'conversation.start', { body: 'Private owner turn', model: LUNA }),
+    );
+    const otherPerson = await w.as(w.colleague, 'conversation.models', {
+      conversationId: asked.conversationId,
+    });
+    const madeUp = await w.as(w.colleague, 'conversation.models', { conversationId: randomUUID() });
+    expect(otherPerson).toEqual(madeUp);
+    expect(otherPerson.body).toMatchObject({ refused: true, code: 'NOT_FOUND' });
+    const rows = await w.fixture.db.app.withBusiness(
+      randomUUID(),
+      async (tx) =>
+        await tx.query('select id from public.conversations where id = $1', [asked.conversationId]),
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('switching to a plan model keeps the M5 carrier joined', async () => {
+    const carrier = { agent: w.fixture.agentActorId, people: [w.owner.personId] };
+    const carried = carriedApi(w.fixture, carrier);
+    try {
+      const send = async (name: string, body: Record<string, unknown>) =>
+        await post(
+          carried.api,
+          personPath(name),
+          { operationId: randomUUID(), ...body },
+          authorised(await tokenFor(w.owner.presented.subject)),
+        );
+      const asked = askedOf(await send('conversation.start', { body: 'Start locally' }));
+      const members = async () =>
+        await w.fixture.db.admin.execute(
+          'select agent_actor_id from public.conversation_agent_members where conversation_id = $1 and left_at is null',
+          [asked.conversationId],
+        );
+      expect(await members()).toHaveLength(1);
+      expect(
+        (
+          await send('conversation.set_model', {
+            conversationId: asked.conversationId,
+            model: LUNA,
+          })
+        ).status,
+      ).toBe(200);
+      const next = askedOf(
+        await send('conversation.message', {
+          conversationId: asked.conversationId,
+          body: 'Now on the plan',
+        }),
+      );
+      const result = await conversationExchange({ ...broker, carrier })(
+        w.fixture.db.app,
+        w.fixture.business,
+        w.owner.presented,
+        next,
+      );
+      expect({ openMembers: (await members()).length, result }).toMatchObject({
+        openMembers: 1,
+        result: { answered: true },
+      });
+    } finally {
+      await carried.database.close();
+    }
+  });
+
+  it('a refused plan model is retained on its call and becomes unavailable', async () => {
+    custody.answer = () => ({
+      kind: 'answered',
+      started: true,
+      credentialKind: 'api_key',
+      account: null,
+      outbound: { ok: false, fault: 'status', status: 403 },
+    });
+    const asked = askedOf(
+      await w.as(w.owner, 'conversation.start', { body: 'Independent refusal', model: LUNA }),
+    );
+    expect(await ask(asked)).toMatchObject({ answered: false, code: 'SUBSCRIPTION_NOT_ELIGIBLE' });
+    const rows = await calls(asked.conversationId);
+    const offered = await read(w.owner, asked.conversationId);
+    expect({ rows, offered }).toMatchObject({
+      rows: [expect.objectContaining({ model_id: LUNA, provider_code: 'http_403' })],
+      offered: {
+        unavailable: expect.arrayContaining([
+          expect.objectContaining({ id: LUNA, code: 'SUBSCRIPTION_NOT_ELIGIBLE' }),
+        ]),
+      },
+    });
+    expect(offered.models.map((m) => m.id)).not.toContain(LUNA);
   });
 });
