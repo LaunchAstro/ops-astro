@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 (#2018, TR-P-1): the runner reads its capture pool from the rows: a client's bound page stays refused with two closed reviews or with reviews of another pool version, a failed pool read fails the pass with nothing fetched, and three closed reviews admit the page, again after a restart."
+}

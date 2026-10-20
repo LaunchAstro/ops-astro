@@ -204,6 +204,7 @@ export const DECLARED: Readonly<
   'legal.publish_version': { carry: 'not carried', plant: 'a legal document, not a task' },
   'operations.record_gate_item': { carry: 'not carried', plant: 'the installation, not a task' },
   'operations.change_installation_mode': { carry: 'not carried', plant: 'the installation' },
+  'operations.record_capture_pool_review': { carry: 'not carried', plant: 'the installation' },
   'delegation.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'conversation.start': { carry: 'not carried', plant: 'a person’s own conversation' },
   'conversation.message': { carry: 'not carried', plant: 'needs a conversation' },

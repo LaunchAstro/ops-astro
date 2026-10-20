@@ -25,7 +25,7 @@ import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
-import { createGateBody } from './role-case-gate-bodies.ts';
+import { createGateBody, poolReviewBody } from './role-case-gate-bodies.ts';
 import { conversationBody, isConversationCommand, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
@@ -221,6 +221,9 @@ export function createPositiveBody(
       case 'operations.record_gate_item':
       case 'operations.change_installation_mode':
         return await gateBody(declaration.name);
+      // C35 (#2018): recorded the same way, under the same grant.
+      case 'operations.record_capture_pool_review':
+        return { body: poolReviewBody() };
       case 'budget.top_up':
       case 'budget.record_outcome':
       case 'budget.write_off':

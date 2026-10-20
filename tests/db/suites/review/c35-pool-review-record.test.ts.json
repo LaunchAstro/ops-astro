@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 (#2018, D17-14): a closed capture pool review is recorded only by a person with operations:manage in the business that operates the installation; another business, a holder scoped to one client, a person without the grant and an agent are refused and write nothing, no refusal names a planted review, the audit chain keeps the request as a digest, and the app role cannot change, remove or read back the evidence."
+}
