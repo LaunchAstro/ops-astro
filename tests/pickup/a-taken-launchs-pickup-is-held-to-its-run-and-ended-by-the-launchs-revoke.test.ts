@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { ownerLaunchWorld, applied, type OwnerLaunchWorld } from './owner-launch-world.ts';
+import { ownerLaunchWorld, applied, type OwnerLaunchWorld } from '../api/owner-launch-world.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -16,7 +16,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
 import { insertLogin } from '../identity/fixture.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { authorised, post, tokenFor, BUSINESS_KEY } from './fixture.ts';
+import { authorised, post, tokenFor, BUSINESS_KEY } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -58,13 +58,17 @@ describe.skipIf(serverUrl === undefined)('a taken launch’s pickup credential',
       credential: 'fixture-agent-login',
       delegation: launchCredential,
       reporter: SYNTHETIC_USAGE,
+      // Passed explicitly: nothing to compute, so the plan goes straight to review.
+      runner: {
+        compute: async () => await Promise.resolve({ outcome: 'success', endCode: 'COMPLETED' }),
+      },
     });
     const outcome = await worker.applyOnce(taskId);
     expect(picked, JSON.stringify(outcome)).toBeDefined();
     return { launchCredential, picked: picked!, credential: String(picked!['credential']) };
   }
 
-  it('Sol proof, criterion 1: the worker pickup credential refuses arbitrary task updates', async () => {
+  it('the worker’s pickup credential is refused a task update', async () => {
     const taskId = await w.ownersPlan(`Restricted worker ${randomUUID()}`);
     const { credential } = await workerPickup(taskId);
     const answer = await w.asAgent(
@@ -83,7 +87,7 @@ describe.skipIf(serverUrl === undefined)('a taken launch’s pickup credential',
     });
   });
 
-  it('Sol proof, criterion 1: revoking the launch stops the worker correction after pickup', async () => {
+  it('the owner’s revoke of the launch stops the worker’s correction after pickup', async () => {
     const taskId = await w.ownersPlan(`Revoked worker ${randomUUID()}`);
     const { credential, launchCredential } = await workerPickup(taskId);
     const [launch] = await w.fixture.db.admin.execute<{ delegation_id: string }>(
@@ -125,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('a taken launch’s pickup credential',
   });
 
   // eslint-disable-next-line max-lines-per-function -- Sol's proof, unchanged
-  it('Sol proof, criterion 1: pickup keeps client task and acting identity separation', async () => {
+  it('the pickup credential keeps client, task and acting identity separation', async () => {
     const taskId = await w.ownersPlan(`Own ${randomUUID()}`);
     const other = await w.ownersPlan(`Client task ${randomUUID()}`);
     const client = randomUUID();

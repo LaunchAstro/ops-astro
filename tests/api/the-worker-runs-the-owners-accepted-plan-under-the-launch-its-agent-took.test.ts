@@ -252,6 +252,10 @@ describe.skipIf(serverUrl === undefined)('the worker under a taken launch', () =
       credential: agentToken,
       delegation: credential,
       reporter: SYNTHETIC_USAGE,
+      // Passed explicitly: nothing to compute, so the plan goes straight to review.
+      runner: {
+        compute: async () => await Promise.resolve({ outcome: 'success', endCode: 'COMPLETED' }),
+      },
     });
 
     const outcome = await worker.applyOnce(taskId);
