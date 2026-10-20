@@ -15,6 +15,15 @@ import { epochWorld, ownerOn, type EpochWorld } from './conversation-epoch-fixtu
 import { enrol, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 
+/** The refusal that names nothing: no fields, cites, authors or created tasks (#1666). */
+const REFUSED = {
+  refused: true,
+  fields: [],
+  cites: [],
+  authors: [],
+  created: { snapshot: null, cut: null, sources: [] },
+};
+
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
   "a colleague in the same business is refused the owner's earlier messages",
   async () => {
@@ -116,7 +125,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
         c.w.colleague.presented,
         async (tx, session) => await contextOf(tx, session, asked, null),
       );
-      expect(colleague).toEqual({ refused: true, fields: [], cites: [], authors: [] });
+      expect(colleague).toEqual(REFUSED);
       const owner = await withSession(
         c.fixture.db.app,
         c.fixture.business,

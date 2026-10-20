@@ -7,6 +7,15 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detail } from './aw-03-fixture.ts';
 import { epochWorld, ownerOn, stepped } from './conversation-epoch-fixture.ts';
 
+/** The refusal that names nothing: no fields, cites, authors or created tasks (#1666). */
+const REFUSED = {
+  refused: true,
+  fields: [],
+  cites: [],
+  authors: [],
+  created: { snapshot: null, cut: null, sources: [] },
+};
+
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
   'ownership cannot change between the check and the earlier-message read',
   async () => {
@@ -109,7 +118,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       const context = await result;
       // A writer either waits for the protected read, or a read after a committed
       // ownership change must refuse the former owner before returning any words.
-      if (changed) expect(context).toEqual({ refused: true, fields: [], cites: [], authors: [] });
+      if (changed) expect(context).toEqual(REFUSED);
       else expect(JSON.stringify(context)).toContain(canary);
     } finally {
       reader.release();
