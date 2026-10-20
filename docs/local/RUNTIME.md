@@ -1606,7 +1606,10 @@ both tenancy-scoped with row security forced, and the fair share's count
 - Outcomes (#1623 R1, `core-custody/src/broker-stop.ts`): the transaction that
   stops an attempt records its one `run_outcomes` row and retires its work.
   Settlement does it for an unknown hold (`LIABILITY_UNKNOWN`), a release for
-  the declared `LOCAL_PLAN_LIMIT` (`waiting_plan_allowance`) or another
+  the declared `LOCAL_PLAN_LIMIT` or the plan's `SUBSCRIPTION_PLAN_ALLOWANCE`
+  (`waiting_plan_allowance`), the plan's `SUBSCRIPTION_PLAN_UNAVAILABLE`
+  (`plan_unavailable`) or `SUBSCRIPTION_SIGN_IN_NEEDED` (`cancelled`, its own
+  code), or another
   declared code (`cancelled / PROVIDER_NOTHING_HAPPENED`), and a custody
   refusal (`cancelled`). For a provider drop a worker could report
   (`provider_unavailable`, `connection_lost`) it also records T3e1's drop in
