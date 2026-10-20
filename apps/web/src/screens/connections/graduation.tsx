@@ -16,8 +16,8 @@
 // first. Every command goes through `useMoneyCommand`, since mandate:manage
 // needs a fresh sign-in (C59), says its refusal in the server's words, and
 // reads the region again; a form clears only once its write succeeds. A write held for that
-// sign-in is withdrawn when the client changes, the last client leaves or the form that sent it
-// is cancelled, and one whose answer was lost goes again under its operation.
+// sign-in locks every form until it settles, and is withdrawn when the client changes, the last
+// client leaves or its form is cancelled; one whose answer was lost goes again under its operation.
 //
 // The chosen client and every client's forms are kept above the read (`graduation-drafts.ts`),
 // so an outage gives them back; a standing approval files under its draft id, one per intent.
@@ -290,7 +290,7 @@ export function GraduationRegion(props: {
             send={send}
             drop={drop}
             said={command.because}
-            locked={command.locked}
+            locked={command.locked || command.stepUp !== null}
             stepUp={command.stepUp}
           />
         )}
