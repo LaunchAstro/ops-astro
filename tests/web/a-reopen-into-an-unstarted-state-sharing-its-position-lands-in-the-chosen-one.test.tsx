@@ -84,7 +84,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       });
       expect('refused' in completed).toBe(false);
       await addEqualPositionState(w);
-      const read = async () => readTask(w, id);
+      const read = () => readTask(w, id);
       const first = await read();
       if (!('task' in first) || !('states' in first)) throw new Error('missing task/states');
       const states = first.states;
