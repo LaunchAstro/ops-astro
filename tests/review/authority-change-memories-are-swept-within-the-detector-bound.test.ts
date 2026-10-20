@@ -14,7 +14,6 @@ it('successful authority changes keep the detector within its scope bound, swept
       command: 'secret.set',
       refusal: undefined,
       items: 0,
-      operationId: `operation-${String(n)}`,
     });
     if (signal === undefined) throw new Error('successful secret.set was not classified');
     detector.observe(signal);
