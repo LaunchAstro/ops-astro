@@ -19,7 +19,10 @@ const REVIEW = {
   kind: 'page',
   pageUrl: 'https://alpha.example/about',
   path: 'src/pages/about.astro',
+  partyId: 'c1111111-1111-4111-8111-111111111111',
   revisionCount: 2,
+  openPins: 3,
+  openChangeRequests: 1,
   latest: 'undecided',
   updatedAt: '2026-10-20T06:00:00.000Z',
 };
@@ -30,7 +33,14 @@ it('Projects > Reviews lists each review and links it to its workspace', async (
       Promise.resolve(
         String(url).endsWith('/review/list')
           ? json({ ok: true, reviews: [REVIEW] })
-          : new Response(null, { status: 404 }),
+          : String(url).endsWith('/client/list')
+            ? json({
+                ok: true,
+                clients: [
+                  { clientId: 'c1111111-1111-4111-8111-111111111111', name: 'Made-up Physio' },
+                ],
+              })
+            : new Response(null, { status: 404 }),
       ),
   });
   await settle();
@@ -40,6 +50,9 @@ it('Projects > Reviews lists each review and links it to its workspace', async (
   expect(link?.textContent).toContain('https://alpha.example/about');
   expect(page.view.text()).toContain('Revision 2');
   expect(page.view.text()).toContain('Waiting for a decision');
+  expect(page.view.find('[data-review-client]')?.textContent).toBe('Made-up Physio');
+  expect(page.view.text()).toContain('3 open pins');
+  expect(page.view.text()).toContain('1 open change request');
 });
 
 it('an empty list says no review is open, and a refusal shows the refusal', async () => {
