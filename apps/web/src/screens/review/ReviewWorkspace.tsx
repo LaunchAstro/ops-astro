@@ -256,6 +256,9 @@ export function ReviewWorkspaceScreen(props: {
     grantKey: props.grantKey,
     run: () => props.client.read<CapabilitiesResult>('session.capabilities', {}),
     deps: [props.client],
+    // Who may approve is read again on the floor, as the review is: a revoked gate:decide
+    // withdraws the control (#2142).
+    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
   });
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
