@@ -84,18 +84,30 @@ export const keptChoice = <C extends { readonly model: string | null }>(
     each === open && each.model === null && chosen !== null ? { ...each, model: chosen } : each,
   );
 
-/** A write in the tab's turn, then whether it was kept: null where the tab has no conversation yet. */
+/** A write's outcome: 'unknown' where its answer was lost, 'held' where no conversation is started. */
+export type Outcome = 'kept' | 'refused' | 'unknown' | 'held';
+
+/** A write in the tab's turn, then its outcome; the tab's next write and question wait for `after`. */
 export type Written = (
   key: string,
   write: (conversationId: string) => Promise<CallResult<CommandOutcome>>,
-  after?: (kept: boolean | null) => void,
+  after?: (outcome: Outcome, conversationId: string | null) => Promise<void>,
 ) => void;
+
+/** The model the server has for a conversation, null for the default; undefined if unread. */
+async function keptOn(client: OperationsClient, conversationId: string) {
+  const answer = await client.read<ConversationModelsResult>('conversation.models', {
+    conversationId,
+  });
+  return isRefusal(answer) || isUnavailable(answer) ? undefined : (answer.value.chosen ?? null);
+}
 
 /**
  * A tab's choice of model (#2175), shown at once and sent in the tab's turn. Once the server keeps
  * it, a switch is marked before any question asked since, as those waited for it. Once refused, the
- * tab shows again the model the server still has, unless another was chosen since. A tab with no
- * conversation yet holds the choice for its start.
+ * tab shows again the model the server still has, unless another was chosen since. A lost answer
+ * is read back first (S2194-9), and while that read fails too the tab claims nothing new. A tab with
+ * no conversation yet holds the choice for its start.
  */
 export function useModelChoice(
   client: OperationsClient,
@@ -112,13 +124,19 @@ export function useModelChoice(
     store.update((current) => chooseModel(current, key, model));
     const write = (conversationId: string) =>
       client.mutate('conversation.set_model', { conversationId, model });
-    written(key, write, (kept) => {
+    written(key, write, async (outcome, conversationId) => {
+      const read =
+        outcome === 'unknown' && conversationId !== null
+          ? await keptOn(client, conversationId)
+          : undefined;
+      if (outcome === 'unknown' && read === undefined) return;
       const now = tabs.get(key) ?? was;
-      if (kept !== false) tabs.set(key, { ...now, kept: model });
-      if (kept === true && since !== null)
+      const server = outcome === 'refused' ? now.kept : outcome === 'unknown' ? read : model;
+      tabs.set(key, { ...now, kept: server ?? null });
+      if (server === model && outcome !== 'held' && since !== null)
         store.update((current) => markSwitch(current, key, model, since));
-      if (kept === false && now.last === choice)
-        store.update((current) => chooseModel(current, key, now.kept));
+      if (server !== model && now.last === choice)
+        store.update((current) => chooseModel(current, key, server ?? null));
     });
   };
 }

@@ -55,7 +55,13 @@ import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
-import { keptChoice, useModelChoice, useModels, type Written } from '../assistant/models.ts';
+import {
+  keptChoice,
+  useModelChoice,
+  useModels,
+  type Outcome,
+  type Written,
+} from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import { withPieces } from '../assistant/writing.ts';
 import type {
@@ -106,7 +112,7 @@ async function startWith(
   client: OperationsClient,
   store: Store,
   opening: Opening,
-  report: (key: string, sent: Sent) => Promise<boolean>,
+  report: (key: string, sent: Sent) => Promise<Outcome>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
   // The tab as the question was asked: a model chosen before it rides in the
@@ -136,10 +142,11 @@ async function startWith(
 /** The start, the join, and every write after them, each refusal shown in the tab. */
 function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
   const starts = useRef(new Map<string, Promise<string | null>>());
-  const report = async (key: string, sent: Sent): Promise<boolean> => {
+  // A lost answer is 'unknown', never a refusal: the server may have kept the write.
+  const report = async (key: string, sent: Sent): Promise<Outcome> => {
     const settled = settle(await sent);
     if (settled.kind !== 'ok') store.line(key, 'failed', settled.because);
-    return settled.kind === 'ok';
+    return settled.kind === 'ok' ? 'kept' : settled.kind === 'unknown' ? 'unknown' : 'refused';
   };
   const scope = (): { readonly kind: 'task'; readonly id: string } | null => {
     const task = store.now().scope.task;
@@ -197,8 +204,8 @@ function useWrites(
     // A tab kept or reopened was started elsewhere: its conversation is known.
     const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
     const turn = (sender.starts.get(key) ?? known).then(async (id) => {
-      const kept = id === null ? null : await sender.report(key, write(id));
-      after?.(kept);
+      const outcome = id === null ? 'held' : await sender.report(key, write(id));
+      await after?.(outcome, id);
       return id;
     });
     sender.starts.set(key, turn);
