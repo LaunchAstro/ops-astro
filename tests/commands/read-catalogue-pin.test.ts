@@ -24,6 +24,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'agent.mine': [],
+  'automation.history': ['activationId'],
   'automation.registry': [],
   'chat.conversations': [],
   'chat.messages': ['conversationId'],
@@ -39,18 +40,21 @@ const PINNED_IDENTIFIERS = {
   'finance.agent_costs': [],
   'finance.skill_costs': [],
   'gate.pending': [],
-  'harness.read': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'invitation.list': [],
+  'live_correction.list': [],
   'live_correction.read': ['correctionId'],
+  'live_correction.receipts': ['correctionId'],
   'map.frontier': ['recordId'],
+  'map.list': [],
   'map.view': ['recordId'],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
   'preset.plan': [],
-  'privacy.draft_breach_notices': [],
+  'privacy.draft_breach_notices': ['incidentId'],
   'secret.list': [],
   'session.capabilities': [],
   'session.person': [],
@@ -75,6 +79,7 @@ const PINNED_OUTSIDER_NOT_FOUND = [
   'chat.conversations',
   'chat.messages',
   'map.frontier',
+  'map.list',
   'map.view',
   'task.board',
   'task.execution',
@@ -150,6 +155,7 @@ const unsent = (name: string, fix: string) =>
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.list': BODIES.map(() => null),
   'task.read': [
     RECORD_ID,
     null,
@@ -197,6 +203,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.read': BODIES.map(() => null),
   // C33: the Workflow triggers registry takes nothing.
   'automation.registry': BODIES.map(() => null),
+  // An activation's history (#1741), named by the activation, which none of these bodies carries.
+  'automation.history': unsent('activationId', 'Send activationId as the activation’s identifier.'),
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
   'connection.signal': BODIES.map(() => null),
@@ -232,12 +240,15 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
-  // C80's correction and AW-12's run, which none of these bodies carries.
+  // C80's correction, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
-  'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
+  // #1694: the list takes nothing; the receipts read takes the correction.
+  'live_correction.list': BODIES.map(() => null),
+  'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
+  'invitation.list': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -249,7 +260,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-three reads', () => {
+  it('names the same forty-six reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -257,7 +268,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same eleven', () => {
+  it('tells an outsider NOT_FOUND on the same twelve', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

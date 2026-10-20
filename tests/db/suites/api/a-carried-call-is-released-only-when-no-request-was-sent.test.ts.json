@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a carried call is released only on proof nothing was sent, otherwise held"
+}

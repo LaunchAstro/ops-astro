@@ -7,8 +7,11 @@
 
 import { useEffect, useRef } from 'react';
 
-/** Call `reload` each time `count` moves on from the value it mounted with. */
-export function useRereadOn(count: number, reload: () => void): void {
+/**
+ * Call `reload` each time `count` moves on from the value it mounted with; a
+ * record read afresh counts as moving on, as a new object.
+ */
+export function useRereadOn(count: unknown, reload: () => void): void {
   const seen = useRef(count);
   useEffect(() => {
     if (seen.current === count) return;

@@ -4,15 +4,24 @@
 // held on the person or on their actor, lets its agent propose; and the
 // launcher's four-eyes exclusion holds for the proposal made under their
 // Launch only, never for another lineage on the task, in the decision and
-// the inbox alike. Bodies kept as written for the PR's review.
+// the inbox alike. Bodies kept as written for the PR's review. Settings ▸
+// Access shows such a Launch with what its agent may do.
+// #1499 (owner, #804): a grant on the launcher's acting identity counts only
+// while it is active, at the check, in Access and after a write's lock wait.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { configuredCredentialKeys } from '../../packages/core-records/src/index.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import {
+  checkDelegatedAuthority,
+  resolveLiveById,
+} from '../../packages/core-records/src/authority/delegations.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { aiWorld, assign, created, revisionOf, type AiWorld } from './ai-assign-world.ts';
 import { codeOf, type Decider } from './agent-fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
+import { hold, waiterOf } from '../support/lock-wait-race.ts';
 
 let w: AiWorld;
 beforeAll(async () => {
@@ -63,37 +72,174 @@ async function proposal(taskId: string) {
   };
 }
 
+const LAUNCH_ACTIONS = ['read', 'comment', 'write', 'assign'] as const;
+
+/** The Launch on `task` and the acting identity it was minted on. */
+async function launchOf(task: string): Promise<{ readonly id: string; readonly actor: string }> {
+  const [row] = await w.world.db.admin.execute<{ id: string; actor: string }>(
+    `select d.id, d.minted_by_actor_id as actor from public.task_launches l
+       join public.delegations d on d.id = l.delegation_id where l.task_id = $1`,
+    [task],
+  );
+  if (row === undefined) throw new Error('No Launch');
+  return row;
+}
+
+const DEACTIVATE = 'update public.actors set active = false, deactivated_at = now() where id = $1';
+
+/** What the check answers for each Launch action, and what Access shows the Launch may do. */
+async function checkedAndShown(task: string, delegationId: string) {
+  const manager = await enrol(w.world.db.app, w.world.business, `access ${randomUUID()}`);
+  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    await grantTo(tx, manager, 'manage', undefined, false, 'access');
+  });
+  const answer = await executeRead(w.world.db.app, w.world.business, manager.presented, {
+    read: 'access.read',
+  });
+  if (!('team' in answer)) throw new Error('Access refused');
+  const checked = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const delegation = await resolveLiveById(tx, w.world.agentActorId, delegationId);
+    if (delegation === undefined) throw new Error('Launch no longer live');
+    const out: Record<string, string> = {};
+    for (const action of LAUNCH_ACTIONS) {
+      const request = { collection: 'task', action, scope: { kind: 'record', id: task } } as const;
+      // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
+      const decision = await checkDelegatedAuthority(tx, delegation, request);
+      out[action] = decision.ok ? 'ok' : decision.refusal.code;
+    }
+    return out;
+  });
+  const shown = answer.agents.find((agent) => agent.delegationId === delegationId);
+  return { checked, shown: (shown?.permissions ?? []).map(({ action }) => action) };
+}
+
+it('a Launch resting only on a dormant launcher identity is refused, and Access shows it with nothing', async () => {
+  const task = await launchedOn('actor');
+  const launched = await launchOf(task);
+
+  // Active, Access shows what the check answers ok (the case below, on actor).
+  expect((await checkedAndShown(task, launched.id)).checked['write']).toBe('ok');
+  await w.world.db.admin.execute(DEACTIVATE, [launched.actor]);
+
+  // Dormant: no grant left, so every action is narrowed, and Access shows none.
+  const dormant = await checkedAndShown(task, launched.id);
+  expect(dormant.checked).toStrictEqual({
+    read: 'DELEGATION_NARROWED',
+    comment: 'DELEGATION_NARROWED',
+    write: 'DELEGATION_NARROWED',
+    assign: 'DELEGATION_OUT_OF_PURPOSE',
+  });
+  expect(dormant.shown).toStrictEqual([]);
+  expect(codeOf(await w.world.asAgent(await proposal(task), await credentialFor(task)))).toBe(
+    'DELEGATION_NARROWED',
+  );
+});
+
+it("a launcher identity made dormant while the agent's proposal waits on the task refuses it", async () => {
+  const task = await launchedOn('actor');
+  const launched = await launchOf(task);
+  const body = await proposal(task);
+  const credential = await credentialFor(task);
+  // Admitted, the proposal waits on the task; the deactivation commits in the wait.
+  const held = await hold(
+    w.world.db,
+    async (execute) => {
+      await execute('select id from public.records where id = $1 for update', [task]);
+    },
+    async (execute) => {
+      await execute(DEACTIVATE, [launched.actor]);
+    },
+  );
+  try {
+    const answer = w.world.asAgent(body, credential);
+    await waiterOf(w.world.db, held);
+    await held.letGo();
+    expect(codeOf(await answer)).toBe('DELEGATION_NARROWED');
+  } finally {
+    await held.letGo();
+  }
+  const [lineages] = await w.world.db.admin.execute<{ n: number }>(
+    'select count(*)::int as n from public.proposal_lineages where task_id = $1',
+    [task],
+  );
+  expect(lineages?.n).toBe(0);
+});
+
+/** A task launched by a fresh person whose task grants on it are held on `on`. */
+async function launchedOn(on: 'person' | 'actor'): Promise<string> {
+  const task = await created(w, w.p, `Record grants on ${on}`);
+  const launcher = await enrol(w.world.db.app, w.world.business, `launcher-${on}`);
+  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    for (const action of LAUNCH_ACTIONS) {
+      // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
+      const issued = await issueGrant(tx, [], {
+        subject: { kind: on, id: on === 'person' ? launcher.personId : launcher.actorId },
+        scope: { kind: 'record', id: task },
+        collection: 'task',
+        action,
+        canDelegate: false,
+        parentGrantId: null,
+        grantedByActorId: launcher.actorId,
+      });
+      if (!issued.ok) throw new Error(issued.refusal.code);
+    }
+  });
+  // Use the fixture's signed-in agent, owned by the launcher as in issue #1225.
+  await w.world.db.admin.execute('update public.actors set owner_person_id = $1 where id = $2', [
+    launcher.personId,
+    w.world.agentActorId,
+  ]);
+  expect(codeOf(await assign(w, launcher as Decider, task, { agent: w.world.agentActorId }))).toBe(
+    'not-a-refusal',
+  );
+  expect(codeOf(await launch(launcher, task))).toBe('not-a-refusal');
+  return task;
+}
+
 it.each(['person', 'actor'] as const)(
   'a launch minted on %s-held task grants permits its agent to propose',
   async (on) => {
-    const task = await created(w, w.p, `Record grants on ${on}`);
-    const launcher = await enrol(w.world.db.app, w.world.business, `launcher-${on}`);
-    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
-      for (const action of ['read', 'comment', 'write', 'assign'] as const) {
-        // oxlint-disable-next-line no-await-in-loop -- one transaction and connection
-        const issued = await issueGrant(tx, [], {
-          subject: { kind: on, id: on === 'person' ? launcher.personId : launcher.actorId },
-          scope: { kind: 'record', id: task },
-          collection: 'task',
-          action,
-          canDelegate: false,
-          parentGrantId: null,
-          grantedByActorId: launcher.actorId,
-        });
-        if (!issued.ok) throw new Error(issued.refusal.code);
-      }
-    });
-    // Use the fixture's signed-in agent, owned by the launcher as in issue #1225.
-    await w.world.db.admin.execute('update public.actors set owner_person_id = $1 where id = $2', [
-      launcher.personId,
-      w.world.agentActorId,
-    ]);
-    expect(
-      codeOf(await assign(w, launcher as Decider, task, { agent: w.world.agentActorId })),
-    ).toBe('not-a-refusal');
-    expect(codeOf(await launch(launcher, task))).toBe('not-a-refusal');
+    const task = await launchedOn(on);
     const answer = await w.world.asAgent(await proposal(task), await credentialFor(task));
     expect(codeOf(answer)).toBe('not-a-refusal');
+  },
+);
+
+it.each(['person', 'actor'] as const)(
+  'Access shows a launch minted on %s-held task grants with what its agent may do',
+  async (on) => {
+    const task = await launchedOn(on);
+    const manager = await enrol(w.world.db.app, w.world.business, `access-${on}`);
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await grantTo(tx, manager, 'manage', undefined, false, 'access');
+    });
+    const [launched] = await w.world.db.admin.execute<{ id: string }>(
+      `select delegation_id as id from public.task_launches where task_id = $1 and state = 'waiting'`,
+      [task],
+    );
+    const answer = await executeRead(w.world.db.app, w.world.business, manager.presented, {
+      read: 'access.read',
+    });
+    if (!('team' in answer)) throw new Error(`access.read refused ${JSON.stringify(answer)}`);
+    const shown = answer.agents.find((agent) => agent.delegationId === launched?.id);
+    const granted = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      const delegation = await resolveLiveById(tx, w.world.agentActorId, launched?.id ?? '');
+      if (delegation === undefined) throw new Error('the launch delegation is not live');
+      const scope = { kind: 'record', id: task } as const;
+      const asked = await Promise.all(
+        LAUNCH_ACTIONS.map(
+          async (action) =>
+            (await checkDelegatedAuthority(tx, delegation, { collection: 'task', action, scope }))
+              .ok,
+        ),
+      );
+      return LAUNCH_ACTIONS.filter((_, index) => asked[index]);
+    });
+    expect(granted).not.toHaveLength(0);
+    expect(shown?.permissions.map((permission) => permission.action).toSorted()).toStrictEqual(
+      [...granted].toSorted(),
+    );
+    expect(shown?.permissions.every((permission) => permission.scope.id === task)).toBe(true);
   },
 );
 

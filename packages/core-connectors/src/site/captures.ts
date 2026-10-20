@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The captures' comparison (Receipt L fields 9 to 12): each pair is one
-// address served successfully both times, the word moved on the live page,
+// address served successfully both times, the phrase moved on the live page,
 // the rest of the page did not, the served stylesheets are equal and the
 // decoy occurrence elsewhere on the site, on another page, is untouched.
 
 import { wordOffsets, type CorrectionTarget } from './envelope.ts';
 
 /**
- * Capture text past this, or a word longer than this, is not compared: the
- * word search costs the text's length times the word's.
+ * Capture text past this, or a phrase longer than the envelope's 200 characters, is not
+ * compared: the phrase search costs the text's length times the phrase's.
  */
 const MOST_TEXT = 256 * 1024;
 /** The fence's document cap: a document past it was never captured. */
 const MOST_DOCUMENT = 2 * 1024 * 1024;
-const MOST_WORD = 64;
+const MOST_WORD = 200;
 
 /** What one fenced capture of a page observed. */
 export interface PageObservation {

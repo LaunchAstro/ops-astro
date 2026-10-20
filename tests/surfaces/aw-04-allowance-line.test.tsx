@@ -36,8 +36,9 @@ function recorder(answer: (body: Readonly<Record<string, unknown>>) => unknown):
   const asked: Asked[] = [];
   const client = {
     read: async (name: string, body: Readonly<Record<string, unknown>>) => {
-      // The model picker's read (CS-7.30) is its own suite's; nothing here is about it.
-      if (name === 'conversation.models') {
+      // The model picker's read (CS-7.30) and the correction desks' list (C80) are
+      // their own suites'; nothing here is about them.
+      if (name === 'conversation.models' || name === 'live_correction.list') {
         return await Promise.resolve({ unavailable: true, because: 'not asked here' });
       }
       asked.push({ name, body });
@@ -75,7 +76,7 @@ describe('AW-04 planning allowance read: the drawer', () => {
     expect(asked).toStrictEqual([{ name: 'conversation.allowance', body: {} }]);
     expect(page.all('[data-message-role]')).toHaveLength(0);
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00.',
     );
   });
 
@@ -95,7 +96,7 @@ describe('AW-04 planning allowance read: the drawer', () => {
       body: { conversationId: CONVERSATION },
     });
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 7.45 spent, AUD 5.00 held.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00. This conversation: AUD 7.45 spent, AUD 5.00 held.',
     );
   });
 
@@ -135,7 +136,7 @@ describe('AW-04 planning allowance read: the line follows the spend', () => {
     await settle();
     expect(reads).toBeGreaterThan(before);
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
-      'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
+      'AI chat budget: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
     );
   });
 });

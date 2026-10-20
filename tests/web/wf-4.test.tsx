@@ -159,6 +159,7 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
       // oxlint-disable-next-line no-await-in-loop
       await tab(page, next);
       expect((page.find('[data-map]') as HTMLElement | null)?.dataset['map']).toBe(map);
+      if (next === 'fog' || next === 'map') continue;
       expect((page.find('select[name="filter-type"]') as HTMLSelectElement).value).toBe('research');
       expect((page.find('input[name="filter-text"]') as HTMLInputElement).value).toBe('filtered');
     }

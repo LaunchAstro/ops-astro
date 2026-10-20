@@ -238,7 +238,7 @@ export function App(props: AppProps): ReactElement {
       <TaskPinsProvider client={client} grantKey={grantKey} active={session !== null && agency}>
         <SignedInName value={personName}>
           <PageFreshnessProvider>
-            <PagePresenceProvider>
+            <PagePresenceProvider owner={grantKey}>
               <Shell
                 face={face}
                 build={buildStamp()}

@@ -16,6 +16,7 @@ import { endAtBudgetStop, topUpAtBudgetStop } from '../../packages/core-runtime/
 import { grantTo } from '../commands/fixture.ts';
 import { liveWork, racer, rows, type Work } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
+import { unsentCall } from '../runtime/version-room-world.ts';
 import {
   broker,
   call,
@@ -41,7 +42,15 @@ beforeAll(async () => {
   });
 }, 120_000);
 
-/** 900 holds one call reserved at 500, never sent, and the next call stops the run. */
+/**
+ * 900 holds one call reserved at 500, never sent, and the next call stops the run.
+ * #1623 R1 (B2): the stop now releases that call itself (`releaseNeverSent`), and
+ * nothing in the product leaves an uncounted call reserved for a hold's first
+ * count any more: a call reserved after the stop is refused, and every later
+ * stop finds the hold already counted. So the call the count meets is seeded, a
+ * second one at 500 on the stopped hold's lease. The two locks are still the only
+ * guard if one ever survives to a count (`giveBackReleased`, `releaseUnsent`).
+ */
 async function stoppedUnsent(): Promise<Work> {
   const work = await liveWork(s, `release race locks ${randomUUID()}`, 900);
   world.provider.mode('answer');
@@ -52,6 +61,9 @@ async function stoppedUnsent(): Promise<Work> {
   );
   expect(reserved.ok).toBe(true);
   expect(await call(work)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
+  // #1623 R1 (B2): the stop released its own unsent call; the seeded one is the count's.
+  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+  await unsentCall(s, reservationOf(work), 500);
   return work;
 }
 
@@ -135,7 +147,9 @@ for (const answer of ['top-up', 'end'] as const) {
     try {
       await paused.reached;
       await sweep();
+      // #1623 R1 (B2): first the call the stop released, then the seeded one.
       expect(await calls(work), 'skipped: the count holds it').toMatchObject([
+        { state: 'released' },
         { state: 'reserved' },
       ]);
       expect(await envelopeActual(work), 'nothing given back by the sweep').toBe(before);
@@ -148,7 +162,8 @@ for (const answer of ['top-up', 'end'] as const) {
       await other.close();
     }
     await sweep();
-    expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+    // #1623 R1 (B2): the stop's released call, then the seeded one the sweep released.
+    expect(await calls(work)).toMatchObject([{ state: 'released' }, { state: 'released' }]);
     expect(await envelopeActual(work), 'given back once').toBe(before);
   });
 
@@ -171,13 +186,14 @@ for (const answer of ['top-up', 'end'] as const) {
       paused.resume();
       await sweeping;
       const answered = await pending;
-      expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+      // #1623 R1 (B2): the stop's released call, then the seeded one the sweep released.
+      expect(await calls(work)).toMatchObject([{ state: 'released' }, { state: 'released' }]);
       expect(await envelopeActual(work), 'given back by the count').toBe(before);
       // The figures the answer reports include what it gave back.
       expect(answered).toMatchObject(
         answer === 'end'
-          ? { ok: true, value: { spentMinor: 0, releasedMinor: 900 } }
-          : { ok: true, value: { heldMinor: await holdOf(work) } },
+          ? { ok: true, value: { spentMinor: '0', releasedMinor: '900' } }
+          : { ok: true, value: { heldMinor: String(await holdOf(work)) } },
       );
     } finally {
       paused.resume();

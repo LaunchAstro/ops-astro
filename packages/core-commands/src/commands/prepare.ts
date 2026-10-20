@@ -53,9 +53,9 @@ import type {
   ScopeRequest,
   EntryPoint,
 } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
-import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
+import { deploymentCarrier, readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
   declarationOf,
@@ -309,17 +309,17 @@ const BODY_FIXES: readonly string[] = [
  * The identifier fields a body carries that its operation does not take.
  *
  * Exported for the read half, which asks the same question of its own
- * operations (`reads/dispatch.ts`, root ruling 3): one list of what counts as
- * an identifier, so a field added here is refused on both paths or neither.
+ * operations (`reads/dispatch.ts`, root ruling 3) over `READ_IDENTIFIER_FIELDS`,
+ * which holds this list and the identifiers only reads take, so a field added
+ * here is refused on both paths or neither.
  * `null` is a value the caller sent, so it counts as present.
  */
 export function irrelevantIdentifiers(
   named: Readonly<Record<string, unknown>>,
   allowed: readonly string[],
+  fields: readonly string[] = IDENTIFIER_FIELDS,
 ): readonly string[] {
-  return IDENTIFIER_FIELDS.filter(
-    (field) => named[field] !== undefined && !allowed.includes(field),
-  );
+  return fields.filter((field) => named[field] !== undefined && !allowed.includes(field));
 }
 
 /**
@@ -415,21 +415,42 @@ const GATE_TASK: ScopeLookup = [
   },
 ];
 
+/**
+ * The party of the correction a decision or a revert ask names, read in this business only; one
+ * on the business's own site has none and is asked of the business (R6).
+ */
+const CORRECTION_PARTY: ScopeLookup = [
+  'correctionId',
+  (tx, id) =>
+    firstRow(
+      tx,
+      `select case when party_id is null then 'business' else 'party' end as kind, party_id as id
+         from public.live_corrections
+        where business_id = $1 and id = $2`,
+      id,
+    ),
+];
+
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
-  // C80: the party a request names is its scope as named; an approval's is
+  // C80: a request is asked at its task's client (#1693: the request names no
+  // party), or the business for a task with no client (R6); an approval's is
   // the party of the correction it names, read in this business only, so a
   // correction elsewhere falls back to the business like any unknown target.
-  'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
-  'live_correction.decide': [
-    'correctionId',
+  'live_correction.request': [
+    'taskId',
     (tx, id) =>
       firstRow(
         tx,
-        `select 'party' as kind, party_id as id from public.live_corrections
-          where business_id = $1 and id = $2`,
+        `select case when r.uuid_7 is null then 'business' else 'party' end as kind, r.uuid_7 as id
+           from public.records r
+           join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+          where r.business_id = $1 and r.id = $2 and t.key = 'task' and r.deleted_at is null`,
         id,
       ),
   ],
+  'live_correction.decide': CORRECTION_PARTY,
+  'live_correction.revert': CORRECTION_PARTY,
+  'live_correction.record_review': CORRECTION_PARTY,
   'grant.revoke': [
     'grantId',
     (tx, id) =>
@@ -579,6 +600,7 @@ async function askCovered(
 ): Promise<Refused | { readonly viaMap?: { readonly id: string; readonly refusal: Refused } }> {
   const authorised = await checkAuthority(tx, subjectsOf(session), asked);
   if (authorised.ok) return {};
+  if (await decidesAcrossTheClient(tx, session, declaration, asked)) return {};
   const map = await coveringMap(tx, request, declaration);
   const again =
     map === undefined
@@ -589,6 +611,33 @@ async function askCovered(
         });
   if (map === undefined || !again.ok) return refused(authorised.refusal);
   return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
+}
+
+/** The two answers to a budget stop, a person's alone (#796). */
+const PARTY_ANSWERED: ReadonlySet<string> = new Set(['run.top_up', 'run.end_at_budget_stop']);
+
+/**
+ * A budget answer refused on its task, asked again across the task's client:
+ * the party grant Access issues per client answers that client's stops. The
+ * client is read with no trash filter, so each command keeps its own trash
+ * rule (`run-answers.ts`). The runtime judges again under the run's locks.
+ */
+async function decidesAcrossTheClient(
+  tx: TenantQuery,
+  session: Session,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest,
+): Promise<boolean> {
+  if (!PARTY_ANSWERED.has(declaration.name) || asked.scope.kind !== 'record') return false;
+  const taskId = asked.scope.id;
+  if (taskId === null || !isUuid(taskId)) return false;
+  const [task] = await tx.query<{ readonly client: string | null }>(
+    'select uuid_7 as client from public.records where business_id = $1 and id = $2::uuid',
+    [tx.businessId, taskId],
+  );
+  if (task === undefined || task.client === null) return false;
+  const across = { ...asked, scope: { kind: 'party' as const, id: task.client } };
+  return (await checkAuthority(tx, subjectsOf(session), across)).ok;
 }
 
 /**
@@ -670,6 +719,30 @@ async function coveringMap(
 const ACCESS_LOCKERS =
   /^(?:access\.(?:grant|revoke|end|reset_factor)|grant\.revoke|credential\.issue)$/u;
 
+/**
+ * The door's grant and money step-up asked once more after the command's last
+ * wait, the audit chain's included (#444, #1011): the grant at the scope the
+ * door asked it, map and all, judged at this statement's instant. A grant that
+ * expired, or a step-up that went stale, while the command waited refuses it.
+ * A revocation cannot commit in that wait (the access lock is held), but time
+ * passes. A write on authority itself (`ACCESS_LOCKERS`) is judged by its
+ * handler under the exclusive access lock, and asked after the act the door
+ * would read the act's own change, so only its step-up is asked again.
+ */
+export async function askedAtCommit(
+  tx: TenantQuery,
+  session: Session,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest | undefined,
+): Promise<CommandRefusal | undefined> {
+  if (asked !== undefined && !ACCESS_LOCKERS.test(declaration.name)) {
+    const still = await askCovered(tx, session, request, declaration, asked);
+    if ('refusal' in still) return still.refusal;
+  }
+  return await refuseStaleMoneyStep(tx, session, declaration, request);
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -677,7 +750,14 @@ export async function prepareCommand(
   entryPoint: EntryPoint,
   request: UncheckedRequest,
   declaration: CommandDeclaration,
-): Promise<(CommandContext & { readonly request: CommandRequest }) | Refused> {
+): Promise<
+  | (CommandContext & {
+      readonly request: CommandRequest;
+      /** What the door asked, asked again once the command has done its work (`askedAtCommit`). */
+      readonly asked: ScopeRequest | undefined;
+    })
+  | Refused
+> {
   const spoofed = await refuseSystemOwnedFields(tx, request);
   if (spoofed !== undefined) return spoofed;
   const malformed = refuseMalformedIdentifier(request, declaration);
@@ -798,7 +878,17 @@ export async function prepareCommand(
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);
-  return { session, declaration, entryPoint, spine, target, request: parsed.request };
+  const carrier = deploymentCarrier();
+  return {
+    session,
+    declaration,
+    entryPoint,
+    spine,
+    target,
+    carrier,
+    request: parsed.request,
+    asked,
+  };
 }
 
 /**

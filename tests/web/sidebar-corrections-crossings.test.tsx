@@ -9,36 +9,15 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ProposePort } from '../../apps/web/src/assistant/correction.ts';
-import {
-  requestPort,
-  type CorrectionTarget,
-} from '../../apps/web/src/assistant/correction-desks.ts';
+import { taskCorrectionPort } from '../../apps/web/src/assistant/locate.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { SidebarCorrections } from '../../apps/web/src/views/correction-card.tsx';
 import { mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
-import {
-  ABOUT,
-  ABOUT_FILE,
-  V1,
-  V2,
-  aboutPage,
-  askFor,
-  card,
-} from './sidebar-corrections-support.tsx';
+import { ABOUT, TASK_A, TASK_B, V1, V2, askFor, card } from './sidebar-corrections-support.tsx';
 import { CLIENT_A, CLIENT_B, separated } from './sidebar-corrections-server.tsx';
 
 afterEach(unmountAll);
-
-/** MOCK: client B's Pricing page, which client A's people hold no grant on. */
-const PRICING_FILE: CorrectionTarget = {
-  ...ABOUT_FILE,
-  partyId: CLIENT_B,
-  taskId: '55555555-5555-4555-8555-555555555555',
-  path: 'src/pages/pricing.md',
-  pageUrl: 'https://client-b.example.test/pricing',
-  before: '# Pricing\n\nOur cheap plans suit small teams.\n',
-};
 
 /** A port that answers each ask with the given correction ids in turn. */
 const answering =
@@ -100,12 +79,11 @@ describe('client to client: the grant is what keeps them apart', () => {
     expect(view.text()).toContain('Decided by Bea Okafor.');
   });
 
-  it('a request from client A’s session on client B’s page is refused, and no card is drawn', async () => {
+  it('a request from client A’s session on client B’s task is refused, and no card is drawn', async () => {
     const alpha = twoClients();
     const client = alpha.as('session-a');
-    const pricingPage = (): Promise<CorrectionTarget | null> => Promise.resolve(PRICING_FILE);
     const view = await mount(
-      <SidebarCorrections client={client} propose={requestPort(client, pricingPage)} />,
+      <SidebarCorrections client={client} propose={taskCorrectionPort(client, TASK_B)} />,
     );
     await askFor(view, { page: 'Pricing', word: 'cheap', replacement: 'fair' });
     expect(alpha.sent('/live_correction/request')).toHaveLength(1);
@@ -117,7 +95,7 @@ describe('client to client: the grant is what keeps them apart', () => {
 
 /** The sidebar on one business's client, its door sending through the real request port. */
 const sidebar = (client: OperationsClient) => (
-  <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />
+  <SidebarCorrections client={client} propose={taskCorrectionPort(client, TASK_A)} />
 );
 
 describe('a business switch while an answer is out', () => {

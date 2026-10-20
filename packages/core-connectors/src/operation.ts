@@ -14,7 +14,8 @@
 //   5. answer            the schema every answer is validated against
 //   6. timeoutMs         how long custody waits for the answer
 //   7. maxResponseBytes  how much of the answer custody reads
-//   8. maximumMinor      the priced maximum the reservation holds before dispatch
+//   8. maximumMinor      the priced maximum the reservation holds before dispatch; zero
+//                        is unpriced, the only kind the conversation seam sends (#1508)
 //   9. settlesAt         the highest of accepted, started, completed, landed it reaches
 //  10. nothingHappened   the provider answers that are positive proof nothing happened,
 //                        or `not_reconcilable`, which the broker refuses to dispatch
@@ -23,6 +24,9 @@
 //
 // One registered with eleven does not register: `registerModelOperation`
 // answers which declarations are missing or malformed, and `catalogue` throws.
+// A streamed operation adds two more, each a function where present: `fold`,
+// the whole stream as the one body `answer` reads, and `pieces`, a reader of
+// the stream as it comes that gives display text only.
 
 import type { DataClass } from './data-class.ts';
 
@@ -31,13 +35,24 @@ export const SETTLE_LEVELS = ['accepted', 'started', 'completed', 'landed'] as c
 export type SettleLevel = (typeof SETTLE_LEVELS)[number];
 
 /** What an answer means once the adapter has read it. Text only: the broker never acts on it. */
+/** A tool the model asked for, as the provider returned it. */
+export interface ModelToolCall {
+  readonly id: string;
+  readonly name: string;
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
 export interface ModelAnswer {
   readonly text: string;
+  /** The tools the model asked for, in the provider's order (#1623 R3); absent, none. */
+  readonly toolCalls?: readonly ModelToolCall[];
   /** The model the provider says answered, or null when it named none. */
   readonly model: string | null;
   readonly usage: { readonly inputUnits: number; readonly outputUnits: number };
   /** The provider's own code for an answer that did nothing (a refusal before any work). */
   readonly providerCode: string | null;
+  /** What the provider says the answer cost, in its own currency; a price reads it, never estimates. */
+  readonly reportedCost?: { readonly currency: string; readonly amount: number };
 }
 
 /** A model id as a provider may name one; 0098 holds the same shape. */
@@ -72,9 +87,26 @@ export interface ModelOperationDeclaration {
   readonly nothingHappened: readonly string[] | 'not_reconcilable';
   readonly billed: boolean;
   readonly concurrency: number;
+  /** A streamed answer's whole body as the text `answer` reads; undefined when it cannot be read. */
+  readonly fold?: (body: string) => string | undefined;
+  /** A reader of the stream as it arrives, giving display text only. */
+  readonly pieces?: () => PieceReader;
+  /** Takes a model turn (#1623 R3) in its one field, `turn`, instead of fields. */
+  readonly turn?: true;
 }
 
-export type Declaration = keyof ModelOperationDeclaration;
+/** Display texts from a complete, in-order stream, as its chunks arrive. */
+export interface PieceReader {
+  push(chunk: Uint8Array | string): readonly string[];
+}
+
+/** The two a streamed operation adds; absent, its answer is read whole. */
+const STREAMING = ['fold', 'pieces'] as const;
+
+export type Declaration = Exclude<
+  keyof ModelOperationDeclaration,
+  (typeof STREAMING)[number] | 'turn'
+>;
 
 /** In the order a reviewer reads them, and the order a refusal names them. */
 export const DECLARATIONS: readonly Declaration[] = [
@@ -97,7 +129,10 @@ export type ModelOperation = Readonly<ModelOperationDeclaration> & { readonly re
 
 export type Registration =
   | { readonly ok: true; readonly operation: ModelOperation }
-  | { readonly ok: false; readonly faults: readonly Declaration[] };
+  | {
+      readonly ok: false;
+      readonly faults: readonly (Declaration | (typeof STREAMING)[number] | 'turn')[];
+    };
 
 const NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/u;
 const DATA_CLASSES: ReadonlySet<string> = new Set([
@@ -123,7 +158,7 @@ const WELL_FORMED: Readonly<Record<Declaration, (value: unknown) => boolean>> = 
   answer: (value) => typeof value === 'function',
   timeoutMs: (value) => positiveWhole(value, 120_000),
   maxResponseBytes: (value) => positiveWhole(value, 4 * 1024 * 1024),
-  maximumMinor: (value) => positiveWhole(value, 100_000_000),
+  maximumMinor: (value) => value === 0 || positiveWhole(value, 100_000_000),
   settlesAt: (value) =>
     typeof value === 'string' && (SETTLE_LEVELS as readonly string[]).includes(value),
   nothingHappened: (value) =>
@@ -139,9 +174,13 @@ export function registerModelOperation(declared: unknown): Registration {
     string,
     unknown
   >;
-  const faults = DECLARATIONS.filter(
-    (name) => !Object.hasOwn(shape, name) || !WELL_FORMED[name](shape[name]),
-  );
+  const faults = [
+    ...DECLARATIONS.filter(
+      (name) => !Object.hasOwn(shape, name) || !WELL_FORMED[name](shape[name]),
+    ),
+    ...STREAMING.filter((name) => shape[name] !== undefined && typeof shape[name] !== 'function'),
+    ...(shape['turn'] === undefined || shape['turn'] === true ? [] : (['turn'] as const)),
+  ];
   if (faults.length > 0) return { ok: false, faults };
   const operation = Object.freeze({
     ...(shape as unknown as ModelOperationDeclaration),

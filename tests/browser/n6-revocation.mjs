@@ -224,7 +224,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     await page.waitForSelector('#signin-email');
     await page.fill('#signin-email', login.email);
     await page.fill('#signin-password', login.password);
-    await page.selectOption('#signin-business', login.businessKey);
+    await page.fill('#signin-business', login.businessKey);
     await page.click('button[type="submit"]');
     await page.waitForFunction(() => window.location.pathname !== '/sign-in', { timeout: 15_000 });
 

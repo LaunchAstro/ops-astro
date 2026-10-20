@@ -29,7 +29,7 @@ const replies: Record<string, Reply> = {
       json(200, {
         id: ordinal === 1 ? 'factor-one' : 'factor-two',
         totp: {
-          qr_code: 'data:image/svg+xml,<svg/>',
+          qr_code: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
           secret: ordinal === 1 ? 'CANCELLED-SECRET' : 'DISPLAYED-SECRET',
           uri: 'otpauth://totp/test',
         },
@@ -86,7 +86,7 @@ it('a cancelled enrolment cannot invalidate the displayed replacement when it fi
   };
   const view = await mount(
     <StepUpContext.Provider value={stepUp}>
-      <AuthenticatorSetup client={client} />
+      <AuthenticatorSetup grantKey="alpha:owner@example.test:0" client={client} />
     </StepUpContext.Provider>,
   );
   try {

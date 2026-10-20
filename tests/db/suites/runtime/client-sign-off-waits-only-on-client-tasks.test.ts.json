@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "With client sign-off required, a task with no client launches its reviewed output and dispatches; a task with a client is still refused CLIENT_SIGNOFF_REQUIRED at the launch and at dispatch."
+}

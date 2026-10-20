@@ -26,6 +26,7 @@ import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
+import { EnrolScreen } from './screens/Enrol.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
@@ -132,7 +133,11 @@ export const SCREENS: {
         storage={context.storage}
       />
       <OwnSessions client={context.client} grantKey={context.grantKey} />
-      <AuthenticatorSetup key={context.grantKey} client={context.client} />
+      <AuthenticatorSetup
+        key={context.grantKey}
+        grantKey={context.grantKey}
+        client={context.client}
+      />
     </>
   ),
   'agency:inbox': (context) => (
@@ -151,7 +156,13 @@ export const SCREENS: {
       at={clientNamedIn(context.address)}
     />
   ),
-  'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
+  'agency:team': (context) => (
+    <TeamScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      {...(context.address === undefined ? {} : { address: context.address })}
+    />
+  ),
   'agency:access': (context) => (
     <AccessScreen client={context.client} grantKey={context.grantKey} />
   ),
@@ -159,7 +170,11 @@ export const SCREENS: {
     <TelemetryScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:operations': (context) => (
-    <OperationsScreen client={context.client} grantKey={context.grantKey} />
+    <OperationsScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      address={context.address}
+    />
   ),
   'agency:map': (context) => (
     <MapScreen
@@ -224,23 +239,40 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
 export interface OpenContext {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
+  /** The whole address, its query included: an evidence link pins a version there. */
+  readonly path: string;
 }
 
 /** The screen each open route draws, with or without a session; keyed so none is missed. */
 const OPEN_SCREENS: {
   readonly [Id in OpenRouteId]: (params: ParamsOf<Id>, context: OpenContext) => ReactElement;
 } = {
+  // Keyed by the whole address: a new link arriving in the same document is a
+  // new page, which takes its own token and clears its own fragment.
+  'agency:enrol': (_, context) => (
+    <EnrolScreen
+      key={context.path}
+      path={context.path}
+      apiOrigin={context.apiOrigin}
+      fetch={context.fetch}
+      tab={globalThis.window}
+    />
+  ),
   'agency:legal': (params, context) => (
     <LegalScreen
-      key={`${params.business}/${params.document}`}
+      key={context.path}
       business={params.business}
       document={params.document}
+      query={new URL(context.path, 'http://here').search}
       apiOrigin={context.apiOrigin}
       read={context.fetch}
     />
   ),
 };
 
-export function drawOpenScreen(match: RouteMatch<OpenRouteId>, context: OpenContext): ReactElement {
+export function drawOpenScreen<Id extends OpenRouteId>(
+  match: RouteMatch<Id>,
+  context: OpenContext,
+): ReactElement {
   return OPEN_SCREENS[match.id](match.params, context);
 }

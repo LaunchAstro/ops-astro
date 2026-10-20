@@ -93,6 +93,34 @@ const UNREACHED: Readonly<Record<string, string>> = {
          select id, person_id from public.actors
           where business_id = $1 and person_id is not null order by id limit 1) a on true
      returning 1`,
+  // #1531: no journey step carries a call. A closed membership on the seeded
+  // conversation, and a carriers row on a dispatched call of it, by an actor of
+  // the business; bravo's name ids that key nothing.
+  'public.conversation_agent_members': `insert into public.conversation_agent_members
+       (business_id, conversation_id, agent_actor_id, added_by_actor_id, joined_at, left_at)
+     select $1, coalesce(c.id, gen_random_uuid()), coalesce(c.owner_actor_id, gen_random_uuid()),
+            coalesce(c.owner_actor_id, gen_random_uuid()), now(), now()
+       from (select 1) one
+       left join lateral (
+         select id, owner_actor_id from public.conversations
+          where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  'public.model_call_carriers': `with call as (
+       insert into public.model_calls
+         (business_id, id, conversation_id, operation_key, state, reserved_minor, route_key,
+          route_reach, credential_kind, started_at)
+       select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'conversation.answer',
+              'dispatched', 0, 'm5_ollama', 'local', 'api_key', now()
+         from (select 1) one
+         left join lateral (
+           select id from public.conversations where business_id = $1 order by id limit 1) c on true
+       returning business_id, id)
+     insert into public.model_call_carriers (business_id, call_id, agent_actor_id)
+     select call.business_id, call.id, coalesce(a.id, gen_random_uuid())
+       from call
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.conversation_messages': `insert into public.conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
      select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',
@@ -126,6 +154,21 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from (select 1) one
        left join lateral (
          select id, task_id from public.planned_runs where business_id = $1 order by id limit 1) r on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  // The journey stops no attempt (#1623 R1): one outcome on the business's first
+  // attempt and its run, where it has one; otherwise ids that key nothing.
+  'public.run_outcomes': `insert into public.run_outcomes
+       (business_id, attempt_id, planned_run_id, outcome, end_code, recorded_by)
+     select $1, coalesce(att.id, gen_random_uuid()), coalesce(att.run_id, gen_random_uuid()),
+            'cancelled', 'TOOL_REFUSED', coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select t.id, t.run_id from public.attempts t
+          where t.business_id = $1 and not exists (
+                  select 1 from public.run_outcomes o where o.business_id = $1 and o.attempt_id = t.id)
+          order by t.id limit 1) att on true
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
@@ -324,10 +367,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.live_corrections': `insert into public.live_corrections
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
-        version_id, version_digest)
+        version_id, version_digest, state, located_at)
      select p.business_id, gen_random_uuid(), gen_random_uuid(), r.id, a.id, p.id,
             'src/pages/about.md', 'friendly', 'welcoming', 'https://agency.example/about/',
-            'sha256:seed', 'rev-1', 'seam-seed', gen_random_uuid(), 'sha256:seed'
+            'sha256:' || repeat('ab', 32), repeat('c0', 20), 'seam-seed', gen_random_uuid(), 'sha256:' || repeat('cd', 32),
+            'requested', now()
        from public.people p
        join public.actors a on a.business_id = p.business_id
        join public.records r on r.business_id = p.business_id
@@ -336,6 +380,45 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, correction_id, lease_id, fence, step, outcome, observations)
      select c.business_id, gen_random_uuid(), c.id, coalesce(l.id, gen_random_uuid()),
             coalesce(l.fence, 1), 'publish', 'live', '{}'::jsonb
+       from public.live_corrections c
+       left join lateral (select id, fence from public.leases
+                           where business_id = c.business_id order by id limit 1) l on true
+      where c.business_id = $1 order by c.id limit 1 returning 1`,
+  // C80's party sites: the journey binds no site. One per business on its first
+  // client, repository and project unique by a fresh id, and one page on it.
+  // Triggers are off for these seeds, so the site's holder (R6) is written as its trigger keeps it.
+  'public.party_sites': `insert into public.party_sites
+       (business_id, party_id, holder, repository, default_branch, project, changed_by_actor_id)
+     select $1, s.party, s.party, 'seed/' || s.id, 'main', 'prj_' || s.id,
+            coalesce(a.id, gen_random_uuid())
+       from (select gen_random_uuid()::text as id,
+                    coalesce((select id from public.clients where business_id = $1
+                               order by id limit 1), gen_random_uuid()) as party) s
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  'public.party_site_pages': `insert into public.party_site_pages
+       (business_id, party_id, holder, page_url, path)
+     select business_id, party_id, holder, 'https://agency.example/about/', 'src/pages/about.md'
+       from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // C80's revert ask: the journey asks none. One on the business's seeded correction.
+  'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
+       (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)
+     select business_id, gen_random_uuid(), id, requested_by_actor_id, requested_by_person_id
+       from public.live_corrections where business_id = $1 order by id limit 1 returning 1`,
+  // R5's review of a correction: the journey records none. One on the seeded correction.
+  'public.live_correction_reviews': `insert into public.live_correction_reviews
+       (business_id, id, correction_id, version_digest, verdict, review,
+        recorded_by_actor_id, recorded_by_person_id)
+     select business_id, gen_random_uuid(), id, version_digest, 'approve', 'seed',
+            requested_by_actor_id, requested_by_person_id
+       from public.live_corrections where business_id = $1 order by id limit 1 returning 1`,
+  // C80: a correction's proposal, claimed on the seeded correction under a lease the
+  // journey left; nothing the journey does proposes one.
+  'public.live_correction_proposals': `insert into public.live_correction_proposals
+       (business_id, correction_id, seam_branch, base_revision, pre_image_blob, lease_id, fence)
+     select c.business_id, c.id, 'seam-seed', 'rev-1', 'blob-seed',
+            coalesce(l.id, gen_random_uuid()), coalesce(l.fence, 1)
        from public.live_corrections c
        left join lateral (select id, fence from public.leases
                            where business_id = c.business_id order by id limit 1) l on true
@@ -570,6 +653,25 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, invitation_id, token_id, state)
      select business_id, gen_random_uuid(), invitation_id, id, 'asked'
        from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
+  // The login that invitation's accept owes the provider.
+  'public.login_provisions': `insert into public.login_provisions
+       (business_id, id, invitation_id, login_id)
+     select $1, gen_random_uuid(),
+            (select id from public.invitations where business_id = $1 order by id limit 1),
+            (select id from public.logins where business_id = $1 order by id limit 1)
+     returning 1`,
+  // AW-08: only the agent login tool writes an act, and the journey never runs it.
+  // One reserved make per business, on its first actor and person; the address is
+  // unique in every business, so it names the business.
+  'ops.agent_login_acts': `insert into ops.agent_login_acts
+       (business_id, id, agent_actor_id, act, generation, email, custody_item, phase,
+        operator_person_id)
+     select $1, gen_random_uuid(),
+            (select id from public.actors where business_id = $1 order by id limit 1),
+            'make', 1, 'agent-' || $1::text || '+g1@example.test', 'restricted calls seed',
+            'reserved',
+            (select id from public.people where business_id = $1 order by id limit 1)
+     returning 1`,
 };
 
 /**
@@ -610,6 +712,41 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        from made m
        join public.records r on r.business_id = m.business_id
       order by r.id limit 1 returning 1`,
+  // #1666: written with triggers on, so the own-business copy meets a row the guard admits. An
+  // agent reply in the business's seeded chat opened on no task, made in the same statement, and
+  // its snapshot; the guard sees the reply, inserted earlier in the statement.
+  'public.conversation_reply_snapshots': `with reply as (
+       insert into public.conversation_messages
+         (business_id, id, conversation_id, role, author_actor_id, body)
+       select c.business_id, gen_random_uuid(), c.id, 'agent', c.owner_actor_id,
+              'restricted calls seed'
+         from public.conversations c
+        where c.business_id = $1 and c.scope_record_id is null order by c.id limit 1
+       returning business_id, id)
+     insert into public.conversation_reply_snapshots (business_id, message_id, created)
+     select business_id, id, 1 from reply returning 1`,
+  // ...and one target on it: the business's first record, which an applied task.create naming
+  // that chat as its origin, written in the same statement, ties to the chat.
+  'public.conversation_reply_targets': `with snap as (
+       select s.business_id, s.message_id, m.conversation_id, m.author_actor_id
+         from public.conversation_reply_snapshots s
+         join public.conversation_messages m
+           on m.business_id = s.business_id and m.id = s.message_id
+        where s.business_id = $1 order by s.message_id limit 1),
+     made as (
+       insert into public.audit_events (business_id, id, actor_id, command, outcome,
+         payload_digest, subject_record_id, origin_conversation_id)
+       select s.business_id, gen_random_uuid(), s.author_actor_id, 'task.create', 'applied',
+              repeat('a', 64), r.id, s.conversation_id
+         from snap s
+         join lateral (select id from public.records
+                        where business_id = s.business_id order by id limit 1) r on true
+       returning business_id, subject_record_id)
+     insert into public.conversation_reply_targets
+       (business_id, message_id, position, task_id, revision)
+     select s.business_id, s.message_id, 1, m.subject_record_id, 0
+       from snap s join made m on m.business_id = s.business_id
+     returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
@@ -657,6 +794,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolname = 'ops_astro_map_path' then 'map path'
+                 when r.rolname = 'ops_astro_trace' then 'trace'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -674,16 +812,21 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'conversation_agent_members_close()',
+  'enrolment_token_find(text)',
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
   'map_summary_on_record()',
   'map_summary_refresh(uuid)',
+  'model_call_carriers_ring()',
   'model_route_room(text,integer)',
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'ops_carry_may_join(text)',
+  'ops_carry_ring(uuid,uuid,uuid,uuid)',
   'password_reset_token_find(text)',
   'planned_runs_origin_is_approved()',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
@@ -776,6 +919,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261006181500: the map read models' role owns their four writers and writes the summary and
     // frontier under row security, proved in tests/db/click-through-seed-map.test.ts.
     expect(classes['map path']).toStrictEqual(['ops_astro_map_path']);
+    // 20261018222300: the trace export's role reads the run-event cells and call counts a span is made
+    // of and writes its own cursor, gaps and retention record, proved in tests/db/trace-export-login.test.ts.
+    expect(classes['trace']).toStrictEqual(['ops_astro_trace']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -965,7 +1111,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly thirteen, each with its search path pinned', () => {
+    it('are exactly seventeen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -1035,6 +1181,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
+  });
+
+  it('the enrolment token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'enrolment_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
   });
 
   it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {

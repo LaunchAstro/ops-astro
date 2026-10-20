@@ -28,10 +28,11 @@ import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-r
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView, TaskClientFacts } from './views-client.ts';
 import type { RankView, TaskScoreFacts } from './views-rank.ts';
-import type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+import type { TaskMapLink } from './views-map.ts';
+import type { TaskStateView, PersonView, TaskRunView, TaskSummary } from './views-task.ts';
 
 export type { RankView, TaskScores } from './views-rank.ts';
-export type { TaskStateView, PersonView, TaskSummary } from './views-task.ts';
+export type { TaskStateView, PersonView, TaskRunView, TaskSummary } from './views-task.ts';
 
 export type {
   ClientListResult,
@@ -195,6 +196,12 @@ export interface TaskDetail extends TaskSummary {
   readonly ledger: TaskLedgerView | null;
   /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
   readonly rank: RankView;
+  /**
+   * The map this ticket belongs to, for the link back to it: sent to a member
+   * alone, and null unless their grants reach that map. Never sent to an
+   * agent credential, nor in the shared view.
+   */
+  readonly map?: TaskMapLink | null;
   /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
   readonly adHoc: boolean;
   /**
@@ -252,12 +259,6 @@ export interface AgentAssigneeView {
   readonly live: boolean;
   /** The run a person launched for this agent on the task, while it is open; else null. */
   readonly run: TaskRunView | null;
-}
-
-/** An open run of the task's agent: `waiting` until the runner takes it. */
-export interface TaskRunView {
-  readonly state: 'waiting' | 'started';
-  readonly launchedAt: string;
 }
 
 /** One agent the Assign to AI control offers the reader. */
@@ -521,8 +522,10 @@ export interface QueuedWork {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
-  /** The reading agent when it proposed the version, else null: a worker takes only its own. */
+  /** The reading agent when it proposed the version, else null. */
   readonly proposedByActorId: string | null;
+  /** People then holding the owner role proposed and approved it: the role, never who (ROUTE1905). */
+  readonly ownerProposed: boolean;
 }
 
 /**

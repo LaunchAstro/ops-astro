@@ -13,20 +13,24 @@ import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 import { read } from './merge-group-repo.ts';
 import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
+import { FULL_GUARD, HEAVY } from './full-checks.ts';
+import { scopeOf } from '../../scripts/full-run.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
 /** Not required, and nightly since CI-SPEED; it must not come back as a required check. */
 const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
 const ONLY_PULL_REQUESTS = "github.event_name == 'pull_request'";
-// `!= 'pull_request'` never skips a group: the database conformance shards carry it (CI-SPEED,
-// light pull requests). A required job carrying it is refused by merge-group-workflows.test.ts.
-const ALLOWED = new Set([
-  undefined,
-  'always()',
-  "github.event_name != 'push'",
-  "github.event_name != 'pull_request'",
-]);
+// `!= 'pull_request' || (a batch)` never skips a group: the database conformance shards carry it
+// (CI-SPEED, light pull requests; #1918, pre-check batches). A required job carrying it is
+// refused by merge-group-workflows.test.ts.
+const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'", SHARDS_RUN]);
+// Cut 6 (13 October 2026): a job no required check names, kept out of merge groups on purpose.
+// It may skip a group with exactly this condition, and no job may wait on it. The zizmor workflow
+// audit joined on 18 October 2026, report-only until the owner's ruleset step.
+const NOT_IN_GROUPS = "github.event_name != 'merge_group'";
+const OUT_OF_GROUPS = new Set(['visual-drift', 'zizmor']);
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string }[];
@@ -64,12 +68,17 @@ export function groupSkips(text: string, path: string): string[] {
       needs: list.filter((n) => typeof n === 'string').map((n) => n.toLowerCase()),
     });
   }
+  // `full checks` alone may carry its guard: the gate's scope is never light on a group.
+  const runs = (key: string, cond: unknown) =>
+    ALLOWED.has(cond as string) || (key === 'full' && cond === FULL_GUARD);
+  const allowed = (key: string, cond: unknown) =>
+    runs(key, cond) || (OUT_OF_GROUPS.has(key) && cond === NOT_IN_GROUPS);
   const skips = (key: string) => {
     const job = table.get(key);
-    return job === undefined || !ALLOWED.has(job.cond as string);
+    return job === undefined || !runs(key, job.cond);
   };
   for (const [key, { name, cond }] of table) {
-    if (!ALLOWED.has(cond as string)) problems.push(`${path}: ${name}: if: ${String(cond)}`);
+    if (!allowed(key, cond)) problems.push(`${path}: ${name}: if: ${String(cond)}`);
     const seen = new Set<string>();
     const todo = [...(table.get(key)?.needs ?? [])];
     for (let n = todo.pop(); n !== undefined; n = todo.pop()) {
@@ -98,7 +107,7 @@ const licences = (rest: string): [string, string] => [
   `    name: OSI licence allowlist\n${rest}`,
 ];
 const PR_ONLY = `    needs: [gate]\n    if: ${ONLY_PULL_REQUESTS}\n`;
-const PARITY = '    name: command parity\n    needs: [gate]\n';
+const PARITY = '    name: command parity\n    needs: [gate, full]\n';
 
 // Every form rounds 2 to 4 of the security review planted, read through the parser.
 const PLANTS: [string, [string, string][]][] = [
@@ -124,8 +133,8 @@ const PLANTS: [string, [string, string][]][] = [
       ['  parity:\n', '# note\n  parity:\n'],
       [PARITY, '    name: command parity\n    needs:\n      - database-lookahead\n'],
       [
-        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate]\n',
-        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate, parity]\n',
+        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate, full]\n',
+        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate, full, parity]\n',
       ],
     ],
   ],
@@ -137,6 +146,11 @@ const PLANTS: [string, [string, string][]][] = [
     ],
   ],
   ['a case variant of the job key', [licences('    needs: [gate, Database-Lookahead]\n')]],
+  [
+    'a required job kept out of merge groups',
+    [licences(`    needs: [gate]\n    if: ${NOT_IN_GROUPS}\n`)],
+  ],
+  ['a wait on a job kept out of merge groups', [licences('    needs: [gate, visual-drift]\n')]],
   [
     'a job ID repeated without case',
     [
@@ -172,7 +186,11 @@ describe('merge group: no job skips a group', () => {
       ? 'job ID repeats without case'
       : conditioned
         ? `if: ${ONLY_PULL_REQUESTS}`
-        : 'waits on database-lookahead';
+        : _form.includes('kept out')
+          ? _form.includes('wait')
+            ? 'waits on visual-drift'
+            : `OSI licence allowlist: if: ${NOT_IN_GROUPS}`
+          : 'waits on database-lookahead';
     expect(groupSkips(planted(...swaps), CI).join('\n')).toContain(reason);
   });
 
@@ -187,5 +205,55 @@ describe('merge group: no job skips a group', () => {
       groupSkips(planted(licences('    needs: [gate]\n    needs: [gate]\n')), CI),
     ).not.toStrictEqual([]);
     expect(groupSkips('jobs: [', CI)).not.toStrictEqual([]);
+  });
+});
+
+describe('merge group: the full checks job skips no group', () => {
+  const ci = parseDocument(read(CI)).toJS() as {
+    jobs: Record<
+      string,
+      {
+        name?: string;
+        if?: string;
+        needs?: string[];
+        outputs?: Record<string, string>;
+        steps?: { id?: string; run?: string; if?: string }[];
+      }
+    >;
+  };
+
+  it('is full on every merge group, from a gate step that runs on every event', () => {
+    for (const payload of [undefined, {}, { pull_request: { labels: [] } }])
+      expect(scopeOf({ eventName: 'merge_group', payload, tested: true, queueBusy: true })).toBe(
+        'full',
+      );
+    const gate = ci.jobs['gate'];
+    expect(gate?.outputs).toStrictEqual({ scope: '${{ steps.scope.outputs.scope }}' });
+    const steps = (gate?.steps ?? []).filter((step) => step.id === 'scope');
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.run).toBe('node scripts/full-run.ts');
+    expect(steps[0]).not.toHaveProperty('if');
+    expect(steps[0]).not.toHaveProperty('continue-on-error');
+  });
+
+  it('waits on the gate alone under its exact guard, and every heavy job waits on it', () => {
+    expect(ci.jobs['full']?.name).toBe('full checks');
+    expect(ci.jobs['full']?.needs).toStrictEqual(['gate']);
+    expect(ci.jobs['full']?.if).toBe(FULL_GUARD);
+    const waiting = Object.entries(ci.jobs)
+      .filter(([, job]) => (job.needs ?? []).includes('full'))
+      .map(([key]) => key)
+      .toSorted();
+    expect(waiting).toStrictEqual(
+      [...HEAVY, 'database', 'isolation-tests', 'local-checks'].toSorted(),
+    );
+  });
+
+  it('refuses the guard on any other job, or any other guard on it', () => {
+    const elsewhere = planted(licences(`    needs: [gate]\n    if: ${FULL_GUARD}\n`));
+    expect(groupSkips(elsewhere, CI)).toContain(`${CI}: OSI licence allowlist: if: ${FULL_GUARD}`);
+    const other = "needs.gate.outputs.scope == 'full'";
+    const swapped = planted([`    if: ${FULL_GUARD}\n`, `    if: ${other}\n`]);
+    expect(groupSkips(swapped, CI)).toContain(`${CI}: full checks: if: ${other}`);
   });
 });

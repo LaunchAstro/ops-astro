@@ -39,6 +39,7 @@ import {
   sweepLostWorkers,
   withProviderCalls,
 } from '../../packages/core-runtime/src/index.ts';
+import { every } from './every.ts';
 import type {
   Classification,
   EffectLookup,
@@ -211,33 +212,21 @@ export function describeRecovered(business: RecoveredBusiness): string {
 export const SWEEP_INTERVAL_MS = 60_000;
 
 /**
- * Run `pass` every `everyMs`, one pass at a time: a pass still running when
- * the next is due is skipped rather than stacked. A pass that fails is logged
- * with its problem and the next one runs anyway. `stop` ends the interval.
+ * Run `pass` every `everyMs`, one pass at a time (`every`): a pass still
+ * running when the next is due is skipped rather than stacked. A pass that
+ * fails is logged with its problem and the next one runs anyway. `stop`
+ * resolves once the running pass has ended, so the server closes no pool under it.
  */
 export function startSweeper(
   pass: () => Promise<RecoveryOutcome>,
   everyMs: number = SWEEP_INTERVAL_MS,
-): { readonly stop: () => void } {
-  let running = false;
-  const once = async (): Promise<void> => {
-    try {
-      const outcome = await pass();
-      if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
-      else console.error(`api: ${outcome.problem}`);
-    } catch (cause) {
-      console.error(`api: sweep failed: ${cause instanceof Error ? cause.message : 'unknown'}`);
-    } finally {
-      running = false;
-    }
-  };
-  const timer = setInterval(() => {
-    if (running) return;
-    running = true;
-    void once();
-  }, everyMs);
-  timer.unref();
-  return { stop: () => clearInterval(timer) };
+): { readonly stop: () => Promise<void> } {
+  const stop = every(everyMs, 'sweep', async () => {
+    const outcome = await pass();
+    if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
+    else console.error(`api: ${outcome.problem}`);
+  });
+  return { stop };
 }
 
 /** One line per business the sweep changed, after its transaction committed. */

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "R1706-F1: a model.call answered with no words (a lost reply replayed from the ledger, or a send that was not ok) ends the agent's turn ANSWER_LOST; nothing is handed back and no COMPLETED is recorded."
+}

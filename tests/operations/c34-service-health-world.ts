@@ -110,9 +110,18 @@ export const UNREADABLE: readonly [string, () => Promise<SourceAnswer>, string][
 /** Each way a Langfuse answer can be wrong, and the fault it is shown as. */
 export const HOSTILE_LANGFUSE: readonly [string, Reply, string][] = [
   [
-    'a redirect to metadata',
-    (_q, response) => {
-      response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' });
+    // On loopback, so the answer never rests on the host's network: the place
+    // it points to answers healthy, so a redirect followed reads healthy and
+    // is heard asking a route other than the health one.
+    'a redirect to another place',
+    (request, response) => {
+      if (request.url === '/redirected/latest/meta-data/') {
+        json(200, { status: 'OK', version: '3.0.0' })(request, response);
+        return;
+      }
+      response.writeHead(302, {
+        location: `http://${String(request.headers.host)}/redirected/latest/meta-data/`,
+      });
       response.end();
     },
     'unreachable',

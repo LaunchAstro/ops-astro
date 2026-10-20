@@ -15,33 +15,42 @@ import {
   LEGACY_SCHEME,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
+import { workJudged } from './agent-standing.ts';
 import type { AgentCall } from './agent-call.ts';
+import type { IdentifiedRequest } from './requests.ts';
+import type { Replaying } from './envelope.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
-import { replayRefusal } from './live-correction-agent.ts';
+import { replayOwnWork, replayRefusal } from './live-correction-agent.ts';
+import { presentedCredential } from './tasks-take-launch.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
  * back in its place, a refusal, or nothing when the receipt goes out as stored.
  */
-export async function releaseReplay(
+async function releaseReplay(
   tx: TenantQuery,
   call: AgentCall,
   operation: AgentOperation,
   stored: CommandHandle,
+  presented: VerifiedSubject,
 ): Promise<CommandResult | undefined> {
   switch (operation.replay) {
     case 'pickup':
       return await replayPickup(tx, call, stored);
     case 'serveAgain':
       return await operation.open(async (row) => await serveAgain(tx, call, row));
+    case 'takeLaunch':
+      return await operation.open(
+        async (row) => await replayTake(tx, call, row, stored, presented),
+      );
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
     case 'childPickup':
@@ -70,6 +79,28 @@ export async function releaseReplay(
 }
 
 /**
+ * The agent entry's replay (`Replaying`): a stored success released by the
+ * row's `replay`, and an own-site correction request's own-work check asked
+ * again last, after the replay's audit-chain wait (#1877).
+ */
+export function replaying(
+  tx: TenantQuery,
+  callOf: (request: IdentifiedRequest) => AgentCall,
+  operation: AgentOperation,
+  presented: VerifiedSubject,
+): Replaying {
+  const release = async (stored: CommandHandle, request: IdentifiedRequest) =>
+    await releaseReplay(tx, callOf(request), operation, stored, presented);
+  if (operation.replay !== 'correctionRequest') return { release };
+  const lastCheck = async (request: IdentifiedRequest) => {
+    const call = callOf(request);
+    const resolved = await resolveDelegation(tx, call.session.actorId, call.credential ?? '');
+    return resolved.ok ? await replayOwnWork(tx, call.request, resolved.value) : resolved.refusal;
+  };
+  return { release, lastCheck };
+}
+
+/**
  * A read whose answer depends on the rights held now (`session.capabilities`,
  * `task.queue`): those rights checked the way a fresh call is, then the row
  * served again for them. The stored answer is never released.
@@ -88,6 +119,41 @@ async function serveAgain<O extends object>(
   const served = await authorised.run(operands);
   if (isRefused(served)) return served.refusal;
   return { command: call.request.command, ...served };
+}
+
+/**
+ * A take's replay answers about the launch its first answer named, never a
+ * later one: an empty take stays empty (the stored answer, once the login and
+ * the credential it presents are judged again as a fresh take's are), and one
+ * that named a launch is served again for that launch alone, as it stands now.
+ * A launch made since is never taken under the old operation identity. The
+ * stored answer keeps no credential, so this serve is the one that hands it
+ * over, and it is judged again after its waits as a fresh take is.
+ */
+async function replayTake<O extends object>(
+  tx: TenantQuery,
+  call: AgentCall,
+  operation: TypedOperation<O>,
+  stored: CommandHandle,
+  presented: VerifiedSubject,
+): Promise<CommandResult | undefined> {
+  const launchId = stored.detail['launchId'];
+  if (typeof launchId !== 'string') {
+    const authorised = await authorise(tx, call, operation);
+    if ('refusal' in authorised) return authorised.refusal;
+    return presentedCredential(call)?.refusal;
+  }
+  const again = { ...call, request: { ...call.request, launchId } };
+  const authorised = await authorise(tx, again, operation);
+  if ('refusal' in authorised) return authorised.refusal;
+  const operands = operation.operands(again.request);
+  if (isOperandRefusal(operands)) return operands.refusal;
+  const judged = { call: again, presented, authority: operation.authority };
+  const served = await workJudged(tx, judged, async () => await authorised.run(operands));
+  if ('ended' in served) return served.ended;
+  if (isRefused(served)) return served.refusal;
+  const { recordId, revision, detail } = served;
+  return { command: call.request.command, recordId, revision, detail };
 }
 
 /**

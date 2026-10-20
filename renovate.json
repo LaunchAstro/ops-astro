@@ -46,6 +46,13 @@
       "matchPackageNames": ["typescript", "@types/node"],
       "schedule": ["* 0-6 1 */3 *"],
       "automerge": false
+    },
+    {
+      "description": "The agent stack moves together or not at all (#1623 R4): langchain 1.5.17 and @langchain/core 1.2.18 need langsmith 0.11, past the settled pin, and the workspace overrides hold one copy each. A bump changes the pins, the overrides and their proof in one reviewed pull request.",
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": ["langchain", "@langchain/*", "langsmith", "zod"],
+      "groupName": "agent stack",
+      "automerge": false
     }
   ],
   "vulnerabilityAlerts": {

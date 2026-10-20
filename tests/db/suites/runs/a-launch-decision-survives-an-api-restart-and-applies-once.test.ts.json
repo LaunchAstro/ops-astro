@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R2, TEST F5 option 1: a committed Launch decision survives stopping the real API process; nothing is claimed or applied while it is down; a fresh API and worker apply it once, and the receipt cites the decision, its version and effect identity, as a live-API control does."
+}

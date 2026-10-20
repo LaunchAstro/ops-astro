@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two API occurrence sweepers on one business start its due run once, a stop mid-pass resolves only after that pass commits and starts no further business, and a pass still running holds the next back"
+}

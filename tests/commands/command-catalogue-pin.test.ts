@@ -66,9 +66,15 @@
 // agent reaches, one row each in the same three tables and the handler map.
 // Launch from the task adds `task.launch`: a targeted person write no agent
 // reaches, a row in the request and handler maps.
+// The agent runner adds `task.take_launch`: an untargeted write an agent login
+// reaches before any pickup, the third, its `launchId` shaped by the runtime;
+// one row in each table that lists it, and a person handler that refuses.
 // The seventeenth is a person's own agents (Assign to AI): `agent.create` and
 // `agent.rename`, untargeted self writes no agent reaches, one row each in the
 // same three tables and the handler map, beside the `agent.mine` read.
+// The eighteenth is #1623 R1's `run.end`: an untargeted lease write an agent
+// reaches under its delegation, its `leaseId` shaped by the runtime, one row
+// in each table that lists it, and a person handler that refuses.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -163,6 +169,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-launch.ts', async (original) => ({
   ...(await original<object>()),
   launchTask: recorder('launchTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-take-launch.ts', async (original) => ({
+  ...(await original<object>()),
+  takeLaunchAsPerson: recorder('takeLaunchAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (original) => ({
   ...(await original<object>()),
@@ -368,6 +378,21 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
+vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-review.ts',
+  async (original) => ({
+    ...(await original<object>()),
+    recordReview: recorder('recordReview'),
+    setSingleOperator: recorder('setSingleOperator'),
+  }),
+);
+vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-revert-ask.ts',
+  async (original) => ({
+    ...(await original<object>()),
+    askLiveRevert: recorder('askLiveRevert'),
+  }),
+);
 vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
   ...(await original<object>()),
   sendDirect: recorder('sendDirect'),
@@ -413,6 +438,7 @@ vi.mock('../../packages/core-commands/src/commands/budget-planning-cap.ts', asyn
 vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+  refuseRunEndAsPerson: recorder('refuseRunEndAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/child-work-person.ts', async (original) => ({
   ...(await original<object>()),
@@ -435,8 +461,10 @@ const PINNED_RUNTIME_SHAPED = {
   'task.dispatch': 'leaseId',
   'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
+  'task.take_launch': 'launchId',
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
+  'run.end': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -482,7 +510,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
   'live_correction.decide': ['correctionId', 'versionId'],
-  'live_correction.request': ['partyId', 'taskId'],
+  'live_correction.record_review': ['correctionId'],
+  'live_correction.request': ['taskId'],
+  'live_correction.revert': ['correctionId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -492,6 +522,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'privacy.set_overseas_service': [],
   'run.child_handback': [],
   'run.delegate_child': ['leaseId'],
+  'run.end': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
@@ -514,6 +545,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
   'settings.set_live_correction_approver': [],
+  'settings.set_single_operator': [],
   'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
@@ -526,6 +558,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
+  'task.take_launch': ['launchId'],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
   'tag.create': [],
@@ -554,6 +587,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'agent.mine',
   'agent.rename',
   'approval.revoke',
+  'automation.history',
   'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
@@ -595,24 +629,29 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'graduation.demote',
   'graduation.promote',
   'grant.revoke',
-  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.seen',
   'inbox.unattended',
   'invitation.create',
+  'invitation.list',
   'invitation.resend',
   'invitation.revoke',
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
   'live_correction.decide',
+  'live_correction.list',
   'live_correction.read',
+  'live_correction.receipts',
+  'live_correction.record_review',
   'live_correction.request',
+  'live_correction.revert',
   'mandate.file',
   'mandate.revoke',
   'map.chart',
   'map.frontier',
+  'map.list',
   'map.view',
   'model.call',
   'notifications.set_channel',
@@ -633,6 +672,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'record.create',
   'run.child_handback',
   'run.delegate_child',
+  'run.end',
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
@@ -650,6 +690,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_money_step_up',
   'settings.set_priority_stages',
   'settings.set_retention_window',
+  'settings.set_single_operator',
   'tag.create',
   'tag.list',
   'task.accept_plan',
@@ -675,6 +716,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.restart',
   'task.restore',
   'task.search',
+  'task.take_launch',
   'task.todos',
   'team.list',
   'time.delete',
@@ -691,6 +733,7 @@ const PINNED_AGENT_SURFACE = [
   'onboarding.step_result',
   'run.child_handback',
   'run.delegate_child',
+  'run.end',
   'run.revise_state',
   'session.capabilities',
   // The assignee of its own task under a delegation holding assign (MP-4-8).
@@ -712,10 +755,11 @@ const PINNED_AGENT_SURFACE = [
   'task.set_adhoc',
   'task.set_category',
   'task.set_scores',
+  'task.take_launch',
   'task.update',
 ];
 
-const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue'];
+const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue', 'task.take_launch'];
 
 /** One request per write, each operand a distinct value so a dropped or swapped one shows. */
 const REQUESTS: readonly CommandRequest[] = [
@@ -803,6 +847,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
   { command: 'task.trash', operationId: 'op', recordId: 'r' },
   { command: 'task.launch', operationId: 'op', recordId: 'r' },
+  { command: 'task.take_launch', operationId: 'op', launchId: 'launch' },
   { command: 'task.restore', operationId: 'op', batchId: 'batch' },
   { command: 'task.purge', operationId: 'op', olderThanDays: 9 },
   {
@@ -942,15 +987,10 @@ const REQUESTS: readonly CommandRequest[] = [
   {
     command: 'live_correction.request',
     operationId: 'op',
-    partyId: 'party',
     taskId: 'task',
-    path: 'p',
+    page: 'About',
     word: 'w',
     replacement: 'x',
-    pageUrl: 'u',
-    baseRevision: 'b',
-    before: 'before',
-    after: 'after',
   },
   {
     command: 'live_correction.decide',
@@ -959,6 +999,16 @@ const REQUESTS: readonly CommandRequest[] = [
     versionId: 'v',
     decision: 'approve',
   },
+  { command: 'live_correction.revert', operationId: 'op', correctionId: 'c' },
+  {
+    command: 'live_correction.record_review',
+    operationId: 'op',
+    correctionId: 'c',
+    versionDigest: 'd',
+    verdict: 'approve',
+    review: 'r',
+  },
+  { command: 'settings.set_single_operator', operationId: 'op', value: true },
   { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
     command: 'budget.set_planning_cap',
@@ -981,6 +1031,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'conversation.set_scope', operationId: 'op', conversationId: 'c', page: null },
   { command: 'conversation.set_model', operationId: 'op', conversationId: 'c', model: null },
   { command: 'model.call', operationId: 'op' },
+  { command: 'run.end', operationId: 'op' },
   {
     command: 'run.top_up',
     operationId: 'op',
@@ -1081,6 +1132,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.rank': ['rankTask', 'after', null],
   'task.trash': ['trashTask'],
   'task.launch': ['launchTask'],
+  'task.take_launch': ['takeLaunchAsPerson'],
   'task.restore': ['restoreTasks', 'batch'],
   'task.purge': ['purgeTasks', 9],
   'settings.set_four_eyes_threshold': [
@@ -1157,6 +1209,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.write_off': ['writeOffOnTask', 'request'],
   'live_correction.request': ['requestLiveCorrection', 'request'],
   'live_correction.decide': ['decideLiveCorrection', 'request'],
+  'live_correction.revert': ['askLiveRevert', 'request'],
+  'live_correction.record_review': ['recordReview', 'request'],
+  'settings.set_single_operator': ['setSingleOperator', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
@@ -1186,6 +1241,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'conversation.set_scope': ['setConversationScope', 'request'],
   'conversation.set_model': ['setModel', 'request'],
   'model.call': ['refuseModelCallAsPerson', 'request'],
+  'run.end': ['refuseRunEndAsPerson', 'request'],
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
   'run.revise_state': ['reviseStateOnRun', 'request'],
@@ -1240,7 +1296,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same eight commands', () => {
+  it('shapes the same runtime identifier for the same ten commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -1255,13 +1311,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-six from an expected revision', () => {
+  it('exempts the same one hundred and thirty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-five, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-seven, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

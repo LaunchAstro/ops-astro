@@ -119,9 +119,11 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
       async (_name, declaration) => {
         const call = await positiveCall(harness, declaration);
         const { answer, sent } = await observed.send(call);
+        // The worker's own stop applies as the retained `RUN_ENDED` (#1623 R1).
+        const ended = declaration.name === 'run.end';
         expect({ status: answer.status, code: answer.code, shape: shapeOf(sent) }).toStrictEqual({
-          status: 200,
-          code: 'ok',
+          status: ended ? 409 : 200,
+          code: ended ? 'RUN_ENDED' : 'ok',
           shape: expectedShape(declaration, call.prefix, 'applied'),
         });
         captured.positive.add(declaration.name);

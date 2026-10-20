@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Two timer starts for one person on two connections leave one running entry, and a timer stop ends the entry at the time it stops it, after a newer start or a wait on its row, never before the entry started; the table refuses an entry that ends before it starts. Races need a real database and two connections."
+}

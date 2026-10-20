@@ -47,6 +47,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import type { CommandHandle } from './register-store.ts';
 import type { CommandRequest } from './requests.ts';
+import { isTimestamp } from './values.ts';
 
 type Issue = CommandRequest & { readonly command: 'credential.issue' };
 type Revoke = CommandRequest & { readonly command: 'credential.revoke' };
@@ -107,9 +108,14 @@ function keysOf(scope: unknown): readonly CredentialKey[] | undefined {
   return keys;
 }
 
-/** The expiry, or undefined unless it is a UTC instant after now and within the limit. */
+/**
+ * The expiry, or undefined unless it is a real UTC instant after now and within
+ * the limit: never a 30 February `Date.parse` would roll into March (#522).
+ */
 function expiryOf(expiresAt: unknown, now: number): Date | undefined {
-  if (typeof expiresAt !== 'string' || !INSTANT.test(expiresAt)) return undefined;
+  if (typeof expiresAt !== 'string' || !INSTANT.test(expiresAt) || !isTimestamp(expiresAt)) {
+    return undefined;
+  }
   const at = Date.parse(expiresAt);
   if (!Number.isFinite(at) || at <= now || at > now + CREDENTIAL_MAX_DAYS * DAY_MS) {
     return undefined;

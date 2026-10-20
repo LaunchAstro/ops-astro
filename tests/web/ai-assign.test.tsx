@@ -43,9 +43,15 @@ describe('Assign to AI: the dock task panel', () => {
     const view = await panel(server.client, { changed: () => (changes.count += 1) });
     await view.choose('#panel-assign-ai', 'd-mine-2');
     await tick();
+    // The read answered revision 4; the write carries it, so a newer write refuses this one.
     expect(
-      server.sent.map((one) => [one.to, one.body['recordId'], one.body['fields']]),
-    ).toStrictEqual([['/task/assign', TASK_ID, { agent: 'd-mine-2' }]]);
+      server.sent.map((one) => [
+        one.to,
+        one.body['recordId'],
+        one.body['fields'],
+        one.body['expectedRevision'],
+      ]),
+    ).toStrictEqual([['/task/assign', TASK_ID, { agent: 'd-mine-2' }, 4]]);
     expect(changes.count).toBe(1);
   });
 

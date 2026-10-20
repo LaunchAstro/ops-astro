@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a retry while a settled reply waits on the conversation lock past 30 s is never told the answer ended"
+}

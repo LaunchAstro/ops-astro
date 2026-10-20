@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an occurrence sweep transaction that rolls back leaves no occurrence or run and reports none"
+}

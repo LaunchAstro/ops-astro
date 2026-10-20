@@ -167,25 +167,53 @@ export type {
   TimeEntryView,
 } from './views.ts';
 // the team conversation reads' answers (C71-D)
+// #1694's correction reads, straight from their module: `views.ts` is at its line cap.
+export type {
+  CorrectionListItem,
+  CorrectionReceiptView,
+  LiveCorrectionListResult,
+  LiveCorrectionReads,
+  LiveCorrectionReceiptsResult,
+  ReceiptCapture,
+} from './views-run.ts';
 export type * from './views-chat.ts';
-export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
+export type {
+  MapComponentView,
+  MapView,
+  MapViewResult,
+  MapFrontierResult,
+  MapListResult,
+  MapReadResult,
+  TaskMapLink,
+} from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,
   AttributionResult,
   ConversationModelsResult,
   ConversationModelView,
+  ConversationTargetsView,
   PlanningAllowanceView,
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+export type {
+  InvitationListResult,
+  InvitationRole,
+  InvitationState,
+  InvitationView,
+} from './views-invitations.ts';
 // Settings ▸ Workflow triggers' registry (C33).
 export type {
   ActivationView,
   AutomationDefinitionView,
+  AutomationHistoryEntry,
+  AutomationHistoryResult,
   AutomationRegistryResult,
   DefinitionVersionView,
   StandingApprovalView,
+  ChangeHistoryEntry,
+  OccurrenceHistoryEntry,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet and the per-client graduation region as Connections & signal reads
@@ -209,6 +237,18 @@ export type {
 } from './signal-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
+export {
+  PROPOSAL_DESCRIPTION_LIMIT,
+  PROPOSAL_ESTIMATE_LIMIT,
+  PROPOSAL_TITLE_LIMIT,
+  proposalAssign,
+  proposalCreate,
+  proposalEdit,
+  readProposal,
+  type ProposalRead,
+  type ProposedPlan,
+  type TaskProposal,
+} from './task-proposal.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)
@@ -228,3 +268,15 @@ export type {
   SkillUsageView,
   Unavailable,
 } from './cost-views.ts';
+
+export {
+  isWorkerEndCode,
+  outcomeOf,
+  RUN_OUTCOMES,
+  WORKER_END_CODES,
+  type EndCode,
+  type RunOutcome,
+  type RunOutcomeView,
+  type WorkerEndCode,
+} from './run-outcomes.ts';
+export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';

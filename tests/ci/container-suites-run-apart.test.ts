@@ -6,16 +6,20 @@
 // 36796131629). So `local checks` runs `pnpm check` with those suites left out
 // and runs them in a step of their own after it, never beside the captures.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const LIST = 'tests/ci/container-suites.json';
+const HERE = 'tests/ci/container-suites-run-apart.test.ts';
 const listed: readonly string[] = (JSON.parse(readFileSync(LIST, 'utf8')) as { suites: string[] })
   .suites;
 
-// A docker call that does more than ask `docker info` starts something.
-const STARTS = /(?:spawn|spawnSync|execFile|execFileSync)\(\s*'docker',\s*(?!\['info'\])/u;
+// Read-only info and inspect calls add no network interface. Other commands
+// remain conservative candidates, including calls with computed arguments.
+const STARTS =
+  /(?:spawn|spawnSync|execFile|execFileSync)\(\s*'docker',(?!\s*\[\s*'(?:info|inspect)'\s*[,\]])/u;
 
 const testFiles = (): string[] =>
   readdirSync('tests', { recursive: true, encoding: 'utf8' })
@@ -85,8 +89,24 @@ describe('suites that start containers run apart from the browser captures', () 
   });
 
   it('is the list vitest leaves out when asked', () => {
-    const config = readFileSync('vitest.config.ts', 'utf8');
-    expect(config).toContain(LIST);
-    expect(config).toMatch(/process\.env\['CONTAINER_SUITES'\] === 'apart'/u);
+    // vitest itself resolves which files a run takes, with and without the switch.
+    const runs = (apart: boolean): string[] => {
+      const env = { ...process.env };
+      delete env['CONTAINER_SUITES'];
+      if (apart) env['CONTAINER_SUITES'] = 'apart';
+      const out = execFileSync(
+        'node_modules/.bin/vitest',
+        ['list', '--filesOnly', ...listed, HERE],
+        {
+          encoding: 'utf8',
+          env,
+        },
+      );
+      return out.split('\n').filter((line) => line.startsWith('tests/'));
+    };
+    expect(runs(true)).toStrictEqual([HERE]);
+    // Control: without the switch the same call takes listed suites, so the
+    // switch, not the filters or another exclusion, is what leaves them out.
+    expect(runs(false).filter((file) => listed.includes(file)).length).toBeGreaterThan(0);
   });
 });

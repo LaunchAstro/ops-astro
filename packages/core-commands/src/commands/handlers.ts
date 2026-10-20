@@ -17,6 +17,7 @@ import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
 import { launchTask } from './tasks-launch.ts';
+import { takeLaunchAsPerson } from './tasks-take-launch.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
 import { setCategory } from './tasks-category.ts';
@@ -66,7 +67,7 @@ import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope, setModel } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
-import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { refuseModelCallAsPerson, refuseRunEndAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
@@ -74,7 +75,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { makeAgent, renameOwnAgent } from './agents.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
-import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
+import { LIVE_CORRECTION_HANDLERS } from './live-correction-handlers.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { CHAT_HANDLERS } from './chat-handlers.ts';
 import { invitationAct } from './invitations.ts';
@@ -90,7 +91,6 @@ import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
   'task.update': updateTask,
-
   'task.complete': (tx, context) => setState(tx, context, 'completed'),
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
@@ -98,6 +98,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
   'task.launch': (tx, context) => launchTask(tx, context),
+  // Only the launched agent takes a launch, on its own entry (`tasks-take-launch.ts`).
+  'task.take_launch': () => takeLaunchAsPerson(),
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
   'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),
@@ -190,9 +192,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     revokeDelegationAsManager(tx, context, request.delegationId),
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
-  'live_correction.request': requestLiveCorrection,
-  'live_correction.decide': decideLiveCorrection,
-  'settings.set_live_correction_approver': setApprover,
+  ...LIVE_CORRECTION_HANDLERS,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
   // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the
@@ -224,8 +224,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'conversation.rename': renameConversation,
   'conversation.set_scope': setConversationScope,
   'conversation.set_model': setModel,
-  // AW-01: the run's worker's, through the broker, on the agent prefix only.
+  // AW-01 and #1623 R1: the run's worker's, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
+  'run.end': refuseRunEndAsPerson,
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,

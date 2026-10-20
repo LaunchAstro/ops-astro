@@ -12,9 +12,10 @@
 //   sign-in whose address is not a made-up `.local` one. Writes through the
 //   application's own role are what people typed on staging, and pass. The
 //   seed's tag is a secret its process makes at start and never stores: the
-//   guard holds only its digest and admits the tag only on the session the
-//   seed bound by parameter, so no other session, restore or file can make or
-//   replay a tag that passes, and the next seed run replaces it.
+//   guard holds only its digest, kept for the session the seed bound by
+//   parameter and admitted, and admits the tag only there, so no other
+//   session, restore or file can make or replay a tag that passes. Another
+//   run's admission leaves it good; it ends with that session.
 // - The watch: an event trigger that guards a table from its creation and
 //   notes a guard switched off (`pg_restore --disable-triggers` does that).
 //   Guards and watch fire in every replication mode, but one: on hosted

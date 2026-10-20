@@ -165,6 +165,7 @@ export function TriggersPanel(props: { readonly client: OperationsClient }): Rea
               key={definition.id}
               definition={definition}
               busy={busy}
+              client={props.client}
               change={(command, body) => {
                 void change(command, body);
               }}

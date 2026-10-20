@@ -54,6 +54,12 @@
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
     {
+      "files": [
+        "tests/broker/a-paid-page-send-holds-its-task-read-grant-until-custody-has-it.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/surfaces/priority-draft-kept-until-reread-shows-save.test.tsx"],
       "rules": { "max-lines-per-function": "off" }
     },
@@ -251,10 +257,6 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
-      "files": ["tests/ci/t2f-unwire-keeps-live-board-running.test.mjs"],
-      "rules": { "max-lines-per-function": "off" }
-    },
-    {
       "files": ["tests/ci/staging-no-production-data-guard.test.ts"],
       "rules": {
         "no-await-in-loop": "off",
@@ -269,6 +271,7 @@
         "tests/ci/restore-includes-sign-in-tables.test.ts",
         "tests/ci/restore-includes-staging-guards.test.ts",
         "tests/api/hosted-recovery-waits-for-pass.test.ts",
+        "tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts",
         "tests/ci/staging-archive-restores-guards.test.ts",
         "tests/ci/restore-drill-keeps-staging-guards.test.ts"
       ],

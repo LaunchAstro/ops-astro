@@ -29,6 +29,10 @@ const COMMAND = /^POST \/api\/(?:a\/)?b\/:businessKey\/[a-z_]+\/[a-z_]+$/u;
 const OTHERS = [
   'ALL /*',
   'ALL /api/*',
+  // The security detector's step on the routes beside the surface (`BESIDE_THE_SURFACE`).
+  'ALL /api/b/:businessKey/account/*',
+  'ALL /api/b/:businessKey/live/*',
+  'ALL /api/session',
   'GET /api/health',
   // C81: the published legal documents, public by design.
   'GET /api/public/b/:businessKey/legal/:document',
@@ -40,6 +44,8 @@ const OTHERS = [
   'POST /api/b/:businessKey/account/sessions/end-others',
   'POST /api/b/:businessKey/account/sessions/list',
   'POST /api/b/:businessKey/account/sessions/sign-out',
+  // C39-T: an invitation accepted, signed out, on its one-time link's token alone.
+  'POST /api/enrol',
   'POST /api/session',
   'POST /api/session/end',
 ];
@@ -57,11 +63,11 @@ const SETTINGS = [
   'GATE_SIGNING_KEY_ID',
   'GATE_SIGNING_SECRET',
   'GOTRUE_URL',
+  'MODEL_BROKER_CARRIER',
   'OPS_ASTRO_CRASH_POINT',
   'OPS_ENVIRONMENT',
   // C55: the error sink's web address, never its DSN (ORCH49).
   'OPS_ERROR_SINK_URL',
-  'OPS_RELEASE',
   'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',
   'SUPABASE_KEY_SET_URL',

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "preference saves over the composed API: an older sign-in's save that answers before the newest one, or after the newest one's answer was lost, cannot leave the older choice stored"
+}

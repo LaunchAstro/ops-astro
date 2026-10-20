@@ -67,8 +67,10 @@ import {
   type ConversationExchange,
   type ModelCallExecutor,
   admitReads,
+  withCarrier,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
+import type { Carrier } from '../../packages/core-custody/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
   crashSeamProblem,
@@ -88,16 +90,20 @@ import {
   keySetUrlFor,
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
-import { startLiveTopics } from './live.ts';
+import { LIVE_CHANNEL, startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { carrierSettings } from './model-carrier.ts';
+import { carriedAnswers } from './model-carriage.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountEnrolment } from './enrolment.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import { startConversationSweeper } from './conversation-sweeper.ts';
+import { startOccurrenceSweeper } from './occurrence-sweeper.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -150,30 +156,23 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
 export const LOOKUP_ROLE = 'ops_astro_lookup';
 
 /**
- * The business key to its identifier, cached after the first answer.
- *
- * The cache holds successes only. A key that is not there is asked again next
- * time, so a business created while the server is up is reachable without a
- * restart, and a wrong key cannot be turned into a cheap probe for one that
- * is.
+ * The business key to its identifier, read afresh on every call and never
+ * kept: a key handed from one business to another names the new holder on the
+ * next request, never the business that held it before, and a business created
+ * while the server is up is reachable without a restart.
  *
  * **A key two businesses hold names neither.** Since 0027
  * (`businesses_key_global_idx`) storage refuses a second business under a
  * held key. The lookup still reads up to two rows and answers the unresolved
- * refusal for more than one, rather than serving and caching whichever row
- * came back first, as the backstop for a database below 0027. That refusal is
- * not cached, so the key resolves again once only one business holds it.
+ * refusal for more than one, rather than serving whichever row came back
+ * first, as the backstop for a database below 0027. The key resolves again
+ * once only one business holds it.
  */
 export function createBusinessResolver(
   admin: AdminConnection,
 ): (businessKey: string) => Promise<string | undefined> {
-  const known = new Map<string, string>();
-
   return async function resolveBusiness(businessKey: string): Promise<string | undefined> {
     if (businessKey === '') return undefined;
-    const cached = known.get(businessKey);
-    if (cached !== undefined) return cached;
-
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
       await execute(`set local role ${LOOKUP_ROLE}`);
@@ -184,9 +183,7 @@ export function createBusinessResolver(
     });
     if (rows.length !== 1) return undefined;
     const id = rows[0]?.id;
-    if (id === undefined || !isBusinessId(id)) return undefined;
-    known.set(businessKey, id);
-    return id;
+    return id !== undefined && isBusinessId(id) ? id : undefined;
   };
 }
 
@@ -240,6 +237,8 @@ export interface ApiConfig {
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
   readonly answerConversation?: ConversationExchange;
+  /** The model agent that carries this deployment's conversations (#1531); absent, none joins. */
+  readonly carrier?: Carrier;
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
@@ -256,7 +255,7 @@ export interface ComposedApi {
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
-   * follow share one lookup and one cache.
+   * follow share one lookup.
    */
   readonly resolveBusiness: (businessKey: string) => Promise<string | undefined>;
 }
@@ -280,13 +279,22 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // And its carrier (#1531), which the conversation commands read from their context.
+  server.use(async (_context, next) => await withCarrier(config.carrier, next));
   // Each request charged once to its quotas, after login resolution admits it.
   const quota = createQuotaGate(config.quota);
   server.use(async (_context, next) => await withQuotaScope(quota, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran
   // on the runtime login (G2): the lookup answering proves nothing about it.
-  // The nil id names no business, so the statement reads no row.
+  // The nil id names no business, so the statement reads no row. `live` is a
+  // probe sent on the runtime login and heard back on the listener.
+  const probe = async (payload: string): Promise<void> => {
+    await database.withBusiness(
+      NIL_BUSINESS,
+      async (tx) => await tx.query('select pg_notify($1, $2)', [LIVE_CHANNEL, payload]),
+    );
+  };
   server.get('/api/health', async (context) => {
     let reachable = false;
     let detail = '';
@@ -309,7 +317,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
         reads: 'mounted',
         ...(config.live === undefined
           ? {}
-          : { live: config.live.topics.listening ? 'listening' : 'down', notificationQueue }),
+          : {
+              live: (await config.live.topics.hears(probe)) ? 'listening' : 'down',
+              notificationQueue,
+            }),
         detail,
       },
       reachable ? 200 : 503,
@@ -345,6 +356,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
   if (config.authEmailHook !== undefined) {
     mountAuthEmailHook(server, database, config.authEmailHook);
   }
+  // C39-T: an invitation accepted on its one-time link, which needs the database alone.
+  mountEnrolment(server, database);
   // C40: a reset token's password set, mounted when given; `main()` does not yet.
   if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
@@ -425,7 +438,7 @@ type Stopping = (() => Promise<unknown>) | undefined;
 
 /**
  * The server's shutdown in two stages: the work that may be mid-pass first
- * (the live streams, the mail worker's running pass), then the pools and
+ * (the live streams, the running passes of every interval job), then the pools and
  * processes that work uses. The second stage starts only once every part of
  * the first has settled, so a question or a send ends before its pool does.
  */
@@ -443,22 +456,27 @@ export interface ServerParts {
   readonly mail: Stopping;
   /** R7: the conversation sweep's running pass. */
   readonly conversations: Stopping;
+  /** C33: the occurrence sweep's running pass (#1318). */
+  readonly occurrences?: Stopping;
+  /** T3b: the reconciliation pass's running pass. */
+  readonly sweeper: Stopping;
+  /** AW-13: the trace jobs' running passes, then their custody. */
+  readonly tracer: Stopping;
   readonly database: Stopping;
   readonly admin: Stopping;
   readonly broker: Stopping;
-  readonly tracer: Stopping;
 }
 
 /**
- * The two stages `main` hands `shutDown`: the live streams, the mail worker's and the
- * conversation sweep's running passes first, then the pools and processes they use.
+ * The two stages `main` hands `shutDown`: the live streams and every interval
+ * job's running pass first, then the pools and processes they use.
  */
 export function shutdownStages(
   parts: ServerParts,
 ): readonly [readonly Stopping[], readonly Stopping[]] {
   return [
-    [parts.topics, parts.mail, parts.conversations],
-    [parts.database, parts.admin, parts.broker, parts.tracer],
+    [parts.topics, parts.mail, parts.conversations, parts.occurrences, parts.sweeper, parts.tracer],
+    [parts.database, parts.admin, parts.broker],
   ];
 }
 
@@ -537,7 +555,14 @@ async function main(): Promise<void> {
   const topics = await startLiveTopics(connectListener(listenUrl));
   // The credential broker (AW-01): custody's own process, started only from a
   // complete configuration. None configured, `model.call` answers 501.
-  const brokerConfig = brokerSettings(environment);
+  // A carried deployment (#1531) starts no custody process: its broker is the carriage's.
+  const carried = carrierSettings(environment);
+  if (carried.kind === 'invalid') {
+    console.error(`api: ${carried.problem}`);
+    process.exit(1);
+  }
+  const brokerConfig =
+    carried.kind === 'carried' ? ({ kind: 'absent' } as const) : brokerSettings(environment);
   if (brokerConfig.kind === 'invalid') {
     console.error(`api: ${brokerConfig.problem}`);
     process.exit(1);
@@ -549,11 +574,14 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
-  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
-  // account yet); mock with a setting missing or malformed stops the server here.
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock`; mock with a
+  // setting missing or malformed stops the server here. The real provider runs
+  // in the mail unit (`apps/mail/main.ts`) only, so this process never holds its key.
   const mailConfig = mailDeliverySettings(environment);
-  if (mailConfig.kind === 'invalid') {
-    console.error(`api: ${mailConfig.problem}`);
+  if (mailConfig.kind === 'invalid' || mailConfig.kind === 'resend') {
+    console.error(
+      `api: ${mailConfig.kind === 'resend' ? 'MAIL_DELIVERY=resend runs in the mail unit, not the API' : mailConfig.problem}`,
+    );
     process.exit(1);
   }
   const broker =
@@ -593,6 +621,9 @@ async function main(): Promise<void> {
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
+    ...(carried.kind === 'carried'
+      ? { carrier: carried.carrier, ...carriedAnswers(environment, carried) }
+      : {}),
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,
@@ -678,18 +709,28 @@ async function main(): Promise<void> {
     codeRevision: identity.commit,
   });
 
+  // A1 (#1653): this long-running API process fires only with an explicit opt-in.
+  const occurrences =
+    environment['AUTOMATION_FIRING'] === 'on'
+      ? startOccurrenceSweeper(database, {
+          businesses: async () => await Promise.resolve(traced),
+        })
+      : undefined;
+  console.log(`api process: automation firing ${occurrences === undefined ? 'off' : 'on'}`);
+
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
-    sweeper.stop();
     const stages = shutdownStages({
       topics: async () => await topics.close(),
       mail: mail?.stop,
       conversations: conversations.stop,
+      occurrences: occurrences?.stop,
+      sweeper: sweeper.stop,
+      tracer: tracer?.stop,
       database: async () => await database.close(),
       admin: async () => await admin.close(),
       broker: broker?.stop,
-      tracer: tracer?.stop,
     });
     void shutDown(...stages).then(() => process.exit(0));
   };

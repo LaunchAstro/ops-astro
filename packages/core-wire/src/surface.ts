@@ -34,6 +34,8 @@ import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { OWN_AGENT_SURFACE } from './surface-agents.ts';
+import { SITE_SURFACE } from './surface-site.ts';
+import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -53,8 +55,6 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
-const RUN_COLLECTION = 'run';
-const GATE_COLLECTION = 'gate';
 const CUSTODY_COLLECTION = 'custody';
 const MANDATE_COLLECTION = 'mandate';
 const CONVERSATION_COLLECTION = 'conversation';
@@ -65,6 +65,14 @@ const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
 const CHAT_COLLECTION = 'chat';
+/** The lease holder's own commands, asked of the lease (model.call, run.end). */
+const ASKED_OF_LEASE = {
+  targetsExistingRecord: false,
+  authorisedOn: 'claim',
+  untargetedIdentifiers: ['leaseId'],
+  runtimeShaped: 'leaseId',
+  agent: 'delegated',
+} as const;
 const GROUP_MANAGER =
   'a member of the group, then its creator or a holder of chat:manage (C71-G); else NOT_FOUND or SCOPE_NOT_GRANTED';
 const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
@@ -144,9 +152,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
-  // Launch from the task: a person who directs the task's agent opens a run
-  // for it (`tasks-launch.ts`). Never an agent's.
-  declare('task.launch', 'assign'),
+  // Launch from the task, and its agent taking it, in their own file.
+  ...LAUNCH_SURFACE,
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
@@ -268,7 +275,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
-  read('conversation.read', CONVERSATION_COLLECTION),
+  read('conversation.read', CONVERSATION_COLLECTION, {
+    authority: ['conversation:write', 'conversation:read'],
+  }),
   // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
   // The list is the caller's own conversations and nobody else's, whatever
   // read-any grant they hold; its rule is the read's own, like the read's.
@@ -324,6 +333,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       'settings.set_conversation_window',
       'settings.set_retention_window',
       'settings.set_priority_stages',
+      'settings.set_single_operator',
     ] as const
   ).map((name) =>
     declare(name, 'manage', {
@@ -618,6 +628,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('map.list', TASK_COLLECTION),
   // WF-2. A chart is a business write: it files the map and its tickets.
   declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
   declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
@@ -635,41 +646,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
-  // read inside its query), so one client's grant reaches no other client's
-  // correction. The request is `run:write`, an agent's inside its delegation; the
-  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
-  // never an agent's, and only the configured approver who is not the requester.
-  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
-  declare('live_correction.request', 'write', {
-    collection: RUN_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'target',
-    untargetedIdentifiers: ['partyId', 'taskId'],
-    agent: 'delegated',
-  }),
-  declare('live_correction.decide', 'decide', {
-    collection: GATE_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'target',
-    untargetedIdentifiers: ['correctionId', 'versionId'],
-  }),
-  declare('settings.set_live_correction_approver', 'manage', {
-    collection: SETTINGS_COLLECTION,
-    targetsExistingRecord: false,
-    untargetedIdentifiers: [],
-  }),
+  ...SITE_SURFACE,
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
   // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
-  declare('model.call', 'write', {
-    targetsExistingRecord: false,
-    authorisedOn: 'claim',
-    untargetedIdentifiers: ['leaseId'],
-    runtimeShaped: 'leaseId',
-    agent: 'delegated',
-  }),
+  declare('model.call', 'write', ASKED_OF_LEASE),
+  declare('run.end', 'write', ASKED_OF_LEASE),
   // The answers at the budget stop: `decide` on `billing` for a top-up and on
   // `gate` for the end, each asked of the task the body names, like the work
   // controls. The runtime asks the same pair of the run's own task again under
@@ -811,11 +794,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record scope and, inside it, the task's own read. Never an agent: no
   // agent-reachable operation returns a trace (the ticket's `no agent read`).
   read('trace.read', 'operations', { authorisedOn: 'record' }),
-  // AW-12: the harness test's result on one run, computed from its frozen
-  // manifest. `read` on tasks, asked inside the statement on the run's task
-  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
-  // framework under test reaches its own verdict.
-  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {
@@ -878,10 +856,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['conversationId'],
   }),
 
-  // C39-T: `access:share` on the whole business, a person's key no agent holds
-  // (the permission key catalogue). Another business's invitation is
-  // NOT_FOUND from the handler, as an id nobody issued. An administrator's
-  // invitation, created or resent, also asks `access:manage` in the handler.
+  // C39-T: `access:share` on the whole business, a person's key no agent holds, and the list
+  // reads under it too. Another business's invitation is NOT_FOUND from the handler, as an id
+  // nobody issued; an administrator's, created or resent, also asks `access:manage` there.
   ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
     declare(name, 'share', {
       collection: 'access',
@@ -889,11 +866,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
     }),
   ),
+  read('invitation.list', 'access', { action: 'share' }),
   // Settings ▸ Workflow triggers (C33). The registry is a business fact read
   // like `settings.read`; an activation is changed under `settings:manage` and
   // a version released under `automation:manage`, both business-wide and
   // never an agent's (the key catalogue: owner and administrators).
   read('automation.registry', SETTINGS_COLLECTION),
+  // One activation's history (#1741), under the same key: never an agent's.
+  read('automation.history', SETTINGS_COLLECTION),
   declare('activation.change', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
@@ -946,10 +926,9 @@ export function declarationOf(name: CommandName): CommandDeclaration {
  * The commands with no existing record to be stale against: the rows that
  * target none.
  *
- * It is derived from the rows, and
- * `tests/commands/command-catalogue-pin.test.ts` holds the list as a literal,
- * so a new exemption is still a diff to that test. A test comparing a
- * derivation with its own source could not fail.
+ * It is derived from the rows, and `tests/commands/command-catalogue-pin.test.ts`
+ * holds the list as a literal, so a new exemption is still a diff to that
+ * test. A test comparing a derivation with its own source could not fail.
  *
  * `task.create` has no target yet. `task.restore` and `task.purge` take a
  * batch identity and a window, not a record. `task.decide` binds a proposal

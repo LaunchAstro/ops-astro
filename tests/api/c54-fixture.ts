@@ -52,18 +52,21 @@ export const asPerson = async (
     bearer(who.token),
   );
 
-/** A command on the agent prefix, under the delegation `credential` names. */
+/** A command on the agent prefix, under the delegation `credential` names, or none (a pickup). */
 export const asAgent = async (
   world: World,
   name: CommandName,
   body: Readonly<Record<string, unknown>>,
-  credential: string,
+  credential?: string,
 ): Promise<Answer> =>
   await call(
     world.api,
     agentPath('alpha', pathOf(name)),
     { operationId: randomUUID(), ...body },
-    { ...bearer(world.agent.token), 'x-agent-delegation': credential },
+    {
+      ...bearer(world.agent.token),
+      ...(credential === undefined ? {} : { 'x-agent-delegation': credential }),
+    },
   );
 
 /** The page's real client (apps/web), its fetch the real API's own; `seen` hears each status. */

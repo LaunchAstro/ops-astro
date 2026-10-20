@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a schedule changed while a sweep waits on the activation lock is the schedule the sweep claims"
+}

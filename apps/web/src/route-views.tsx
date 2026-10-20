@@ -20,6 +20,7 @@ import {
 } from './manifest.ts';
 import { isLegacy } from './legacy.ts';
 import { RAIL_GLYPHS } from './rail-glyphs.ts';
+import { decoded } from './address-segment.ts';
 import { matchRoute, pathTo, type RouteMatch } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
@@ -29,6 +30,7 @@ import { RecordState } from './views/record-state.tsx';
  */
 const SECTION_OF_ROUTE: Readonly<Record<string, string>> = {
   'agency:task-detail': 'agency:projects',
+  'agency:map': 'agency:projects',
 };
 
 const namespaceSections = (namespace: Section['namespace']): readonly Section[] =>
@@ -142,8 +144,9 @@ export function frameAt(bare: string, businessKey: string | null, access: Client
  * is shown in words, and only for a client the person may open.
  */
 export function stripClient(slug: string | null): StripClient | null {
-  if (slug === null) return null;
-  const name = decodeURIComponent(slug)
+  const words = slug === null ? null : decoded(slug);
+  if (words === null) return null;
+  const name = words
     .split('-')
     .filter((word) => word !== '')
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
@@ -187,11 +190,13 @@ export const ClientRefused = (): ReactElement => (
 );
 
 // An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
+// Nor is a fragment: one may hold a link's token, and the path alone names the address.
 export function NotFound(props: { readonly path: string }): ReactElement {
+  const [path = ''] = props.path.split('#');
   return (
     <div className="readstate" data-outcome="not-found">
       <Empty
-        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : props.path}.`}
+        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : path}.`}
         description="The route registry is the list the application resolves through. An address that is not in it does not resolve, which is a truer answer than a blank page."
         action={
           <a className="sb__addr" href={pathTo('agency:projects-board')}>

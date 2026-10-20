@@ -91,6 +91,7 @@ export const CONVERSATIONS: ChatConversationsResult = {
       lastRead: '2026-09-25T22:10:00.000Z',
       lastMessageAt: '2026-09-25T22:10:00.000Z',
       unread: 0,
+      canManage: false,
     },
     {
       conversationId: 'cv-harbour',
@@ -101,6 +102,7 @@ export const CONVERSATIONS: ChatConversationsResult = {
       lastRead: '2026-09-25T19:00:00.000Z',
       lastMessageAt: '2026-09-25T19:24:00.000Z',
       unread: 2,
+      canManage: true,
     },
   ],
 };

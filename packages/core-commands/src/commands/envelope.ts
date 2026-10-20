@@ -39,6 +39,7 @@ import type {
   BusinessId,
   Database,
   TenantQuery,
+  ScopeRequest,
   Session,
   VerifiedSubject,
   EntryPoint,
@@ -74,7 +75,7 @@ import {
 import { handleCommand } from './handlers.ts';
 import { isRefused, refused, type Applied, type Refused } from './outcome.ts';
 import { pickupReceiptBinding } from './pickup-receipt.ts';
-import { REVISION_FIXES, expectedRevisionOf, prepareCommand } from './prepare.ts';
+import { REVISION_FIXES, askedAtCommit, expectedRevisionOf, prepareCommand } from './prepare.ts';
 
 const IDENTITY_FIXES: readonly string[] = [
   'Send an operation_id: 8 to 200 characters of letters, digits, dot, colon, dash or underscore.',
@@ -95,18 +96,29 @@ export interface Caller {
  */
 export type Entry =
   | { readonly outside: CommandRefusal }
-  | {
-      /**
-       * A stored success as the rights held now release it: an answer in its
-       * place, a refusal, or nothing when it goes out as stored.
-       */
-      readonly release: (
-        stored: CommandHandle,
-        request: IdentifiedRequest,
-      ) => Promise<CommandResult | Refused | undefined>;
+  | (Replaying & {
       /** A request the register has not seen, carrying a usable identity. */
       readonly attempt: (request: IdentifiedRequest, digest: string) => Promise<CommandResult>;
-    };
+    });
+
+/** How an entry answers a request the register already holds. */
+export interface Replaying {
+  /**
+   * A stored success as the rights held now release it: an answer in its
+   * place, a refusal, or nothing when it goes out as stored.
+   */
+  readonly release: (
+    stored: CommandHandle,
+    request: IdentifiedRequest,
+  ) => Promise<CommandResult | Refused | undefined>;
+  /**
+   * A released success's last judgement, asked after the replay's audit
+   * event, whose chain wait is its last: what `release` read before that
+   * wait may have changed during it. A refusal takes the event back.
+   */
+  readonly lastCheck?:
+    ((request: IdentifiedRequest) => Promise<CommandRefusal | undefined>) | undefined;
+}
 
 /**
  * The part of every call that is the same on both prefixes, in this order:
@@ -141,10 +153,7 @@ export async function enter(
   // One register for both prefixes, keyed on the caller's own actor, so a
   // pickup retried after a lost response replays the lease it already holds.
   const seen = await lookupAttempt(tx, caller.actorId, request.operationId);
-  if (seen !== undefined) {
-    const release = async (stored: CommandHandle) => await entry.release(stored, request);
-    return await replay(tx, caller, request, digest, seen, release);
-  }
+  if (seen !== undefined) return await replay(tx, caller, request, digest, seen, entry);
   return await entry.attempt(request, digest);
 }
 
@@ -162,6 +171,8 @@ export async function runCommand(
   request: UncheckedRequest,
   /** The person's sign-in, asked again once the handler has done its work. */
   presented?: VerifiedSubject,
+  /** The agent credential the call stands on, judged again then too (`credential-envelope.ts`). */
+  credentialLapsed?: StillStanding,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
   return await enter(tx, session, request, {
@@ -172,9 +183,21 @@ export async function runCommand(
         const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
         return await settle(tx, session, identified, digest, refusal);
       }
-      return await attempt(tx, session, entryPoint, identified, digest, declaration, presented);
+      return await attempt(tx, session, entryPoint, identified, digest, declaration, {
+        presented,
+        credentialLapsed,
+      });
     },
   });
+}
+
+/** A refusal for a caller whose standing ended while the command waited, or nothing. */
+export type StillStanding = (tx: TenantQuery) => Promise<CommandRefusal | undefined>;
+
+/** What the caller stands on, asked again after the command's last wait. */
+interface Standing {
+  readonly presented: VerifiedSubject | undefined;
+  readonly credentialLapsed: StillStanding | undefined;
 }
 
 /**
@@ -370,7 +393,7 @@ async function replay(
   request: IdentifiedRequest,
   digest: string,
   seen: RegisteredAttempt,
-  release: (stored: CommandHandle) => Promise<CommandResult | Refused | undefined>,
+  entry: Replaying,
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
   // for two different commands differs here without a second comparison. A
@@ -390,7 +413,7 @@ async function replay(
   // so its replay names less than the first answer). A stored success is released
   // only to the rights held now: a revocation bites on the next call, and a
   // replay is a call.
-  const released = isCommandRefusal(stored) ? undefined : await release(stored);
+  const released = isCommandRefusal(stored) ? undefined : await entry.release(stored, request);
   if (released !== undefined && isCommandRefusal(released)) {
     return await settle(tx, caller, request, digest, released, 'registered');
   }
@@ -398,19 +421,45 @@ async function replay(
     const { refusal, attempted } = released;
     return await settle(tx, caller, request, digest, refusal, 'registered', attempted);
   }
-  if (!isCommandRefusal(stored) && !declarationOf(request.command).audited) {
-    return released ?? stored;
+  const ended = await replayed(tx, caller, request, digest, { stored, subject }, entry);
+  if (ended === undefined) return released ?? stored;
+  return await settle(tx, caller, request, digest, ended, 'registered');
+}
+
+/**
+ * A replay's audit event, then a released success's last check: the event's
+ * trigger waits on the business's audit chain, the replay's last wait. Its
+ * refusal takes the event back.
+ */
+async function replayed(
+  tx: TenantQuery,
+  caller: Caller,
+  request: IdentifiedRequest,
+  digest: string,
+  { stored, subject }: { stored: CommandResult; subject: string | null },
+  { lastCheck }: Replaying,
+): Promise<CommandRefusal | undefined> {
+  const last = isCommandRefusal(stored) ? undefined : lastCheck;
+  if (last !== undefined) await tx.query('savepoint command_replay');
+  if (isCommandRefusal(stored) || declarationOf(request.command).audited) {
+    await writeAuditEvent(tx, {
+      actorId: caller.actorId,
+      command: request.command,
+      operationId: request.operationId,
+      outcome: 'replayed',
+      refusalCode: isCommandRefusal(stored) ? stored.code : null,
+      subjectRecordId: subject,
+      payloadDigest: digest,
+    });
   }
-  await writeAuditEvent(tx, {
-    actorId: caller.actorId,
-    command: request.command,
-    operationId: request.operationId,
-    outcome: 'replayed',
-    refusalCode: isCommandRefusal(stored) ? stored.code : null,
-    subjectRecordId: subject,
-    payloadDigest: digest,
-  });
-  return released ?? stored;
+  if (last === undefined) return undefined;
+  const ended = await last(request);
+  await tx.query(
+    ended === undefined
+      ? 'release savepoint command_replay'
+      : 'rollback to savepoint command_replay',
+  );
+  return ended;
 }
 
 /** A success as the register keeps it: the answer, and beside it what its audit event names. */
@@ -484,29 +533,25 @@ async function attempt(
   request: IdentifiedRequest,
   digest: string,
   declaration: CommandDeclaration,
-  presented: VerifiedSubject | undefined,
+  standing: Standing,
 ): Promise<CommandResult> {
   await tx.query('savepoint command_attempt');
   try {
-    const outcome = await attemptWork(tx, session, entryPoint, request, declaration);
-    const answer = await answerOf(tx, session, request, digest, declaration, outcome);
+    const worked = await attemptWork(tx, session, entryPoint, request, declaration);
+    const answer = await answerOf(tx, session, request, digest, declaration, worked.outcome);
     // The handler and the audit chain can wait on locks after the door let the
     // call in, and the caller's standing can end in that wait: the session
-    // signed out, or the access ended (C58), which a person's own write holds
-    // no access lock against. Writes re-check at commit (OWNER-3 A): after the
-    // last wait, a caller the door would now refuse keeps nothing, and the
-    // refusal holds no operation id, so a caller let back in can retry it. An
-    // act that ended the caller's own access is asked only about its session:
-    // the lost membership is the act, and a sign-out while it waited is not.
-    const keepsWrites = !isRefused(outcome) || outcome.retains === true;
-    const ownEnding = !isRefused(outcome) && outcome.endsOwnAccess === true;
-    const standing =
-      presented === undefined || !keepsWrites
-        ? undefined
-        : await (ownEnding ? signedOut(tx, session) : standingOf(tx, presented, 'required'));
-    if (standing === undefined || !('refused' in standing)) return answer;
+    // signed out, the access ended (C58), which a person's own write holds no
+    // access lock against, or a grant, step-up or credential expired. Writes
+    // re-check at commit (OWNER-3 A, #1011): after the last wait, a caller the
+    // door would now refuse keeps nothing, and the refusal holds no operation
+    // id, so a caller let back in can retry it. An act that ended the caller's
+    // own access is asked only about its session: the lost membership is the
+    // act, and a sign-out while it waited is not.
+    const ended = await refusedAtCommit(tx, session, request, declaration, standing, worked);
+    if (ended === undefined) return answer;
     await tx.query('rollback to savepoint command_attempt');
-    return await settle(tx, session, request, digest, standing, 'none');
+    return await settle(tx, session, request, digest, ended, 'none');
   } catch (cause) {
     // The savepoint is rolled back so the statement log reads honestly, and
     // then the fault leaves: this driver has already condemned the
@@ -515,6 +560,44 @@ async function attempt(
     await tx.query('rollback to savepoint command_attempt').catch(() => undefined);
     throw cause;
   }
+}
+
+/** The refusal a write that keeps something meets after its last wait, or nothing. */
+async function refusedAtCommit(
+  tx: TenantQuery,
+  session: Session,
+  request: IdentifiedRequest,
+  declaration: CommandDeclaration,
+  standing: Standing,
+  { outcome, asked }: Worked,
+): Promise<CommandRefusal | undefined> {
+  if (isRefused(outcome) && outcome.retains !== true) return undefined;
+  if (isRefused(outcome) || outcome.endsOwnAccess !== true) {
+    return await standsNow(tx, session, request, declaration, standing, asked);
+  }
+  return standing.presented === undefined ? undefined : await signedOut(tx, session);
+}
+
+/**
+ * The door's refusal of this caller now, or nothing: the sign-in first, then
+ * the credential, then the grant and step-up the door asked.
+ */
+async function standsNow(
+  tx: TenantQuery,
+  session: Session,
+  request: IdentifiedRequest,
+  declaration: CommandDeclaration,
+  { presented, credentialLapsed }: Standing,
+  asked: ScopeRequest | undefined,
+): Promise<CommandRefusal | undefined> {
+  if (presented !== undefined) {
+    const signedIn = await standingOf(tx, presented, 'required');
+    if ('refused' in signedIn) return signedIn;
+  }
+  return (
+    (await credentialLapsed?.(tx)) ??
+    (await askedAtCommit(tx, session, request, declaration, asked))
+  );
 }
 
 /** Whether the session ended since it was resolved, refused as the door would refuse it (C58). */
@@ -595,9 +678,10 @@ async function attemptWork(
   entryPoint: EntryPoint,
   request: IdentifiedRequest,
   declaration: CommandDeclaration,
-): Promise<Applied | Refused> {
+): Promise<Worked> {
   await tx.query('savepoint command_work');
-  const outcome = await work(tx, session, entryPoint, request, declaration);
+  const worked = await work(tx, session, entryPoint, request, declaration);
+  const { outcome } = worked;
   await tx.query(
     // A refusal rolls back, except the one that kept something on purpose:
     // `Refused.retains` is set by a handler that wrote a row the contract
@@ -606,7 +690,13 @@ async function attemptWork(
       ? 'rollback to savepoint command_work'
       : 'release savepoint command_work',
   );
-  return outcome;
+  return worked;
+}
+
+/** The command's outcome, and what the door asked to let it in. */
+interface Worked {
+  readonly outcome: Applied | Refused;
+  readonly asked?: ScopeRequest | undefined;
 }
 
 /**
@@ -620,13 +710,14 @@ async function work(
   entryPoint: EntryPoint,
   request: IdentifiedRequest,
   declaration: CommandDeclaration,
-): Promise<Applied | Refused> {
+): Promise<Worked> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, declaration);
-  if ('refusal' in prepared) return prepared;
+  if ('refusal' in prepared) return { outcome: prepared };
   // S0-5: after authority, before the handler touches anything.
   const shut = await firstClientGate(tx, declaration.name);
-  if (shut !== undefined) return refused(shut);
-  return await handleCommand(tx, prepared, prepared.request);
+  if (shut !== undefined) return { outcome: refused(shut) };
+  const outcome = await handleCommand(tx, prepared, prepared.request);
+  return { outcome, asked: prepared.asked };
 }
 
 /**

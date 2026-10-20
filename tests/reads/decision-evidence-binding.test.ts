@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// R2-THERMO-17: a decision's signed evidence digest is the only signed
-// carrier of the ceiling and currency it approved (`evidence.ts`, `bound`), so
-// the proposal read ties that digest to the version, evidence pack and gate
-// binding it shows. Three tamperings that left the chain intact used to read
+// A decision's signed evidence digest is the only signed carrier of the
+// ceiling and currency it approved (`evidence.ts`, `bound`), so the proposal
+// read ties that digest to the version, evidence pack and gate binding it
+// shows. Three tamperings that left the chain intact used to read
 // as verified:
 //
 // - (a) the owner rewrites the evidence pack's body under its old digest;
@@ -139,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   });
 
   it('reads a clean approval', async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     await decide(world, await propose(world, taskId), 'approve');
     const answer = await readTask(world, taskId);
@@ -148,7 +148,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   }, 60_000);
 
   it('reads a request-changes-then-approve history across two versions', async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     const first = await propose(world, taskId);
     await decide(world, first, 'request_changes');
@@ -166,7 +166,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   }, 60_000);
 
   it('(a) fails a read whose evidence pack body was rewritten under its old digest', async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     const on = await propose(world, taskId);
     await decide(world, on, 'approve');
@@ -180,7 +180,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   }, 60_000);
 
   it("(b) fails a read whose version's maximum_minor was rewritten", async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     const on = await propose(world, taskId);
     await decide(world, on, 'approve');
@@ -208,7 +208,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   it.each(rewrites)(
     "fails a read whose version's %s was rewritten under its decision and pack",
     async (column, assignment) => {
-      world = await createWorld('r2fr2');
+      world = await createWorld('evbind');
       const taskId = await createTask(world);
       const on = await propose(world, taskId);
       await decide(world, on, 'approve');
@@ -235,7 +235,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   // refusal, and the read check is proved with the same move made by the
   // owner with the gate's triggers off, as (b) does for the version.
   it('(c) refuses the application role moving a decided gate to another version, at storage', async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     const on = await propose(world, taskId);
     await decide(world, on, 'approve');
@@ -258,7 +258,7 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
   }, 60_000);
 
   it('(c) fails a read whose decided gate the owner moved, with its triggers off, to another version', async () => {
-    world = await createWorld('r2fr2');
+    world = await createWorld('evbind');
     const taskId = await createTask(world);
     const on = await propose(world, taskId);
     await decide(world, on, 'approve');

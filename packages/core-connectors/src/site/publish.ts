@@ -22,6 +22,7 @@ import {
   type Occurrence,
   type ReadBack,
 } from './reconcile.ts';
+import { whileServed, type Served } from './serving.ts';
 import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
 /** The provider's idempotency key: stable for one intended effect across retries (broker contract 3.4). */
@@ -53,7 +54,8 @@ export interface PublishJob {
 
 export interface Published {
   readonly revision: string;
-  readonly deploymentId: string;
+  /** Absent while none is found for the revision: not published yet. */
+  readonly deploymentId?: string;
   readonly liveUrl: string;
 }
 
@@ -181,41 +183,38 @@ export async function publishCorrection(
   return unknown(answer.code);
 }
 
-export interface Served {
-  readonly revision: string;
-  readonly served: boolean;
-}
-
 /** A fenced capture: the page's text and the address it ended on after any redirect. */
 export type Captured =
   | { readonly ok: true; readonly value: { readonly text: string; readonly url: string } }
   | { readonly ok: false };
 
 export interface ObservePorts {
-  /** `site.deployment.read`. */
+  /** `site.deployment.read`, served only while it serves the bound page (`readServing`). */
   readonly readDeployment: (deploymentId: string) => Promise<ProviderResult<Served>>;
   /** `site.capture` of the public address, through the fence. */
   readonly capture: (url: string) => Promise<Captured>;
   readonly raiseTask: PublishPorts['raiseTask'];
 }
 
-/** The deployment answers served, at this revision. */
-async function servedAt(ports: ObservePorts | RevertPorts, deploymentId: string, revision: string) {
-  const deployment = await ports.readDeployment(deploymentId);
-  return (
-    deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision
-  );
-}
+export type Observed<S> = Omit<Accepted, 'state'> & { readonly state: S };
 
-/** Live is two observations: the revision served, and the fenced capture showing the new word where it was approved. */
+/**
+ * Live is two observations: the revision serving the page before and after the capture, and
+ * the fenced capture showing the new word where it was approved. Not serving is unknown.
+ */
 export async function observeLanded(
   accepted: Accepted,
   target: CorrectionTarget,
   ports: ObservePorts,
-): Promise<Accepted | (Omit<Accepted, 'state'> & { readonly state: 'live' })> {
-  if (!(await servedAt(ports, accepted.deploymentId, accepted.revision))) return accepted;
-  const captured = await ports.capture(accepted.liveUrl);
-  if (!captured.ok || captured.value.url !== accepted.liveUrl) return accepted;
+): Promise<Accepted | Observed<'live'> | Observed<'unknown'>> {
+  const read = () => ports.capture(accepted.liveUrl);
+  const captured = await whileServed(ports.readDeployment, accepted, read);
+  if (captured === 'unserved') {
+    await ports.raiseTask('DEPLOYMENT_NOT_SERVING', accepted.dispatchToken);
+    return { ...accepted, state: 'unknown' };
+  }
+  if (captured === 'pending' || !captured.ok || captured.value.url !== accepted.liveUrl)
+    return accepted;
   const live = flipped(captured.value.text, accepted.occurrence, target.word, target.replacement);
   if (live === 'unconfirmable')
     await ports.raiseTask('LIVE_CHECK_UNCONFIRMED', accepted.dispatchToken);
@@ -282,9 +281,10 @@ export async function revertCorrection(
     await ports.raiseTask('REVERT_CHECK_UNPLACED', token);
     return pending;
   }
-  if (!(await servedAt(ports, deploymentId, revision))) return pending;
-  const captured = await ports.capture();
-  if (!captured.ok || captured.value.url !== where.liveAt) return pending;
+  const captured = await whileServed(ports.readDeployment, reverted.value, ports.capture);
+  if (captured === 'unserved')
+    return { state: 'unknown', code: 'DEPLOYMENT_NOT_SERVING', decidedAt };
+  if (captured === 'pending' || !captured.ok || captured.value.url !== where.liveAt) return pending;
   const back = flipped(captured.value.text, where, input.target.replacement, input.target.word);
   if (back === 'unconfirmable') await ports.raiseTask('REVERT_CHECK_UNCONFIRMED', token);
   if (typeof back !== 'object') return pending;

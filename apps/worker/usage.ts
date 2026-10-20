@@ -16,6 +16,12 @@ export interface UsageReporter {
   readonly estimate: (step: { readonly kind: string }) => number;
   /** What the step used once done, priced by the product's book (T2d), or `null` when the reporter declines to say. */
   readonly observe: (step: { readonly kind: string }) => Usage | null;
+  /**
+   * The most an accepted plan's compute may spend before its reviewed
+   * successor (#1717 R8b), held on the plan beside the step's own estimate so
+   * the successor still fits the envelope; absent is nothing.
+   */
+  readonly compute?: number;
 }
 
 /**

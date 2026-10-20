@@ -14,6 +14,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { read, ROOT } from './merge-group-repo.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 import {
   behindRequired,
   evaluate,
@@ -38,11 +39,13 @@ const ROUTED = [
   'database',
   'database-gate',
   'database-shard',
+  'full',
   'gate',
   'isolation',
   'isolation-tests',
   'licences',
   'local-checks',
+  'pin-tests',
   'pr-size',
   'secrets',
   'semgrep',
@@ -167,8 +170,8 @@ const PLANTS: [string, [string, string, string][], string][] = [
     [
       [
         CI,
-        `    if: github.event_name != 'pull_request'\n    runs-on: ${ROUTE}\n`,
-        `    if: github.event_name != 'pull_request'\n    runs-on: ubuntu-latest\n`,
+        `    if: ${SHARDS_RUN}\n    runs-on: ${ROUTE}\n`,
+        `    if: ${SHARDS_RUN}\n    runs-on: ubuntu-latest\n`,
       ],
     ],
     'database conformance shard ${{ matrix.shard }}: stays hosted',
@@ -178,8 +181,8 @@ const PLANTS: [string, [string, string, string][], string][] = [
     [
       [
         CI,
-        '    name: command parity\n    needs: [gate]\n    runs-on: ubuntu-latest\n',
-        `    name: command parity\n    needs: [gate]\n    runs-on: ${ROUTE}\n`,
+        '    name: command parity\n    needs: [gate, full]\n    runs-on: ubuntu-latest\n',
+        `    name: command parity\n    needs: [gate, full]\n    runs-on: ${ROUTE}\n`,
       ],
     ],
     'command parity: reaches the M5 on merge_group',

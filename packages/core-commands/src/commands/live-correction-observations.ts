@@ -77,7 +77,7 @@ export function landedObservations(
 ): Observations {
   return {
     published_revision: seen(landed.revision),
-    deployment_id: seen(landed.deploymentId),
+    deployment_id: seen(landed.deploymentId ?? 'not found yet'),
     deployment_served: seen(landed.state === 'live' ? 'served' : 'not yet served'),
     ...(landed.state === 'live'
       ? {

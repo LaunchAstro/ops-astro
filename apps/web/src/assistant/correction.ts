@@ -5,13 +5,16 @@
 // **The request door.** A person names the page, the word and its
 // replacement in three fields; nothing they type is parsed. The request goes
 // through one typed port (`ProposePort`), the sidebar's call to
-// `site.source.propose`. That command is not on this build yet, so the drawer
-// takes the port from its host and draws no door without one.
+// `live_correction.request` on the task the drawer was opened from
+// (`locate.ts`). The drawer takes the task from its host and draws no door
+// without one.
 //
 // **The state.** `live_correction.read` answers the correction's state as the
-// request and decide commands name it. The card says it in one of seven
+// request and decide commands name it. The card says it in one of its
 // words, through an explicit table: a state the table does not name is
-// `unknown`, never guessed at.
+// `unknown`, never guessed at. A correction the site runner could not find
+// (`unlocated`) is said by the refusal the read names, in the refusal table's
+// words.
 //
 // **The refusal.** The port and the decision refuse with a code. The door says it in plain
 // words from an explicit table; a code the table does not name gets one
@@ -29,10 +32,13 @@ export type ProposeAnswer =
   | { readonly ok: true; readonly correctionId: string }
   | { readonly ok: false; readonly code: string };
 
-/** The sidebar's one call to `site.source.propose`. */
+/** The sidebar's one call to `live_correction.request`. */
 export type ProposePort = (ask: CorrectionAsk) => Promise<ProposeAnswer>;
 
 export type CardState =
+  | 'locating'
+  | 'unlocated'
+  | 'superseded'
   | 'requested'
   | 'approved'
   | 'published'
@@ -43,6 +49,9 @@ export type CardState =
   | 'unknown';
 
 const STATES: Readonly<Record<string, CardState>> = {
+  locating: 'locating',
+  unlocated: 'unlocated',
+  superseded: 'superseded',
   requested: 'requested',
   approved: 'approved',
   accepted: 'approved',
@@ -59,6 +68,9 @@ export const cardState = (state: string): CardState =>
   Object.hasOwn(STATES, state) ? (STATES[state] ?? 'unknown') : 'unknown';
 
 export const STATE_WORDS: Readonly<Record<CardState, string>> = {
+  locating: 'Finding the page and the word…',
+  unlocated: 'Not found: nothing was sent to the site.',
+  superseded: 'The page changed before it was published. Ask again.',
   requested: 'Requested: waiting for the configured approver.',
   approved: 'Approved. Not published yet.',
   published: 'Published on the site.',
@@ -71,8 +83,7 @@ export const STATE_WORDS: Readonly<Record<CardState, string>> = {
 };
 
 const REFUSALS: Readonly<Record<string, string>> = {
-  CHANGE_ENVELOPE_EXCEEDED:
-    'Only one word for one word, on one line of one page, can be asked for.',
+  CHANGE_ENVELOPE_EXCEEDED: 'Only one phrase or sentence on one line of one page can be asked for.',
   FIELD_VALUE_INVALID: 'Name the page, the word and the word it becomes.',
   NOT_FOUND: 'That page, task or correction is not one you can reach here.',
   SCOPE_NOT_GRANTED: 'You do not hold the grant to ask for or decide a change to this site.',
@@ -89,6 +100,14 @@ const REFUSALS: Readonly<Record<string, string>> = {
   CONTENT_DRIFTED: 'The page changed since it was read. Ask again.',
   PROPOSAL_INCOMPLETE: 'The change was only partly prepared. Nothing was published.',
   WORD_NOT_FOUND: 'That word is not on that page.',
+  SITE_NOT_CONFIGURED: 'No site is set up for this task yet. An administrator sets one up.',
+  SITE_UNREACHABLE: 'The site did not answer, so the page was not read. Nothing was changed.',
+  SITE_CHANGED: 'The site changed while the page was being read. Ask again.',
+  PROVIDER_RESPONSE_MALFORMED:
+    'The site’s host answered in a way that could not be read. Nothing was changed.',
+  VERSION_NOT_READY: 'The page is still being checked. Decide once it is ready.',
+  VERSION_UNVERIFIED:
+    'The page could not be checked just now. It is checked again; decide once more.',
   UNAVAILABLE:
     'No answer came back, so whether it went through is not known. Look before asking again.',
 };
@@ -99,17 +118,6 @@ const REFUSED = 'Refused: nothing was sent to the site.';
 export const refusalWords = (code: string): string =>
   Object.hasOwn(REFUSALS, code) ? (REFUSALS[code] ?? REFUSED) : REFUSED;
 
-const isLetter = (char: string | undefined): boolean =>
-  char !== undefined && /^[\p{L}\p{N}'’-]$/u.test(char);
-
-/** The text with the first whole `word` replaced, or null where it is not there. */
-export function replaced(text: string, word: string, replacement: string): string | null {
-  let at = word === '' ? -1 : text.indexOf(word);
-  while (at !== -1) {
-    if (!isLetter(text[at - 1]) && !isLetter(text[at + word.length])) {
-      return `${text.slice(0, at)}${replacement}${text.slice(at + word.length)}`;
-    }
-    at = text.indexOf(word, at + 1);
-  }
-  return null;
-}
+/** The card's words: an unlocated correction is said by the refusal its read names. */
+export const stateWords = (state: CardState, reason: string | null): string =>
+  state === 'unlocated' && reason !== null ? refusalWords(reason) : STATE_WORDS[state];

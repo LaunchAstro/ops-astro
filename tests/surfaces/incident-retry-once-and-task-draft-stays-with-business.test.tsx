@@ -109,6 +109,7 @@ it('business to business switching cannot carry a confidential new-task draft in
         return Promise.resolve(Response.json({ session: 'test-tab' }));
       if (request.path === '/session/capabilities')
         return Promise.resolve(Response.json({ ok: true, grants: [] }));
+      if (request.path === '/session/person') return Promise.resolve(Response.json({ ok: true }));
       return Promise.resolve(draftReply(request));
     },
   });

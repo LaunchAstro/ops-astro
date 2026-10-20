@@ -73,12 +73,12 @@ export async function raiseDecision(
  * An escalated gate (T3a). Escalating decides nothing, and from then on only a
  * holder of `task:decide` across the business decides the gate, so an open
  * item on it held by anyone else is withdrawn (they can no longer act on it)
- * and every such holder, the recipient among them, is raised one if they had
- * none: one granted the role after the gate was raised is owed it too. Those
- * the task is assigned to are no deciders of it (four eyes), so theirs is
- * withdrawn and none is raised. Only
- * items about the gate's own task move: one whose pointer names the gate but
- * whose subject is another task is not this gate's.
+ * and every such holder, the recipient among them while they still hold it,
+ * is raised one if they had none: one granted the role after the gate was
+ * raised is owed it too. Those the task is assigned to are no deciders of it
+ * (four eyes), so theirs is withdrawn and none is raised. Only items about the
+ * gate's own task move: one whose pointer names the gate but whose subject is
+ * another task is not this gate's.
  */
 export async function raiseEscalation(
   tx: TenantQuery,
@@ -106,7 +106,8 @@ export async function raiseEscalation(
         and recipient_person_id <> all($4::uuid[])`,
     [tx.businessId, escalated.gateId, taskId, deciders.filter((p) => !assigned.includes(p))],
   );
-  const owed = new Set([...deciders, escalated.recipientPersonId]);
+  // Current holders only: the stored recipient alone is owed nothing (#1162).
+  const owed = new Set(deciders);
   for (const person of assigned) owed.delete(person);
   for (const person of owed) {
     // oxlint-disable-next-line no-await-in-loop
@@ -210,7 +211,7 @@ export async function raiseAssignment(
     const holders = await grantHolders(tx, { collection: 'task', action: 'decide', scope });
     // oxlint-disable-next-line no-await-in-loop
     const refused = await assignedPeople(tx, change.taskId, gate.id);
-    for (const person of new Set([...holders, ...(gate.to === null ? [] : [gate.to])])) {
+    for (const person of new Set(holders)) {
       if (refused.includes(person)) continue;
       // oxlint-disable-next-line no-await-in-loop
       await tx.query(REOPEN, [tx.businessId, person, change.taskId, gate.id]);

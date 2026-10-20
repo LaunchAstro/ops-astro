@@ -6,75 +6,16 @@
 // @ts-expect-error -- jsdom ships no declarations; this proof reads its DOM paragraphs
 import { JSDOM } from 'jsdom';
 import { expect, it } from 'vitest';
-import {
-  capturePage,
-  contentDigest,
-  observeLanded,
-  publishCorrection,
-  revertCorrection,
-  versionDigestOf,
-  type PublishJob,
-} from '../../packages/core-connectors/src/index.ts';
+import { observeLanded, revertCorrection } from '../../packages/core-connectors/src/index.ts';
 import { occurrenceOf } from '../../packages/core-connectors/src/site/reconcile.ts';
-
-const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
-const published = {
-  revision: 'approved-revision',
-  deploymentId: 'approved-deployment',
-  liveUrl: 'https://agency.example/about/',
-};
-
-function approvedJob(before: string, approved = '<p>We walk alongside'): PublishJob {
-  const pin = {
-    target,
-    change: {
-      files: [
-        {
-          path: target.path,
-          before,
-          after: before.replace(approved, approved.replace('alongside', 'beside')),
-        },
-      ],
-    },
-    preImageDigest: contentDigest(before),
-    baseRevision: 'base-revision',
-    pageUrl: published.liveUrl,
-    seam: 'request-17',
-  };
-  const digest = versionDigestOf(pin);
-  return {
-    ...pin,
-    correctionId: 'correction-1',
-    version: { versionId: 'version-1', digest },
-    decision: {
-      decisionId: 'decision-1',
-      decision: 'approve',
-      versionId: 'version-1',
-      versionDigest: digest,
-    },
-  };
-}
-
-async function accepted(job: PublishJob) {
-  const outcome = await publishCorrection(job, {
-    readSource: () =>
-      Promise.resolve({
-        kind: 'ok',
-        value: { content: job.change.files[0]?.before ?? '', revision: 'base-revision' },
-      }),
-    readBack: () => Promise.resolve({ state: 'absent' }),
-    publish: () => Promise.resolve({ kind: 'ok', value: published }),
-    cancellation: () => Promise.resolve('none'),
-    raiseTask: () => Promise.resolve(),
-    // The page as served before the change: the approved place is calibrated on it.
-    capture: async (url) => ({
-      ok: true,
-      value: { text: await capturedText(job.change.files[0]?.before ?? ''), url },
-    }),
-  });
-  if (outcome.state !== 'accepted') throw new Error(`Fixture refused: ${outcome.state}`);
-  return outcome;
-}
+import {
+  accepted,
+  approvedJob,
+  capturedText,
+  observed,
+  published,
+  target,
+} from './visible-text-world.ts';
 
 function paragraphText(html: string): string {
   const dom = new JSDOM(html);
@@ -87,34 +28,6 @@ function paragraphText(html: string): string {
   } finally {
     dom.window.close();
   }
-}
-
-/** The text the fenced capture reads from `html` served at the live address. */
-async function capturedText(html: string): Promise<string> {
-  const captured = await capturePage(published.liveUrl, {
-    pool: { agencyPages: [published.liveUrl], otherPages: [], closedPoolReviews: [] },
-    resolve: () => Promise.resolve(['93.184.215.14']),
-    transport: () =>
-      Promise.resolve({
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'text/html; charset=utf-8' },
-        body: new TextEncoder().encode(html),
-      }),
-  });
-  if (!captured.ok) throw new Error(`Capture refused: ${captured.code}`);
-  return captured.value.text;
-}
-
-/** Observation of an approved job against the page as served. */
-async function observed(job: PublishJob, served: string) {
-  const text = await capturedText(served);
-  return observeLanded(await accepted(job), target, {
-    raiseTask: () => Promise.resolve(),
-    readDeployment: () =>
-      Promise.resolve({ kind: 'ok', value: { revision: published.revision, served: true } }),
-    capture: (url) => Promise.resolve({ ok: true, value: { text, url } }),
-  });
 }
 
 it('non-visible script copy cannot shift observation onto a replacement decoy', async () => {
@@ -201,6 +114,7 @@ it.each([
   ['template', '<template><div>We walk alongside you.</div></template>'],
   ['noscript', '<noscript>We walk alongside you.</noscript>'],
   ['noembed', '<noembed>We walk alongside you.</noembed>'],
+  ['inline display:none', '<p style="display:none">We walk alongside you.</p>'],
 ])('hidden %s text cannot make a change to another paragraph pass as live', async (_, hidden) => {
   const source = `${hidden}\n<p>We walk alongside you.</p>\n<p>We walk alongside you.</p>\n`;
   const job = approvedJob(source);
@@ -255,4 +169,21 @@ it.each([
   const job = approvedJob(source, approved);
   expect(job.change.files[0]?.after).not.toBe(source);
   expect(occurrenceOf(job.change, target)).toBeUndefined();
+});
+
+// A paragraph with the `hidden` attribute is never shown, so a correction inside it is never seen.
+it('text in a hidden paragraph cannot certify a correction as live', async () => {
+  const source = '<p hidden>We walk alongside you.</p>\n<p>Shown text stays.</p>\n';
+  const job = approvedJob(source, 'alongside');
+  expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('accepted');
+  expect(await capturedText(source)).toBe('Shown text stays.');
+});
+
+// The source placement leaves a `hidden` element out as the capture does, so a page holding one
+// elsewhere still places, and goes live with, a correction a reader does see.
+it('a hidden element elsewhere on the page still lets a shown correction go live', async () => {
+  const source = '<div hidden>Menu</div>\n<p>We walk alongside you.</p>\n';
+  const job = approvedJob(source);
+  expect(occurrenceOf(job.change, target)).toBeDefined();
+  expect((await observed(job, job.change.files[0]?.after ?? '')).state).toBe('live');
 });

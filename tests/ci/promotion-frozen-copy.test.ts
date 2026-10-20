@@ -31,7 +31,7 @@ import {
   storedArtefact,
   type PromotionEffects,
 } from '../../scripts/ops/promotion.ts';
-import { trustedTemp } from './promotion.fixture.ts';
+import { staged, trustedTemp } from './promotion.fixture.ts';
 
 const VERSION = '0123456789ab';
 const stores: string[] = [];
@@ -51,12 +51,12 @@ function storeWith(extra: (artefact: string) => void = () => {}): string {
   return store;
 }
 
-function promoted(
+async function promoted(
   store: string,
   current = join(store, 'current'),
   migrate = (): boolean => true,
   link = false,
-): { outcome: ReturnType<typeof promote>; pointed: string[] } {
+): Promise<{ outcome: Awaited<ReturnType<typeof promote>>; pointed: string[] }> {
   const pointed: string[] = [];
   const effects: PromotionEffects = {
     services: () => [
@@ -69,11 +69,13 @@ function promoted(
       if (link) symlinkSync(served, at);
     },
     start: () => {},
+    authorised: async (work) => await work(),
   };
-  const outcome = promote(
+  const outcome = await promote(
     {
       version: VERSION,
       store,
+      records: staged(store),
       line: 'Tried this artefact on staging.',
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },
@@ -85,7 +87,7 @@ function promoted(
   return { outcome, pointed };
 }
 
-it('a store artefact holding a symlink is refused, and nothing is promoted', () => {
+it('a store artefact holding a symlink is refused, and nothing is promoted', async () => {
   const store = storeWith((artefact) => {
     writeFileSync(join(artefact, 'static', 'real.html'), 'same bytes');
     writeFileSync(join(artefact, 'static', 'link.html'), 'same bytes');
@@ -95,19 +97,19 @@ it('a store artefact holding a symlink is refused, and nothing is promoted', () 
   rmSync(join(artefact, 'static', 'link.html'));
   symlinkSync('real.html', join(artefact, 'static', 'link.html'));
   expect(storedArtefact(VERSION, store)).toMatch(/not a regular file or folder/u);
-  const { outcome, pointed } = promoted(store);
+  const { outcome, pointed } = await promoted(store);
   expect(outcome.kind).toBe('refused');
   expect(pointed).toEqual([]);
 });
 
-it('a served copy planted as a link before the promotion is replaced by a real copy', () => {
+it('a served copy planted as a link before the promotion is replaced by a real copy', async () => {
   const store = storeWith();
   const selected = storedArtefact(VERSION, store);
   if (typeof selected === 'string') throw new Error(selected);
   mkdirSync(join(store, 'served'));
   const planted = join(store, 'served', selected.digest.slice('sha256:'.length));
   symlinkSync(selected.path, planted);
-  const { outcome, pointed } = promoted(store);
+  const { outcome, pointed } = await promoted(store);
   expect(outcome).toMatchObject({ kind: 'promoted', artefactPath: planted });
   expect(lstatSync(planted).isDirectory()).toBe(true);
   expect(pointed).toEqual([planted]);
@@ -124,25 +126,25 @@ function cached(store: string, shape: (copy: string, artefact: string) => void):
   return copy;
 }
 
-it('a copy already served with group or other write is copied again, so production takes none', () => {
+it('a copy already served with group or other write is copied again, so production takes none', async () => {
   const store = storeWith();
   const copy = cached(store, (at) => chmodSync(join(at, 'static', 'index.html'), 0o666));
   const current = join(store, 'current');
-  const { outcome } = promoted(store, current, () => true, true);
+  const { outcome } = await promoted(store, current, () => true, true);
   expect(outcome).toMatchObject({ kind: 'promoted', artefactPath: copy });
   for (const path of ['', 'static', join('static', 'index.html')]) {
     expect(statSync(join(current, path)).mode & 0o022, path).toBe(0);
   }
 });
 
-it('a copy already served that shares a file with the store is copied again, so a later store write changes nothing served', () => {
+it('a copy already served that shares a file with the store is copied again, so a later store write changes nothing served', async () => {
   const store = storeWith();
   cached(store, (at, artefact) => {
     rmSync(join(at, 'static', 'index.html'));
     linkSync(join(artefact, 'static', 'index.html'), join(at, 'static', 'index.html'));
   });
   const current = join(store, 'current');
-  const { outcome } = promoted(store, current, () => true, true);
+  const { outcome } = await promoted(store, current, () => true, true);
   expect(outcome.kind).toBe('promoted');
   writeFileSync(join(store, artefactName(VERSION), 'static', 'index.html'), 'a store write');
   expect(readFileSync(join(current, 'static', 'index.html'), 'utf8')).toBe(
@@ -159,7 +161,7 @@ function closedToOthers(top: string, file: string): string[] {
   }
 }
 
-it('a promoter whose umask is 077 still serves a copy another user can read', () => {
+it('a promoter whose umask is 077 still serves a copy another user can read', async () => {
   const store = storeWith();
   chmodSync(store, 0o755);
   const artefact = join(store, artefactName(VERSION));
@@ -167,7 +169,7 @@ it('a promoter whose umask is 077 still serves a copy another user can read', ()
   const before = process.umask(0o077);
   let outcome;
   try {
-    ({ outcome } = promoted(store));
+    ({ outcome } = await promoted(store));
   } finally {
     process.umask(before);
   }
@@ -175,17 +177,17 @@ it('a promoter whose umask is 077 still serves a copy another user can read', ()
   expect(closedToOthers(store, join(outcome.artefactPath, 'static', 'index.html'))).toEqual([]);
 });
 
-it('a served/ already there but closed to others is opened again, so the services can read the copy', () => {
+it('a served/ already there but closed to others is opened again, so the services can read the copy', async () => {
   const store = storeWith();
   chmodSync(store, 0o755);
   mkdirSync(join(store, 'served'), { mode: 0o700 });
   chmodSync(join(store, 'served'), 0o700);
-  const { outcome } = promoted(store);
+  const { outcome } = await promoted(store);
   if (outcome.kind !== 'promoted') throw new Error(`not promoted: ${JSON.stringify(outcome)}`);
   expect(closedToOthers(store, join(outcome.artefactPath, 'static', 'index.html'))).toEqual([]);
 });
 
-it('an earlier copy the promoter cannot write is still replaced by a fresh one', () => {
+it('an earlier copy the promoter cannot write is still replaced by a fresh one', async () => {
   const store = storeWith();
   const copy = cached(store, (at) => {
     chmodSync(join(at, 'static', 'index.html'), 0o666);
@@ -193,28 +195,28 @@ it('an earlier copy the promoter cannot write is still replaced by a fresh one',
     chmodSync(at, 0o555);
   });
   const current = join(store, 'current');
-  const { outcome } = promoted(store, current, () => true, true);
+  const { outcome } = await promoted(store, current, () => true, true);
   expect(outcome).toMatchObject({ kind: 'promoted', artefactPath: copy });
   expect(statSync(join(current, 'static', 'index.html')).mode & 0o022).toBe(0);
   expect(readdirSync(join(store, 'served')).filter((name) => name.startsWith('.'))).toEqual([]);
 });
 
-it("another user can search every folder from production's folder to the served page, and read it", () => {
+it("another user can search every folder from production's folder to the served page, and read it", async () => {
   // The folders above production's link are the operator's (the runbook names
   // the services' search there); this fixture's own temp folder is private.
   const store = storeWith();
   chmodSync(store, 0o755);
-  const { outcome } = promoted(store);
+  const { outcome } = await promoted(store);
   if (outcome.kind !== 'promoted') throw new Error(`not promoted: ${JSON.stringify(outcome)}`);
   expect(closedToOthers(store, join(outcome.artefactPath, 'static', 'index.html'))).toEqual([]);
 });
 
-it('a production folder others can write is refused, and nothing is promoted', () => {
+it('a production folder others can write is refused, and nothing is promoted', async () => {
   const store = storeWith();
   const home = trustedTemp('ops-astro-frozen-home-');
   stores.push(home);
   chmodSync(home, 0o777);
-  const { outcome, pointed } = promoted(store, join(home, 'current'));
+  const { outcome, pointed } = await promoted(store, join(home, 'current'));
   expect(outcome).toMatchObject({
     kind: 'refused',
     reason: expect.stringMatching(/written by others/u),
@@ -230,12 +232,12 @@ it('a store artefact that is itself a link is refused', () => {
   expect(storedArtefact(VERSION, store)).toMatch(/no artefact/u);
 });
 
-it('a link put at the served copy during the migration fails the promotion', () => {
+it('a link put at the served copy during the migration fails the promotion', async () => {
   const store = storeWith();
   const selected = storedArtefact(VERSION, store);
   if (typeof selected === 'string') throw new Error(selected);
   const served = join(store, 'served', selected.digest.slice('sha256:'.length));
-  const { outcome, pointed } = promoted(store, join(store, 'current'), () => {
+  const { outcome, pointed } = await promoted(store, join(store, 'current'), () => {
     renameSync(served, `${served}-moved`);
     symlinkSync(`${served}-moved`, served);
     return true;
@@ -244,13 +246,13 @@ it('a link put at the served copy during the migration fails the promotion', () 
   expect(pointed).toEqual([]);
 });
 
-it('the served copy takes no group or other write, whatever the artefact had', () => {
+it('the served copy takes no group or other write, whatever the artefact had', async () => {
   const store = storeWith();
   const artefact = join(store, artefactName(VERSION));
   chmodSync(artefact, 0o777);
   chmodSync(join(artefact, 'static'), 0o777);
   chmodSync(join(artefact, 'static', 'index.html'), 0o666);
-  const { outcome } = promoted(store);
+  const { outcome } = await promoted(store);
   if (outcome.kind !== 'promoted') throw new Error(`not promoted: ${JSON.stringify(outcome)}`);
   for (const path of ['', 'static', join('static', 'index.html')]) {
     expect(statSync(join(outcome.artefactPath, path)).mode & 0o022, path).toBe(0);

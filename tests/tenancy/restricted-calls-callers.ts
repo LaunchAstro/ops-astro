@@ -25,6 +25,7 @@ import {
   asRole,
 } from './restricted-calls-cases.ts';
 import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import { CARRIAGE_BARE_FROM, CARRIAGE_BEFORE_ROW } from './restricted-calls-carriage.ts';
 import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
 
 /**
@@ -202,14 +203,16 @@ export function expectedOutcome(
 }
 
 /**
- * Tables whose BEFORE ROW insert trigger answers before the tenancy WITH CHECK,
- * which Postgres evaluates after those triggers. The row still does not land,
- * as the fingerprint shows. `delegations_agent_is_an_agent` (0008) reads the
- * agent from `actors` as the caller, where the tenancy policy hides every other
- * business's actors, so it raises `check_violation` for a foreign business.
+ * BEFORE ROW insert triggers that answer before the tenancy WITH CHECK (Postgres checks it after
+ * them); the row still does not land, as the fingerprint shows. Each reads as the caller, where
+ * tenancy hides every other business's rows, so it raises `check_violation` for a foreign one:
+ * `delegations_agent_is_an_agent` (0008) its agent, `conversation_reply_guard` (#1666) its reply.
  */
 export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
   'public.delegations': 'constraint',
+  'public.conversation_reply_snapshots': 'constraint',
+  'public.conversation_reply_targets': 'constraint',
+  ...CARRIAGE_BEFORE_ROW,
 };
 
 /**
@@ -223,6 +226,7 @@ const BARE_INSERT_REFUSALS_FROM: Readonly<
   Record<string, { readonly from: string; readonly outcome: string }>
 > = {
   'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
+  ...CARRIAGE_BARE_FROM,
 };
 
 function beforeRowRefusal(qualified: string, at: string | undefined, copy: boolean) {

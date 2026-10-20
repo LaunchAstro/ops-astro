@@ -25,12 +25,12 @@ export function scopeWords(
 }
 
 /** The money step-up as the person meets it: a team member's second factor, a client's sign-in. */
-const STEP_UP_WORDS = {
+export const STEP_UP_WORDS = {
   team: 'after a second factor in the last 60 minutes',
   clients: 'after a sign-in in the last 60 minutes',
 };
 
-function Preview(props: {
+export function Preview(props: {
   readonly permissions: readonly (AccessPermission & { readonly stepUp?: boolean })[];
   readonly clients: readonly ClientView[];
   readonly stepUpWords?: string;

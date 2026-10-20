@@ -15,7 +15,8 @@
 //
 // Idempotent: an email that already exists is read back rather than recreated,
 // and its password is reset to the one recorded here so a reseed after a
-// forgotten file still signs in.
+// forgotten file still signs in. A reset GoTrue refuses fails the seed before
+// any file is written.
 
 import { randomUUID } from 'node:crypto';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -146,10 +147,16 @@ async function main() {
       }
       subject = existing.id;
       // eslint-disable-next-line no-await-in-loop
-      await call(`${gotrue}/admin/users/${subject}`, token, 'PUT', {
+      const reset = await call(`${gotrue}/admin/users/${subject}`, token, 'PUT', {
         password,
         email_confirm: true,
       });
+      if (reset.status < 200 || reset.status > 299) {
+        console.error(
+          `BLOCKER: ${person.email} exists, but its password could not be reset (${reset.status})`,
+        );
+        process.exit(1);
+      }
       created = { status: 200, body: existing };
     }
 

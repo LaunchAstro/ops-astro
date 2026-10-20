@@ -20,11 +20,28 @@ function jobs(workflow: string): Map<string, string> {
   return new Map(parts.map((block) => [block.trim().split(':')[0] ?? '', block]));
 }
 
+// A number of minutes, or a push's own number beside every other event's (the gate's wait at the
+// end of a batch, #1485): a bound either way.
+const LIMIT =
+  /^ {4}timeout-minutes: (?:[1-9]\d*|\$\{\{ github\.event_name == 'push' && [1-9]\d* \|\| [1-9]\d* \}\})$/mu;
+
 it('every job behind the required checks gives its runner back at its own timeout', () => {
   const untimed = ['ci.yml', 'review-evidence.yml'].flatMap((workflow) =>
     [...jobs(workflow)]
-      .filter(([, block]) => !/^ {4}timeout-minutes: [1-9]\d*$/mu.test(block))
+      .filter(([, block]) => !LIMIT.test(block))
       .map(([id]) => `${workflow} ${id}`),
   );
   expect(untimed).toEqual([]);
+});
+
+it('the gate holds its runner longer only on a push to main, for the end-of-batch wait', () => {
+  const gate = jobs('ci.yml').get('gate') ?? '';
+  expect(gate).toMatch(
+    /^ {4}timeout-minutes: \$\{\{ github\.event_name == 'push' && 45 \|\| 15 \}\}$/mu,
+  );
+  for (const block of [
+    'timeout-minutes: 0',
+    "timeout-minutes: ${{ github.event_name == 'push' && 45 }}",
+  ])
+    expect(LIMIT.test(`    ${block}`), block).toBe(false);
 });

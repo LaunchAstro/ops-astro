@@ -21,6 +21,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { SettingsScreen } from '../../apps/web/src/screens/Settings.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount } from './mount.tsx';
+import type { CommandContext } from '../../packages/core-commands/src/commands/context.ts';
+import { setBusinessSetting } from '../../packages/core-commands/src/commands/settings-write.ts';
+import type { TenantQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 
 const pause = (): Promise<void> =>
   new Promise((resolve) => {
@@ -82,6 +85,10 @@ function server(options: { readonly refuse?: boolean; readonly reads?: boolean }
         ),
       );
     }
+    if (options.reads === true && at.endsWith('/settings/set_four_eyes_threshold')) {
+      // The read answered no rows, so the write meets the real writer over a business with none.
+      return absentRowWrite(body['value']);
+    }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
       // The row carried no revision, so the outcome has none. The detail is the
       // row's key and the value it now holds.
@@ -105,6 +112,22 @@ function server(options: { readonly refuse?: boolean; readonly reads?: boolean }
     return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
+}
+
+/** `settings.set_four_eyes_threshold` through the real writer, for a business holding no settings rows. */
+async function absentRowWrite(value: unknown): Promise<Response> {
+  const none: TenantQuery = {
+    businessId: 'b-alpha' as TenantQuery['businessId'],
+    query: () => Promise.resolve([]),
+  };
+  const context = { session: { actorId: 'p-ada' } } as unknown as CommandContext;
+  const outcome = await setBusinessSetting(
+    none,
+    context,
+    'settings.set_four_eyes_threshold',
+    value,
+  );
+  return 'refusal' in outcome ? json(outcome.refusal, 404) : json(outcome);
 }
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
@@ -245,7 +268,8 @@ describe('the settings screen', () => {
     await page.unmount();
   });
 
-  it('draws a read that answered with no rows as empty, and writes create them', async () => {
+  // Today's behaviour, not the wanted one: creating the row on the first save is #1393.
+  it('today a save where no settings row exists is refused with NOT_FOUND and creates nothing, and the empty screen says so', async () => {
     const api = server({ reads: true });
     const page = await mount(screen(api.fetch));
     await tick();
@@ -255,11 +279,22 @@ describe('the settings screen', () => {
     // answer with nothing in it.
     expect(page.find('[data-settings="not-readable"]')).toBeNull();
     expect(page.find('[data-settings="four-eyes-known"]')).toBeNull();
+    // The empty state promises what the writer does: it creates no row.
+    expect(page.find('[data-settings="read"] .empty__hint')?.textContent).toBe(
+      'Saving either setting below is refused until they are installed.',
+    );
 
     await typeInto(page.host, '#settings-four-eyes', '640');
     await page.click('[data-settings="save-four-eyes"]');
     await tick();
     expect(writes(api)).toHaveLength(1);
+    // The real writer's answer for a business with no row by that key.
+    expect(page.find('[data-settings="refusal"]')?.textContent).toContain('NOT_FOUND');
+    expect(page.find('[data-settings="refusal"]')?.textContent).toContain(
+      'Install the named business settings before writing one.',
+    );
+    expect(page.find('[data-settings="four-eyes-value"]')).toBeNull();
+    expect(page.text()).not.toContain('640');
     await page.unmount();
   });
 });

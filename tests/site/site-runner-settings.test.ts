@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The site runner host's own rules (#1692), with no database: its settings
+// file is refused when others can read it, when the database login does not
+// require TLS, a page is not exact or the heartbeat address is not an https
+// address off the machine, and no refusal repeats a value; its
+// heartbeat is pinged after each pass and goes quiet on a failed pass or once
+// stopped; its plist keeps it alive from the build and names the label park
+// and stop use.
+
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+import { passes } from '../../apps/site-runner/main.ts';
+import { readSettings, settingsFrom } from '../../apps/site-runner/settings.ts';
+
+const SECRET = 'canary-password-5c1d0e77';
+const BUSINESS = '6f1c2a54-9d0b-4c1e-8a7f-3b2d1e0f9a8c';
+/** The one site, with its pages as given. */
+const siteWith = (pageUrl: string): string =>
+  JSON.stringify({
+    business: BUSINESS,
+    holder: BUSINESS,
+    repository: 'LaunchAstro/agency-astro-astro',
+    defaultBranch: 'main',
+    project: 'prj_agency',
+    pages: [{ pageUrl, path: 'src/pages/about.astro' }],
+  });
+const GOOD = {
+  OPS_ASTRO_API_URL: 'https://ops.example',
+  OPS_ASTRO_BUSINESS: 'agency',
+  OPS_ASTRO_BUSINESS_ID: BUSINESS,
+  OPS_ASTRO_EMAIL: 'site-runner@example.com',
+  OPS_ASTRO_PASSWORD: SECRET,
+  OPS_ASTRO_GOTRUE_URL: 'https://auth.example',
+  SITE_RUNNER_DATABASE_URL: `postgres://site_runner:${SECRET}@db.example:5432/postgres?sslmode=require`,
+  SITE_RUNNER_CREDENTIALS_FILE: '/var/empty/site-credentials.json',
+  SITE_RUNNER_SITE: siteWith('https://agencyastro.com/about'),
+};
+
+const folder = mkdtempSync(join(tmpdir(), 'site-runner-settings-'));
+afterAll(() => rmSync(folder, { recursive: true, force: true }));
+
+function fileOf(name: string, body: unknown, mode: number): string {
+  const file = join(folder, name);
+  writeFileSync(file, JSON.stringify(body), { mode });
+  chmodSync(file, mode);
+  return file;
+}
+
+describe('the site runner, its settings', () => {
+  it('reads a settings file only its owner can read', () => {
+    // The site may be written in the file as an object of its own.
+    const own = { ...GOOD, SITE_RUNNER_SITE: JSON.parse(GOOD.SITE_RUNNER_SITE) as unknown };
+    const settings = readSettings({ SITE_RUNNER_SETTINGS: fileOf('own.json', own, 0o600) });
+    expect(typeof settings === 'string' ? settings : settings.pages).toEqual([
+      'https://agencyastro.com/about',
+    ]);
+  });
+
+  it('refuses a settings file others can read, and repeats no value in any refusal', () => {
+    const refusals = [
+      readSettings({ SITE_RUNNER_SETTINGS: fileOf('open.json', GOOD, 0o644) }),
+      settingsFrom({
+        ...GOOD,
+        SITE_RUNNER_DATABASE_URL: GOOD.SITE_RUNNER_DATABASE_URL.split('?')[0],
+      }),
+      settingsFrom({
+        ...GOOD,
+        SITE_RUNNER_SITE: siteWith('https://agencyastro.com/about/../about'),
+      }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_SITE: siteWith('http://agencyastro.com/about') }),
+      settingsFrom({ ...GOOD, OPS_ASTRO_PASSWORD: '' }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `http://watch.example/${SECRET}/` }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `https://127.0.0.1/${SECRET}/` }),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: `${SECRET}` }),
+    ];
+    expect(refusals).toEqual([
+      'the settings file is readable by others',
+      'SITE_RUNNER_DATABASE_URL does not require TLS (add ?sslmode=require or stricter)',
+      'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
+      'SITE_RUNNER_SITE.pages.pageUrl is not an exact https page',
+      'missing OPS_ASTRO_PASSWORD',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
+      'SITE_RUNNER_HEARTBEAT_URL is not an https address off the machine',
+    ]);
+    expect(JSON.stringify(refusals)).not.toContain(SECRET);
+  });
+
+  it('takes an https heartbeat address off the machine, and none at all', () => {
+    const address = `https://watch.example/api/0/organizations/agency/heartbeat/${SECRET}/`;
+    const heartbeats = [
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: address }),
+      settingsFrom(GOOD),
+      settingsFrom({ ...GOOD, SITE_RUNNER_HEARTBEAT_URL: '' }),
+    ].map((settings) => (typeof settings === 'string' ? settings : settings.heartbeat));
+    expect(heartbeats).toEqual([address, undefined, undefined]);
+  });
+});
+
+describe('the site runner, its heartbeat', () => {
+  it('pings after each pass, not after a failed one, and stops when asked', async () => {
+    const stopping = new AbortController();
+    const outcomes = [
+      () => Promise.resolve([{ correctionId: 'c1', outcome: 'following' }]),
+      () => Promise.reject(new Error('the database went away')),
+      () => Promise.resolve([]),
+    ];
+    const pinged: number[] = [];
+    let at = 0;
+    await passes({
+      pass: async () => await (outcomes[at] ?? (() => Promise.resolve([])))(),
+      ping: () => {
+        pinged.push(at);
+        return Promise.resolve();
+      },
+      sleep: () => {
+        at += 1;
+        if (at === outcomes.length) stopping.abort();
+        return Promise.resolve();
+      },
+      stopping: stopping.signal,
+    });
+    expect(pinged).toEqual([0, 2]);
+    expect(at).toBe(outcomes.length);
+  });
+});
+
+describe('the site runner, its plist', () => {
+  it('keeps the runner alive from the build, under the label park and stop name', () => {
+    const plist = readFileSync('deploy/m5/ops-astro-site-runner.plist', 'utf8');
+    const runbook = readFileSync('docs/local/SITE-RUNNER-RUNBOOK.md', 'utf8');
+    expect(plist).toMatch(/<key>Label<\/key>\s*<string>ops-astro-site-runner<\/string>/u);
+    expect(plist).toMatch(/<key>KeepAlive<\/key>\s*<true\/>/u);
+    expect(plist).toMatch(/<string>apps\/site-runner\/main\.ts<\/string>/u);
+    expect(plist).toMatch(
+      /<key>WorkingDirectory<\/key>\s*<string>@SITE_RUNNER_BUILD_DIR@<\/string>/u,
+    );
+    // Settings by file only: no secret is ever a plist value.
+    expect(plist).not.toMatch(/PASSWORD|DATABASE_URL/u);
+    expect(runbook).toContain('launchctl bootout gui/501/ops-astro-site-runner');
+  });
+});

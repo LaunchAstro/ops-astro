@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a message handed to the exchange again on another instance asks Ollama no second time, whatever became of its call"
+}

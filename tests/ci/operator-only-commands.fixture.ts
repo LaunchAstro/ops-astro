@@ -18,7 +18,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import { stampOutput } from '../../scripts/ops/build-output.ts';
+import { recordedStamp, stampOutput } from '../../scripts/ops/build-output.ts';
 
 export const CANARY = 'canary-7c2f41-operator-secret';
 
@@ -74,6 +74,27 @@ export const store = (): string => {
   mkdirSync(build);
   stampOutput(build, STAGED);
   return root;
+};
+
+/**
+ * Staging's web deploy record of the build in `root` (`store()`'s by default:
+ * every call holds the same bytes), written to the record folder `records` as
+ * a promotion past the gate needs it. Answers the file's text, so a test can
+ * show nothing was added.
+ */
+export const stagedInto = (records: string, root: string = store()): string => {
+  const artefact = definition['x-ops-astro'].artefact.replace('{version}', STAGED);
+  const { digest } = recordedStamp(join(root, artefact));
+  const line = {
+    action: 'deploy recorded',
+    environment: 'staging',
+    version: STAGED,
+    artefact,
+    digest,
+  };
+  const text = `${JSON.stringify(line)}\n`;
+  writeFileSync(join(records, 'deployments.jsonl'), text, { mode: 0o600 });
+  return text;
 };
 
 export interface Run {

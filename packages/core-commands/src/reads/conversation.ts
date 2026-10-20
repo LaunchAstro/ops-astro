@@ -13,8 +13,9 @@
 // - the owner reads while they still hold `conversation:write`, so an owner
 //   whose every grant is revoked is refused like anyone else;
 // - anyone else needs `conversation:read` (the read-any grant, which nobody
-//   holds on install) covering the conversation's scope: business-wide, or on
-//   the task it was opened on. Without it, `SCOPE_NOT_GRANTED` with the
+//   holds on install) covering the conversation's scope: business-wide, on
+//   the task it was opened on, or on that task's client (a party grant reaches
+//   that client's tasks only). Without it, `SCOPE_NOT_GRANTED` with the
 //   reason and nothing of the conversation.
 //
 // Each refusal is decided before any title, subject or message is selected.
@@ -25,8 +26,6 @@
 
 import {
   askedFor,
-  checkAuthority,
-  coveredScopes,
   EFFECTIVE_GRANTS,
   isUuid,
   readableScope,
@@ -36,6 +35,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationListResult,
   ConversationMessageView,
+  ConversationTargetsView,
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -44,6 +44,8 @@ import {
   DEFAULT_TITLE,
   holdsOwnConversations,
 } from '../commands/conversations.ts';
+import { targetsFor } from '../commands/conversation-targets.ts';
+import { doorOf, mayRead } from './conversation-door.ts';
 import {
   addressReader,
   wrapUpView,
@@ -52,45 +54,6 @@ import {
 } from '../commands/conversation-contents.ts';
 
 const COLLECTION = 'conversation';
-
-const NOT_THE_OWNER = refuseCommand(
-  'SCOPE_NOT_GRANTED',
-  [],
-  [
-    'A conversation is its owner’s alone; reading another person’s needs the read-any grant (conversation:read).',
-    'Ask an administrator who may grant it.',
-  ],
-);
-
-interface Door {
-  readonly owner_actor_id: string;
-  readonly scope_record_id: string | null;
-}
-
-async function mayRead(
-  tx: TenantQuery,
-  session: Session,
-  door: Door,
-): Promise<CommandRefusal | undefined> {
-  const subjects = subjectsOf(session);
-  if (door.owner_actor_id === session.actorId) {
-    const own = await checkAuthority(tx, subjects, {
-      collection: COLLECTION,
-      action: 'write',
-      scope: { kind: 'business', id: null },
-    });
-    return own.ok ? undefined : own.refusal;
-  }
-  const any = await checkAuthority(tx, subjects, {
-    collection: COLLECTION,
-    action: 'read',
-    scope:
-      door.scope_record_id === null
-        ? { kind: 'business', id: null }
-        : { kind: 'record', id: door.scope_record_id },
-  });
-  return any.ok ? undefined : NOT_THE_OWNER;
-}
 
 interface ConversationRow {
   readonly id: string;
@@ -105,28 +68,45 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
-/** The body, oldest first. */
+interface MessageRow {
+  readonly id: string;
+  readonly role: 'person' | 'agent';
+  readonly body: string;
+  readonly created_at: Date;
+}
+
+/** One message as the wire carries it, with the targets kept with it where the reader has them. */
+function viewOf(
+  message: MessageRow,
+  kept: ConversationTargetsView | undefined,
+): ConversationMessageView {
+  const view = {
+    id: message.id,
+    role: message.role,
+    body: message.body,
+    createdAt: message.created_at.toISOString(),
+  };
+  return kept === undefined ? view : { ...view, targets: kept };
+}
+
+/** The body, oldest first; each reply's kept targets only as `targetsFor` gives them to this reader (#1666). */
 async function messagesOf(
   tx: TenantQuery,
+  session: Session,
   conversationId: string,
 ): Promise<readonly ConversationMessageView[]> {
-  const rows = await tx.query<{
-    id: string;
-    role: 'person' | 'agent';
-    body: string;
-    created_at: Date;
-  }>(
+  const rows = await tx.query<MessageRow>(
     `select id, role, body, created_at from conversation_messages
       where business_id = $1 and conversation_id = $2
       order by created_at, id`,
     [tx.businessId, conversationId],
   );
-  return rows.map((message) => ({
-    id: message.id,
-    role: message.role,
-    body: message.body,
-    createdAt: message.created_at.toISOString(),
-  }));
+  const targets = await targetsFor(
+    tx,
+    session,
+    rows.filter((message) => message.role === 'agent').map((message) => message.id),
+  );
+  return rows.map((message) => viewOf(message, targets.get(message.id)));
 }
 
 /**
@@ -180,7 +160,7 @@ async function served(
   conversationId: string,
 ): Promise<ConversationReadResult> {
   // Before the row: a purge committing between them reads as purged, not as an empty body.
-  const body = await messagesOf(tx, conversationId);
+  const body = await messagesOf(tx, session, conversationId);
   const rows = await tx.query<ConversationRow>(
     `${EFFECTIVE_GRANTS}
      select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
@@ -217,15 +197,25 @@ async function served(
 
 /**
  * Whether the caller holds any conversation grant: `write` (their own) or
- * `read` (the read-any grant) at any scope. A caller holding neither is
- * refused before the identifier is looked at, in `checkAuthority`'s words.
+ * `read` (the read-any grant) at any scope, a client's included. A caller
+ * holding neither is refused before the identifier is looked at, in
+ * `checkAuthority`'s words.
  */
 async function holdsAConversationGrant(tx: TenantQuery, session: Session): Promise<boolean> {
   const subjects = subjectsOf(session);
   for (const action of ['write', 'read'] as const) {
+    const asked = askedFor(subjects, { collection: COLLECTION, action });
     // eslint-disable-next-line no-await-in-loop -- the second is asked only when the first is empty
-    const held = await coveredScopes(tx, subjects, { collection: COLLECTION, action });
-    if (held.business || held.records.length > 0) return true;
+    const held = await tx.query(
+      `${EFFECTIVE_GRANTS}
+       select 1 from effective e
+        where e.collection = $1 and e.action = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                       where s.kind = e.subject_kind and s.id = e.subject_id)
+        limit 1`,
+      [COLLECTION, action, asked.map((one) => one.kind), asked.map((one) => one.id)],
+    );
+    if (held.length > 0) return true;
   }
   return false;
 }
@@ -250,12 +240,7 @@ export async function readConversation(
       ['Send conversationId as the conversation’s identifier.'],
     );
   }
-  const doors = await tx.query<Door>(
-    `select owner_actor_id, scope_record_id from conversations
-      where business_id = $1 and id = $2`,
-    [tx.businessId, conversationId],
-  );
-  const door = doors[0];
+  const door = await doorOf(tx, conversationId);
   if (door === undefined) return refuseNotFound();
   const refusal = await mayRead(tx, session, door);
   if (refusal !== undefined) return refusal;

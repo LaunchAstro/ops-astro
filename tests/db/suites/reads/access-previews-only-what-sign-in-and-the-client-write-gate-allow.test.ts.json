@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "Settings > Access previews nothing for a person whose login was unlinked, and only reads and the no-membership writes for a client, never another business's client"
+}

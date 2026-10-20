@@ -22,16 +22,19 @@ import type {
   AssistantPage,
   PlanCardState,
 } from '@launchastro/ui';
+import { noted, told, type Noted } from './page-note.ts';
 import type { ScopeInput } from './subject.ts';
 
 export type StandingScope = Pick<ScopeInput, 'client' | 'task'>;
 
-export interface Chat extends AssistantChat {
+export interface Chat extends AssistantChat, Noted {
   readonly conversationId: string | null;
   /** The scope this conversation was asked under: selecting it brings it back. */
   readonly scope: StandingScope;
   /** A kept tab whose first read is out and whose title the person has not set. */
   readonly reading?: boolean;
+  /** A kept conversation's task, from its read: what a proposal's edit applies to. */
+  readonly taskId?: string | null;
 }
 
 export interface AssistantState {
@@ -137,21 +140,9 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
 export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
   change(state, key, (chat) => ({ ...chat, model }));
 
-/** The page in scope; a second one replaces the first, and its note with it. */
+/** The page in scope; a second one replaces the first, and its note with it (`page-note.ts`). */
 export const addPage = (state: AssistantState, key: string, page: AssistantPage): AssistantState =>
-  change(state, key, (chat) => ({
-    ...chat,
-    page,
-    messages: [
-      ...chat.messages.filter((message) => message.id !== 'page'),
-      {
-        id: 'page',
-        role: 'note',
-        body: `Read this page into context — every widget on ${page.address}, and nothing else.`,
-        cites: [],
-      },
-    ],
-  }));
+  change(state, key, (chat) => noted(chat, page));
 
 export function ask(state: AssistantState, entry: AskEntry): AssistantState {
   const question = entry.question.trim();
@@ -171,13 +162,13 @@ export const openDirect = (state: AssistantState): AssistantState => ({
   answering: {},
 });
 
-/** A line added to a tab's transcript. */
+/** A line added to a tab's transcript, answering the question `after` (`page-note.ts`). */
 export const said = (
   state: AssistantState,
   key: string,
-  message: AssistantMessage,
-): AssistantState =>
-  change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
+  line: AssistantMessage,
+  after?: string,
+): AssistantState => change(state, key, (chat) => told(chat, line, after));
 
 /** A line `conversation.read` gave a tab carries this before the server's id. */
 export const READ_LINE = 'kept-';
@@ -234,6 +225,7 @@ export function started(
   return change(chosen, key, (chat) => ({
     ...chat,
     conversationId,
+    asked: { ...twin?.asked, ...chat.asked },
     messages: since.reduce<readonly AssistantMessage[]>(
       (lines, line) => [
         ...(line.plan === undefined ? lines : replaced(lines, line.plan.version)),
@@ -254,12 +246,9 @@ export function asking(state: AssistantState, key: string, by: 1 | -1): Assistan
 }
 
 /** A conversation as `conversation.read` gave it, or `reading` while its read is out. */
-export interface Reopened {
+export type Reopened = Pick<Chat, 'title' | 'messages' | 'reading' | 'taskId'> & {
   readonly conversationId: string;
-  readonly title: string;
-  readonly messages: Chat['messages'];
-  readonly reading?: boolean;
-}
+};
 
 /**
  * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation
@@ -290,11 +279,12 @@ export function reopened(
 export const transcript = (
   state: AssistantState,
   key: string,
-  read: Pick<Chat, 'messages'> & { readonly title?: string },
+  read: Pick<Chat, 'messages' | 'taskId'> & { readonly title?: string },
 ): AssistantState =>
   change(state, key, (chat) => ({
     ...chat,
     title: chat.reading === true ? (read.title ?? chat.title) : chat.title,
+    taskId: read.taskId ?? chat.taskId ?? null,
     reading: false,
     messages: [...read.messages, ...chat.messages],
   }));

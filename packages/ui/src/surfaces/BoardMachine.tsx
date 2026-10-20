@@ -19,10 +19,10 @@
 // widths (MP-5-6) go through the history too, but not into the address: they
 // are the person's own, handed out through `onWidths` for the one store.
 
-import { useCallback, useMemo, useRef, type ReactElement } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { Empty } from '../primitives/Absence.tsx';
-import { rankFacets } from '../board/funnel.ts';
+import { rankFacets, type RankedFacet } from '../board/funnel.ts';
 import { narrowRows, readingLine } from '../board/filters.ts';
 import { sortRows } from '../board/sort.ts';
 import type { BoardAction, BoardContext, BoardView, Facet } from '../board/types.ts';
@@ -33,6 +33,7 @@ import {
   useColumnDrag,
   useFunnelMenu,
   useMeasuredWidth,
+  useViewport,
 } from './board-hooks.ts';
 import { ChipRow } from './BoardChips.tsx';
 import { CommandBar } from './BoardCommandBar.tsx';
@@ -49,9 +50,14 @@ export type { BoardMachineProps, BoardMode } from './board-props.ts';
  */
 function useKnownFacets<Row>(offered: readonly Facet<Row>[]): readonly Facet<Row>[] {
   const seen = useRef(new Map<string, Facet<Row>>());
-  return useMemo(() => {
+  // Kept once the render commits, so a render React discards leaves no label.
+  useLayoutEffect(() => {
     for (const facet of offered) seen.current.set(facet.id, facet);
-    const gone = [...seen.current.values()].filter((one) => !offered.includes(one));
+  }, [offered]);
+  return useMemo(() => {
+    const gone = [...seen.current.values()].filter(
+      (one) => !offered.some((facet) => facet.id === one.id),
+    );
     return gone.length === 0 ? offered : [...offered, ...gone];
   }, [offered]);
 }
@@ -64,6 +70,13 @@ function useKnownFacets<Row>(offered: readonly Facet<Row>[]): readonly Facet<Row
  */
 const heldOf = <Row,>(known: readonly Facet<Row>[], offered: number, on: readonly string[]) =>
   known.filter((facet, at) => at < offered || on.includes(facet.id));
+
+/** The funnel menu's entries: the offered facets by count, then each held one, ticked, at none. */
+const withHeld = <Row,>(
+  ranked: readonly RankedFacet[],
+  held: readonly Facet<Row>[],
+  offered: number,
+) => (held.length === offered ? ranked : [...ranked, ...rankFacets([], held.slice(offered))]);
 
 /** The context a step is taken in, given the filters on in the view it is taken on. */
 function useStepContext<Row>(props: BoardMachineProps<Row>, known: readonly Facet<Row>[]) {
@@ -88,13 +101,12 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const facets = useKnownFacets(props.facets);
   const context = useStepContext(props, facets);
   const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
-  const { machine, dispatch } = useBoardMachine(context, props, props);
-  const held = heldOf(facets, props.facets.length, machine.view.ids);
   const card = useRef<HTMLDivElement>(null);
+  const { machine, dispatch } = useBoardMachine(context, props, props, card);
+  const held = heldOf(facets, props.facets.length, machine.view.ids);
   const bare = props.nothing !== undefined && isBare(props.rows, machine.view);
   const available = useMeasuredWidth(card, props.width, !bare);
-  const viewport =
-    props.viewport ?? (typeof window === 'undefined' ? available : window.innerWidth);
+  const viewport = useViewport(props.viewport, available);
   const drag = useColumnDrag(props.columns, { viewport, available }, machine.view.widths, dispatch);
   const menu = useFunnelMenu();
   const chipRow = useRef<HTMLDivElement>(null);
@@ -106,7 +118,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
       names={props.rows.map((row) => props.name(row))}
       noun={props.noun}
       machine={machine}
-      ranked={ranked}
+      ranked={withHeld(ranked, held, props.facets.length)}
       presets={props.presets ?? []}
       menu={menu}
       changedAt={props.changedAt ?? null}

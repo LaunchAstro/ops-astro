@@ -6,20 +6,30 @@
 // and a path; the origin comes from custody's own list, never from the
 // caller. No redirect is followed, to a listed host or any other. Every answer
 // is bounded by a timeout and a byte limit counted off the stream, and the
-// read stops at the limit rather than after it.
+// read stops at the limit rather than after it. A caller may take each chunk
+// of a successful answer as it is read, within that limit (`OnChunk`).
 //
 // A listed name is resolved once, before any socket exists, and the call is
 // refused when any address is a metadata, link-local or unspecified one. The
 // socket then takes exactly the addresses that were checked, so a second
 // lookup answering differently (DNS rebinding) is never asked.
+//
+// A gated send (`SendGate`) has a deadline: it opens a socket of its own,
+// writes nothing until that socket is connected, and writes the request then
+// only if its clock is before the deadline; at or past it, the socket goes and
+// the answer is `lapsed`. A write not on the socket by the deadline is cut the
+// same way, so the provider never holds the whole request after it.
 
 import { lookup as systemLookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
-import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
+import { request as httpRequest, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { presented, type StoredCredential } from './credentials.ts';
+import { answerOf, type OnChunk, type Outbound } from './egress-answer.ts';
 import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
+
+export type { OnChunk, Outbound, OutboundFault } from './egress-answer.ts';
 
 /** A listed origin, with any fixed headers and non-POST routes of its own (AW-13). */
 export interface Destination extends Extras {
@@ -107,6 +117,17 @@ export function parseDestinations(
   return { ok: true, destinations };
 }
 
+/**
+ * A send that must be written by `deadlineAt` (milliseconds, `now`'s clock):
+ * past it, nothing is written (live chat route B's send deadline).
+ */
+export interface SendGate {
+  readonly deadlineAt: number;
+  /** Once the request is written to the socket; never for a send answered `lapsed`. */
+  readonly onWritten?: () => void;
+  readonly now?: () => number;
+}
+
 export interface OutboundRequest {
   readonly destination: string;
   readonly path: string;
@@ -114,39 +135,6 @@ export interface OutboundRequest {
   readonly body: string;
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
-}
-
-export type OutboundFault =
-  | 'unlisted'
-  | 'bad_path'
-  | 'forbidden'
-  | 'redirect'
-  | 'timeout'
-  | 'too_large'
-  | 'status'
-  | 'network';
-
-export type Outbound =
-  | { readonly ok: true; readonly status: number; readonly body: string }
-  | { readonly ok: false; readonly fault: OutboundFault; readonly status: number | null };
-
-async function readBounded(
-  response: IncomingMessage,
-  limit: number,
-): Promise<{ readonly ok: true; readonly text: string } | { readonly ok: false }> {
-  const parts: Buffer[] = [];
-  let size = 0;
-  // One chunk at a time: the count must stop the read, not follow it.
-  for await (const chunk of response) {
-    const part = chunk as Buffer;
-    size += part.byteLength;
-    if (size > limit) {
-      response.destroy();
-      return { ok: false };
-    }
-    parts.push(part);
-  }
-  return { ok: true, text: Buffer.concat(parts).toString('utf8') };
 }
 
 /** How a listed name becomes addresses. The system lookup unless a test supplies one. */
@@ -209,34 +197,19 @@ const pinnedTo =
     else if (first !== undefined) callback(null, first.address, first.family);
   };
 
-/** A response read within its limit. A redirect is answered, never followed. */
-async function answerOf(
-  response: IncomingMessage,
-  limit: number,
-  failed: (status: number | null) => Outbound,
-): Promise<Outbound> {
-  const status = response.statusCode ?? 0;
-  if (status >= 300 && status < 400) {
-    response.destroy();
-    return { ok: false, fault: 'redirect', status };
-  }
-  let read: Awaited<ReturnType<typeof readBounded>>;
-  try {
-    read = await readBounded(response, limit);
-  } catch {
-    return failed(status);
-  }
-  if (!read.ok) return { ok: false, fault: 'too_large', status };
-  if (status < 200 || status >= 300) return { ok: false, fault: 'status', status };
-  return { ok: true, status, body: read.text };
-}
+/** Time left before the gate's deadline on its own clock; none at the deadline itself. */
+const left = (gate: SendGate): number => gate.deadlineAt - (gate.now ?? Date.now)();
 
-/** One request and its bounded answer. */
+const LAPSED: Outbound = { ok: false, fault: 'lapsed', status: null };
+
+/** One request and its bounded answer; a gated one written only once connected, and by its deadline. */
 async function exchange(
   url: URL,
   options: RequestOptions,
   body: string,
   limit: number,
+  onChunk?: OnChunk,
+  gate?: SendGate,
 ): Promise<Outbound> {
   const signal = options.signal;
   return await new Promise<Outbound>((settle) => {
@@ -245,14 +218,34 @@ async function exchange(
       fault: signal?.aborted === true ? 'timeout' : 'network',
       status,
     });
-    const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options);
+    // A gated send never takes a pooled socket: one already connected would write at once.
+    const opened = gate === undefined ? options : { ...options, agent: false };
+    const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, opened);
     outgoing.on('response', (response) => {
-      void answerOf(response, limit, failed).then(settle);
+      void answerOf(response, limit, failed, onChunk).then(settle);
     });
     outgoing.on('error', () => {
       settle(failed(null));
     });
-    outgoing.end(body);
+    if (gate === undefined) {
+      outgoing.end(body);
+      return;
+    }
+    outgoing.once('socket', (socket) => {
+      socket.once(url.protocol === 'https:' ? 'secureConnect' : 'connect', () => {
+        const cut = (): void => {
+          settle(LAPSED);
+          outgoing.destroy();
+        };
+        if (left(gate) <= 0) return cut();
+        const timer = setTimeout(cut, left(gate));
+        outgoing.end(body, () => {
+          clearTimeout(timer);
+          // A cut or failed write's callback still runs, with no error, once the request is destroyed.
+          if (!outgoing.destroyed) gate.onWritten?.();
+        });
+      });
+    });
   });
 }
 
@@ -266,6 +259,8 @@ export async function send(
   request: OutboundRequest,
   credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
   resolve: Resolve = resolveBySystem,
+  onChunk?: OnChunk,
+  gate?: SendGate,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
@@ -279,13 +274,16 @@ export async function send(
   const addresses = await checkedAddresses(url, resolve, signal);
   if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
+  if (gate !== undefined && left(gate) <= 0) return LAPSED;
   // The destination's fixed headers first; their names never overlap these.
   const headers: Record<string, string> = {
     ...destination.headers,
     'content-type': 'application/json',
     'content-length': String(Buffer.byteLength(request.body)),
   };
-  if (credential !== null) headers[credential.header] = presented(credential);
+  if (credential !== null && credential.scheme !== 'none') {
+    headers[credential.header] = presented(credential);
+  }
   return await exchange(
     url,
     {
@@ -296,5 +294,7 @@ export async function send(
     },
     request.body,
     request.maxResponseBytes,
+    onChunk,
+    gate,
   );
 }

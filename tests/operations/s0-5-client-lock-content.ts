@@ -31,6 +31,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'graduation.promote': "a client's graduation row and mandate, not a task",
   'graduation.demote': "a client's graduation row and mandate, not a task",
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
+  // #1623 R1 (T5): its authority loss stops the work under the grant, which is leased work.
+  'grant.revoke': 'a grant: who may act; the work its loss stops already gave the task content',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
   // SL12 (batch 3a): a conversation is its owner's; citing a task writes nothing on it.
@@ -54,6 +56,11 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
     "the agent prefix only, under the parent's lease: the task already has content",
   'run.child_handback':
     "the agent prefix only, on a child the parent's lease made: the task already has content",
+  'task.take_launch':
+    'the agent login only (the person path refuses it), on a launch: the task already has content',
+  // #1623 R1: the worker's own stop, agent-only like `model.call`.
+  'run.end':
+    'the agent prefix only (the person path refuses it), under a lease: the task already has content',
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(

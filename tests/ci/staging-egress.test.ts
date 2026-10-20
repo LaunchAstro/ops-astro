@@ -151,7 +151,7 @@ const compose = (args: string[]) =>
 type Place = readonly [who: string, host: string, port: string];
 const place = (who: string): Place => [who, `${who}.example.test`, '443'];
 const stand: readonly Place[] = [
-  ...['api', 'beat', 'sink', 'auth', 'elsewhere'].map((who) => place(who)),
+  ...['api', 'beat', 'sink', 'auth', 'elsewhere', 'mail'].map((who) => place(who)),
   ['pooler', 'pooler.example.test', '6543'],
 ];
 /** From a container on staging: connect, send `bytes`, print what comes back. */
@@ -277,22 +277,20 @@ function liveCases() {
     expect(ask('pooler.example.test', '6543', Buffer.from('ssl?'))).toBe('got:from-pooler');
   }, 120_000);
 
-  it('a host off the list is refused, though it answers on the outside', () => {
-    // The control: from the outside network, the off-list stand-in answers.
-    const control = docker([
-      'run',
-      '--rm',
-      '--network',
-      names('egress'),
-      node,
-      'node',
-      '-e',
-      "const s=require('net').connect(443,'elsewhere.example.test',()=>s.write('x'));s.on('data',d=>{console.log(String(d));process.exit(0)})",
-    ]);
-    expect(control.out).toBe('from-elsewhere');
-    // Asked of the relay by name, and straight by name: nothing comes back.
-    expect(ask('api.example.test', '443', hello('elsewhere.example.test'))).toBe('got:');
-    expect(ask('elsewhere.example.test', '443', hello('elsewhere.example.test'))).toBe('got:');
+  it('a host off the list is refused, though it answers on the outside, the mail host too while OPS_EGRESS_MAIL_HOST is absent', () => {
+    const outside = ['run', '--rm', '--network', names('egress'), node, 'node', '-e'];
+    for (const who of ['elsewhere', 'mail']) {
+      const host = `${who}.example.test`;
+      // The control: from the outside network, the off-list stand-in answers.
+      const control = docker([
+        ...outside,
+        `const s=require('net').connect(443,'${host}',()=>s.write('x'));s.on('data',d=>{console.log(String(d));process.exit(0)})`,
+      ]);
+      expect(control.out, who).toBe(`from-${who}`);
+      // Asked of the relay by name, and straight by name: nothing comes back.
+      expect(ask('api.example.test', '443', hello(host)), who).toBe('got:');
+      expect(ask(host, '443', hello(host)), who).toBe('got:');
+    }
     expect(ask('api.example.test', '6543', Buffer.from('ssl?'))).toBe('got:from-pooler');
     expect(ask('api.example.test', '80', Buffer.from('GET /'))).toBe('got:');
   }, 120_000);

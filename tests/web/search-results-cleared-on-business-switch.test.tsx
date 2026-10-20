@@ -51,6 +51,29 @@ it('business to business search results disappear when the business client chang
   expect(page.text()).not.toContain(hit.key);
 });
 
+it('person to person in one business search results disappear when the signed-in person changes', async () => {
+  // Ada searched in Alpha; Ben signs in to Alpha in the same tab, and his
+  // client never answers, so any hit still drawn is Ada's.
+  const ada = client('alpha', async () => json({ ok: true, hits: [hit] }));
+  const asked: string[] = [];
+  const ben = client('alpha', (input) => {
+    asked.push(String(input));
+    return new Promise<Response>(() => {});
+  });
+  const drawn = (source: OperationsClient) => (
+    <SearchPalette client={source} onOpen={() => {}} onClose={() => {}} />
+  );
+  page = await mount(drawn(ada));
+  await page.type('input', 'private');
+  await pause();
+  expect(page.text()).toContain(hit.title);
+  await page.render(drawn(ben));
+  await pause();
+  expect(asked).toEqual(['/api/b/alpha/task/search']);
+  expect(page.text()).not.toContain(hit.title);
+  expect(page.text()).not.toContain(hit.key);
+});
+
 // Sol OW-096.1 criterion 2, retitled by what it proves; its body is Sol's.
 it('business to business the mounted App clears Alpha hits on its held-address switch to Bravo', async () => {
   const tab = storage({

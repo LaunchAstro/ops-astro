@@ -3,8 +3,10 @@
 // API-1: who may call what, as the catalogue answers it. The catalogue replaces
 // discovery, an agent never holds decide, share or manage, and a person-only
 // or two-part authority survives on every row and surface; the planted cases
-// drop one and show the real check fails.
+// drop one and show the real check fails. Write enforcement is planted out in
+// memory by an import hook, so the real parity script runs on unchanged files.
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -32,6 +34,8 @@ const DUPLICATE = COMMAND_SURFACE.find(
 describe('API-1 command catalogue', () => {
   replacesDiscovery();
   agentDecideAndPersonOnly();
+  stricterSurfaces();
+  writeEnforcementRemoved();
 });
 
 function replacesDiscovery(): void {
@@ -125,4 +129,103 @@ function agentDecideAndPersonOnly(): void {
       'API task.duplicate drops the person-only marker and admits an agent',
     ]);
   });
+}
+
+function stricterSurfaces(): void {
+  it('a surface stricter than the owning command fails parity: an added grant or an added person-only marker', () => {
+    const rows = buildCatalogue([]);
+    const surfaces = realSurfaces([]);
+    const update = surfaces.cli.get('task.update');
+    expect(update?.personOnly).toBe(false);
+    if (update === undefined) return;
+    const cli = new Map(surfaces.cli).set('task.update', {
+      ...update,
+      authority: [...update.authority, 'task:manage'],
+    });
+    expect(checkParity(rows, { ...surfaces, cli })).toEqual([
+      'CLI task.update adds the grant check task:manage the app does not make',
+    ]);
+    const api = new Map(surfaces.api).set('task.update', { ...update, personOnly: true });
+    expect(checkParity(rows, { ...surfaces, api })).toEqual([
+      'API task.update adds the person-only marker and refuses an agent the app admits',
+    ]);
+  });
+}
+
+const PREPARE = 'packages/core-commands/src/commands/prepare.ts';
+
+/** A node `--import` that serves `PREPARE` with `from` replaced by `to`, its file untouched. */
+function planted(from: string, to: string): string {
+  const hook = `import { registerHooks } from 'node:module';
+    const [file, from, to] = ${JSON.stringify([PREPARE, from, to])};
+    registerHooks({ load(url, context, nextLoad) {
+      const loaded = nextLoad(url, context);
+      if (!url.endsWith(file)) return loaded;
+      const source = String(loaded.source);
+      if (source.split(from).length !== 2) throw new Error('PLANT-MISSED ' + from);
+      return { ...loaded, source: source.replace(from, to) };
+    } });`;
+  return `data:text/javascript,${encodeURIComponent(hook)}`;
+}
+
+/** `task.update` prepared for its own task on a transaction holding no grant. */
+const ASK_AGAIN = `
+  import { askedAgain } from './${PREPARE}';
+  import { declarationOf } from './packages/core-wire/src/index.ts';
+  let queries = 0;
+  const tx = { businessId: '00000000-0000-4000-8000-000000000001', query: async () => (queries++, []) };
+  const session = { personId: '00000000-0000-4000-8000-000000000002', actorId: '00000000-0000-4000-8000-000000000003', roleKey: 'member' };
+  const result = await askedAgain(tx, { session, declaration: declarationOf('task.update') }, '00000000-0000-4000-8000-000000000004');
+  process.stdout.write(JSON.stringify({ code: result?.refusal?.code ?? null, queries }));`;
+
+function node(imports: string[], args: string[]) {
+  const flags = imports.flatMap((one) => ['--import', one]);
+  return spawnSync(process.execPath, [...flags, ...args], { encoding: 'utf8', timeout: 60_000 });
+}
+
+function refusedWith(imports: string[]): { code: string | null; queries: number } {
+  const run = node(imports, ['--input-type=module', '-e', ASK_AGAIN]);
+  expect(run.status, run.stderr).toBe(0);
+  return JSON.parse(run.stdout) as { code: string | null; queries: number };
+}
+
+const parity = (imports: string[]) => node(imports, ['scripts/command-parity.mjs', '--check']);
+
+function writeEnforcementRemoved(): void {
+  it('control: the real write preparation refuses a caller holding no grant, and parity passes', () => {
+    expect(refusedWith([])).toEqual({ code: 'SCOPE_NOT_GRANTED', queries: 2 });
+    const run = parity([]);
+    expect(run.status, run.stdout).toBe(0);
+  }, 120_000);
+
+  it.each([
+    [
+      'the grant query and its answer replaced by an admission',
+      'const authorised = await checkAuthority(tx, subjectsOf(session), asked);',
+      'const authorised = { ok: true as const };',
+      0,
+    ],
+    [
+      'the grant query kept and its refusal ignored',
+      'if (authorised.ok) return {};',
+      'if (authorised.ok || true) return {};',
+      1,
+    ],
+  ])(
+    'parity fails when write enforcement is removed: %s',
+    (_, from, to, queries) => {
+      const hook = [planted(from, to)];
+      expect(refusedWith(hook), 'the planted preparation admits a caller holding no grant').toEqual(
+        {
+          code: null,
+          queries,
+        },
+      );
+      const run = parity(hook);
+      expect(run.stderr).not.toContain('PLANT-MISSED');
+      expect(run.status, 'parity passed with write enforcement removed').toBe(1);
+      expect(run.stdout).toContain('API task.update skips the grant check task:write');
+    },
+    120_000,
+  );
 }

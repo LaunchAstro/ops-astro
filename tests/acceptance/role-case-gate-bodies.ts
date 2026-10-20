@@ -15,6 +15,9 @@ type GateCommand = 'operations.record_gate_item' | 'operations.change_installati
 
 const evidence = (item: string): string => `https://evidence.example/${item}/${randomUUID()}`;
 
+/** The operations page, where the last tested restore is shown: `tested-backups`' one link. */
+export const OPERATIONS_PAGE_LINK = 'https://evidence.example/settings/operations/';
+
 /** The OAIC's public Privacy Opt-In Register, which lists its entries on the one page. */
 export const OPT_IN_REGISTER =
   'https://www.oaic.gov.au/privacy/privacy-registers/privacy-opt-in-register';
@@ -107,26 +110,61 @@ export async function legalEvidence(
   );
 }
 
-/** The owner's hooks for the gate recipes: clear an item's record, link items 3 to 6. */
+/**
+ * Every item's evidence for records by `recorder`, a person of `businessId`:
+ * a restore drill stamped as passed just now (0070), which `tested-backups`
+ * needs; the recorder's verified factor, which `second-factor` needs, set on
+ * their person row as the factor writers set it (the cast signs its admin in
+ * with the second factor and writes no factor row); and items 3 to 6's links
+ * (`legalEvidence`).
+ */
+export async function gateEvidence(
+  owner: Owner,
+  businessId: string,
+  recorder: string,
+): Promise<Readonly<Record<string, string>>> {
+  await owner.execute('select ops.record_tested_restore()');
+  await owner.execute(
+    'update public.people set second_factor_verified = true where business_id = $1 and id = $2',
+    [businessId, recorder],
+  );
+  return await legalEvidence(owner, businessId);
+}
+
+/**
+ * The owner's hooks for the gate recipes, sent by `recorder`: clear an item's
+ * record, ready every item's evidence (`gateEvidence`).
+ */
 export const gateContext = (
   owner: Owner,
   businessId: string,
-): Required<Pick<BodyContext, 'clearGateItem' | 'legalEvidence'>> => ({
+  recorder: string,
+): Required<Pick<BodyContext, 'clearGateItem' | 'legalEvidence' | 'madeUpInstallation'>> => ({
   clearGateItem: async (item) => {
     await owner.execute('delete from ops.gate_items where item = $1', [item]);
   },
-  legalEvidence: async () => await legalEvidence(owner, businessId),
+  // The one-way trigger guards the product's path; the fixture steps round it
+  // for its own transaction only, as the restricted-call suites do.
+  madeUpInstallation: async () => {
+    await owner.execute(
+      `with replica as (select set_config('session_replication_role', 'replica', true))
+       update ops.installation set mode = 'made-up' from replica where mode = 'real'`,
+    );
+  },
+  legalEvidence: async () => await gateEvidence(owner, businessId, recorder),
 });
 
 /**
  * A record that closes this item or line, with made-up evidence; items 3 to 6
- * take theirs from `links` (`legalEvidence`) where the command checks it.
+ * take theirs from `links` (`legalEvidence`) where the command checks it, and
+ * `tested-backups` the operations page.
  */
 export function gateRecordBody(
   item: string,
   links: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
   const statement = OWNER_LINES[item];
+  if (item === 'tested-backups') return { item, evidence: OPERATIONS_PAGE_LINK };
   if (statement === undefined) return { item, evidence: links[item] ?? evidence(item) };
   const link = item === 'privacy-opt-in' ? `${OPT_IN_REGISTER}?keys=Agency+Astro` : evidence(item);
   return { item, evidence: link, statement };
@@ -145,6 +183,7 @@ export function createGateBody(context: BodyContext): (name: GateCommand) => Pro
       }
       return { body: gateRecordBody(item, await context.legalEvidence?.()) };
     }
+    await context.madeUpInstallation?.();
     if (allDone) return { body: { mode: 'real' } };
     const links = await context.legalEvidence?.();
     for (const item of GATE_ITEMS) {

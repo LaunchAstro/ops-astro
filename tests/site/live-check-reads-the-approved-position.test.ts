@@ -19,10 +19,11 @@ import { calibrated, flipped } from '../../packages/core-connectors/src/site/rec
 
 const PAGE = 'https://agency.example/about/';
 const target = { path: 'src/pages/about.astro', word: 'typo', replacement: 'fixed' };
-const before = '<p>typo fixed typo</p>\n<p>typo x</p>\n';
-const after = '<p>fixed fixed typo</p>\n<p>typo x</p>\n';
+// The paragraph over two lines, so the approved word stands once on its line (#1987).
+const before = '<p>typo fixed\ntypo</p>\n<p>typo x</p>\n';
+const after = '<p>fixed fixed\ntypo</p>\n<p>typo x</p>\n';
 // Only the paragraph's third word changed; "fixed fixed typo" now spans into the next paragraph.
-const live = '<p>typo fixed fixed</p>\n<p>typo x</p>\n';
+const live = '<p>typo fixed\nfixed</p>\n<p>typo x</p>\n';
 const change = { files: [{ path: target.path, before, after }] };
 
 function text(html: string): string {

@@ -433,8 +433,9 @@ re-sums and is refused `23514` (`check_violation`, `budget_caps_ceiling`). Under
 repeatable read or serializable, a transaction whose snapshot predates a
 competing commit is refused `40001` (`serialization_failure`) and must retry in
 a fresh snapshot, so at those levels two concurrent raises under one cap
-serialise even when they would fit together. The app runs at read committed and
-nothing in it retries `40001`. Only a write that can
+serialise even when they would fit together. The app runs at read committed
+(`withBusiness` begins every transaction at that level, whatever the login's
+default) and nothing in it retries `40001`. Only a write that can
 raise the total is checked: a nonzero insert, a growing total, a move to
 another cap, or a falling limit. The command refuses first with a reason, and
 storage refuses second (`tests/runtime/cap-storage-backstop.test.ts`).
@@ -462,11 +463,15 @@ reaches it; a login dropped while the loop runs is skipped rather than failing
 the upgrade (FR8-0031). Migration 20261012052116 repeats it for every role that
 holds the group through another role, and for that middle role.
 
-**Upgrading a running install.** The migration runner refuses to apply a
-pending migration while any other client session is connected to the database
-(the API, GoTrue, a `psql`), names each by pid, login, application, address and
-start, and changes nothing (`MigrationRefused`, `tenancy/migrate.ts`;
-`tests/tenancy/migration-runner-guard.test.ts`). Stop the API and GoTrue, run
+**Upgrading a running install.** The migration runner locks every table in
+`ops` and `public` first, with each lock wait bounded to 5 s, then refuses to
+apply a pending migration while any other client session (the API, GoTrue, a
+`psql`) is active, in a transaction or holding a lock. It names each by pid,
+login, application, address, start, state and locks, and changes nothing
+(`MigrationRefused`, `tenancy/migrate.ts`;
+`tests/tenancy/migration-runner-guard.test.ts`). An idle session with no
+transaction and no lock, such as a pooler's, passes. A lock wait that times out
+is retried, three attempts 10 s apart, then refused (`MigrationLockTimeout`). Stop the API and GoTrue, run
 `pnpm db:migrate`, and start them again. With nothing pending the check does not
 run. An upgrade run is all or nothing: `db:migrate` applies every pending
 migration in one transaction, so a refusal (another session connected) or a
@@ -520,8 +525,9 @@ deadline undecided stays stored as `pending`.
 - **Both use the database clock.** `decide` reads `clock_timestamp()` once,
   after it acquires its locks (`lockedInstant`, `core-runtime/src/clock.ts`),
   so a decide that waited on a lock past the deadline is refused. The read
-  takes no lock, so it uses `now()` inside its own statement. Neither uses the
-  application's clock.
+  uses `statement_timestamp()`, the instant its own statement starts, so a
+  read that waited on a lock first judges the gate after that wait. Neither
+  uses the application's clock.
 - **The boundary is inclusive.** `expires_at` at or before the clock is
   expired on both sides, so at the deadline instant the read says expired and
   the decide refuses.
@@ -1464,7 +1470,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:877-888`). With neither setting present, the
+  rewrites it (`local-seed.mjs:774-785`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1539,7 +1545,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts
   and drop. A call holds its operation's priced maximum out of the run's
-  reservation from `reserved` until it settles. `accepted_at`, `started_at`,
+  reservation from `reserved` until it settles; a task call holds more than
+  nothing unless refused, but the agent's turn on the owner's plan
+  (`model.agent_turn` on a cloud subscription route,
+  `20261019130000_plan_turn_holds_nothing`, #2091) holds and settles at
+  nothing, the exception true only with every fact present. `accepted_at`, `started_at`,
   `completed_at` and `landed_at` are separate, and a call reaches no level
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
@@ -1586,13 +1596,42 @@ both tenancy-scoped with row security forced, and the fair share's count
   adapter a lookup, else `person`). The hold also marks the run's step as one
   that may have acted (`markStepActed`), so the hand-back, the sweep and the
   pass stop on it. A status the operation declared in `nothingHappened`
-  (replay: `http_429`) releases the hold whole. The reconciliation pass's
+  (replay: `http_429`) releases the hold whole, and so does custody's own
+  refusal before a send, a carried call's included when this side's offer,
+  accept or send judgement refused it before the request was written to the
+  M5 (`CUSTODY_NOT_ADMITTED`, the caller told the judgement's reason). A
+  release for any other reason, an M5's refusal after it reported the write
+  among them, proves nothing and is held unknown, the maximum kept (#1623
+  R1). Test: `a-carried-task-call-the-m5-refuses-after-the-write-stays-held-unknown`.
+- Outcomes (#1623 R1, `core-custody/src/broker-stop.ts`): the transaction that
+  stops an attempt records its one `run_outcomes` row and retires its work.
+  Settlement does it for an unknown hold (`LIABILITY_UNKNOWN`), a release for
+  the declared `LOCAL_PLAN_LIMIT` or the plan's `SUBSCRIPTION_PLAN_ALLOWANCE`
+  (`waiting_plan_allowance`), the plan's `SUBSCRIPTION_PLAN_UNAVAILABLE`
+  (`plan_unavailable`) or `SUBSCRIPTION_SIGN_IN_NEEDED` (`cancelled`, its own
+  code), or another
+  declared code (`cancelled / PROVIDER_NOTHING_HAPPENED`), and a custody
+  refusal (`cancelled`). For a provider drop a worker could report
+  (`provider_unavailable`, `connection_lost`) it also records T3e1's drop in
+  the same transaction, through the `drops` hook model.call gives the broker; the reserve and the start for each refusal they record;
+  the budget stop, cancellation, supersession, authority loss and expiry in
+  their own transactions; the worker through `run.end`; and a completed
+  handback its `success`, refused for an attempt with an outcome already, an
+  open call or a marked step its own observation has not settled, except a
+  launched step dispatched and never observed, which records
+  `LIABILITY_UNKNOWN` (`core-runtime/src/handback-success.ts`). A call still
+  dispatched or held unknown at the stop makes the row
+  `unknown_provider_outcome`, the stop's own code kept as `stop_cause`. The
+  first writer wins; the row never changes. The reconciliation pass's
   provider phase (`reconcileProviderCalls`, `core-custody/src/broker-reconcile.ts`,
   run per business by `passDeployment` after the sweep) asks the provider, through
   custody and by the call's id (the operation id every call sends, a
   conversation call's and a planning reply's too), about each
   held call whose step is held unknown, and about each planning reply held
-  unknown (AW-04: it has no step), at most 50 a pass, one at a time and
+  unknown (AW-04: it has no step), at most 50 a pass, those asked longest
+  ago first (a call never asked, then by `lookup_until`, which recording an
+  answer moves to that moment, so fifty that prove nothing cannot starve a
+  newer call), one at a time and
   each through the gate a model call takes (`atCeiling`: the operation's
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass
@@ -1615,6 +1654,34 @@ both tenancy-scoped with row security forced, and the fair share's count
   the step's held calls in its transaction, with `outcome` and
   `outcome_person_id`; no timer does. `readCallDrops` reads a task's held
   calls in its business. Tests: `tests/broker/aw-10-*`.
+- Turns and the call limit (#1623 R3, `20261019115000_turn_provenance_and_call_limit`,
+  `core-custody/src/broker-turn.ts`, `broker-turn-read.ts`, `broker-limit.ts`):
+  each hold of a run attempt records its place among the attempt's calls
+  (`call_ordinal`, counted under the run lock) and the attempt's limit, the one
+  its first hold recorded (`AGENT_MODEL_CALL_LIMIT`, or the deployment's
+  `callLimit`). The settlement of the limit-th call writes `call_limit /
+CALL_LIMIT_REACHED` and retires the work, whatever the answer, which still
+  comes back marked terminal; the reserve refuses a hold past it, a backstop.
+  A turn's ordinal must be that place. Its parts are bound at the reserve,
+  again at the start, and again at a subscription's handoff against the task
+  held there (owner line 72): an answer by the digest its settlement kept
+  (`answer_digest`, sha256 of the canonical JSON of `{v, text, toolCalls}`;
+  the words are never stored), scoped to the business and the attempt. Tool
+  calls nested 64 deep or more, or holding a non-finite number, have no digest: the call still settles priced,
+  and short of the limit the attempt ends `cancelled / TURN_MALFORMED` (on
+  the limit-th call it ends `call_limit` as any answer does), since a later turn could
+  never bind that answer; a part of that depth is `PROVENANCE_UNBOUND`. The
+  turn's class is its strictest source's, kept on the answer as
+  `answer_source`, so an answer never becomes less strict on a later turn.
+- The agent's runner (#1624 R7, `apps/worker/agent-runner.ts`): the worker's
+  step runner for an accepted plan before its Launch. It reads the task, then
+  runs `core-agent`'s loop, each turn a `model.call` and each tool the
+  product's own command through the worker's one call port under the run's
+  delegation: `task.read`, and `live_correction.request` as a person sends it.
+  A turn answered with no words (a reply lost and replayed from the ledger,
+  or a send that was not ok) ends the attempt `ANSWER_LOST`, never success
+  (R1706-F1). The correction is stored `locating`; the M5 pins its base revision (#1693)
+  and a person decides it. The runner opens no connection of its own.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
@@ -1647,7 +1714,28 @@ The broker reads the task's client link, the spine's client slot, holding the
 run's task `for share` ahead of the lease (class `task` before `lease`), so a
 `task.set_party` in flight is waited on, never missed. The start reads it
 again under the same locks, and a task that gained a client since the hold
-releases the call unsent.
+releases the call unsent. Offered a subscription route, the refusal is
+`SUBSCRIPTION_NOT_FOR_CLIENT_WORK` instead (owner line 72, #1619).
+The owner's ChatGPT plan's route (`chatgpt_plan`, #1620 P4) carries a run
+nobody attends, but only one the owner started: the task created, and the run's
+version proposed and every approval of it given, by a person then holding the
+owner role. The run's standing is what the database stamped on its version
+and each approval as they were written (`proposed_by_owner`,
+`decided_by_owner`, #1909), from the active owner membership read `for share`;
+a later write to membership history changes nothing. Any other run, a
+scheduled one included, is refused
+`SUBSCRIPTION_NOT_OWNER_STARTED` before a route is chosen, and a typed message
+in a conversation never reaches it.
+
+Owner line 72 by source (#1619). Free text goes to a cloud route only when the
+route is a subscription, the owner's own seat, and the broker found the text
+the owner's own work: the task's creation applied by a person then holding
+the owner role, no client key, no applied write by an agent, a worker, or a
+person then holding no staff role (provenance is judged at each operation's
+time from membership intervals, never today's role). A subscription
+send is judged again at custody's handoff in a transaction held until custody
+has the request (`broker-admission.ts`), so a client link or a client's write
+landing after the start sends nothing or waits for the send.
 
 A field reaches a cloud route only when the broker finds its source
 business-internal (S3). The field is bound, `from: { recordId, key }`, to
@@ -1793,7 +1881,7 @@ totals.
   longer fits is refused.
 - **On the settings page.** `settings.read` carries `planningCap` (limit,
   currency, and `set` false while it is the default) for every settings reader;
-  the page's AI planning budget field moves it through the command, opened only
+  the page's AI chat budget field moves it through the command, opened only
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
 As a money action (`billing:decide`) the command asks C59's recent sign-in in
@@ -1805,23 +1893,28 @@ step-up setting is on). Not here yet: the planning spend beside the plan.
 The approved ceiling is the stop (AW-05; `0087_budget_wait`, numbered after
 main's 0084 at the batch 2 join). A model call whose priced maximum does not fit in what the
 run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
-transaction the run stops and asks (`raiseBudgetWait`,
+transaction the run stops and asks (`stopAtBudget`,
 `core-custody/src/broker-wait.ts`). The reserve holds the run's task, the run,
 the lease, the delegation and the reservation in the contract's order, so two
-calls on one run reaching the ceiling at once stop it once.
+calls on one run reaching the ceiling at once stop it once. Pickup's stop at a
+spent hold (`stopAtSpentHold`) calls the same operation, so the run stops the
+same way whichever path reached its budget (S2, #438).
 
 - **The ask.** `budget_asks`, one row per stop: the run, the reservation, the
   lease that reached it, the decision that approved the plan, the ceiling (the
   reservation's hold), the spend to date (what the reservation has committed)
   and the currency. The rows are the persisted count. A run asks three times
   at most and the third is the consolidated decision (execution decisions
-  15.2); a stop after it raises no fourth ask and is refused with words that
-  say so. A step whose calls spent its whole hold after the consolidated ask
-  ends its run and tells a person (`stopAtSpentHold`). The application may insert and read an ask, never update or delete
-  one; worker and broker hold nothing on it.
+  15.2). A stop after it raises no fourth ask: the run ends (`cancelled`) and
+  a person is told on the task (`awaiting_person`, `needs_approval`), whether
+  a call reached the ceiling or a step's calls spent its whole hold, and the
+  refusal says so. Restart recovery settles that ended run's hold at its
+  calls' spend. The application may insert and read an ask, never update or
+  delete one; worker and broker hold nothing on it.
 - **Nothing spends.** The lease ends (`released`) and its delegation is
   retired (`work_retired`), so a later call on it is refused before any hold.
-  The reservation stays `held`: the approved ceiling is kept for the answer.
+  A waiting run's reservation stays `held`: the approved ceiling is kept for
+  the answer.
 - **No machine path out.** `planned_runs.state` gains `waiting_budget`, entered
   from `claimed` only. The trigger `planned_runs_budget_wait_holds` refuses
   any change out of it (23514) except by a person's answer (below). Restart recovery (`discoverEligible`) does not
@@ -2207,50 +2300,12 @@ after the business-wide keys. Tests: `aw-01-occurrence-run`,
 `aw-01-occurrence-run-isolation`, `c52a-run-start`, `c33-intake` and
 `c52a-dispatch-claim-races`.
 
-## The harness adoption test's trigger
+## Framework authority tests
 
-AW-12, part one: `core-runtime/src/harness-trigger.ts` and
-`core-commands/src/reads/harness-trigger.ts`. The round asks whether an agent
-framework has earned a role under the product's loop. It adopts nothing:
-adoption is the owner's separate decision.
+The A1 to A8 suite and the four shared fakes stay in `tests/harness/`.
+Tests: `aw-12-authorities` in three files, and `aw-12-fakes`.
 
-- **Two limbs, both needed.** The run's required reading must exceed one
-  window at the pinned provider: the replay provider's `replay-1`, 32 000
-  units, the only route catalogued. The work must also sub-delegate (AW-11's
-  `delegated` run event, depth one). The reading is the sum of the run's
-  accept-time manifest sizes (0192), each file once: a file is its digest and
-  size, so the same bytes at two paths count once. It is counted in UTF-8
-  bytes, an upper bound on any byte-level tokenizer's units. A run with no pin
-  reads nothing.
-- **"Not yet" is a result.** Either limb missing, the reading is `not_yet`.
-  It names the missing limbs and carries the two figures: the reading against
-  the window, and the depth with the depth built. It is frozen and holds no
-  other number. `enterCandidates` enters no candidate on it. It throws on a
-  reading the trigger did not make, so nothing reaches the candidates unread.
-  The trigger is read from the work's shape, never from a date.
-- **Who reads it.** `readHarnessTrigger` is the team's: a person outside it,
-  or one with no live `task:read`, gets `SCOPE_NOT_GRANTED`. The run is
-  filtered by that grant inside the statement (on the business, the task or
-  the task's client, as `taskAccess` asks), so a run outside it, in another
-  business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
-  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. The owner
-  reads it through `harness.read` (part two), on the API and as the command
-  line's `harness.read` verb, one answer on both: `{ ok: true, harness }`. The
-  agent route refuses it, as it refuses every person-only read; nothing under
-  test reads its own verdict. Nothing is stored: each read computes the result
-  from the run's frozen manifest ([API.md](API.md#reads)).
-- **What stays in the tests.** The pinned candidates with their licences read
-  (`tests/harness/candidates.ts`) and the four shared fakes, all in
-  `tests/harness/`, so none of them is in the product's dependency tree.
-
-Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
-`aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
-candidate audit, a dependency audit at each pinned commit, is part two's),
-`aw-12-fakes`, `aw-12-harness-read`, `aw-12-harness-read-isolation`,
-`aw-12-harness-read-parity` and `aw-12-authorities` (part two, three files). The
-authorities suite holds the product's side of the eight refusals, the boundary
-any candidate would sit behind, with no candidate run: the trigger reads "not
-yet". A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
+A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
 worker's place, handed a worker's settings, one model client and tools by
 name, with its own state store and retry setting. One case per authority,
 each with a positive control, and each shown red once against a broken
@@ -2269,9 +2324,7 @@ refused and recorded at the network layer (A6); one failed model call with
 its retries off gives one dropped attempt and exactly one new attempt and
 reservation, the hand-back's replay none more (A7); and the restricted worker
 role, the canary for a harness's role, is refused 42501 on updating the run,
-its steps and its events, which the application role reaches (A8). No product
-code changed for them. The per-candidate refusal runs, the representative
-case, the comparison families, the ledger and the gates wait on the trigger.
+its steps and its events, which the application role reaches (A8).
 
 ## The agent's output takes its own review round
 

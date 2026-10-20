@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "automation.history reads an activation's occurrences and applied changes newest first, 50 a page, with outcome codes, run ids and actors, and never an event id"
+}

@@ -24,7 +24,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
-import { gateRecordBody, legalEvidence } from './role-case-gate-bodies.ts';
+import { gateEvidence, gateRecordBody } from './role-case-gate-bodies.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
@@ -166,7 +166,7 @@ function approvalCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeo
 
 /** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
-  const links = await legalEvidence(w.h.world.db.admin, w.h.world.alpha);
+  const links = await gateEvidence(w.h.world.db.admin, w.h.world.alpha, caller.personId as string);
   for (const item of GATE_ITEMS) {
     const body = gateRecordBody(item, links);
     // eslint-disable-next-line no-await-in-loop
@@ -651,7 +651,20 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { correctionId: theirs.correctionId },
         fabricated: { correctionId: randomUUID() },
       });
-      const request = { ...C80_REQUEST, partyId: randomUUID() };
+      await refuses('live_correction.receipts', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
+      await refuses('live_correction.revert', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
+      const review = { versionDigest: 'sha256:a-version', verdict: 'approve', review: NOBODY };
+      await refuses('live_correction.record_review', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId, ...review },
+        fabricated: { correctionId: randomUUID(), ...review },
+      });
+      const request = C80_REQUEST;
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...request, taskId: w.foreign.task.id },
         fabricated: { ...request, taskId: randomUUID() },
@@ -712,6 +725,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
         ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
+        // A code it may end on, so the lease is what is compared (#1623 R1).
+        ['run.end', { endCode: 'TOOL_REFUSED' }],
       ];
       for (const [op, extra] of byLease) {
         const forms = {
@@ -760,7 +775,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         /* eslint-disable no-await-in-loop -- one operation at a time */
         // The breach drill's body names an incident, so its positive request
         // needs one of alpha's, and a published runbook to draft from (C81).
-        // The mode moves to real only once every gate item is done (S0-5).
+        // The mode moves to real only once every gate item is done (S0-5), and
+        // tested backups is recorded on a restore drill stamped as passed.
+        if (op === 'operations.record_gate_item') {
+          await gateEvidence(w.h.world.db.admin, w.h.world.alpha, caller.personId as string);
+        }
         if (op === 'operations.change_installation_mode') await gateReady(w, caller);
         const body =
           op === 'privacy.draft_breach_notices' ? await drillReady(w, caller, listed) : listed;

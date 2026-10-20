@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The audit-per-operation expectation accepts onboarding.start writing its own row plus one task creation event per laid-out task."
+}

@@ -33,6 +33,10 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 
+const WAITING_ON_CONVERSATION = `select count(*) as n from pg_stat_activity a
+    join pg_locks l on l.pid = a.pid and not l.granted and l.locktype = 'transactionid'
+   where l.transactionid::text = $2 and $1 = any(pg_blocking_pids(a.pid))
+     and a.wait_event_type = 'Lock' and a.query ~* 'from\\s+conversations\\s[\\s\\S]*for\\s+update'`;
 // eslint-disable-next-line max-lines-per-function -- one world, every race on it
 describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
   let w: ConversationWorld;
@@ -68,20 +72,18 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
       [operationIds],
     );
 
-  /** Waits until a backend in this database waits on a lock. */
-  async function someoneWaits(): Promise<void> {
+  /** Until a backend waits on the conversation row lock `holder` took. */
+  async function waitsOnConversation(holder: TenantQuery): Promise<void> {
+    const [me] = await holder.query<{ pid: number; xid: string }>(
+      'select pg_backend_pid() as pid, pg_current_xact_id()::text as xid',
+    );
     for (let tries = 0; tries < 200; tries += 1) {
       // eslint-disable-next-line no-await-in-loop -- polling the server
-      const n = await w.count(
-        `select count(*) as n from pg_stat_activity
-          where datname = current_database() and wait_event_type = 'Lock'`,
-        [],
-      );
-      if (n >= 1) return;
+      if ((await w.count(WAITING_ON_CONVERSATION, [me?.pid, me?.xid])) >= 1) return;
       // eslint-disable-next-line no-await-in-loop
       await sleep(25);
     }
-    throw new Error('no backend ever waited on the conversation lock');
+    throw new Error('no backend ever waited on the conversation lock the holder took');
   }
 
   /**
@@ -96,7 +98,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     const held = await on(second, async (tx) => {
       const outcome = await first(tx);
       waiting = racer();
-      await someoneWaits();
+      await waitsOnConversation(tx);
       return outcome;
     });
     if (waiting === undefined) throw new Error('the second transaction never started');

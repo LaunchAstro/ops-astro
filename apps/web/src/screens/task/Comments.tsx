@@ -25,6 +25,10 @@
 // attempt was never stored, that old revision is the server's `VERSION_STALE`,
 // which the stale path below handles. While the outcome is unknown the words,
 // recipients, audience and reply stay locked; Send retries that exact attempt.
+// Once a retry is refused, the person may Stop waiting: the attempt is let go
+// by its operation id, every box showing it (or coming back still holding it
+// after a reread) keeps its words as an unsent draft, and the next Send is a
+// new attempt.
 //
 // **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
 // Client with their counts, and All activity with none. It opens on Internal
@@ -56,7 +60,7 @@ import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommentCustody } from './comment-custody-context.tsx';
-import type { CommentHold, PendingComment } from './comment-custody.ts';
+import type { CommentCustody, CommentHold, PendingComment } from './comment-custody.ts';
 import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
 import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
 import { useRowActions } from './row-actions.ts';
@@ -181,13 +185,15 @@ function OwnedComments(props: CommentsProps): ReactElement {
   const picking = pending === null && tab === 'all' && parentId === null;
   const locked = busy || closed || picking;
   const cleanup = !hold.kept && pending === null;
+  // Let go, but its stored copy is still there: the one control clears that copy.
+  const letGo = cleanup && hold.answered === 'abandoned';
   const cannotPost = busy || (!cleanup && (locked || draft.needsPeople));
   const rows = useRowActions(props, (commentId) => {
     draft.put({ replyTo: commentId });
   });
   const because = hold.failure?.because ?? props.refusal;
   const form = useRef<HTMLFormElement>(null);
-  useCommentSettlement(props, hostDraft, hold);
+  useCommentSettlement(props, hostDraft, hold, custody);
 
   const post = (): void => {
     if (cannotPost) return;
@@ -238,14 +244,16 @@ function OwnedComments(props: CommentsProps): ReactElement {
           pending !== null &&
           (hold.uncertain || (held === null && hostDraft.pending !== null))
         }
+        onLetGo={
+          busy ||
+          held === null ||
+          !hold.uncertain ||
+          (hold.failure?.kind ?? 'unknown') === 'unknown'
+            ? null
+            : () => custody.letGo(props.recordId, held.operationId)
+        }
       />
-      {hold.kept ? null : (
-        <p role="status" className="card__sub" data-comment="recovery-storage">
-          {pending === null
-            ? 'The answer arrived, but the recovery copy could not be cleared. Retry clears that copy before another comment can be sent.'
-            : 'The recovery copy could not be updated. The held attempt stays locked.'}
-        </p>
-      )}
+      {hold.kept ? null : <RecoveryStorageNote letGo={letGo} answered={pending === null} />}
 
       <form
         id={scoped('task-comment')}
@@ -290,14 +298,7 @@ function OwnedComments(props: CommentsProps): ReactElement {
           </p>
         ) : null}
         {picking ? <PickNote /> : null}
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-comment="post"
-          disabled={cannotPost}
-        >
-          {busy ? 'Posting…' : !hold.kept && pending === null ? 'Retry recovery cleanup' : 'Send'}
-        </button>
+        <PostButton busy={busy} letGo={letGo} cleanup={cleanup} disabled={cannotPost} />
         {closed ? <ClosedNote /> : null}
       </form>
       {props.scope === 'panel' ? null : (
@@ -307,13 +308,28 @@ function OwnedComments(props: CommentsProps): ReactElement {
   );
 }
 
-/** A known answer consumes only this host's submitted draft, including after a reread remount. */
+/**
+ * A known answer consumes only this host's submitted draft, including after a
+ * reread remount. A box that was away when its held attempt was let go comes
+ * back with that operation id while later settlements have moved on: it drops
+ * the id and keeps the words as an unsent draft, so Send is a new attempt.
+ */
 function useCommentSettlement(
   props: CommentsProps,
   hostDraft: CommentDraft,
   hold: CommentHold,
+  custody: CommentCustody,
 ): void {
   const held = hold.pending;
+  const away = hostDraft.pending;
+  useEffect(() => {
+    if (
+      away !== null &&
+      held?.operationId !== away.operationId &&
+      custody.abandoned(away.operationId)
+    )
+      props.onDraft({ ...hostDraft, pending: null });
+  }, [away, held, custody, props, hostDraft]);
   const because = hold.failure?.because ?? props.refusal;
   const observed = useRef(
     !hold.busy && held === null && matchesSubmittedDraft(hostDraft, hold.settled, props.comments)
@@ -333,6 +349,15 @@ function useCommentSettlement(
               stale: hold.answered === 'stale' ? because : null,
             },
       );
+    } else if (
+      hold.answered === 'abandoned' &&
+      hold.settled !== null &&
+      hostDraft.pending === null &&
+      hostDraft.body === ''
+    ) {
+      // A box that only showed the shared held attempt (another surface's, or
+      // one restored after a reload) keeps its words as an unsent draft.
+      props.onDraft({ ...heldDraft(hostDraft, hold.settled), pending: null });
     }
     if (hold.answered === 'closed' && because !== null) props.onRefused(because);
     if (hold.answered === 'ok' || hold.answered === 'stale') props.onPosted();
@@ -371,25 +396,27 @@ function commentIntent(current: CommentDraft, comments: readonly InternalComment
   return { parent, intent: pending ?? { ...tabPost, parentId: parent?.id ?? null } };
 }
 
+/** The box showing a held attempt: its words, audience, reply and recipients. */
+function heldDraft(hostDraft: CommentDraft, held: PendingComment): CommentDraft {
+  return {
+    ...hostDraft,
+    body: held.body,
+    tab:
+      hostDraft.body === held.body
+        ? hostDraft.tab
+        : held.audience === 'client'
+          ? 'client'
+          : 'internal',
+    replyTo: held.parentId,
+    mentions: held.mentions ?? [],
+    pending: held,
+  };
+}
+
 /** The editable draft and the exact held attempt share one audience and recipient vocabulary. */
 function useCommentDraft(props: CommentsProps, held: PendingComment | null) {
   const hostDraft = props.draft ?? EMPTY;
-  const current: CommentDraft =
-    held === null
-      ? hostDraft
-      : {
-          ...hostDraft,
-          body: held.body,
-          tab:
-            hostDraft.body === held.body
-              ? hostDraft.tab
-              : held.audience === 'client'
-                ? 'client'
-                : 'internal',
-          replyTo: held.parentId,
-          mentions: held.mentions ?? [],
-          pending: held,
-        };
+  const current: CommentDraft = held === null ? hostDraft : heldDraft(hostDraft, held);
   const { pending } = current;
   const { parent, intent } = commentIntent(current, props.comments);
   const put = (next: Partial<CommentDraft>): void => {
@@ -411,6 +438,47 @@ function useCommentDraft(props: CommentsProps, held: PendingComment | null) {
 }
 
 /** On All nobody has said who may read a post. */
+/** The recovery copy could not be written or cleared: what that holds back. */
+function RecoveryStorageNote(props: {
+  readonly letGo: boolean;
+  readonly answered: boolean;
+}): ReactElement {
+  return (
+    <p role="status" className="card__sub" data-comment="recovery-storage">
+      {props.letGo
+        ? 'This change was let go, but this browser could not clear its saved copy yet.'
+        : props.answered
+          ? 'The answer arrived, but the recovery copy could not be cleared. Retry clears that copy before another comment can be sent.'
+          : 'The recovery copy could not be updated. The held attempt stays locked.'}
+    </p>
+  );
+}
+
+/** Send, or the cleanup a recovery copy still owes before the next comment. */
+function PostButton(props: {
+  readonly busy: boolean;
+  readonly letGo: boolean;
+  readonly cleanup: boolean;
+  readonly disabled: boolean;
+}): ReactElement {
+  return (
+    <button
+      className="btn btn--primary"
+      type="submit"
+      data-comment="post"
+      disabled={props.disabled}
+    >
+      {props.busy
+        ? 'Posting…'
+        : props.letGo
+          ? 'Clear saved copy'
+          : props.cleanup
+            ? 'Retry recovery cleanup'
+            : 'Send'}
+    </button>
+  );
+}
+
 function PickNote(): ReactElement {
   return (
     <p className="card__sub" data-comment="pick">
@@ -433,6 +501,8 @@ function PostNotices(props: {
   readonly because: string | null;
   readonly stale: string | null;
   readonly unresolved: boolean;
+  /** Stop waiting, offered once a held unknown's retry was refused. */
+  readonly onLetGo: (() => void) | null;
 }): ReactElement {
   return (
     <>
@@ -456,6 +526,16 @@ function PostNotices(props: {
           server answers with the original result rather than storing it twice.
         </p>
       ) : null}
+      {props.onLetGo === null ? null : (
+        <button
+          type="button"
+          className="btn btn--secondary"
+          data-comment="let-go"
+          onClick={props.onLetGo}
+        >
+          Stop waiting for this change
+        </button>
+      )}
     </>
   );
 }

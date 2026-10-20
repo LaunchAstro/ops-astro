@@ -98,6 +98,23 @@ export interface ConversationMessageView {
   readonly role: 'person' | 'agent';
   readonly body: string;
   readonly createdAt: string;
+  /** On the owner's own reply in a chat opened on no task: the tasks an edit it proposes may apply to. */
+  readonly targets?: ConversationTargetsView;
+}
+
+/**
+ * The tasks a reply's edit may apply to (#1666), kept with it: each by its
+ * place among the tasks the conversation had created, at the revision the
+ * reply's question read, only while the reader may use it. `pick` is true
+ * when the conversation had created more than one, so the person chooses.
+ */
+export interface ConversationTargetsView {
+  readonly pick: boolean;
+  readonly tasks: readonly {
+    readonly n: number;
+    readonly taskId: string;
+    readonly revision: number;
+  }[];
 }
 
 /** One of the caller's own conversations, as the assistant panel's tab row draws it (MP-7-11). */
@@ -216,6 +233,8 @@ export interface ConversationModelView {
   readonly provider: string;
   readonly reach: 'local' | 'cloud';
   readonly ceilingMinor: number;
+  /** The picker's words for a paid model (#1508); absent, the id is shown. */
+  readonly label?: string;
 }
 
 /** `conversation.models`' answer: what the picker offers, and the conversation's choice. */

@@ -50,11 +50,13 @@ describe('T3 no machine path: one caller of the write-off', () => {
       'packages/core-commands/src/commands/budget-write-off.ts',
       'packages/core-runtime/src/recovery/write-off.ts',
     ]);
-    // Nothing else writes the write-off's cause onto a hold.
+    // Nothing else writes the write-off's cause onto a hold or a call.
     const causes = [...sources('packages'), ...sources('apps')]
       .filter((file) => readFileSync(join(ROOT, file), 'utf8').includes("'written_off'"))
       .toSorted();
     expect(causes).toStrictEqual([
+      // Reads it only: a call a person wrote off gives nothing back when it settles late.
+      'packages/core-custody/src/broker-give-back.ts',
       // AW-10: records the write-off on the step's held broker calls, called only by the write-off.
       'packages/core-runtime/src/recovery/broker-effect.ts',
       'packages/core-runtime/src/recovery/write-off.ts',

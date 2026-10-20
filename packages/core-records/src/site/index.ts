@@ -11,17 +11,21 @@ export {
   insertLiveCorrection,
   listCoveredCorrections,
   lockCoveredCorrection,
-  writeCorrectionDecision,
   type CorrectionState,
   type LiveCorrection,
   type NewLiveCorrection,
-  type PartyRefused,
+  type PageRefused,
+  type StoredCorrection,
+  type UnpinnedCorrection,
 } from './live-corrections.ts';
 export {
   holdsAnywhere,
   isActiveMember,
+  isVerifiedNow,
+  writeCorrectionDecision,
   lockConfiguredApprover,
   readCoveredDecision,
+  VERIFIED_FOR_MS,
   type CorrectionDecision,
 } from './correction-decisions.ts';
 export {
@@ -32,4 +36,41 @@ export {
   type ReceiptOutcome,
   type UnderLease,
 } from './correction-receipts.ts';
+export {
+  claimProposal,
+  readProposal,
+  settleProposal,
+  type Claimed,
+  type CorrectionProposal,
+  type ProposalState,
+  type Settlement,
+} from './correction-proposals.ts';
+export {
+  RECEIPT_TEXT_LIMIT,
+  listReadableCorrections,
+  readReadableReceipts,
+  type ReadableCorrection,
+  type ReadableReceipt,
+  type ReceiptText,
+} from './correction-reads.ts';
 export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';
+export { insertRevertAsk, type RevertAsk, type RevertAskWrite } from './correction-revert-asks.ts';
+export {
+  bindPartySite,
+  isBoundPage,
+  readPartySite,
+  taskClient,
+  unbindPartySitePage,
+  type PartySiteRecord,
+  type SiteWrite,
+} from './party-sites.ts';
+export {
+  SINGLE_OPERATOR_SETTING,
+  hasSelfApproved,
+  insertReview,
+  lockSingleOperatorMode,
+  operatorCount,
+  reviewApproves,
+  type NewReview,
+} from './single-operator.ts';
+export { correctionOfPlan, planVersionOfDelegation } from './plan-corrections.ts';

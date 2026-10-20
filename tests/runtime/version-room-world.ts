@@ -5,7 +5,7 @@
 // top-up, and the money a pickup must leave adding up.
 
 import { randomUUID } from 'node:crypto';
-import { raiseBudgetWait, sweepModelCalls } from '../../packages/core-custody/src/index.ts';
+import { stopAtBudget, sweepModelCalls } from '../../packages/core-custody/src/index.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
   appliedDetail,
@@ -233,7 +233,7 @@ export async function stopAndTopUp(
   );
   if (hold === undefined) throw new Error('stopAndTopUp: no hold');
   await s.db.app.withBusiness(s.business, async (tx) => {
-    const wait = await raiseBudgetWait(tx, {
+    const stopped = await stopAtBudget(tx, {
       runId: hold.run_id,
       leaseId: String(work.picked['leaseId']),
       delegationId: String(work.picked['delegationId']),
@@ -242,7 +242,7 @@ export async function stopAndTopUp(
       ceilingMinor: 500,
       spentMinor: Number(hold.spent),
     });
-    if (!wait.raised) throw new Error('stopAndTopUp: no ask raised');
+    if (stopped.kind !== 'waiting') throw new Error('stopAndTopUp: no ask raised');
   });
   appliedDetail(await topUp(s, work, reservationId, amount), 'run.top_up');
 }

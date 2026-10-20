@@ -282,7 +282,14 @@ shows only the work of that task's client (#169, `queue` in
 `core-runtime/src/pickup.ts`): the queue never shows it another client's
 reservation, purpose slug or held amount, and a repeated read is served again
 rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
-reservation the agent already knows is not narrowed. A helper delegation
+reservation the agent already knows is not narrowed. A `task.pickup` sent under a
+delegation credential answers to that delegation: judged last, once the
+agent's judgement holds it `for share`, it and its parent must be live and it must
+name the task the claim took, or the claim rolls back (`DELEGATION_NOT_LIVE`,
+`DELEGATION_OUT_OF_PURPOSE`; `pickup-delegation.ts`). The worker sends every
+pickup so. Each queue entry's `ownerProposed` says the owner proposed and
+approved it, as a role and never the person, so the worker also works the
+owner's own plan on its delegation's task (ROUTE1905). A helper delegation
 (AW-11) narrows its helper's queue to the parent's client while it stands, so
 a parent that names another agent as its helper narrows that agent's queue
 while the child stands (at most until the child's expiry). `task.decide`
@@ -488,11 +495,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:764-790`, run at `:923-931`). It gets a login and an acting identity,
-  and no membership and no business grant (`:182-185`, `:335-337`). The seed
-  makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
-  naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:792-821`, `:960-969`).
+  user (`:661-687`, run at `:820-828`). It gets a login and an acting identity,
+  and no membership and no business grant (`local-seed-roles.ts:123-126`,
+  `local-seed.mjs:218-220`). The seed makes no task, so it shares one only when
+  rerun with `LOCAL_SEED_SHARE_TASK` naming a task, through `shareRecord` under
+  the admin's own `share` grant (`:689-718`, `:857-866`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -901,8 +908,17 @@ active membership, over the whole business or over one client of it
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
 
+Settings ▸ Access also makes an agent credential (API-2, owner check U18) for a
+session holding `credential:write`: `credential.issue` with task access only,
+`task:read` and `task:write`, the purpose typed and a life of 1 to 90 days. The
+secret is drawn once in a read-only field and kept in no outcome line or
+storage; the credential made can be revoked there (`credential.revoke`) while
+the page is open. `access.read` lists no agent credential, so one made earlier
+is revoked from the command line.
+
 Settings ▸ Workflow triggers (C33) reads the business's automations under
-`settings:read` (`automation.registry`), changes an activation under
+`settings:read` (`automation.registry`), and one activation's occurrences and
+changes under the same key (`automation.history`, #1741), changes an activation under
 `settings:manage` (`activation.change`) and releases a definition version under
 `automation:manage` (`definition.release`), each asked of the whole business
 and none ever an agent's. A definition carries no client, so a grant at one
@@ -1141,17 +1157,6 @@ ticket's "the second owner after a timed restore rehearsal" is the trace
 target's Owner login (the Langfuse contract's recovery operator), an
 installation step in the runbook like the export switch; the product keeps no
 rehearsal record and asks none.
-
-## The harness read (AW-12)
-
-`harness.read` asks `read` on tasks the way `definition.attribution` does: the
-door takes any grant, and the statement that reads the run keeps it only when
-the caller's `read` covers its task (the business, the task or the task's
-client), so a run outside the grant, in another business or not there at all
-is one `NOT_FOUND`. It is the team's: a client, a contractor and anyone holding
-no `read` on tasks get `SCOPE_NOT_GRANTED`. No agent reads it
-(`DELEGATION_EXCLUDES_OPERATION`): the owner reads the result, and nothing
-under test reaches its own verdict. See [RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger).
 
 ## The planning allowance (AW-04)
 

@@ -2,6 +2,8 @@
 //
 // The agent CLI's compact output (API-3): terse text, or minimal JSON; it decides nothing.
 
+import { keyNamed, missingKey } from '../web/src/records/needs-key.ts';
+
 type Json = Readonly<Record<string, unknown>>;
 
 const isObject = (value: unknown): value is Json =>
@@ -41,14 +43,11 @@ export function pageText(items: readonly Json[], next: string | null): string {
   return lines.join('\n');
 }
 
-const AUTHORITY = /GRANT|PERMIT|DELEGATION|AUTH|AGENT/u;
-
-/** A refusal in one line: its code, the key it needs if about authority, the first fix. */
+/** A refusal in one line: its code, the key it needs if the caller lacks one, the first fix. */
 export function refusalLine(body: Json, key: string): string {
   const code = typeof body['code'] === 'string' ? body['code'] : 'REFUSED';
   const names = Array.isArray(body['names']) ? (body['names'] as unknown[]) : [];
-  const named = names.find((name) => typeof name === 'string' && /^[a-z_]+:[a-z_]+$/u.test(name));
-  const needs = AUTHORITY.test(code) ? ` You need ${typeof named === 'string' ? named : key}.` : '';
+  const needs = missingKey(code) ? ` You need ${keyNamed(names, key)}.` : '';
   const fixes = Array.isArray(body['fixes']) ? (body['fixes'] as unknown[]) : [];
   const fix = typeof fixes[0] === 'string' ? ` ${fixes[0]}` : '';
   return `refused ${code}.${needs}${fix}`.replaceAll(/\s+/gu, ' ').trim();

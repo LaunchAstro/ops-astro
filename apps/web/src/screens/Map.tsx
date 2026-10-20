@@ -11,7 +11,9 @@
 // the revisions a write sends back. Every write carries its target's revision,
 // so a second writer who moved it on gets `VERSION_STALE`, not a lost update.
 // After an applied edit the page reads the map again: the new version in the
-// history is the server's, never one this file numbered.
+// history is the server's, never one this file numbered. It also reads it
+// again on the live channel (C4), on a change to the map or to any task the
+// reader reads, keeping the page drawn through that reread.
 //
 // **The command's state and the drafts live above the read.** A reread
 // unmounts the loaded view unless kept, so a refusal or typed words held
@@ -21,13 +23,16 @@
 // them against the latest revision. The screen registry keys this screen by
 // map and grant, so another map or another reader starts with none.
 //
-// The look waits on the accepted prototype W4 (#603); until then the page is
-// drawn with the kit's existing section and button classes.
+// The accepted prototype W4 (#603) is its visual reference; until the visual
+// match lands, the page is drawn with the kit's existing section and button
+// classes.
 
 import { useRef, useState, type ReactElement } from 'react';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import { hubOf } from '../data/live.ts';
+import { dependencyAdmission, useTaskDependencies } from '../data/board-live.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { useCommand } from '../records/use-command.ts';
 import { keyOf, needsKey } from '../records/needs-key.ts';
@@ -50,9 +55,20 @@ export interface MapScreenProps {
   readonly mapKey: string;
 }
 
-/** Whether two graduate forms hold the same patch and lines. */
-const sameForm = (one: Drafts['graduating'], two: Drafts['graduating']) =>
-  JSON.stringify(one) === JSON.stringify(two);
+/**
+ * What of the graduate form `now` an applied graduation of `sent` left
+ * ungraduated: its typed lines that were not sent as they stand. Null when
+ * nothing is left, so the gone form never lists a title that was graduated.
+ */
+function unsent(now: Drafts['graduating'], sent: Drafts['graduating']): Drafts['graduating'] {
+  if (now === null || sent === null || now.patch !== sent.patch) return now;
+  const lines = now.lines.filter(
+    (line) =>
+      line.title.trim() !== '' &&
+      !sent.lines.some((one) => one.title === line.title && one.type === line.type),
+  );
+  return lines.length === 0 ? null : { ...now, lines };
+}
 
 /** What a `SCOPE_NOT_GRANTED` closes: the command's key on that one record. */
 const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${recordId}`;
@@ -61,10 +77,11 @@ const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${
  * The typed words, held above the read, and the slot whose save came back
  * stale. `sending(slot)` notes what a save sends and answers its two steps:
  * `applied` drops the slot only if it still holds that, so words typed while
- * the save was on its way stay in the editor; `stale` draws the conflict only
- * if those words were not dropped meanwhile. Words dropped unsaved (Cancel,
- * Dismiss, an emptied line) take their conflict with them, a late one
- * included: nothing is kept, so nothing is offered to save again.
+ * the save was on its way stay in the editor (a graduate form keeps only its
+ * lines changed since); `stale` draws the conflict only if those words were
+ * not dropped meanwhile. Words dropped unsaved (Cancel, Dismiss, an emptied
+ * line) take their conflict with them, a late one included: nothing is kept,
+ * so nothing is offered to save again.
  */
 function useDrafts() {
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
@@ -95,7 +112,7 @@ function useDrafts() {
       return {
         stale,
         applied: () => {
-          setGraduating((now) => (sameForm(now, sentForm) ? null : now));
+          setGraduating((now) => unsent(now, sentForm));
         },
       };
     }
@@ -123,19 +140,43 @@ function useDrafts() {
  * gone would not yet show as gone. A `SCOPE_NOT_GRANTED` closes the refused
  * key on the refused record only, so a ticket the reader may not write leaves
  * the ones they may write open.
+ *
+ * One write asked for is one operation: a press whose answer was lost sends
+ * the same `operationId` again, and the server answers it as the success it
+ * was, never as `VERSION_STALE` against itself, which would offer to add the
+ * line twice. A known answer ends the attempt.
  */
 function useWrites(client: OperationsClient, reload: () => void, rereading: boolean) {
   const command = useCommand();
   const [sent, setSent] = useState<MapCommand>('map.revise');
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
+  // An unanswered write's operation and the revision it was sent against, by intent.
+  const attempts = useRef(
+    new Map<string, { readonly operationId: string; readonly revision: number }>(),
+  );
   const { drafts, open, sending, setConflict } = useDrafts();
   const send: Send = (name, recordId, revision, body, slot) => {
     const steps = slot === undefined ? undefined : sending(slot);
+    // The revision is not part of the intent: a live reread after a lost answer
+    // moves it on, and the retry must replay the first operation, sent as it was.
+    const intent = JSON.stringify([name, recordId, body]);
+    const first = attempts.current.get(intent) ?? {
+      operationId: client.newOperationId(),
+      revision,
+    };
+    attempts.current.set(intent, first);
+    const { operationId } = first;
     setSent(name);
     setConflict(null);
     command.run(
-      () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
+      () =>
+        client.mutate(
+          name,
+          { recordId, ...body },
+          { operationId, expectedRevision: first.revision },
+        ),
       (settlement) => {
+        if (settlement.kind !== 'unknown') attempts.current.delete(intent);
         if (settlement.kind === 'ok') steps?.applied();
         if (settlement.kind === 'closed') {
           setShut((now) => new Set(now).add(latch(name, recordId)));
@@ -166,11 +207,15 @@ function patchGone(state: ReadState<MapViewResult>, drafts: Drafts): boolean {
 
 export function MapScreen(props: MapScreenProps): ReactElement {
   const client = props.client;
-  const { state, reload } = useRead<MapViewResult>({
+  const { state, reload, refresh, live, own } = useRead<MapViewResult>({
     grantKey: props.grantKey,
     run: () => client.read<MapViewResult>('map.view', { recordId: props.mapKey }),
     deps: [props.mapKey],
+    // The map's topic on the tab's one live stream (C4), as the task page follows its task.
+    live: { hub: hubOf(client), topic: (read) => `task:${read.map.id}` },
   });
+  // A ticket's state or blocking is another task's change: the board's topic says so.
+  useTaskDependencies(client, props.grantKey, refresh, dependencyAdmission(state, own));
   const rereading = state.outcome === 'loading';
   const { command, sent, send, locked, drafts, open } = useWrites(client, reload, rereading);
   // Held above the read, so a reread after a write keeps the view and filters.
@@ -191,7 +236,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
           to write it over the latest version.
         </p>
       )}
-      <RecordState state={state} subject="map" onRetry={reload} keep={open}>
+      <RecordState state={state} subject="map" onRetry={reload} keep={open || live}>
         {(value) => (
           <MapViews
             map={value.map}

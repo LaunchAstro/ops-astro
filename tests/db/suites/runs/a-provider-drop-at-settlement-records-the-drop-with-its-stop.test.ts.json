@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1623 R1 (ruling R1B-A): a provider drop at settlement ends the attempt unknown and, in the same transaction, records T3e1's drop: the cause, the run's progress and the outage report."
+}

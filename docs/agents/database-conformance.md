@@ -55,7 +55,8 @@ service containers, reading the named suites through
 item 5, so two pull requests that add suites never edit the same file): the
 suite `tests/<path>` is named by `tests/db/suites/<path>.json`, holding
 `"kind"` (`"invariant"` or `"conformance"`), `"isolation"` (`true` when
-`isolation tests` runs it too) and `"why"` (what it proves). To name a suite,
+`isolation tests` runs it, in place of the `database conformance` shards) and
+`"why"` (what it proves). To name a suite,
 add its file; to stop naming one, delete its test file with it. The reader
 refuses a file with another key, a missing or empty reason, a name that is
 not a test file's plus `.json`, a symlink, or the old lists
@@ -91,7 +92,7 @@ contamination gate and every shard, and fails unless all of the shards
 succeeded, a skipped or cancelled shard included.
 
 The shards run in the merge queue and on a push to `main`, never on a pull
-request (CI-SPEED, light pull requests). A pull request's checks are the light
+request but a pre-check batch (CI-SPEED, light pull requests). A pull request's checks are the light
 set and flag issues; the full set runs in the merge queue, which is the only
 way into `main`. So on a pull request the shards skip and the aggregate passes
 on that skip when the contamination gate passed, and nowhere else. A failed,
@@ -100,7 +101,12 @@ aggregate, so a red gate never shows a green `database conformance`. On a
 merge group or a push a skipped shard fails it, and a failed or cancelled shard
 fails it everywhere.
 `isolation tests` defers its suites to the queue the same way, still reporting
-under its name. A green `database conformance` on a pull request therefore
+under its name.
+A pre-check batch (#1918) is a pull request labelled `precheck-batch` whose
+head is a branch of this repository. With `ci-next` it runs the merge-group
+set on hosted runners: the shards run, `scripts/ci-scope.ts` runs every suite
+and defers nothing, and the aggregate needs every shard and isolation shard to
+succeed, as on a group. A fork's pull request is never a batch. A green `database conformance` on a pull request therefore
 proves nothing about the suites; builders run the full `pnpm check` locally,
 and `pnpm db:conformance` against a local database for a change that reaches
 the database, before declaring ready.
@@ -120,6 +126,14 @@ every case of a split suite in exactly one part.
 an aggregate that passes only when every shard succeeded, and
 `tests/ci/ci-shards*.test.ts` prove every suite, step and test file runs in
 exactly one shard.
+The isolation suites run in the `isolation tests` shards alone: the
+`database conformance` shards split the other run items
+(`--without-isolation`, `scripts/db-shards.ts` `databaseItems`; the nightly
+look-ahead, with no isolation shards beside it, runs every item), and the `database conformance`
+aggregate waits on both matrices, so on a merge group or a push it passes only
+when the isolation shards succeeded too. `tests/ci/db-census.test.ts` reads
+every shard's own `--list` and proves the two matrices together run each named
+item exactly once.
 
 Since CIITEM3 (the owner, 12 October 2026: every job in about 10 minutes)
 there are 30 shards, and `node scripts/db-census.ts` lists every run item's
@@ -130,8 +144,7 @@ database from empty: `tests/support/migrated-template.ts` migrates
 `migrated_<digest>` from empty once (the conformance runner builds it before
 its first counter read, locking in `postgres`, and a suite's global setup only
 reads it beside the configured database, so rule 7's counter does not move,
-even with `postgres` configured:
-`tests/ci/database-free-suite-refused-on-postgres.proof.test.mjs`), and
+even with `postgres` configured, as `pnpm db:cases` proves), and
 `createFreshDatabase` clones it.
 `tests/support/migrated-template.test.ts` proves a clone equals a database
 migrated from empty, catalogue and privileges alike, and
@@ -205,8 +218,8 @@ container's URL is already the owner's.
 
 A green here means what the last line the runner prints says it means: the
 named suites ran against a real database and none of them skipped. That holds
-for the merge queue's run and a push to `main`; on a pull request the runner
-does not run, and the green says only that the gate passed and the shards
+for the merge queue's run, a push to `main` and a pre-check batch; on any other
+pull request the runner does not run, and the green says only that the gate passed and the shards
 skipped there. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.

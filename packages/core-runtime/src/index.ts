@@ -62,17 +62,6 @@ export {
   type ChildStanding,
 } from './child-handback.ts';
 export {
-  DELEGATION_DEPTH_BUILT,
-  enterCandidates,
-  HARNESS_PINNED_WINDOW,
-  readTrigger,
-  type CandidateEntry,
-  type TriggerFigures,
-  type TriggerLimb,
-  type TriggerReading,
-  type WorkShape,
-} from './harness-trigger.ts';
-export {
   boundPlanOf,
   planRecordOf,
   PLAN_TEXT_LIMIT,
@@ -108,6 +97,7 @@ export {
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { endRun, type RunEndRequest } from './run-end.ts';
 export { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
@@ -158,6 +148,7 @@ export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.t
 export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
 export {
   DROP_FAULT,
+  lockDropAtSettlement,
   recordDrop,
   REPORTED_DROP_CAUSES,
   sweepLostWorkers,
@@ -215,12 +206,11 @@ export {
   type KeyResolver,
 } from './signing.ts';
 export {
-  endAtBudgetStop,
   topUpAtBudgetStop,
-  type EndOutcome,
   type BudgetStopTopUpRequest,
   type TopUpOutcome,
 } from './budget-answer.ts';
+export { endAtBudgetStop, type EndOutcome } from './budget-end.ts';
 export { spentNowOf } from './budget-stop.ts';
 export type {
   BudgetAnswerCode,

@@ -38,6 +38,7 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
+import { RECORD_FILE } from './deployment-record.ts';
 import { oneHost } from './one-host.ts';
 import { businessOf, holdingGrant, recordSignIn } from './operator-runtime.ts';
 import { recordTestedRestore } from './tested-restore.ts';
@@ -46,6 +47,8 @@ import { recordTestedRestore } from './tested-restore.ts';
 export interface Operator {
   readonly personId: string;
   readonly business: string;
+  /** The id `business` resolved to when the gate admitted the person. */
+  readonly businessId: BusinessId;
 }
 
 export type Gate =
@@ -71,8 +74,7 @@ const KEY = `${OPERATIONS_MANAGE.collection}:${OPERATIONS_MANAGE.action}`;
 const NOT_A_PERSON = ['OPS_ASTRO_AGENT', 'OPS_ASTRO_DELEGATION', 'OPS_ASTRO_DELEGATION_FILE'];
 /** Each one named host before use: postgres.js re-reads a host list, and its error holds it. */
 const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL'];
-/** The file in the record folder, one JSON line per act. */
-export const RECORD_FILE = 'deployments.jsonl';
+export { RECORD_FILE };
 
 function refused(why: string): Gate {
   return {
@@ -241,7 +243,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
   }
   return {
     ok: true,
-    operator: { personId: held.personId, business },
+    operator: { personId: held.personId, business, businessId: held.businessId },
     records,
     ...afterTheAct(env, held, presented, () => checkOperator(environment, operatingOnly)),
   };

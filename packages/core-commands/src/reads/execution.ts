@@ -112,13 +112,15 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
     'currency', ver.currency,
     -- A pending gate past its deadline reads expired, derived as task.read
-    -- derives it (reads/proposals.ts): the stored row stays pending.
-    'gateState', case when gate.state = 'pending' and gate.expires_at <= now()
+    -- derives it (reads/proposals.ts): the stored row stays pending. Judged
+    -- on the statement's clock, after the read's sign-in row wait, not the
+    -- transaction's start.
+    'gateState', case when gate.state = 'pending' and gate.expires_at <= statement_timestamp()
                       then 'expired' else gate.state end,
     'lease', (select json_build_object(
         'state', l.state,
         'expiresAt', to_char(l.expires_at at time zone 'UTC', ${ISO}),
-        'lapsed', l.state = 'live' and l.expires_at <= now(),
+        'lapsed', l.state = 'live' and l.expires_at <= statement_timestamp(),
         'holderActorId', l.holder_actor_id,
         'agent', l.delegation_id is not null)
       from public.leases l where l.business_id = $1 and l.run_id = run.id
@@ -157,6 +159,17 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       order by ev.position desc limit 1) last on true
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 
+/**
+ * A run's latest attempt's stop, from `run_outcomes` (#1623 R1), or null when
+ * that attempt has none. Read in the snapshot's own business, by the run `run`.
+ */
+const RUN_OUTCOME = `(select case when o.attempt_id is null then null else json_build_object(
+      'attemptId', o.attempt_id, 'outcome', o.outcome, 'endCode', o.end_code) end
+    from public.attempts a
+    left join public.run_outcomes o on o.business_id = a.business_id and o.attempt_id = a.id
+   where a.business_id = $1 and a.run_id = run.id
+   order by a.created_at desc, a.id desc limit 1)`;
+
 interface Snapshot {
   readonly runs: readonly ExecutionRun[];
   readonly sourceRevision: number;
@@ -192,9 +205,10 @@ async function snapshot(tx: TenantQuery, taskId: string, cursor: number): Promis
             coalesce((select json_agg(json_build_object(
                 'runId', id, 'lineageId', lineage_id, 'versionId', version_id, 'state', state,
                 'taskRevisionAtRequest', task_revision_at_request::float8,
-                'createdAt', to_char(created_at at time zone 'UTC', ${ISO}))
+                'createdAt', to_char(created_at at time zone 'UTC', ${ISO}),
+                'runOutcome', ${RUN_OUTCOME})
               order by created_at, id)
-              from public.planned_runs where business_id = $1 and task_id = $2), '[]') as runs,
+              from public.planned_runs run where business_id = $1 and task_id = $2), '[]') as runs,
             coalesce((select json_agg(json_build_object(
                 'eventId', id, 'runId', run_id, 'position', position::float8, 'kind', kind,
                 'leaseId', lease_id, 'attemptId', attempt_id, 'actorId', actor_id,

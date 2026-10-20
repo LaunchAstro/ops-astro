@@ -48,7 +48,13 @@ useInvitationWorld();
 
 /** Unresolvable by design (.test): even a gate that let it through could reach nothing real. */
 const NOT_HERE = 'https://mail.example.test';
-const MOCK = { ...MAIL, sender: { ...MAIL.sender, mock: true } };
+const MOCK = {
+  ...MAIL,
+  // Read at each send, so its check time is the shared report's: just now.
+  get sender() {
+    return { ...MAIL.sender, mock: true };
+  },
+};
 
 let folder = '';
 let credentialsFile = '';

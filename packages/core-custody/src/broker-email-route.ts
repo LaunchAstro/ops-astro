@@ -2,10 +2,16 @@
 //
 // What every broker email send shares (the inbox item's in `broker-email.ts`,
 // C39-T's invitation in `broker-invitation.ts`): the sender check, the
-// catalogued `email.send` and its route, and the one reading of what the
-// provider answered. Nothing here sends or writes.
+// catalogued `email.send` and its route, the reservation judged against a
+// fresh sender report, and the one reading of what the provider answered.
+// Nothing here sends.
 
-import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
+import {
+  senderFresh,
+  type ModelOperation,
+  type SenderReport,
+} from '../../core-connectors/src/index.ts';
+import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
 import type { Custody, CustodyOutcome } from './custody.ts';
 import type { DeliverRefusal } from './email-class.ts';
@@ -82,6 +88,34 @@ export function sendRoute(
   return routed(broker) ?? 'OPERATION_NOT_CATALOGUED';
 }
 
+/** Thrown inside a reservation's transaction to undo it: the sender report went stale. */
+class StaleSender extends Error {}
+
+/**
+ * One send's reservation, in its own transaction: `ask` takes every lock and writes the token or
+ * `asked`, then the sender report is judged, after the last lock the ask waited on. A report
+ * that is no longer fresh rolls the reservation back, so nothing it wrote stands, and answers
+ * `SENDER_NOT_VERIFIED`. The judgement before the locks (`sendRoute`) is only a first refusal.
+ */
+export async function reserveFresh<T>(
+  database: Database,
+  businessId: BusinessId,
+  sender: SenderReport,
+  ask: (tx: TenantQuery) => Promise<T>,
+): Promise<T | 'SENDER_NOT_VERIFIED'> {
+  try {
+    return await database.withBusiness(businessId, async (tx) => {
+      const asked = await ask(tx);
+      // A refusal (a code) wrote nothing; a reservation stands only on a fresh report.
+      if (typeof asked !== 'string' && !senderFresh(sender)) throw new StaleSender();
+      return asked;
+    });
+  } catch (error) {
+    if (error instanceof StaleSender) return 'SENDER_NOT_VERIFIED';
+    throw error;
+  }
+}
+
 /** What came back: the message id (whose: `source`), or the fault's kind. Never the body. */
 export function observed(
   outcome: CustodyOutcome,
@@ -90,6 +124,8 @@ export function observed(
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
   if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
   if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
+  // A withheld outcome comes only from a site template route.
+  if (outcome.kind === 'withheld') return { state: 'failed', evidence: 'withheld' };
   if (!outcome.outbound.ok) return { state: 'failed', evidence: outcome.outbound.fault };
   let body: unknown;
   try {

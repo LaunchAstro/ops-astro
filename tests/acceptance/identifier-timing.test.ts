@@ -30,6 +30,7 @@ import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
+import { foreignLaunch } from './foreign-launch.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -81,6 +82,8 @@ const INJECTED_BOUNDS = 3;
 
 /** The operations that name no identifier, from the list the matrix and SC2 case share. */
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
+/** R5: Astra's review operands beside the correction it names. */
+const REVIEW_BODY = { versionDigest: 'sha256:a-version', verdict: 'approve', review: 'reviewed' };
 
 const NOBODY = 'text nobody should find in an audit row';
 /** The ask an AW-05 answer names: the run is refused before any ask is read. */
@@ -349,8 +352,32 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         foreign: () => ({ correctionId: theirs.correctionId }),
         fabricated: () => ({ correctionId: randomUUID() }),
       },
+      {
+        op: 'live_correction.receipts',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+      {
+        op: 'live_correction.revert',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+      {
+        op: 'live_correction.record_review',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId, ...REVIEW_BODY }),
+        fabricated: () => ({ correctionId: randomUUID(), ...REVIEW_BODY }),
+      },
     );
-    const request = { ...C80_REQUEST, partyId: randomUUID() };
+    const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
       operand: 'taskId',
@@ -501,6 +528,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('activation.roll_back', 'activationId', f.automation.activationId, at);
     byAda('activation.turn_off', 'activationId', f.automation.activationId, at);
+    // #1741: bravo's activation named in an alpha history read.
+    byAda('automation.history', 'activationId', f.automation.activationId, (activationId) => ({
+      activationId,
+    }));
     byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
       approvalId,
     }));
@@ -556,8 +587,6 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       knowledge: [NOBODY],
       unknowns: [],
     }));
-    // AW-12: the harness result on bravo's run is the same NOT_FOUND as on a made-up one.
-    byAda('harness.read', 'runId', String(bravoRun?.run_id), (runId) => ({ runId }));
     // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
     // from alpha is the same NOT_FOUND as stamping an item that never existed.
     const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
@@ -591,6 +620,16 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ reservationId: f.picked.reservationId }),
       fabricated: () => ({ reservationId: randomUUID() }),
     });
+    // The agent's take, on its own login: bravo's real launch and a made-up one.
+    const bravoLaunch = await foreignLaunch(w);
+    out.push({
+      op: 'task.take_launch',
+      operand: 'launchId',
+      by: { kind: 'agent', identity: w.h.world.agent },
+      code: 'SCOPE_NOT_GRANTED',
+      foreign: () => ({ launchId: bravoLaunch }),
+      fabricated: () => ({ launchId: randomUUID() }),
+    });
     const picked = await w.pickUp(w.h.world.agent, 'the timing agent’s own work');
     const agent: Presenter = {
       kind: 'agent',
@@ -611,6 +650,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         },
       ],
       ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
+      ['run.end', { endCode: 'TOOL_REFUSED' }],
     ];
     // The helper's handback: another business's real credential, and a made-up one.
     out.push({
@@ -635,17 +675,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 114 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 119 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(114);
-    expect(names).toHaveLength(114);
+    expect(new Set(names).size, 'distinct operations').toBe(119);
+    expect(names).toHaveLength(119);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the sixty target-free ones').toStrictEqual(
-      bearing,
-    );
+    expect(
+      names.toSorted(),
+      'every declaration outside the sixty-three target-free ones',
+    ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load

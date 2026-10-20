@@ -46,7 +46,7 @@ it('the board shows the agent of a child whose parent was revoked holding the ta
   const { taskId, agentId } = await deadChild();
   const rows = await w.s.db.app.withBusiness(
     w.s.business,
-    async (tx) => await readBoardAgents(tx, [taskId], w.s.decider.personId),
+    async (tx) => await readBoardAgents(tx, [taskId], w.s.decider.personId, null),
   );
   expect(rows.get(taskId)?.agent).toMatchObject({ agentId, live: false });
 });

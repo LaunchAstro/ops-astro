@@ -6,6 +6,8 @@
 // The comment type, its write and its projection are `comments.ts`'s.
 
 import { randomUUID } from 'node:crypto';
+import { readableTaskIds, readableTaskParams } from '../authority/readable-scope.ts';
+import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { type CommentAudience, type CommentType, type StoredComment } from './comments.ts';
@@ -80,16 +82,21 @@ export async function readTaskComments(
         and r.data ->> 'task' = $3
         and ($4::text[] is null or r.data ->> 'audience' = 'client')
       order by r.data ->> 'posted_at', r.id`,
-    [tx.businessId, commentTypeId, taskId, shared ?? null],
+    // A comment names its task as lowercase text, so the id is compared as one.
+    [tx.businessId, commentTypeId, taskId.toLowerCase(), shared ?? null],
   );
   return rows.map((row) => storedFrom(row));
 }
 
-/** Only the evidence needed to derive client reply signals, for admitted tasks. */
+/**
+ * Only the evidence needed to derive client reply signals, for admitted tasks
+ * `readers` may still read; null `readers` for a caller that has judged reach.
+ */
 export async function readTaskCommentEvidence(
   tx: TenantQuery,
   commentTypeId: string,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<
   readonly Pick<StoredComment, 'id' | 'taskId' | 'audience' | 'parentId' | 'fromOutside'>[]
 > {
@@ -105,8 +112,8 @@ export async function readTaskCommentEvidence(
             r.data ->> 'parent' as parent, ${FROM_OUTSIDE}
        from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and r.data ->> 'task' = any($3::text[])`,
-    [tx.businessId, commentTypeId, taskIds],
+        and r.data ->> 'task' = any(${readableTaskIds('$3::uuid[]', 4)}::text[])`,
+    [tx.businessId, commentTypeId, taskIds, ...readableTaskParams(readers)],
   );
   return rows.map((row) => ({
     id: row.id,

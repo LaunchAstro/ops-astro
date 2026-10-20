@@ -37,6 +37,8 @@ export type ConversationReply =
       readonly plan?: PlanOffer;
       /** The records the answer read, unchecked until `citesOf` reads them. */
       readonly cites?: unknown;
+      /** #1666: the tasks an edit may apply to, unchecked until `targetsOf` reads them. */
+      readonly targets?: unknown;
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
@@ -64,6 +66,13 @@ export function isRefusal<T>(result: CallResult<T>): result is WireRefusal {
 
 export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
   return 'unavailable' in result;
+}
+
+/** A parsed body that is the server's refusal: the flag and a code, checked before anything reads it. */
+export function isWireRefusal(value: unknown): value is WireRefusal {
+  if (typeof value !== 'object' || value === null) return false;
+  const body = value as Record<string, unknown>;
+  return body['refused'] === true && typeof body['code'] === 'string';
 }
 
 /** What `account/factor/verify` answers: only the access token is read, once, to trade it. */

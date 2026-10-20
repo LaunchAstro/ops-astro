@@ -55,6 +55,8 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  'run.end',
+  'task.take_launch',
 ]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
@@ -802,7 +804,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // `recordId` (final review R1 #23), so the sibling is reached by its own
       // lease. C80's request names its task through `taskId`, never a stray
       // `recordId`, so the sibling is reached through that operand. AW-11's
-      // hand-over goes by the lease too; the helper's handback by its credential.
+      // hand-over goes by the lease too, and so does the worker's own stop
+      // (#1623 R1), with a code it may end on; the helper's handback by its credential.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -811,12 +814,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'task.check',
         'model.call',
         'run.delegate_child',
+        'run.end',
       ].includes(declaration.name)
         ? {
             ...probe,
             ...(declaration.name === 'task.check'
               ? { name: 'a check on the sibling', outcome: 'passed' }
               : {}),
+            ...(declaration.name === 'run.end' ? { endCode: 'TOOL_REFUSED' } : {}),
             leaseId: siblingLease['leaseId'],
             fence: siblingLease['fence'],
             ...(declaration.name === 'task.observe'
@@ -829,7 +834,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         : declaration.name === 'run.child_handback'
           ? probe
           : declaration.name === 'live_correction.request'
-            ? { ...probe, ...C80_REQUEST, partyId: randomUUID(), taskId: sibling.id }
+            ? { ...probe, ...C80_REQUEST, taskId: sibling.id }
             : { ...probe, recordId: sibling.id };
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(declaration.name, body, credential);
@@ -841,6 +846,16 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           [siblingLease['leaseId']],
         );
         expect(held[0]?.n, 'no call held on a lease outside the purpose').toBe('0');
+      }
+      if (declaration.name === 'run.end') {
+        // eslint-disable-next-line no-await-in-loop
+        const kept = await harness.world.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.run_outcomes o
+             join public.attempts a on a.business_id = o.business_id and a.id = o.attempt_id
+            where a.lease_id = $1`,
+          [siblingLease['leaseId']],
+        );
+        expect(kept[0]?.n, 'no outcome on a lease outside the purpose').toBe('0');
       }
     }
 
@@ -910,6 +925,40 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       revokedCredential,
     );
     observe('agent-after-pickup', 'k-revoke', 'task.read (after)', afterRevoke, notLive);
+
+    // The worker's own stop (#1623 R1), on a fourth live delegation: a code
+    // that needs no proof in the run's records. A person naming the lease is
+    // refused by design and records nothing; the holder's `run.end` answers
+    // the retained `RUN_ENDED`, records one outcome and retires the work, so
+    // the credential is no longer live.
+    const endable = await harness.freshTask('a task whose worker ends its run');
+    const endDecided = await harness.reserve(endable, 'draft_the_ended_reply');
+    const endPickup = await harness.asAgent('task.pickup', {
+      reservationId: (endDecided.body['detail'] as Record<string, unknown>)['reservationId'],
+    });
+    observe('agent-before-pickup', 'k-run-end', 'task.pickup', endPickup, SUCCESS);
+    const toEnd = endPickup.body['detail'] as Record<string, unknown>;
+    const endBody = { leaseId: toEnd['leaseId'], fence: toEnd['fence'], endCode: 'TOOL_REFUSED' };
+    const outcomes = async (): Promise<readonly Record<string, unknown>[]> => [
+      ...(await harness.world.db.admin.execute<Record<string, unknown>>(
+        `select o.outcome, o.end_code from public.run_outcomes o
+           join public.attempts a on a.business_id = o.business_id and a.id = o.attempt_id
+          where a.lease_id = $1`,
+        [toEnd['leaseId']],
+      )),
+    ];
+    const endByPerson = await harness.asPerson('run.end', endBody);
+    observe('ada', 'k-run-end', 'run.end (person)', endByPerson, refusal('SCOPE_NOT_GRANTED'));
+    expect(await outcomes(), 'a person ends no run').toStrictEqual([]);
+    const endedCredential = String(toEnd['credential']);
+    const ended = await harness.asAgent('run.end', endBody, endedCredential);
+    observe('agent-after-pickup', 'k-run-end', 'run.end (own lease)', ended, refusal('RUN_ENDED'));
+    expect(ended.body['names']).toStrictEqual(['cancelled', 'TOOL_REFUSED']);
+    expect(await outcomes(), 'one outcome, the one the code names').toStrictEqual([
+      { outcome: 'cancelled', end_code: 'TOOL_REFUSED' },
+    ]);
+    const afterEnd = await harness.asAgent('task.read', { recordId: endable.id }, endedCredential);
+    observe('agent-after-pickup', 'k-run-end', 'task.read (ended)', afterEnd, notLive);
 
     // The agent's own task, with an action its delegation carries. `comment` is
     // one of the three `pickup` mints and `task.comment` is in `AGENT_SURFACE`,
@@ -1161,6 +1210,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'g-external-projection',
       'k-handback',
       'k-revoke',
+      'k-run-end',
     ]) {
       expect(failures(kase), kase).toStrictEqual([]);
     }

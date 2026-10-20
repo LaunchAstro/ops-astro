@@ -37,14 +37,16 @@ export interface IdentityEvidence {
 }
 
 const git = (checkout: string, ...args: string[]): string =>
-  execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' });
 
 export function readIdentity(checkout: string): ServedIdentity {
+  // Untrimmed: each line's two status columns, a space and the path, so an
+  // unstaged edit's leading blank column stays put.
   const status = git(checkout, 'status', '--porcelain', '--untracked-files=no');
   return {
-    commit: git(checkout, 'rev-parse', 'HEAD'),
-    tree: git(checkout, 'rev-parse', 'HEAD^{tree}'),
-    dirty: status === '' ? [] : status.split('\n').map((line) => line.slice(3)),
+    commit: git(checkout, 'rev-parse', 'HEAD').trim(),
+    tree: git(checkout, 'rev-parse', 'HEAD^{tree}').trim(),
+    dirty: status.split('\n').flatMap((line) => (line === '' ? [] : [line.slice(3)])),
     pid: process.pid,
     checkout,
   };

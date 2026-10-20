@@ -52,12 +52,13 @@ const comment = async (id: string) => ({
   audience: 'internal',
 });
 
-/** The records and both gate tables, as one digest: a refusal must leave it. */
+/** The records, the clients and both gate tables, as one digest: a refusal must leave it. */
 async function digest(): Promise<string> {
   const [row] = await admin<{ d: string }>(
     gate,
     `select md5(
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from public.records t) ||
+       (select coalesce(string_agg(t::text, '|' order by t::text), '') from public.clients t) ||
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from ops.installation t) ||
        (select coalesce(string_agg(t::text, '|' order by t::text), '') from ops.gate_items t)) as d`,
   );
@@ -125,7 +126,7 @@ async function taskOnClient(key: string, title: string): Promise<string> {
 /** The canary in two records by the operator, every other item done, real, one item reopened. */
 async function shutTheGate(): Promise<void> {
   const lines = [
-    { item: 'tested-backups', evidence: `https://evidence.example/${CANARY}` },
+    { item: 'security-pass', evidence: `https://evidence.example/${CANARY}` },
     { ...gateRecordBody('training-line'), statement: `Training off, 2026-09-28, ${CANARY}.` },
   ];
   const answers = await Promise.all(lines.map(async (body) => await send(gate, RECORD, body)));
@@ -250,6 +251,8 @@ describe.skipIf(serverUrl === undefined)('S0-5 isolation', () => {
 
   it('S0-5 isolation: only the gate commands and the readiness check name the gate tables, so no read, list, count or export reaches them', () => {
     expect(namingTheGate()).toStrictEqual([
+      // operations.read's service health reads only operator_business_id, as C55's alerts do (#637).
+      'apps/api/app.ts',
       'packages/core-commands/src/commands/first-client-gate.ts',
       'packages/core-commands/src/commands/gate-write.ts',
       // C55's alerts read only operator_business_id, to keep them to the operating business.

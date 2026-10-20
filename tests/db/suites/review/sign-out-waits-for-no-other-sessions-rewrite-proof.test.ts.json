@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Sol #1525 round 1: a stalled cookie rewrite for an earlier session does not delay a later session's sign-out, so the later bearer is refused once it signs out"
+}

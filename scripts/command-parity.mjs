@@ -16,6 +16,7 @@ import {
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
+import { prepareCommand } from '../packages/core-commands/src/commands/prepare.ts';
 import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
@@ -44,6 +45,15 @@ const TRANSPORTS = new Map([
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
   // wraps that fetch for the sign-in address only, adding the public key: a session, not a record
   ['session/provider-key.ts', ['fetcher: typeof fetch', '): typeof fetch {', 'as typeof fetch']],
+  // accepts an invitation, signed out, on its one-time link: the token is the authority, no command
+  [
+    'screens/Enrol.tsx',
+    [
+      "ENROL_API_PATH = '/api/enrol'",
+      'fetch: typeof globalThis.fetch;',
+      'props.fetch(`${props.apiOrigin}${ENROL_API_PATH}`, {',
+    ],
+  ],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
 // first occurrence in code counts; one after `//` or a `/*` still open on its line, or on a
@@ -185,8 +195,10 @@ const OPERANDS = {
   'trace.read': { recordId: 'r' },
   'map.view': { recordId: 'r' },
   'map.frontier': { recordId: 'r' },
-  'harness.read': { runId: 'r' },
+  'map.list': {},
   'live_correction.read': { correctionId: 'c' },
+  'live_correction.list': {},
+  'live_correction.receipts': { correctionId: 'c' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },
@@ -195,11 +207,15 @@ const OPERANDS = {
     steps: 's',
   },
   'chat.messages': { conversationId: '00000000-0000-4000-8000-000000000000' },
+  'automation.history': { activationId: '00000000-0000-4000-8000-000000000000' },
   'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
-// The grants a read really asks: the real read path on a transaction that holds none.
-async function askedBy(read) {
+// The grants a command really asks, on a transaction that holds none: a read by its real read
+// path, a write by its real preparation (prepare.ts; the handler not run). Preparation asks a
+// write's own key, or none when self-scoped, and with no grant held refuses for that; its handler
+// asks any other its declaration names.
+async function askedBy(declaration) {
   const asked = [];
   const spine = [
     { key: 'task', id: 't' },
@@ -208,19 +224,31 @@ async function askedBy(read) {
   const tx = {
     businessId: 'business',
     query: (sql, params) => {
-      if (sql.includes('from effective e')) asked.push(`${params[0]}:${params[1]}`);
+      // Only the grant check names a collection and action ($1, $2); a client list asks no key.
+      if (sql.includes('where e.collection = $1')) asked.push(`${params[0]}:${params[1]}`);
       return Promise.resolve(sql.includes('from record_types') ? spine : []);
     },
   };
   const session = { personId: 'p', actorId: 'a', roleKey: 'member' };
-  await runRead(tx, session, { ...OPERANDS[read], read }).catch(() => null);
-  return asked;
+  const { name, kind, authorisedOn, collection, action } = declaration;
+  if (kind === 'read') {
+    await runRead(tx, session, { ...OPERANDS[name], read: name }).catch(() => null);
+    return asked;
+  }
+  const prepared = await prepareCommand(tx, session, 'api', { command: name }, declaration).catch(
+    () => null,
+  );
+  const own = authorisedOn === 'self' ? '' : `${collection}:${action}`;
+  // A grant is checked only if holding none refuses here: a query that admits anyway checks
+  // nothing, so the write reports no key and its declared one reads as skipped. A later refusal
+  // (an operand this probe leaves out) proves nothing.
+  if (own !== '' && prepared?.refusal?.code !== 'SCOPE_NOT_GRANTED') return [];
+  return asked.join() === own ? profileOf(declaration).authority : asked;
 }
 
-// What the real API runs at each path on both prefixes, by name and profile: a read by the
-// grants its path asks, a command by its declaration (its executor stubbed). Every executor
-// call is kept, bearer by bearer: a path runs one command once for each bearer it takes, the
-// agent prefix a session's and an agent credential's (API-2).
+// What the real API runs at each path on both prefixes, by name and the grants it asks. Every
+// executor call is kept, bearer by bearer: a path runs one command once for each bearer it
+// takes, the agent prefix a session's and an agent credential's (API-2).
 async function routedByApi() {
   const calls = [];
   const execute = (...args) => {
@@ -252,7 +280,7 @@ async function routedByApi() {
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
     if (runs === undefined || ran.some((one) => one.length !== 1 || one[0] !== name)) continue;
     // eslint-disable-next-line no-await-in-loop -- one route at a time
-    const authority = runs.kind === 'read' ? await askedBy(runs.name) : profileOf(runs).authority;
+    const authority = await askedBy(runs);
     routed.set(path, { name: runs.name, profile: { ...profileOf(runs), authority } });
   }
   return routed;

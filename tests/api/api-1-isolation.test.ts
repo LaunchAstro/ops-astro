@@ -21,6 +21,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   api,
   bravoBusinessId,
+  clientOf,
   clientOne,
   clientTwo,
   fixture,
@@ -66,6 +67,11 @@ function businessAndClientCrossings(): void {
   }, 60_000);
 
   it('API-1 isolation: client to client, a grant on one task reads nothing of the other on any surface', async () => {
+    // A real crossing: two stored clients, both linked, not the same one.
+    const [first, second] = [await clientOf(task.client1), await clientOf(task.client2)];
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(first).not.toBe(second);
     const reads = rows.filter(
       (row) => row.kind === 'read' && row.command === ('task.read' as CommandName),
     );
@@ -83,7 +89,8 @@ function businessAndClientCrossings(): void {
         // eslint-disable-next-line no-await-in-loop -- each person in turn
         const refused = await threeWays(row, member, 'alpha', { recordId: other });
         expect(new Set(refused.map((one) => JSON.stringify(one))).size).toBe(1);
-        expect(refused[0]?.status).toBeGreaterThanOrEqual(400);
+        // Refused by the grant on the other task, not by the body or a missing record.
+        expect(refused[0]?.code).toBe('SCOPE_NOT_GRANTED');
       }
     }
     // And every write, as the person holding read alone on their own task: refused alike everywhere.

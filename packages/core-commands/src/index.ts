@@ -23,15 +23,19 @@ export {
   type CredentialQuota,
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
+export { withCarrier } from './commands/context.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { runLiveRevert } from './commands/live-correction-revert.ts';
-export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
 export {
-  runLivePublish,
-  type CorrectionRun,
-  type RunnerPorts,
-  type RunResult,
-} from './commands/live-correction-runner.ts';
+  proposalForBinding,
+  proposeCorrection,
+  type ProposePorts,
+  type ProposeResult,
+  type SeamReads,
+} from './commands/live-correction-propose.ts';
+export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
+export { runLivePublish, type PassOptions } from './commands/live-correction-runner.ts';
+export type { CorrectionRun, RunnerPorts, RunResult } from './commands/live-correction-run.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
   callerAudit,
@@ -48,6 +52,13 @@ export {
 } from './commands/occurrence-run.ts';
 // C52-A's dispatch hands the worker's occurrence to AW-01 J's write.
 export { occurrenceRunStarter } from './commands/automation-run.ts';
+// The API's interval pass that claims due occurrences and dispatches them (#1318).
+export {
+  latestDue,
+  sweepOccurrences,
+  type OccurrenceSweepReport,
+  type OccurrenceSweepRequest,
+} from './commands/occurrence-sweep.ts';
 export {
   GATE_ITEMS,
   gateDecision,
@@ -74,7 +85,6 @@ export {
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { admitConversations, hearsConversation } from './reads/live-chat.ts';
 export { isReadName } from './reads/catalogue.ts';
-export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {
   HEALTH_STALE_SECONDS,
   readServiceHealth,
@@ -113,6 +123,7 @@ export {
   type FactorCaller,
 } from './commands/account-factor.ts';
 export {
+  type EnrolAnswer,
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
@@ -130,6 +141,13 @@ export {
   type PasswordResetResult,
   type ResetDependencies,
 } from './commands/account-password.ts';
+export {
+  ACCEPT_OPERATION,
+  acceptInvitation,
+  LOGIN_CREATE_OPERATION,
+  type AcceptCode,
+  type AcceptResult,
+} from './commands/invitation-accept.ts';
 export {
   endOtherSessions,
   listOwnSessions,

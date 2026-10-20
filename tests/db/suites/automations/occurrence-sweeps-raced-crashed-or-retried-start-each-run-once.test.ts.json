@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two occurrence sweeps on two connections start each run once, a sweep that aborts between its read and its write or before its commit leaves nothing and the next starts the run once, and a sweep sent again starts nothing more"
+}

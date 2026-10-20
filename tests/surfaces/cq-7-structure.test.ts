@@ -82,7 +82,7 @@ describe('CQ-7 no shadow types', () => {
       'export interface QueueEntryWire {\n  readonly reservationId: string;\n' +
         '  readonly taskId: string;\n  readonly runId: string;\n  readonly versionId: string;\n' +
         '  readonly lineageId: string;\n  readonly purpose: string;\n  readonly heldMinor: number;\n' +
-        '  readonly proposedByActorId: string;\n}\n',
+        '  readonly proposedByActorId: string;\n  readonly ownerProposed: boolean;\n}\n',
     ).get('QueueEntryWire');
     const queued = declarations(readFileSync(VIEWS, 'utf8')).get('QueuedWork');
     expect(copy).toBeDefined();

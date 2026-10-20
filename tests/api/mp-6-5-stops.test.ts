@@ -59,7 +59,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 and C54 stops on Postgres', () 
         name: CommandName,
         body: Readonly<Record<string, unknown>>,
         credential?: string,
-      ) => await asAgent(world, name, body, String(credential)),
+      ) => await asAgent(world, name, body, credential),
     };
     const made = await answerAtTheStop(context, 'run.end_at_budget_stop', PROPOSAL);
     if (!('body' in made)) throw new Error(made.exception);

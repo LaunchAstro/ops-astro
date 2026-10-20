@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines-per-function -- one suite over one world */
+/* eslint-disable max-lines, max-lines-per-function -- one suite over one world */
 //
 // A map write's reply, and the reread after it, can land after the reader has
 // moved on. Words dropped while a stale save was on its way stay dropped: the
 // late refusal offers nothing to save again. And until the reread after a
 // write has drawn the server's map, no control sends against the map it
-// replaces, nor opens a graduate form over one kept to copy.
+// replaces, nor opens a graduate form over one kept to copy. A write whose
+// answer was lost, pressed again, is the same write: the server answers it as
+// the success it was, so the line is on the map once.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -40,6 +42,16 @@ function expectNoConflict(page: Mounted) {
   expect(page.text()).not.toContain('save it again');
 }
 
+/** Whether `selector` is enabled: no write in flight, and no reread after one. */
+const enabled = (page: Mounted, selector: string) =>
+  (page.all(selector)[0] as HTMLButtonElement | undefined)?.disabled === false;
+
+/** The lines of `section` whose text is `text`, as the page draws them. */
+const linesOf = (page: Mounted, section: string, text: string) =>
+  page
+    .all(`[data-map-section="${section}"] li`)
+    .filter((line) => line.textContent?.startsWith(text) === true).length;
+
 interface Hold {
   readonly path: string;
   readonly arrived: () => void;
@@ -71,15 +83,22 @@ describe.skipIf(serverUrl === undefined)('A late map reply keeps what the reader
    * The map page for `member`. `hold(path)` holds the next reply to `path`
    * after the server has answered it: `arrived` settles when it is held, and
    * `release` delivers it. `sent(path)` counts the requests made to `path` as
-   * they go out, whether or not they have been answered.
+   * they go out, whether or not they have been answered. `lose(path)` lets
+   * the server store the next request to `path` and loses its answer.
    */
   async function openHeld(member: Member, mapKey: string) {
     const holds: Hold[] = [];
     const sent: string[] = [];
+    const losses: string[] = [];
     const fetch = asBrowser(await tokenFor(member.presented.subject), async (url, init) => {
       // Counted as sent, before its answer: a write still on its way counts.
       sent.push(url);
       const answer = await w.api.fetch(new Request(url, init));
+      const lost = losses.findIndex((path) => url.endsWith(path));
+      if (lost !== -1) {
+        losses.splice(lost, 1);
+        throw new TypeError('the answer was lost on its way back');
+      }
       const at = holds.findIndex((one) => url.endsWith(one.path));
       const held = at === -1 ? undefined : holds.splice(at, 1)[0];
       if (held !== undefined) {
@@ -106,8 +125,85 @@ describe.skipIf(serverUrl === undefined)('A late map reply keeps what the reader
       return { arrived: arrived.fired, release: released.fire };
     };
     const count = (path: string) => sent.filter((url) => url.endsWith(path)).length;
-    return { page, hold, sent: count };
+    const lose = (path: string) => {
+      losses.push(path);
+    };
+    return { page, hold, sent: count, lose };
   }
+
+  /**
+   * Press `selector` as the page asks: once, and again each time it says to
+   * save again, until what it sent is no longer held.
+   */
+  async function pressAsAsked(page: Mounted, selector: string, held: () => boolean) {
+    for (let presses = 1; presses <= 3; presses += 1) {
+      // oxlint-disable-next-line no-await-in-loop
+      await page.click(selector);
+      // oxlint-disable-next-line no-await-in-loop
+      await until(
+        page,
+        () => enabled(page, selector) && (!held() || page.find('[data-map-conflict]') !== null),
+        'the answer and the reread',
+      );
+      if (!held()) return;
+    }
+  }
+
+  it.each([
+    { section: 'fog', label: 'Not yet specified', line: 'a fog line added once' },
+    { section: 'out-of-scope', label: 'Out of scope', line: 'an out of scope line added once' },
+  ])(
+    'a line added to $label whose answer was lost, added again, is on the map once',
+    async ({ section, line }) => {
+      const m = await chart(w, lead, `lost ${section}`, [{ ref: 'a', title: 'a', type: 'task' }]);
+      const { page, lose } = await openHeld(lead, m.key);
+      lose('/map/revise');
+      await page.type(`input[name="${section}"]`, line);
+      await page.click(`button[data-add="${section}"]`);
+      await until(page, () => page.find('[data-map-failure]') !== null, 'the lost answer');
+      const held = () =>
+        (page.find(`input[name="${section}"]`) as HTMLInputElement | null)?.value === line;
+      expect(held()).toBe(true);
+
+      await pressAsAsked(page, `button[data-add="${section}"]`, held);
+
+      expect(linesOf(page, section, line)).toBe(1);
+      expectNoConflict(page);
+      expect(revisionShown(page)).toBe(String(await w.revisionOf(m.map)));
+    },
+  );
+
+  it('a graduation whose answer was lost, graduated again, is the graduation that happened', async () => {
+    const m = await chart(
+      w,
+      lead,
+      'lost graduation',
+      [{ ref: 'a', title: 'a', type: 'task' }],
+      ['patch graduated once'],
+    );
+    const { page, lose } = await openHeld(lead, m.key);
+    await page.click('[role="tab"][id="map-tab-fog"]');
+    const patch = (page.find('[data-patch]') as HTMLElement).dataset['patch'] as string;
+    await page.click(`button[data-graduate="${patch}"]`);
+    await page.type('input[name="ticket-title-0"]', 'graduated once');
+    lose('/map/graduate');
+    await page.click('button[data-graduate-save]');
+    await until(page, () => page.find('[data-map-failure]') !== null, 'the lost answer');
+    const graduated = String(await w.revisionOf(m.map));
+
+    await page.click('button[data-graduate-save]');
+    await until(page, () => revisionShown(page) === graduated, 'the answer and the reread');
+
+    // Answered as the graduation it was: nothing kept as "not graduated".
+    expect(page.find('[data-graduate-gone]')).toBeNull();
+    expect(page.find('input[name="ticket-title-0"]')).toBeNull();
+    expect(page.find('[data-map-failure]')).toBeNull();
+    await page.click('[role="tab"][id="map-tab-tickets"]');
+    const titles = page
+      .all('[data-ticket-row] > a')
+      .filter((link) => link.textContent?.endsWith(' graduated once') === true);
+    expect(titles).toHaveLength(1);
+  });
 
   /** Another writer moves the map on, so the lead's next write is stale; answers the new revision. */
   async function moveOn(m: { readonly map: string }, change: Record<string, unknown>) {

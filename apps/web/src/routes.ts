@@ -22,6 +22,7 @@
 // Every address the working slice serves is registered here, a conversation's
 // `/agent/:conversation` (C36) included.
 
+import { decoded } from './address-segment.ts';
 import type { MatchIn, ParamsIn, StaticIn } from './route-params.ts';
 import { PAGE_ROUTES } from './routes-pages.ts';
 
@@ -101,8 +102,9 @@ export const ROUTES = {
   },
   // A Wayfinder map (WF-3, WF-4): its sections edited in place, and its
   // tickets, frontier and fog views. Keyed like a task, by the map's own key.
-  // Its look waits on the accepted prototype W4, so `surface` is `none` rather
-  // than a letter it has not earned; the manifest has no page for it.
+  // Its look is the accepted prototype W4, which names no surface letter, so
+  // `surface` is `none`. It is no manifest page (a key is not a rail address);
+  // the rail lights Projects on it, as on a task.
   'agency:map': {
     namespace: 'agency',
     path: '/map/:key',
@@ -261,13 +263,11 @@ export function matchRoute(path: string): RouteMatch | null {
     const params: Record<string, string> = {};
     let matched = true;
     for (const [index, part] of pattern.entries()) {
-      const given = asked[index];
-      if (given === undefined) {
-        matched = false;
-        break;
-      }
-      if (part.startsWith(':')) params[part.slice(1)] = decodeURIComponent(given);
-      else if (part !== given) {
+      // The lengths match, so every part has its segment.
+      const given = asked[index] ?? '';
+      const value = part.startsWith(':') ? decoded(given) : null;
+      if (value !== null) params[part.slice(1)] = value;
+      else if (part.startsWith(':') || part !== given) {
         matched = false;
         break;
       }

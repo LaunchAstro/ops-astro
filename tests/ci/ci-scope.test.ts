@@ -4,9 +4,7 @@
 // is how a suite stops running quietly, so this proves: the queue and main
 // always run everything; a change in each area runs exactly that area's named
 // suites, and every area that imports or names a changed helper runs too; an
-// unknown path or shared tooling runs everything; a shard with nothing in
-// scope skips while every in-scope suite still lands in one shard; and the
-// workflow keeps every required check's name.
+// Shared tooling runs everything; every in-scope suite lands in one shard.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +23,7 @@ import {
 } from '../../scripts/ci-scope.ts';
 import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 import { dependenciesOf } from '../../scripts/import-closure.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 const root = new URL('../..', import.meta.url).pathname;
 const read = (path: string): string => readFileSync(join(root, path), 'utf8');
@@ -39,6 +38,7 @@ const fixtureMap: ScopeMap = {
   runsEverything: ['tests/support/'],
   visualDrift: ['apps/web/', 'tests/visual/'],
   queueOnly: [],
+  alwaysRunTests: [],
 };
 const fixtureDependents = (path: string): string[] =>
   path.startsWith('apps/web/')
@@ -260,7 +260,6 @@ describe('the kept map against the code', () => {
 });
 
 describe('the workflow', () => {
-  const SKIPS_PULL_REQUESTS = "github.event_name != 'pull_request'";
   const ci = read('.github/workflows/ci.yml');
   const job = (key: string): string => {
     const start = ci.indexOf(`\n  ${key}:\n`);
@@ -281,17 +280,20 @@ describe('the workflow', () => {
     for (const { context } of required) expect(reported, context).toContain(context);
   });
 
-  it('scopes only the heavy checks (CI-SPEED: local checks too), each in its own step, the shards alone skipping pull requests', () => {
+  it('scopes only the heavy checks (CI-SPEED: local checks too), each in its own step, the shards alone skipping pull requests that are not a batch', () => {
     for (const key of ['check', 'database-shard', 'isolation', 'visual-drift']) {
       const block = job(key);
       const conds = [...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1]);
       expect(block, key).toMatch(/node scripts\/ci-scope\.ts/u);
-      expect(conds, key).toStrictEqual(key === 'database-shard' ? [SKIPS_PULL_REQUESTS] : []);
+      const only = key === 'visual-drift' ? "github.event_name != 'merge_group'" : undefined;
+      expect(conds, key).toStrictEqual(
+        key === 'database-shard' ? [SHARDS_RUN] : only ? [only] : [],
+      );
       expect(block, key).not.toMatch(/needs: \[[^\]]*scope/u);
     }
     const others = ci
       .split(/\n(?= {2}[\w-]+:\n)/u)
-      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift):/u.test(b));
+      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift|pin-tests):/u.test(b));
     for (const block of others) expect(block).not.toMatch(/ci-scope/u);
   });
 });

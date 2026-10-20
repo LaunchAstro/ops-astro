@@ -43,6 +43,14 @@ export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'LOCAL_MODEL_NOT_APPROVED',
   'LOCAL_PLAN_LIMIT',
   'LOCAL_GPT_FAILED',
+  // A streamed call's refusals before the model is asked: signed out, the
+  // plan's week kept for others or its usage not allowed, busy with another
+  // call, or past its send deadline.
+  'GPT_SIGNED_OUT',
+  'GPT_WEEK_RESERVED',
+  'GPT_USAGE_UNKNOWN',
+  'MODEL_MACHINE_BUSY',
+  'SEND_LAPSED',
   // The runner's door refuses these before any work: a wrong key, path or method, a bad body.
   'http_400',
   'http_401',
@@ -127,4 +135,6 @@ export const LOCAL_GPT_CONVERSATION: ModelOperationDeclaration = {
   ...LOCAL_GPT_COMPOSE,
   key: CONVERSATION_ANSWER.key,
   fields: CONVERSATION_ANSWER.fields,
+  // The plan is paid for already: unpriced, as the conversation seam requires (#1508, option B).
+  maximumMinor: 0,
 };

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The six facts of a model call (AW-01), the task's client link (C60) and
-// the task as a bound field's source (S3), read from rows under the
-// contract's lock order, and the room already committed out of a reservation.
+// the task as a bound field's source (S3, `broker-task.ts`), read from rows
+// under the contract's lock order, and the room already committed out of a
+// reservation.
 
-import { isUuid, slotOf, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
+import { isUuid, type TenantQuery } from '../../core-records/src/index.ts';
 import { holdsWork } from './broker-holds.ts';
-import { LEAVES_ROW_DATA, type TaskSource } from './broker-sources.ts';
+import type { TaskSource } from './broker-sources.ts';
+import { readTask, shareTask } from './broker-task.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
 export interface Facts {
@@ -24,6 +26,10 @@ export interface Facts {
   readonly clientId: string | null;
   /** The run's task as a bound field's source, as held (S3). */
   readonly source: TaskSource;
+  /** The owner started both the task and the run, and the task has no client (#1620 P4). */
+  readonly ownerStarted: boolean;
+  /** The person who proposed the run, or null for an agent or a schedule (#1703). */
+  readonly starterPersonId: string | null;
 }
 
 export type Checked =
@@ -39,64 +45,6 @@ interface LeaseRow {
   readonly holder_actor_id: string;
   readonly fence: string;
   readonly live: boolean;
-}
-
-/** The spine's client slot: the party link `task.set_party` writes. */
-const CLIENT_SLOT = slotOf(TASK_SPINE, 'client');
-
-/** The run's task, with what S3 reads of it as a source (`broker-sources.ts`). */
-const LOCK_TASK = `select t.id::text as id, run.id::text as run_id, t.${CLIENT_SLOT}::text as client,
-            t.deleted_at is null as live, t.data, exists (
-              select 1 from public.operations o
-                join public.actors a on a.business_id = o.business_id and a.id = o.actor_id
-               where o.business_id = t.business_id and o.record_id = t.id
-                 and o.outcome = 'applied' and a.kind <> 'person'
-                 and o.command <> all($3::text[])) as others_wrote
-       from public.leases l
-       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
-       join public.records t on t.business_id = run.business_id and t.id = run.task_id
-      where l.business_id = $1 and l.id = $2
-      for share of t`;
-
-/**
- * The run's task, first in the lock order (`task` comes before `lease`), held
- * `for share` so a `task.set_party` cannot move its client while the call is
- * decided, and answering the task's client link (C60) and what a bound
- * field reads of it (S3): a link or an edit in flight is waited on, never
- * missed. The lease names the run and the run its
- * task, read here before the lease's own lock; the run's task is fixed once
- * written (the application may update a run's state only, 0086), and the
- * lease's run is compared again under the lease's lock (`lockFacts`).
- * Unknown to this business answers nothing, refused as a made-up lease is.
- */
-async function lockTask(
-  tx: TenantQuery,
-  leaseId: string,
-): Promise<
-  | { readonly runId: string; readonly clientId: string | null; readonly source: TaskSource }
-  | undefined
-> {
-  const [task] = await tx.query<{
-    id: string;
-    run_id: string;
-    client: string | null;
-    live: boolean;
-    data: Record<string, unknown>;
-    others_wrote: boolean;
-  }>(LOCK_TASK, [tx.businessId, leaseId, LEAVES_ROW_DATA]);
-  if (task === undefined) return undefined;
-  const entered = task.data['source'];
-  return {
-    runId: task.run_id,
-    clientId: task.client,
-    source: {
-      id: task.id,
-      live: task.live,
-      entered: typeof entered === 'string' ? entered : null,
-      othersWrote: task.others_wrote,
-      data: task.data,
-    },
-  };
 }
 
 /**
@@ -205,19 +153,22 @@ export async function lockFacts(
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  const task = await lockTask(tx, request.leaseId);
-  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  await lockRun(tx, task.runId);
+  const runId = await shareTask(tx, request.leaseId);
+  if (runId === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  await lockRun(tx, runId);
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;
   // The task held is the lease's run's: a lease moved to another run between
   // the two reads is refused, never decided on the other task's client.
-  if (lease.run_id !== task.runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.run_id !== runId) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const delegation = await lockDelegation(tx, lease.delegation_id);
   if (!delegation.ok) return delegation;
   const held = await lockHeld(tx, lease, request.stepId);
   if (!held.ok) return held;
+  // Source and party after the last wait (R6): the task row is held, its register is not.
+  const task = await readTask(tx, request.leaseId);
+  if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return {
     ok: true,
     facts: {
@@ -232,6 +183,8 @@ export async function lockFacts(
       heldMinor: held.heldMinor,
       clientId: task.clientId,
       source: task.source,
+      ownerStarted: task.source.ownerWork && task.ownerRan,
+      starterPersonId: task.starter,
     },
   };
 }
@@ -297,4 +250,16 @@ export async function committedMinor(tx: TenantQuery, reservationId: string): Pr
     [tx.businessId, reservationId],
   );
   return Number(row?.committed ?? 0);
+}
+
+/**
+ * The call's state, read and locked under its envelope's and reservation's
+ * locks before it settles: a call already closed stays closed.
+ */
+export async function lockedState(tx: TenantQuery, callId: string): Promise<string | undefined> {
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
+    [tx.businessId, callId],
+  );
+  return call?.state;
 }

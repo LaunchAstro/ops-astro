@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { clientHere } from '../reads/client-rows.ts';
-import { requestBody } from '../site/c80-world.ts';
+import { ABOUT, PAGE, requestBody } from '../site/c80-world.ts';
+import { bindPartySite } from '../../packages/core-records/src/index.ts';
 import { bearer, serverUrl } from '../acceptance/world.ts';
 import { harness, openWorld } from './api-2-agent-credential-world.ts';
 import { asCredential, issued } from './api-2-agent-credential-use-world.ts';
@@ -40,6 +41,19 @@ beforeAll(async () => {
   ]);
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     await grantTo(tx, world.ada as unknown as Member, 'write', WHOLE_BUSINESS, false, 'run');
+    // The page is the client's own, so only the credential stands between it and a stored row.
+    const ada = world.ada as unknown as Member;
+    await bindPartySite(
+      tx,
+      {
+        partyId,
+        repository: `client/${partyId}`,
+        defaultBranch: 'main',
+        project: `prj_${partyId}`,
+        pages: [{ pageUrl: PAGE, path: ABOUT }],
+      },
+      ada.actorId,
+    );
   });
 });
 

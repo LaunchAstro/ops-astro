@@ -41,17 +41,18 @@ function commandProblems(job: Job | undefined, check: string, commands: [string,
   const steps = job?.steps ?? [];
   for (const [step, command] of commands) {
     const holding = steps.filter((s) => s.run?.includes(command));
-    const wrapper = `node scripts/ci-shards.ts '${check}' --shard ${SHARD} --step '${step}'`;
+    // The shard arrives through env:, never expanded into the script (#1841).
+    const wrapper = `node scripts/ci-shards.ts '${check}' --shard "$SHARD" --step '${step}'`;
     if (holding.length !== 1) problems.push(`${command}: in ${String(holding.length)} steps`);
     else if (!holding[0]?.run?.includes(wrapper))
       problems.push(`${command}: not through ${wrapper}`);
+    else if (holding[0].env?.['SHARD'] !== SHARD)
+      problems.push(`${command}: SHARD is ${String(holding[0].env?.['SHARD'])}`);
   }
   const named = steps.flatMap((s) =>
-    [
-      ...(s.run ?? '').matchAll(
-        /ci-shards\.ts '[^']+' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --step '([^']+)'/gu,
-      ),
-    ].map((m) => m[1]),
+    [...(s.run ?? '').matchAll(/ci-shards\.ts '[^']+' --shard "\$SHARD" --step '([^']+)'/gu)].map(
+      (m) => m[1],
+    ),
   );
   if (
     named.toSorted().join('|') !==
@@ -79,7 +80,10 @@ function jobProblems(shardKey: string, name: string): string[] {
   if (aggregates.length !== 1 || aggregate === undefined)
     return [...problems, `${name}: ${String(aggregates.length)} jobs`];
   if (unguarded(aggregate.if) !== 'always()') problems.push(`${key}: if: ${String(aggregate.if)}`);
-  if ((aggregate.needs ?? []).toSorted().join(' ') !== [shardKey, 'gate'].toSorted().join(' '))
+  if (
+    (aggregate.needs ?? []).toSorted().join(' ') !==
+    [shardKey, 'gate', 'full', ...(shardKey === 'check' ? ['pin-tests'] : [])].toSorted().join(' ')
+  )
     problems.push(`${key}: needs ${String(aggregate.needs)}`);
   if (aggregate['continue-on-error'] !== undefined || aggregate.steps?.length !== 1)
     problems.push(`${key}: one step, never continue-on-error`);
@@ -95,15 +99,19 @@ const stepEnv = (job: string, step: string) =>
 
 const RESULTS = ['success', 'failure', 'cancelled', 'skipped', ''];
 const EVENTS = ['merge_group', 'pull_request', 'push'];
+// The gate's `scope` output (scripts/full-run.ts); empty when the gate never wrote it.
+const SCOPES = ['full', 'light', ''];
 
-/** The aggregate's script under bash for one event, gate result and shards result: whether it passed. */
-function passes(name: string, shardKey: string, values: [string, string, string]): boolean {
+/** The aggregate's script under bash for one event, gate result, shards result and scope: whether it passed. */
+function passes(name: string, shardKey: string, values: [string, string, string, string]): boolean {
   const step = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0];
-  const [event, gate, shards] = values;
+  const [event, gate, shards, scope] = values;
   const known: Record<string, string> = {
     [`\${{ needs.${shardKey}.result }}`]: shards,
     '${{ needs.gate.result }}': gate,
+    '${{ needs.pin-tests.result }}': 'success',
     '${{ github.event_name }}': event,
+    '${{ needs.gate.outputs.scope }}': scope,
   };
   const env: Record<string, string> = { PATH: process.env['PATH'] ?? '' };
   for (const [k, v] of Object.entries(step?.env ?? {})) {
@@ -117,10 +125,10 @@ function passes(name: string, shardKey: string, values: [string, string, string]
 }
 
 describe('the workflow', () => {
-  it('local checks and isolation tests each run as six shards, each with its aggregate', () => {
+  it('local checks and isolation tests each run as three shards, each with its aggregate', () => {
     expect([matrix('check'), matrix('isolation')]).toStrictEqual([
-      [1, 2, 3, 4, 5, 6],
-      [1, 2, 3, 4, 5, 6],
+      [1, 2, 3],
+      [1, 2, 3],
     ]);
     expect(jobProblems('check', 'local checks')).toStrictEqual([]);
     expect(jobProblems('isolation', 'isolation tests')).toStrictEqual([]);
@@ -137,12 +145,14 @@ describe('the workflow', () => {
       s.run?.includes('scripts/db-conformance.mjs'),
     );
     expect(runner.map((s) => s.run)).toStrictEqual([
-      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard ${SHARD}`,
+      `node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard "$SHARD"`,
     ]);
-    expect(stepEnv('check', 'browser proofs')).toStrictEqual({ BROWSER_PROOFS: '1' });
+    expect(runner.map((s) => s.env?.['SHARD'])).toStrictEqual([SHARD]);
+    expect(stepEnv('check', 'browser proofs')).toStrictEqual({ BROWSER_PROOFS: '1', SHARD });
     expect(stepEnv('check', 'inbox restart')).toStrictEqual({
       DOCKER: 'docker',
       L5_RUNTIME_PROOFS: '1',
+      SHARD,
     });
   });
 });
@@ -152,21 +162,25 @@ describe('the aggregates', () => {
     ['local checks', 'check'],
     ['isolation tests', 'isolation'],
   ])(
-    'the %s aggregate passes only when every shard succeeded',
+    'the %s aggregate passes when every shard succeeded, or on a light push whose gate passed',
     (name, shardKey) => {
       const run = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0]?.run;
       expect(run).toBeDefined();
       expect(run).not.toContain('${{');
       const passed = EVENTS.flatMap((event) =>
         RESULTS.flatMap((gate) =>
-          RESULTS.filter((shards) => passes(name, shardKey, [event, gate, shards])).map(
-            (shards) => `${event} ${gate} ${shards}`,
+          RESULTS.flatMap((shards) =>
+            SCOPES.filter((scope) => passes(name, shardKey, [event, gate, shards, scope])).map(
+              (scope) => `${event} ${gate} ${shards} ${scope}`,
+            ),
           ),
         ),
       );
-      expect(passed).toStrictEqual(
-        EVENTS.flatMap((event) => RESULTS.map((gate) => `${event} ${gate} success`)),
-      );
+      // Every success, and the one skip a light push whose gate passed may carry.
+      const wanted = EVENTS.flatMap((event) =>
+        RESULTS.flatMap((gate) => SCOPES.map((scope) => `${event} ${gate} success ${scope}`)),
+      ).concat('push success skipped light');
+      expect(passed.toSorted()).toStrictEqual(wanted.toSorted());
     },
     120_000,
   );

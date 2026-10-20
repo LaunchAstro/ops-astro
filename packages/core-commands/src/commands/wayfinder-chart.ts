@@ -82,7 +82,12 @@ function chartTickets(value: unknown): readonly ChartTicket[] | undefined {
     const blockedBy = entry.blockedBy ?? [];
     if (!Array.isArray(blockedBy)) return undefined;
     if (blockedBy.some((ref) => !refs.includes(ref) || ref === entry.ref)) return undefined;
-    tickets.push({ ...(base[index] as NewTicket), ref: entry.ref as string, blockedBy });
+    // A set, as `task.set_blocking` takes it: a ref named twice is one edge.
+    tickets.push({
+      ...(base[index] as NewTicket),
+      ref: entry.ref as string,
+      blockedBy: [...new Set(blockedBy as readonly string[])],
+    });
   }
   // Kahn's order: every ticket placed means no cycle.
   const placed = new Set<string>();
@@ -140,19 +145,19 @@ async function fileChartTickets(
   context: CommandContext,
   mapId: string,
   tickets: readonly ChartTicket[],
-  ids: Record<string, string>,
+  ids: Map<string, string>,
 ): Promise<HandlerOutcome | undefined> {
   for (const ticket of tickets) {
     // Sequential: each ticket ranks after the one before it.
     // oxlint-disable-next-line no-await-in-loop
     const filed = await fileTicket(tx, context, mapId, ticket);
     if (typeof filed !== 'string') return filed;
-    ids[ticket.ref] = filed;
+    ids.set(ticket.ref, filed);
   }
   for (const ticket of tickets) {
     for (const ref of ticket.blockedBy) {
       // oxlint-disable-next-line no-await-in-loop
-      await linkBlocks(tx, ids[ref] as string, ids[ticket.ref] as string);
+      await linkBlocks(tx, ids.get(ref) as string, ids.get(ticket.ref) as string);
     }
   }
   return undefined;
@@ -185,7 +190,8 @@ export async function chartMap(
   } as RequestOf<'task.create'>);
   if ('refusal' in map) return map;
   const mapId = String(map.recordId);
-  const ids: Record<string, string> = {};
+  // A Map: a ref is the caller's name, and `__proto__` must be a key, not a prototype.
+  const ids = new Map<string, string>();
   const refusal = await fileChartTickets(tx, context, mapId, tickets, ids);
   if (refusal !== undefined) return refusal;
   const hasBody =
@@ -199,7 +205,7 @@ export async function chartMap(
   );
   await raiseFrontierDecisions(tx, mapId);
   return applied(mapId, Number(current[0]?.revision), {
-    tickets: ids,
+    tickets: Object.fromEntries(ids),
     version: written?.version ?? 0,
   });
 }

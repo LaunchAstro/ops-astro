@@ -4,6 +4,11 @@
 
 set -e
 
+# 0. Every worktree's hooks run through the shared dispatchers, which refuse
+#    in a checkout without installed hooks. An older commit's install points
+#    core.hooksPath back at .husky/_; this puts it right again.
+sh scripts/hook-dispatch.sh
+
 # pnpm may only exist through corepack on this machine.
 if command -v pnpm >/dev/null 2>&1; then
   pm() { pnpm "$@"; }
@@ -20,6 +25,11 @@ python3 scripts/gate/sweep.py --staged
 
 # 3. Secrets, in what is staged.
 gitleaks protect --staged --no-banner --redact --config .gitleaks.toml
+
+# 3b. The lockfile, which gitleaks' default allowlist skips by path.
+if git diff --cached --name-only | grep -qx 'pnpm-lock.yaml'; then
+  git show :pnpm-lock.yaml | gitleaks stdin --no-banner --redact --exit-code 1 --config .gitleaks.toml
+fi
 
 # 4. Lint and format, on what is staged.
 pm exec lint-staged

@@ -139,6 +139,11 @@ export type CommandRequest =
       readonly leaseSeconds?: number;
     } & Envelope)
   | ({
+      readonly command: 'task.take_launch';
+      /** Absent: the caller's own open launch, started before waiting. */
+      readonly launchId?: string;
+    } & Envelope)
+  | ({
       readonly command: 'task.handback';
       readonly leaseId: string;
       /** The fence the pickup handed back. A stale one settles nothing. */
@@ -265,6 +270,7 @@ export type CommandRequest =
   | ConversationRequest
   // Read by its own parser (`model-call.ts`), never by a person handler.
   | ({ readonly command: 'model.call' } & Envelope)
+  | ({ readonly command: 'run.end' } & Envelope)
   | RunRequest
   | SelfRequest<Envelope>
   | ConnectionsRequest<Envelope>

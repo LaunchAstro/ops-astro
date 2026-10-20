@@ -40,11 +40,17 @@ export type {
   AssistantPage,
   AssistantPanelProps,
   AssistantPast,
+  AssistantPick,
+  AssistantPickMove,
+  AssistantPickRow,
   AssistantPlan,
+  AssistantProposal,
   AssistantRole,
   AssistantSubjectView,
   PlanCardState,
+  ProposalCardState,
 } from './assistant/types.ts';
+export { PICK_SIZE } from './assistant/proposal-pick.tsx';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
 
@@ -190,17 +196,27 @@ function useChipGuard(
 function Thread(props: {
   readonly chat: AssistantChat | undefined;
   readonly answering: boolean;
-  readonly onAccept: AssistantPanelProps['onAccept'];
+  /** The clicks on the transcript's cards. */
+  readonly cards: Pick<AssistantPanelProps, 'onAccept' | 'onPropose' | 'onPick'>;
 }): ReactElement {
-  const { chat, onAccept } = props;
+  const { chat } = props;
+  const { onAccept, onPropose, onPick } = props.cards;
+  const byMessage = (
+    click: ((key: string, messageId: string) => void) | undefined,
+  ): ((messageId: string) => void) | undefined =>
+    click === undefined || chat === undefined
+      ? undefined
+      : (messageId) => click(chat.key, messageId);
   return (
     <>
       <Transcript
         messages={chat?.messages ?? NO_MESSAGES}
-        onAccept={
-          onAccept === undefined || chat === undefined
+        onAccept={byMessage(onAccept)}
+        onPropose={byMessage(onPropose)}
+        onPick={
+          onPick === undefined || chat === undefined
             ? undefined
-            : (messageId) => onAccept(chat.key, messageId)
+            : (messageId, move) => onPick(chat.key, messageId, move)
         }
       />
       {props.answering ? (
@@ -243,7 +259,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
       {props.allowance}
-      <Thread chat={chat} answering={props.answering === true} onAccept={props.onAccept} />
+      <Thread chat={chat} answering={props.answering === true} cards={props} />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}

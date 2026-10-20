@@ -142,7 +142,7 @@ it('an open call settling lower after a top-up gives the difference back once', 
 it('an open call settling lower after the run stopped at its budget gives the difference back once', async () => {
   const stopped = await stoppedOpen(s);
   const { work, before } = stopped;
-  expect(await end(s, work)).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+  expect(await end(s, work)).toMatchObject({ ok: true, value: { spentMinor: '500' } });
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
 
   const came = await settled(stopped);
@@ -155,17 +155,19 @@ it('an open call settling lower after the run stopped at its budget gives the di
 
 /**
  * A call answered above its hold is held as an unknown liability at its
- * maximum, and the run calls on to its ceiling; the top-up moves that maximum
- * to the envelope's actual, and the pass holds the step unknown for a person.
+ * maximum; the top-up moves that maximum to the envelope's actual, and the
+ * pass holds the step unknown for a person.
+ * #1623 R1 (B2): a call held unknown now ends its attempt, so the run can no
+ * longer call on to its ceiling after it. The call is open at the stop instead,
+ * counted by the top-up, and answers above its hold after: the same hold.
  */
 async function heldThenToppedUp(): Promise<{ readonly work: Work; readonly before: number }> {
-  const work = await liveWork(s, `giveback held ${randomUUID()}`, 900);
-  const before = await envelopeActual(work);
-  world.provider.mode('costly');
-  expect(await callIn(s, work, broker)).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
-  world.provider.mode('answer');
-  expect(await callIn(s, work, broker)).toMatchObject({ code: 'BUDGET_UNAVAILABLE' });
+  const { work, before, open, pending } = await stoppedOpen(s);
   expect(await topUp(s, work)).toMatchObject({ ok: true, value: { state: 'applied' } });
+  world.provider.mode('costly');
+  open();
+  expect(await pending).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
+  world.provider.mode('answer');
   await pass();
   expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
   return { work, before };

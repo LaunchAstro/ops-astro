@@ -25,6 +25,7 @@ import {
   spawn,
   marks,
   COMMANDS,
+  stagedInto,
 } from './operator-only-commands.fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 
@@ -54,13 +55,16 @@ function operatorOnlyCases3() {
   it('past the gate, the promotion still refuses a running API and writes no record', async () => {
     const fake = manager(true);
     const at = marks(fake);
+    const staged = stagedInto(at.records);
     const result = COMMANDS['the promotion step']!(
       environment(at, fake.path, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
       at,
     );
     expect(result.status, result.out).toBe(1);
     expect(result.out).toMatch(/docker:prod-api is running/u);
-    expect(readdirSync(at.records)).toEqual([]);
+    // Staging's record, which the selection reads, and nothing added to it.
+    expect(readdirSync(at.records)).toEqual(['deployments.jsonl']);
+    expect(readFileSync(join(at.records, 'deployments.jsonl'), 'utf8')).toBe(staged);
     expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
   });
 
@@ -76,6 +80,7 @@ function operatorOnlyCases3() {
     const before = await count();
     const fake = manager(true);
     const at = marks(fake);
+    stagedInto(at.records);
     const result = COMMANDS['the promotion step']!(
       environment(at, fake.path, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
       at,

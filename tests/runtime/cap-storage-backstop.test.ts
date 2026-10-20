@@ -38,9 +38,11 @@ import {
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
   connect,
+  open,
   type BusinessId,
   type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
+import { handleOn } from '../../packages/core-records/src/tenancy/transaction.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -52,6 +54,29 @@ if (serverUrl === undefined) {
   console.warn(
     'runtime/cap-storage-backstop: DATABASE_URL is unset, so nothing below ran and nothing is proved.',
   );
+}
+
+/**
+ * The application role's transaction at `level`, the business set as
+ * `withBusiness` sets it. `withBusiness` begins every transaction read
+ * committed, whatever the connection's default, so a racer at a stricter
+ * level opens its own.
+ */
+function racerAt(
+  url: string,
+  level: string,
+): Pick<ReturnType<typeof connect>, 'withBusiness' | 'close'> {
+  const { sql } = open(url, { source: 'racer' });
+  return {
+    withBusiness: async (business, run) =>
+      (await sql.begin(`isolation level ${level}`, async (tx) => {
+        await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
+        return await run(handleOn(tx, business));
+      })) as never,
+    close: async () => {
+      await sql.end();
+    },
+  };
 }
 
 const LIMIT = 1000;
@@ -447,8 +472,12 @@ describe.skipIf(serverUrl === undefined).each([
         const b = await envelope(cap);
         const url = new URL(cap.db.appUrl);
         url.searchParams.set('default_transaction_isolation', level);
-        const first = connect(url.toString(), { source: 'racer' });
-        const second = connect(url.toString(), { source: 'racer' });
+        const racer = (): Pick<ReturnType<typeof connect>, 'withBusiness' | 'close'> =>
+          level === 'read committed'
+            ? connect(url.toString(), { source: 'racer' })
+            : racerAt(cap.db.appUrl, level);
+        const first = racer();
+        const second = racer();
         try {
           const snapped = { a: barrier(), b: barrier() };
           const gateA = barrier();

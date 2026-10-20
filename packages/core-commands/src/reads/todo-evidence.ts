@@ -3,10 +3,12 @@
 
 import {
   commentSignals,
+  readableTaskIds,
+  readableTaskParams,
   readTaskCommentEvidence,
   tagsOfTasks,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { TodoView } from '../../../core-wire/src/index.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import { awaitingApproval } from './awaiting.ts';
@@ -27,9 +29,10 @@ export type TodoScope =
 export async function movesOf(
   tx: TenantQuery,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlyMap<string, TodoView['whoseMove']>> {
   if (taskIds.length === 0) return new Map();
-  const gated = await awaitingApproval(tx, taskIds);
+  const gated = await awaitingApproval(tx, taskIds, readers);
   const rows = await tx.query<{ readonly task_id: string; readonly leased: boolean }>(
     `select lin.task_id::text as task_id,
             bool_or(exists (
@@ -41,9 +44,9 @@ export async function movesOf(
                where run.business_id = lin.business_id and run.lineage_id = lin.id
                  and lease.state = 'live')) as leased
        from public.proposal_lineages lin
-      where lin.business_id = $1 and lin.task_id = any($2::uuid[])
+      where lin.business_id = $1 and lin.task_id = any(${readableTaskIds('$2::uuid[]', 3)})
       group by lin.task_id`,
-    [tx.businessId, taskIds],
+    [tx.businessId, taskIds, ...readableTaskParams(readers)],
   );
   const moves = new Map<string, TodoView['whoseMove']>();
   for (const row of rows) if (row.leased) moves.set(row.task_id, 'Agent');
@@ -51,17 +54,21 @@ export async function movesOf(
   return moves;
 }
 
-/** Batched tags and canonical client reply signals for the admitted rows. */
+/**
+ * Batched tags and canonical client reply signals for the admitted rows that
+ * `readers` may still read; null `readers` for a caller that has judged reach.
+ */
 export async function extrasForTasks(
   tx: TenantQuery,
   spine: TaskSpine,
   taskIds: readonly string[],
+  readers: readonly Subject[] | null,
 ): Promise<ReadonlyMap<string, Pick<TodoView, 'tags' | 'waitingComments'>>> {
   const comments =
     spine.taskCommentTypeId === undefined
       ? []
-      : await readTaskCommentEvidence(tx, spine.taskCommentTypeId, taskIds);
-  const tags = await tagsOfTasks(tx, taskIds);
+      : await readTaskCommentEvidence(tx, spine.taskCommentTypeId, taskIds, readers);
+  const tags = await tagsOfTasks(tx, taskIds, readers);
   const threads = new Map<string, (typeof comments)[number][]>();
   for (const comment of comments) {
     const thread = threads.get(comment.taskId) ?? [];

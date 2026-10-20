@@ -26,6 +26,7 @@ import {
   type FetchOptions,
   type Fenced,
 } from './fence.ts';
+import { hiddenStyle, importsOf } from './css.ts';
 
 export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -85,8 +86,18 @@ function moves(length: number) {
   return adapter;
 }
 
-// Elements whose text a browser does not show: these in HTML, and script and style anywhere.
+// Elements a browser does not show: these and any marked `hidden` in HTML, script and style
+// anywhere, and any whose inline style may set `display: none` (css.ts).
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
+/** Whether the capture reads none of this element's text (served-page.ts places on the same rule). */
+export function hiddenElement(node: Tree.Element): boolean {
+  const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
+  const style = attribute('style');
+  if (style !== undefined && hiddenStyle(style)) return true;
+  if (node.namespaceURI !== markup.NS.HTML)
+    return node.tagName === 'script' || node.tagName === 'style';
+  return HIDDEN.has(node.tagName) || attribute('hidden') !== undefined;
+}
 // Attributes that make a browser render what the capture cannot read: a declarative shadow root
 // (its own text and sheets, the element's children hidden) and a frame's inline document. A sheet
 // with no charset of its own is decoded in its link's charset, so that must name UTF-8 or nothing.
@@ -141,8 +152,7 @@ export function readDocument(html: string): Reading | FenceCode {
     if (!('childNodes' in node)) continue;
     let hides = hidden;
     if ('tagName' in node) {
-      const html5 = node.namespaceURI === markup.NS.HTML;
-      const name = node.tagName;
+      const [html5, name] = [node.namespaceURI === markup.NS.HTML, node.tagName];
       if (html5 && node.attrs.some((one) => UNREAD.get(name)?.includes(one.name)))
         return 'CAPTURE_BODY_MALFORMED';
       const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
@@ -154,86 +164,13 @@ export function readDocument(html: string): Reading | FenceCode {
       if (html5 && name === 'base' && href !== undefined) base ??= href;
       if (name === 'style' && (html5 || node.namespaceURI === markup.NS.SVG))
         styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
-      hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
+      hides ||= hiddenElement(node);
       text.push(' ');
       stack.push([defaultTreeAdapter.createTextNode(' '), false]);
     }
     for (const child of node.childNodes.toReversed()) stack.push([child, hides]);
   }
   return { text: text.join('').replaceAll(/\s+/gu, ' ').trim(), links, styles, base: base ?? '' };
-}
-
-// What a stylesheet imports, read a token at a time as CSS Syntax 3 reads it after its
-// preprocessing, so an `@import` in a comment, string or url() is not followed. Only space, tab and
-// line feed are whitespace. Every loop below steps over a run or an escape, so a read is linear.
-const ESCAPE = String.raw`\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n]|$)`;
-const STRING = (quote: string): string =>
-  String.raw`${quote}([^${quote}\\\n]*(?:(?:${ESCAPE}|\\\n)[^${quote}\\\n]*)*)(${quote})?`;
-const TOKEN = new RegExp(
-  String.raw`[ \t\n]+|/\*[^*]*(?:\*+(?!/)[^*]*)*(?:\*/|$)|${STRING('"')}|${STRING("'")}|([#@]?)((?:[\w\-\P{ASCII}]+|${ESCAPE})+)|[^]`,
-  'iuy',
-);
-// After `url(`: a quote ahead (a string follows), or an address and its `)`; with no `)` the url is
-// bad (a space inside, a quote, `(` or a non-printable code point), read on to its `)`.
-const URL_TAIL = new RegExp(
-  String.raw`[ \t\n]*(?:(?=["'])|((?:[^"'()\\ \t\n\0-\b\v\x0E-\x1F\x7F]+|${ESCAPE})*)[ \t\n]*` +
-    String.raw`(?:(\)|$)|[^)\\]*(?:(?:${ESCAPE}|\\)[^)\\]*)*\)?))`,
-  'iuy',
-);
-
-/** One CSS escape decoded; a line break after a backslash continues a string. */
-function unescaped(_all: string, hex?: string, line?: string, char = ''): string {
-  const code = Number.parseInt(hex ?? '', 16);
-  if (Number.isNaN(code)) return line === undefined ? char : '';
-  const bad = code === 0 || (code >= 0xd8_00 && code <= 0xdf_ff) || code > 0x10_ff_ff;
-  return bad ? '\uFFFD' : String.fromCodePoint(code);
-}
-/** Escapes decoded; a backslash at the end of the sheet becomes `atEnd` (a string drops it). */
-const cssText = (raw: string, atEnd = ''): string =>
-  raw.replaceAll(/\\(?:([0-9a-f]{1,6})[ \t\n]?|(\n)|([^])|$)/giu, (all, hex, line, char) =>
-    unescaped(all, hex, line, char ?? atEnd),
-  );
-/** A token's kind, its text (a string's or url's, undefined where CSS reads it bad) and its end. */
-type CssToken = { readonly kind: string; readonly text?: string | undefined; readonly end: number };
-/** The token at `at`: space, a comment, a string, a url, `url(` before a string, `@name`, other. */
-function cssToken(css: string, at: number): CssToken {
-  TOKEN.lastIndex = at;
-  const [all = '', double, closed, single, closedSingle, sign, name] = TOKEN.exec(css) ?? [];
-  const end = at + all.length;
-  if (double !== undefined || single !== undefined) {
-    const bad = (closed ?? closedSingle) === undefined && end < css.length;
-    return { kind: 'string', text: bad ? undefined : cssText(double ?? single ?? ''), end };
-  }
-  if (name === undefined) return { kind: /^(?:[ \t\n]|\/\*)/u.test(all) ? ' ' : 'other', end };
-  const word = cssText(name, '\uFFFD').toLowerCase();
-  if (sign === '@') return { kind: `@${word}`, end };
-  if (sign === '#' || word !== 'url' || css.charAt(end) !== '(') return { kind: 'name', end };
-  URL_TAIL.lastIndex = end + 1;
-  const [tail = '', address, close] = URL_TAIL.exec(css) ?? [];
-  if (address === undefined) return { kind: 'url(', end: end + 1 };
-  const text = close === undefined ? undefined : cssText(address, '\uFFFD');
-  return { kind: 'url', text, end: end + 1 + tail.length };
-}
-
-/** Every address the sheet's `@import` rules name; undefined for one CSS cannot read. */
-export function importsOf(source: string): (string | undefined)[] {
-  const css = source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
-  const next = (from: number): CssToken => {
-    let token = cssToken(css, from);
-    while (token.kind === ' ') token = cssToken(css, token.end);
-    return token;
-  };
-  const found: (string | undefined)[] = [];
-  for (let at = 0; at < css.length;) {
-    let token = cssToken(css, at);
-    if (token.kind === '@import') {
-      token = next(token.end);
-      if (token.kind === 'url(') token = next(token.end);
-      found.push(token.kind === 'string' || token.kind === 'url' ? token.text : undefined);
-    }
-    at = token.end;
-  }
-  return found;
 }
 
 /** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */

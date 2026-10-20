@@ -10,6 +10,13 @@
 // establish nothing and why. No timer reads the note: a call left unknown
 // stays unknown until the provider proves absence or a person decides.
 //
+// A pass asks about at most `MOST` calls in a business, those asked longest
+// ago first: a call never asked, then by `lookup_until`, which recording an
+// answer moves to that moment. A call that proved nothing goes to the back of
+// the line, and so does one whose route had no room, so fifty that never prove
+// absence, or wait on a full route, cannot keep a newer call from being asked
+// on a later pass.
+//
 // The phase runs as system work, in the business's own transactions: one to
 // find the calls, then for each the lookup outside any transaction (custody's
 // wait is bounded by the operation's timeout), then one to record the answer,
@@ -35,6 +42,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { giveSlot, takeSlot, waitsItsTurn } from './broker-lookup-slot.ts';
 import { atCeiling } from './broker-reserve.ts';
 import type { Broker, BrokerRoute } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
@@ -146,7 +154,7 @@ async function ask(
   const request = adapter.lookup(call.id);
   const slot = await database.withBusiness(businessId, async (tx) =>
     (await atCeiling(tx, operation, route))
-      ? null
+      ? await waitsItsTurn(tx, call.id)
       : await takeSlot(tx, call.id, operation.timeoutMs + SLOT_MARGIN_MS),
   );
   if (slot === null) return 'waits';
@@ -173,32 +181,6 @@ async function ask(
 }
 
 /**
- * The lookup's slot on its call, in the gate's transaction: null when the
- * call is no longer held unknown or another pass's slot on it is unexpired.
- * The answer is the slot's end, which only this taking wrote, so the give
- * back clears this slot and never a later one.
- */
-async function takeSlot(tx: TenantQuery, callId: string, boundMs: number): Promise<string | null> {
-  const [taken] = await tx.query<{ until: string }>(
-    `update public.model_calls set lookup_until = clock_timestamp() + $3 * interval '1 millisecond'
-      where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
-        and (lookup_until is null or lookup_until <= clock_timestamp())
-      returning lookup_until::text as until`,
-    [tx.businessId, callId, boundMs],
-  );
-  return taken?.until ?? null;
-}
-
-/** Sent as text: a parameter typed `timestamptz` would pass through a JS Date and lose microseconds. */
-async function giveSlot(tx: TenantQuery, callId: string, slot: string): Promise<void> {
-  await tx.query(
-    `update public.model_calls set lookup_until = null
-      where business_id = $1 and id = $2 and lookup_until = $3::text::timestamptz`,
-    [tx.businessId, callId, slot],
-  );
-}
-
-/**
  * The answer on the call, only while it is still unknown and no person has
  * decided. A release gives back what a top-up or a stop counted of it
  * (`giveBack`), under its envelope's lock, taken first as settlement takes it.
@@ -216,6 +198,7 @@ async function record(
   const moved = await tx.query(
     `update public.model_calls
         set reconcile_note = $3, reconcile_mode = coalesce(reconcile_mode, $5),
+            lookup_until = greatest(lookup_until, clock_timestamp()),
             state = case when $4 then 'released' else state end,
             ended_at = case when $4 then clock_timestamp() else ended_at end
       where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
@@ -261,7 +244,7 @@ export async function reconcileProviderCalls(
           where c.business_id = $1 and c.state = 'liability_unknown' and c.outcome is null
             and c.reconcile_mode is distinct from 'person'
             and (att.state = 'liability_unknown' or c.planning_envelope_id is not null)
-          order by c.unknown_since, c.id
+          order by c.lookup_until nulls first, c.unknown_since, c.id
           limit $2`,
         [tx.businessId, MOST],
       ),

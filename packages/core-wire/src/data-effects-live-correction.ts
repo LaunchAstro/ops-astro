@@ -7,7 +7,9 @@ import { business, client, writing, type DataEffects } from './data-effects-type
 
 type LiveCorrectionCommand = Extract<
   CommandName,
-  'settings.set_live_correction_approver' | `live_correction.${string}`
+  | 'settings.set_live_correction_approver'
+  | 'settings.set_single_operator'
+  | `live_correction.${string}`
 >;
 
 export const LIVE_CORRECTION_EFFECTS: {
@@ -16,5 +18,10 @@ export const LIVE_CORRECTION_EFFECTS: {
   'settings.set_live_correction_approver': writing(business('business_settings')),
   'live_correction.request': writing(client('live_corrections')),
   'live_correction.decide': writing(client('live_corrections')),
+  'live_correction.revert': writing(client('live_correction_revert_asks')),
   'live_correction.read': writing([]),
+  'live_correction.list': writing([]),
+  'live_correction.receipts': writing([]),
+  'live_correction.record_review': writing(client('live_correction_reviews')),
+  'settings.set_single_operator': writing(business('business_settings')),
 };

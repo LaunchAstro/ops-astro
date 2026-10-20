@@ -127,6 +127,14 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
            from public.${table} t group by ${column}`,
     )
     .concat(
+      `select c.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
+        from public.live_correction_revert_asks t
+        join public.live_corrections c on c.business_id = t.business_id and c.id = t.correction_id
+        group by c.task_id`,
+      `select c.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
+        from public.live_correction_reviews t
+        join public.live_corrections c on c.business_id = t.business_id and c.id = t.correction_id
+        group by c.task_id`,
       `select uuid_4::text, md5(string_agg(t::text, '|' order by t.id)) from public.records t
         where uuid_4 is not null group by uuid_4`,
     )
@@ -154,8 +162,15 @@ export async function markerFaults(declaration: CommandDeclaration): Promise<str
   const body = await bodyFor(declaration);
   const [revisions, named, seq] = [await taskRevisions(), await rowsNaming(), await lastSeq()];
   const named0 = await taskNamedBy(body);
+  const rowsBefore = await fingerprint();
   const answer = await harness.asPerson(name, body);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
+  // A command that changed no row beyond the call's own bookkeeping wrote no
+  // content, whatever its body names: the task's earlier content would
+  // otherwise stand in for it, here and in the client lock that follows.
+  if (changed(rowsBefore, await fingerprint()).length === 0) {
+    return [`${name}: answered ok and changed no row`];
+  }
   const marked = await admin<{ subject: string }>(
     `select distinct a.subject_record_id::text as subject from audit_events a
       where a.seq > $1 and a.command = $2 and a.outcome = 'applied' and a.subject_record_id = any($3::uuid[])`,

@@ -6,6 +6,7 @@
 // provider, the lockout, the canary and the isolation cases are in
 // `c59-factor-routes-hostile.test.ts`.
 
+import { Buffer } from 'node:buffer';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { serverUrl } from '../acceptance/world.ts';
@@ -13,6 +14,8 @@ import {
   act,
   build,
   CANARY,
+  clientA,
+  clientB,
   clientD,
   closeRoutes,
   eventsFor,
@@ -28,6 +31,15 @@ import {
   tokenFor,
   world,
 } from './c59-factor-routes-world.ts';
+import { gotrueQrSvg } from './gotrue-qr-svg.ts';
+
+/** The browser's form of GoTrue's raw SVG QR: what the API hands on. */
+const asDataUri = (svg: string): string =>
+  `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+
+/** An enrol's answer as the browser draws it: the QR's SVG, and the secret. */
+const drawn = (body: Readonly<Record<string, unknown>>): string =>
+  `${Buffer.from(String(body['qrCode']).split(',')[1] ?? '', 'base64').toString('utf8')} ${String(body['secret'])}`;
 
 let replies: Record<string, Reply> = { ...GOOD };
 let seen: Seen[] = [];
@@ -97,6 +109,60 @@ describe.skipIf(serverUrl === undefined)(
       expect(answer.status).toBe(409);
       expect(answer.code).toBe('FACTOR_ALREADY_ENROLLED');
       expect(seen).toEqual([]);
+    });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'C59 a person’s own second factor, through the API',
+  () => {
+    it('C59 first enrolment: two people enrolling at once each get only their own full-size answer', async () => {
+      const [tokenA, tokenB] = [await fresh(clientA), await fresh(clientB)];
+      const own = {
+        [`Bearer ${tokenA}`]: {
+          id: 'factor-person-a',
+          qr: gotrueQrSvg(330_000, 'person-a'),
+          secret: 'SECRETA',
+        },
+        [`Bearer ${tokenB}`]: {
+          id: 'factor-person-b',
+          qr: gotrueQrSvg(330_000, 'person-b'),
+          secret: 'SECRETB',
+        },
+      };
+      // The provider answers neither until it holds both, then the later asker first.
+      const held: Array<() => void> = [];
+      replies['POST /factors'] = (request, response) => {
+        const issued = own[request.headers.authorization ?? ''];
+        const totp = { qr_code: issued?.qr, secret: issued?.secret, uri: 'otpauth://totp/x' };
+        held.push(() => json(200, { id: issued?.id, type: 'totp', totp })(request, response, ''));
+        if (held.length === 2) for (const release of held.toReversed()) release();
+      };
+      const [a, b] = await Promise.all([act('enrol', tokenA), act('enrol', tokenB)]);
+
+      expect(a.status).toBe(200);
+      expect(b.status).toBe(200);
+      expect(a.body).toEqual({
+        factorId: 'factor-person-a',
+        qrCode: asDataUri(gotrueQrSvg(330_000, 'person-a')),
+        secret: 'SECRETA',
+        uri: 'otpauth://totp/x',
+      });
+      expect(b.body).toEqual({
+        factorId: 'factor-person-b',
+        qrCode: asDataUri(gotrueQrSvg(330_000, 'person-b')),
+        secret: 'SECRETB',
+        uri: 'otpauth://totp/x',
+      });
+      // Read as the browser reads it: neither answer carries any of the other's.
+      expect(drawn(a.body)).not.toMatch(/person-b|SECRETB/u);
+      expect(drawn(b.body)).not.toMatch(/person-a|SECRETA/u);
+      expect(await factorOf(clientA.personId)).toMatchObject({
+        providerFactorId: 'factor-person-a',
+      });
+      expect(await factorOf(clientB.personId)).toMatchObject({
+        providerFactorId: 'factor-person-b',
+      });
     });
   },
 );

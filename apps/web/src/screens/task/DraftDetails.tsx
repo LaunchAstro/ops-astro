@@ -1,18 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The draft's project, stage, priority, description and agent brief (U112).
-// Each change goes to `put` like every other draft field; Create writes them
-// after the client, through `task.move`, `task.set_stage` and `task.update`.
+// The draft's client, project, stage, priority, description and agent brief
+// (U112). Each change goes to `put` like every other draft field; Create writes
+// the client first, through `task.set_party`, then the rest through
+// `task.move`, `task.set_stage` and `task.update`.
 //
-// **The project list is read only when wanted.** A draft filed from a project
-// reads it at once, to name that project; any other draft reads it when the
-// Project select is first focused, so Create never waits on a task list.
+// **The client is chosen here, not on the task.** The draft's own defaults
+// (its category) are content once written, which locks the task's client
+// (S0-5), so a task from a page with no client gets one only on its draft.
+//
+// **Each list is read only when wanted.** The client list is read when the
+// Client select is first focused; until then a page's client is named as the
+// one the draft was filed from. A draft filed from a project reads the project
+// list at once, to name it; any other draft reads it on first focus. Create
+// never waits on a list.
 //
 // **A client's project holds only that client's work.** The list offers the
-// agency's own projects and the draft's client's, as `task.move` admits them.
+// agency's own projects and the draft's client's, as `task.move` admits them,
+// and choosing another client drops a project the list names under a
+// different one. A project the list has not answered for stays.
 
 import { useEffect, useState, type ReactElement } from 'react';
-import { TASK_STAGES, type TaskBoardResult } from '../../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_STAGES,
+  type ClientListResult,
+  type TaskBoardResult,
+} from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import type { TaskDraft } from './task-draft.ts';
 import { Select, type Choice } from './DraftSelect.tsx';
@@ -35,9 +48,18 @@ const PRIORITIES: readonly Choice[] = [1, 2, 3, 4].map((value) => ({
 
 export function DraftDetails(props: Props): ReactElement {
   const { draft, put } = props;
+  const [askedProjects, setAskedProjects] = useState(draft.boardId !== null);
+  const projects = useProjects(props.client, askedProjects);
   return (
     <>
-      <DraftProject {...props} />
+      <DraftClient {...props} projects={projects} />
+      <DraftProject
+        {...props}
+        projects={projects}
+        onAsk={() => {
+          setAskedProjects(true);
+        }}
+      />
       <Select
         id="panel-draft-stage"
         label="Stage"
@@ -118,17 +140,97 @@ function useProjects(client: OperationsClient, asked: boolean) {
   return answer;
 }
 
-function DraftProject(props: Props): ReactElement {
+type Projects = ReturnType<typeof useProjects>;
+
+/** The business's clients, read once `asked`; null until they answer. */
+function useClients(client: OperationsClient, asked: boolean) {
+  const [answer, setAnswer] = useState<readonly Choice[] | 'failed' | null>(null);
+  useEffect(() => {
+    if (!asked) return;
+    let live = true;
+    void client.read<ClientListResult>('client.list', {}).then((read) => {
+      if (!live) return null;
+      setAnswer(
+        isRefusal(read) || isUnavailable(read) || !Array.isArray(read.value.clients)
+          ? 'failed'
+          : read.value.clients.map((each) => ({ id: each.clientId, title: each.name })),
+      );
+      return null;
+    });
+    return () => {
+      live = false;
+    };
+  }, [asked, client]);
+  return answer;
+}
+
+/**
+ * Whether the chosen project goes once `clientId` is chosen: only when the
+ * project list has answered and names it under another client. An unanswered
+ * or failed list proves nothing, so the project stays and `task.move` judges
+ * it at Create, where a refusal stops everything after it.
+ */
+function projectDropped(projects: Projects, boardId: string | null, clientId: string | null) {
+  const project = Array.isArray(projects) ? projects.find((one) => one.id === boardId) : undefined;
+  return project !== undefined && project.client !== null && project.client !== clientId;
+}
+
+function DraftClient(props: Props & { readonly projects: Projects }): ReactElement {
+  const chosen = props.draft.clientId;
+  const [asked, setAsked] = useState(false);
+  const answer = useClients(props.client, asked);
+  const listed = Array.isArray(answer) ? answer : [];
+  const shown =
+    chosen === null || listed.some((choice) => choice.id === chosen)
+      ? listed
+      : [...listed, { id: chosen, title: 'The client it was filed from' }];
+  return (
+    <>
+      <Select
+        id="panel-draft-client"
+        label="Client"
+        none="No client"
+        locked={props.locked}
+        value={chosen}
+        choices={shown}
+        onFocus={() => {
+          setAsked(true);
+        }}
+        onChoose={(clientId) => {
+          props.put(
+            projectDropped(props.projects, props.draft.boardId, clientId)
+              ? { clientId, boardId: null }
+              : { clientId },
+          );
+        }}
+      />
+      {answer === 'failed' ? (
+        <p className="card__sub">The client list could not be loaded.</p>
+      ) : null}
+    </>
+  );
+}
+
+function DraftProject(
+  props: Props & { readonly projects: Projects; readonly onAsk: () => void },
+): ReactElement {
   const chosen = props.draft.boardId;
-  const [asked, setAsked] = useState(chosen !== null);
-  const answer = useProjects(props.client, asked);
+  const answer = props.projects;
   const offered = Array.isArray(answer)
     ? answer.filter((project) => project.client === null || project.client === props.draft.clientId)
     : [];
+  // The answered list names the chosen project under another client: said, never silently kept.
+  const elsewhere = projectDropped(answer, chosen, props.draft.clientId);
   const listed =
     chosen === null || offered.some((choice) => choice.id === chosen)
       ? offered
-      : [...offered, { id: chosen, title: 'The project it was filed from' }];
+      : [
+          ...offered,
+          {
+            id: chosen,
+            title: elsewhere ? 'A project of another client' : 'The project it was filed from',
+          },
+        ];
   return (
     <>
       <Select
@@ -138,15 +240,18 @@ function DraftProject(props: Props): ReactElement {
         locked={props.locked}
         value={chosen}
         choices={listed}
-        onFocus={() => {
-          setAsked(true);
-        }}
+        onFocus={props.onAsk}
         onChoose={(boardId) => {
           props.put({ boardId });
         }}
       />
       {answer === 'failed' ? (
         <p className="card__sub">The project list could not be loaded.</p>
+      ) : null}
+      {elsewhere ? (
+        <p className="field__error" role="alert" data-draft-project-elsewhere>
+          This project holds another client’s work. Choose another project, or None, before Create.
+        </p>
       ) : null}
     </>
   );

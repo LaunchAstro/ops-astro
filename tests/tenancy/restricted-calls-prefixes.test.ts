@@ -88,6 +88,22 @@ const PART = suitePart(process.env['SUITE_PART']);
 /** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
 const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
+/**
+ * Columns unique across the whole installation, so each business's seed row names its own:
+ * a site's repository and hosting project are bound once (C80), and an agent login
+ * act's address is one generation of one agent in every business.
+ */
+function installationUnique(table: string, business: string): Record<string, string> {
+  if (table === 'public.party_sites') {
+    return { repository: `seed/${business}`, project: `prj_${business}` };
+  }
+  if (table === 'ops.agent_login_acts') return { email: `agent-${business}+g1@example.test` };
+  return {};
+}
+
+const SEED_PARTY = randomUUID();
+const SEED_PAGE_PARTY = randomUUID();
+
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
@@ -159,11 +175,36 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     word: 'friendly',
     replacement: 'welcoming',
     page_url: 'https://agency.example/about/',
-    pre_image_digest: 'sha256:seed',
-    base_revision: 'rev-1',
+    // #1693: pinned in the forms the storage checks, as a row from before the locate was.
+    pre_image_digest: `sha256:${'ab'.repeat(32)}`,
+    base_revision: 'c0'.repeat(20),
     seam: 'seam-seed',
     version_id: randomUUID(),
-    version_digest: 'sha256:seed',
+    version_digest: `sha256:${'cd'.repeat(32)}`,
+    state: 'requested',
+    located_at: '2026-10-19T00:00:00Z',
+  },
+  // C80: a client's site and one page of it; nothing the journey does binds one. Each names
+  // its holder (R6) as its trigger keeps it, for the prefixes that have the column.
+  'public.party_sites': {
+    party_id: SEED_PARTY,
+    holder: SEED_PARTY,
+    default_branch: 'main',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.party_site_pages': {
+    party_id: SEED_PAGE_PARTY,
+    holder: SEED_PAGE_PARTY,
+    page_url: 'https://agency.example/about/',
+    path: 'src/pages/about.md',
+  },
+  'public.live_correction_proposals': {
+    correction_id: randomUUID(),
+    seam_branch: 'seam-seed',
+    base_revision: 'rev-1',
+    pre_image_blob: 'blob-seed',
+    lease_id: randomUUID(),
+    fence: 1,
   },
   'public.live_correction_receipts': {
     correction_id: randomUUID(),
@@ -172,6 +213,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     step: 'publish',
     outcome: 'live',
     observations: {},
+  },
+  // C80: nothing the journey does asks a revert.
+  'public.live_correction_revert_asks': {
+    correction_id: randomUUID(),
+    asked_by_actor_id: randomUUID(),
+    asked_by_person_id: randomUUID(),
+  },
+  // R5: Astra's review of a correction; the journey records none.
+  'public.live_correction_reviews': {
+    correction_id: randomUUID(),
+    version_digest: 'sha256:seed',
+    verdict: 'approve',
+    review: 'seed',
+    recorded_by_actor_id: randomUUID(),
+    recorded_by_person_id: randomUUID(),
+  },
+  // #1666: the journey keeps no reply in a chat opened on no task, so no snapshot.
+  'public.conversation_reply_snapshots': { message_id: randomUUID(), created: 1 },
+  'public.conversation_reply_targets': {
+    message_id: randomUUID(),
+    position: 1,
+    task_id: randomUUID(),
+    revision: 0,
   },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
@@ -183,6 +247,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     knowledge: [],
     unknowns: [],
     revised_by_actor_id: randomUUID(),
+  },
+  // The journey stops no attempt (#1623 R1): one outcome, written with foreign keys off.
+  'public.run_outcomes': {
+    attempt_id: randomUUID(),
+    planned_run_id: randomUUID(),
+    outcome: 'cancelled',
+    end_code: 'TOOL_REFUSED',
+    recorded_by: randomUUID(),
   },
   // The journey launches nothing (Launch from the task).
   'public.task_launches': {
@@ -208,6 +280,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     owner_person_id: randomUUID(),
     title: 'restricted calls seed',
   },
+  // #1531: no journey step carries a call.
+  'public.conversation_agent_members': {
+    conversation_id: randomUUID(),
+    agent_actor_id: randomUUID(),
+    added_by_actor_id: randomUUID(),
+    joined_at: new Date(0),
+    left_at: new Date(0),
+  },
+  'public.model_call_carriers': { call_id: randomUUID(), agent_actor_id: randomUUID() },
   'public.conversation_messages': {
     conversation_id: randomUUID(),
     role: 'person',
@@ -546,12 +627,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     token_id: randomUUID(),
     state: 'asked',
   },
+  'public.login_provisions': { invitation_id: randomUUID(), login_id: randomUUID() },
   // C40B: nothing on the journey asks for a password reset.
   'public.password_reset_tokens': {
     login_id: randomUUID(),
     token_hash: '0'.repeat(64),
     created_at: '2099-01-01T00:00:00Z',
     expires_at: '2099-01-01T00:10:00Z',
+  },
+  // AW-08: only the agent login tool writes an act, and the journey never runs it.
+  'ops.agent_login_acts': {
+    agent_actor_id: randomUUID(),
+    act: 'make',
+    generation: 1,
+    custody_item: 'restricted calls seed',
+    phase: 'reserved',
+    operator_person_id: randomUUID(),
   },
 };
 
@@ -629,7 +720,8 @@ async function seedPrefix(
     const names = present.map((column) => column.name);
     for (const business of businesses) {
       let reason = '';
-      for (const row of rows) {
+      for (const seed of rows) {
+        const row = { ...seed, ...installationUnique(table.qualified, business) };
         const columns = names
           .filter((name) => name in row || name === 'id' || name === 'business_id')
           .map((name) => `"${name}"`)

@@ -5,6 +5,8 @@
 // decision read. Split from `views.ts`, which re-exports every one, to keep
 // that file under the 1,000-line cap for product source.
 
+import type { RunOutcomeView } from './run-outcomes.ts';
+
 /**
  * The run's pinned definition reference, as stored: a bootstrap file by path,
  * read at pin time, or a definition version by id. The digest and size are
@@ -85,6 +87,8 @@ export interface ExecutionRun {
   readonly state: string;
   readonly taskRevisionAtRequest: number | null;
   readonly createdAt: string;
+  /** Its latest attempt's stop, as that stop recorded it (#1623 R1), or null while none has. */
+  readonly runOutcome: RunOutcomeView | null;
 }
 
 /** One durable progress event, in the task-wide order. */
@@ -155,11 +159,14 @@ export interface ExecutionStep {
 
 export interface ExecutionNode {
   readonly nodeId: string;
-  readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
+  /** The observed condition, or `unplanned`: a run outside the bound plan. */
+  readonly condition:
+    'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised' | 'unplanned';
   /** The bound plan's step this run was proposed under, or null. */
   readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: {
-    readonly condition: ExecutionNode['condition'];
+    /** Read from the run's own rows: never `unplanned`, which is the plan's reading. */
+    readonly condition: Exclude<ExecutionNode['condition'], 'unplanned'>;
     readonly runState: string;
     readonly attemptId: string | null;
     readonly whoseMove: {
@@ -200,6 +207,12 @@ export interface ReceiptResult {
  * the request and decide commands name it, the person who decided it (the
  * configured approver at that moment) by name or null, and its version; the
  * card already holds the page, the word and the lines, so none comes back.
+ *
+ * #1693: a request is `locating` until the site runner pins its version
+ * (`versionId` null until then), and may end `unlocated` or `superseded`
+ * with a fixed `refusal` code. `verifiedForMs` is how much longer the last
+ * check of the page vouches for the version, computed by the server in its
+ * read, 0 when none does: Launch is offered only while it is above 0.
  */
 export interface LiveCorrectionReadResult {
   readonly ok: true;
@@ -207,6 +220,69 @@ export interface LiveCorrectionReadResult {
     readonly correctionId: string;
     readonly state: string;
     readonly approver: string | null;
-    readonly versionId: string;
+    readonly versionId: string | null;
+    readonly verifiedAt: string | null;
+    readonly verifiedForMs: number;
+    readonly refusal: string | null;
   };
 }
+
+/**
+ * #1694: one correction in `live_correction.list`, enough to draw its card
+ * again after a reload: its task, its state as `live_correction.read` names
+ * it, the person who decided it or null, its version, the page and the two
+ * words, and when it was asked. No digest, file path or requester comes back.
+ */
+export interface CorrectionListItem {
+  readonly correctionId: string;
+  readonly taskId: string;
+  readonly state: string;
+  readonly approver: string | null;
+  readonly versionId: string;
+  readonly pageUrl: string;
+  readonly word: string;
+  readonly replacement: string;
+  /** ISO 8601. */
+  readonly requestedAt: string;
+}
+
+/** `live_correction.list`: the reader's reachable corrections, newest first, at most 100. */
+export interface LiveCorrectionListResult {
+  readonly ok: true;
+  readonly corrections: readonly CorrectionListItem[];
+}
+
+/** The place the runner checked on a capture, cut to the receipt text limit; `clipped` says so. */
+export interface ReceiptCapture {
+  readonly text: string;
+  readonly clipped: boolean;
+}
+
+/**
+ * One publish or revert receipt as its card reads it: the outcome observed,
+ * the commit and deployment the runner saw, and the before and after
+ * captures: the approved word's place with its context, as the page read
+ * before the send and once live (the runner keeps no whole page). A field
+ * the runner did not record is null.
+ */
+export interface CorrectionReceiptView {
+  readonly receiptId: string;
+  readonly step: 'publish' | 'revert';
+  readonly outcome: string;
+  /** ISO 8601. */
+  readonly recordedAt: string;
+  readonly commit: string | null;
+  readonly deploymentId: string | null;
+  readonly beforeCapture: ReceiptCapture | null;
+  readonly afterCapture: ReceiptCapture | null;
+}
+
+/** `live_correction.receipts`: one correction's receipts, newest first, at most 10. */
+export interface LiveCorrectionReceiptsResult {
+  readonly ok: true;
+  readonly correctionId: string;
+  readonly receipts: readonly CorrectionReceiptView[];
+}
+
+/** #1694's two answers, as one member of the read results. */
+export type LiveCorrectionReads = LiveCorrectionListResult | LiveCorrectionReceiptsResult;

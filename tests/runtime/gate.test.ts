@@ -378,6 +378,18 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
   }, 60_000);
 
   it('signs every decision and chains them so a removed row is visible', async () => {
+    // Two more decisions, each on a task of its own (the fixture task's envelope
+    // is full), so the chain has rows after its first to lose.
+    for (const note of ['the first more', 'the second more']) {
+      // eslint-disable-next-line no-await-in-loop -- each decision is the chain's next row
+      const taskId = await newTask(database.app, fixture.businessId, fixture.decider);
+      const own = { ...fixture, taskId };
+      // eslint-disable-next-line no-await-in-loop
+      const proposal = await proposeOn(database, own);
+      // eslint-disable-next-line no-await-in-loop
+      const decided = await decideOn(database, own, proposal, 'reject', note);
+      expect(decided.ok, note).toBe(true);
+    }
     const rows = await database.app.withBusiness(
       fixture.businessId,
       async (tx) =>
@@ -408,33 +420,43 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
         ),
     );
 
-    expect(rows.length).toBeGreaterThan(0);
+    // Three rows at least, so the first and a middle one can each be taken out.
+    expect(rows.length).toBeGreaterThanOrEqual(3);
 
     type Row = (typeof rows)[number];
-    const broken = verifyChain(
-      TEST_SIGNING_KEY,
-      rows.map((row) => Object.assign({}, row, { seq: Number(row.seq) })),
-      (row) => {
-        const full = row as unknown as Row;
-        return decisionLink(linkVersionOf(full.payload) ?? 1, {
-          id: full.id,
-          seq: Number(full.seq),
-          gate: full.gate_id,
-          version: full.version_id,
-          decision: full.decision,
-          person: full.decided_by_person_id,
-          payloadDigest: full.payload_digest,
-          signature: full.signature,
-          round: full.round,
-          decidedAt: full.decided_at,
-          lineage: full.lineage_id,
-          actor: full.decided_by_actor_id,
-          evidence: full.evidence_digest,
-          key: full.signing_key_id,
-        });
-      },
-    );
-    expect(broken).toBeNull();
+    const verify = (kept: readonly Row[]): string | null =>
+      verifyChain(
+        TEST_SIGNING_KEY,
+        kept.map((row) => Object.assign({}, row, { seq: Number(row.seq) })),
+        (row) => {
+          const full = row as unknown as Row;
+          return decisionLink(linkVersionOf(full.payload) ?? 1, {
+            id: full.id,
+            seq: Number(full.seq),
+            gate: full.gate_id,
+            version: full.version_id,
+            decision: full.decision,
+            person: full.decided_by_person_id,
+            payloadDigest: full.payload_digest,
+            signature: full.signature,
+            round: full.round,
+            decidedAt: full.decided_at,
+            lineage: full.lineage_id,
+            actor: full.decided_by_actor_id,
+            evidence: full.evidence_digest,
+            key: full.signing_key_id,
+          });
+        },
+      );
+    expect(verify(rows)).toBeNull();
+    // Each row taken out in turn, its own signature intact: the chain says where it broke.
+    for (const [index, removed] of rows.entries()) {
+      if (index === rows.length - 1) continue;
+      const after = rows[index + 1] as Row;
+      expect(verify(rows.filter((row) => row !== removed)), `without seq ${removed.seq}`).toBe(
+        `seq ${after.seq}: prev_hash does not follow the chain`,
+      );
+    }
   });
 
   it('refuses to update or delete a decision, twice over', async () => {

@@ -30,39 +30,12 @@ import {
   PURGED,
   TITLE_LIMIT,
 } from './conversations.ts';
+import { followModel } from './conversation-agents.ts';
+import { PAGE_INVALID, pageOf } from './conversation-page.ts';
 import { keepModel, MODEL_NOT_OFFERED } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-
-const ADDRESS_LIMIT = 300;
-const SHOWS_LIMIT = 200;
-const IN_PRODUCT = /^\/(?![/\\])[!-~]*$/u;
-// eslint-disable-next-line no-control-regex -- the control characters are what it refuses
-const CONTROL = /[\u0000-\u001F\u007F-\u009F]/u;
-
-interface Page {
-  readonly address: string;
-  readonly shows: string;
-}
-
-const isAddress = (value: unknown): value is string =>
-  typeof value === 'string' &&
-  value.length <= ADDRESS_LIMIT &&
-  IN_PRODUCT.test(value) &&
-  !value.includes('\\');
-
-const isShows = (value: unknown): value is string =>
-  bounded(value, SHOWS_LIMIT) && !CONTROL.test(value);
-
-/** The page, `null` to clear it, or undefined when it will not do. */
-function pageOf(value: unknown): Page | null | undefined {
-  if (value === null) return null;
-  if (typeof value !== 'object' || value === undefined || Array.isArray(value)) return undefined;
-  const { address, shows, ...rest } = value as Record<string, unknown>;
-  if (Object.keys(rest).length > 0 || !isAddress(address) || !isShows(shows)) return undefined;
-  return { address, shows };
-}
 
 /**
  * The caller's own conversation, locked: the row lock `conversation.message`,
@@ -141,17 +114,7 @@ export async function setConversationScope(
   fields: ScopeFields,
 ): Promise<HandlerOutcome> {
   const page = pageOf(fields.page);
-  if (page === undefined) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['page'],
-        [
-          `Send page as {"address":<a path of this product, starting with one slash, at most ${String(ADDRESS_LIMIT)} printable characters>,"shows":<what the page shows, 1 to ${String(SHOWS_LIMIT)} characters>}, or null to clear it.`,
-        ],
-      ),
-    );
-  }
+  if (page === undefined) return refused(PAGE_INVALID);
   const refusal = await ownedForUpdate(tx, context, fields.conversationId);
   if (refusal !== undefined) return refused(refusal);
   const conversationId = fields.conversationId as string;
@@ -181,5 +144,7 @@ export async function setModel(
   // Asked under the row lock, after the owner check.
   const notKept = await keepModel(tx, context.session, conversationId, fields.model);
   if (notKept !== undefined) return refused(notKept);
+  // The deployment's model agent joins on a model it carries, and leaves on one it does not (#1531).
+  await followModel(tx, context, conversationId, fields.model);
   return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
 }

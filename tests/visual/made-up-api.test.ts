@@ -23,10 +23,11 @@ const NOT_DRAWN = new Set([
   'definition.attribution',
   // AW-13 readers: no screen draws a trace yet.
   'trace.read',
-  // AW-12: no screen draws the harness result in this piece.
-  'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
+  // #1694: the card's list and receipts, drawn once the live app's card reads them.
+  'live_correction.list',
+  'live_correction.receipts',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

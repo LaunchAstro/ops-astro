@@ -198,15 +198,15 @@ async function expectSignedOutWithNoDraft(
   expect(view.text()).toContain('was not saved');
   expect(sessions.session).toBeNull();
   const stores = everyStore(store.held);
-  expect(stores).not.toContain(DRAFT_TITLE);
-  expect(stores).not.toContain(DRAFT_COMMENT);
-  expect(stores).not.toContain(SESSION.token);
+  const kept = [DRAFT_TITLE, DRAFT_COMMENT, SESSION.token].filter((one) => stores.includes(one));
+  expect(kept).toEqual([]);
 }
 
 /** Sign in again: the task comes back as the server holds it, not as typed. */
 async function signInAgainFindsNoDraft(view: Mounted, reopen = false): Promise<void> {
   await view.type('#signin-email', 'mia@alpha.local');
   await view.type('#signin-password', 'whatever-it-is');
+  await view.choose('#signin-business', 'alpha');
   await view.click('form.signin__form button[type="submit"]');
   await settle();
   await settle();

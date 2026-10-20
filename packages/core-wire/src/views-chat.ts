@@ -22,6 +22,11 @@ export interface ChatConversationView {
   readonly lastMessageAt: string | null;
   /** Others' messages after the reader's marker. */
   readonly unread: number;
+  /**
+   * Whether the reader may rename this group and change its members now: in it, and its
+   * creator or a holder of `chat:manage`. Always false on a direct conversation.
+   */
+  readonly canManage: boolean;
 }
 
 export interface ChatConversationsResult {

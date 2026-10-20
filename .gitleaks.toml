@@ -9,9 +9,17 @@ useDefault = true
 
 [allowlist]
 # Anchored, every one of them. These are regexes matched against the whole
-# path, so an unanchored LICENSE also excludes src/LICENSE-private-config.json
-# from secret scanning, which is a perfectly good place to hide a credential.
-# Round four found it. tests/gate/gate-cases.sh case K keeps it anchored.
+# path, so an unanchored entry also excludes every path that merely contains
+# it from secret scanning, which is a perfectly good place to hide a
+# credential. tests/gate/gate-cases.sh case K keeps them anchored.
+#
+# An exempt path is never scanned, whatever is added to it, so only files
+# this repository generates and checks itself are here. LICENSE is not: a key
+# added to it is refused (tests/gate/secrets-scan-cases.sh case P). The
+# lockfile is also exempt under gitleaks' own default allowlist, which this
+# file extends and cannot narrow, so scripts/secrets-scan.mjs (`pnpm check`
+# on every pull request) reads its bytes through `gitleaks stdin`, where no
+# path is matched (case Q).
 #
 # There is no entry here for `.local/`, and there must not be one. That
 # directory holds the local runtime's generated credentials and is gitignored,
@@ -22,7 +30,6 @@ useDefault = true
 # git tracks is scanned wherever it sits.
 description = "The exact paths that carry no secrets and would otherwise be noisy"
 paths = [
-  '''^LICENSE$''',
   '''^pnpm-lock\.yaml$''',
   '''^scripts/gate/denylist\.sha256$''',
   '''^scripts/gate/shape-rules\.txt$''',

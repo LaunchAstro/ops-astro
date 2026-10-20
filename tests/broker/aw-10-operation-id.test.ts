@@ -9,7 +9,11 @@
 
 import { expect, it as vitestIt } from 'vitest';
 import { callModelInConversation } from '../../packages/core-custody/src/index.ts';
-import { REPLAY_PATH } from '../../packages/core-connectors/src/index.ts';
+import {
+  catalogue,
+  REPLAY_COMPOSE,
+  REPLAY_PATH,
+} from '../../packages/core-connectors/src/index.ts';
 import { noDatabase, s, world } from './broker-world.ts';
 import { ask, local, ownerOf, plan, rowsFor, usePlanningWorld } from './aw-04-planning-world.ts';
 import { callIn, faultBroker } from './aw-10-world.ts';
@@ -37,7 +41,9 @@ it("AW-10 operation id: a task's call, a conversation call and a planning reply 
   expect(lastOperationId()).toBe(task?.id);
 
   const talk = await ask(s);
-  await callModelInConversation(s.db.app, s.business, ownerOf(s), talk, local(s));
+  // The conversation seam sends only an unpriced operation (#1508, option B).
+  const unpriced = { ...local(s), operations: catalogue([{ ...REPLAY_COMPOSE, maximumMinor: 0 }]) };
+  await callModelInConversation(s.db.app, s.business, ownerOf(s), talk, unpriced);
   const [conversation] = await rowsFor(s, talk.conversation.id);
   expect(lastOperationId()).toBe(conversation?.['id']);
 

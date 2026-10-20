@@ -7,8 +7,14 @@
 //   guarded writes `site.source.propose` composes beside its contents write
 //   (branch, commit, request; `propose.ts`);
 // - `site.request.read`: the human review request's state;
+// - `site.source.head`: the default branch's head commit, the revision a
+//   locate pins and every later check reads the file at (#1693);
 // - `site.deployment.lookup`: the hosting deployment found by the written
-//   commit, so the publish answers a deployment id without a promotion.
+//   commit, so the publish answers a deployment id without a promotion;
+// - `site.deployment.current` and `site.deployment.alias`: the project's
+//   production deployment now, and the deployment the page's host is
+//   assigned to, so live needs the written commit's deployment serving the
+//   bound page (`serving.ts`).
 //
 // Declarations are an adapter author's claims, evidenced against the real
 // repository and project at the walk-through like the first six.
@@ -91,6 +97,16 @@ export const BINDING_OPERATIONS: readonly OperationRegistration[] = [
     credential: 'source_control',
     ...LIMITS,
   }),
+  operation(read('site.source.head', SOURCE_QUOTA, 'site_source'), {
+    host: SOURCE_HOST,
+    method: 'GET',
+    pathTemplate: '/repos/{repository*}/git/ref/heads/{branch*}',
+    bodyParams: [],
+    responseSchema: { 'object.sha': 'string' },
+    refusalProofs: {},
+    credential: 'source_control',
+    ...LIMITS,
+  }),
   operation(read('site.deployment.lookup', HOSTING_QUOTA, 'deployment_state'), {
     host: HOSTING_HOST,
     method: 'GET',
@@ -100,6 +116,28 @@ export const BINDING_OPERATIONS: readonly OperationRegistration[] = [
       'deployments.0.uid': 'string',
       'deployments.0.meta.githubCommitSha': 'string',
     },
+    refusalProofs: {},
+    credential: 'hosting',
+    ...LIMITS,
+  }),
+  operation(read('site.deployment.current', HOSTING_QUOTA, 'deployment_state'), {
+    host: HOSTING_HOST,
+    method: 'GET',
+    pathTemplate: '/v9/projects/{project}',
+    bodyParams: [],
+    responseSchema: { id: 'string', 'targets.production.id': 'string' },
+    refusalProofs: {},
+    credential: 'hosting',
+    ...LIMITS,
+    // The project answer carries its settings and latest deployments beside the target.
+    maxResponseBytes: 1_048_576,
+  }),
+  operation(read('site.deployment.alias', HOSTING_QUOTA, 'deployment_state'), {
+    host: HOSTING_HOST,
+    method: 'GET',
+    pathTemplate: '/v4/aliases/{host}?projectId={project}',
+    bodyParams: [],
+    responseSchema: { alias: 'string', deploymentId: 'string', projectId: 'string' },
     refusalProofs: {},
     credential: 'hosting',
     ...LIMITS,

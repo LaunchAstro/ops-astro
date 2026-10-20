@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a page that is not a task's, added to context, is answered with no page sent and the drawer never claims it was read into context"
+}

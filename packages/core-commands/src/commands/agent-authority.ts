@@ -5,6 +5,7 @@
 
 import {
   checkDelegatedAuthority,
+  excludedFromTakenLaunch,
   resolveDelegation,
   isUuid,
 } from '../../../core-records/src/index.ts';
@@ -18,7 +19,12 @@ import { taskOfLease } from './prepare.ts';
 
 export const NO_DELEGATION_FIXES: readonly string[] = [
   'Present the credential the pickup handed you.',
-  'Before a pickup an agent login may only read task.queue and call task.pickup.',
+  'Before a pickup an agent login may only read task.queue, call task.pickup and take its own launch with task.take_launch.',
+];
+
+const TAKEN_LAUNCH_FIXES: readonly string[] = [
+  'A run taken to answer reads its task and nothing else under its credential.',
+  'What it answers is written by the run itself, not by a separate call.',
 ];
 
 const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
@@ -46,9 +52,10 @@ const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> =
  * The delegation check, in the order AUTHORITY.md puts it.
  *
  * Returns the refusal, or `run` when the call may go ahead. The pre-pickup
- * pair short-circuits it: there is no delegation to intersect with, and the
- * two operations they are bounded to are the ones that cannot touch a task's
- * own data — the queue names reservations and a pickup claims one.
+ * three short-circuit it: there is no delegation to intersect with, and the
+ * operations they are bounded to are the ones that cannot touch a task's own
+ * data — the queue names reservations, a pickup claims one, and a take hands
+ * the launched agent its own launch.
  */
 export async function authorise<O extends object>(
   tx: TenantQuery,
@@ -84,6 +91,13 @@ export async function authorise<O extends object>(
   const resolved = await resolveDelegation(tx, session.actorId, credential);
   if (!resolved.ok) return refusing(resolved.refusal);
   const delegation = resolved.value;
+  // A launch taken to answer reads its task and sends the run's own command,
+  // whatever actions its delegation carries (`launch-take.ts`).
+  if (await excludedFromTakenLaunch(tx, delegation.id, request.command)) {
+    return refusing(
+      refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], TAKEN_LAUNCH_FIXES),
+    );
+  }
 
   // Under a live delegation the agent may ask what it may do: the answer is
   // that delegation's purpose and the pairs of it the delegating person still

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A plan route under the local route's key is refused when the carried deployment starts, so the carried send can never judge the local route while the turn goes to the plan; with distinct keys a task made outside during the prepare sends nothing."
+}

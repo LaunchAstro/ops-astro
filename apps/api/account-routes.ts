@@ -38,24 +38,31 @@ interface PublicLegalOptions {
 
 /**
  * A business's published legal documents (C81), read with no sign-in: the
- * version published most recently, its words and their digest. No business,
- * nothing published, the breach runbook (the operators' own) and a name that
- * is no document are one answer, so the address tells an outsider nothing
- * about which businesses exist or what they have drafted.
+ * version published most recently, its words and their digest, or the version
+ * an evidence link pins with `?version=&digest=` (`legalVersionPath`). No
+ * business, nothing published, the breach runbook (the operators' own), a
+ * name that is no document, and a pin that is partial or names no published
+ * version with those words are one answer, so the address tells an outsider
+ * nothing about which businesses exist or what they have drafted.
  */
 export function mountPublicLegal(api: Hono, options: PublicLegalOptions): void {
   const PUBLIC: ReadonlySet<string> = new Set(PUBLIC_LEGAL_DOCUMENTS);
   api.get(`${PUBLIC_PREFIX}:businessKey/legal/:document`, async (context) => {
     const document = context.req.param('document');
-    const businessId = PUBLIC.has(document)
-      ? await options.resolveBusiness(context.req.param('businessKey'))
-      : undefined;
+    const version = context.req.query('version');
+    const digest = context.req.query('digest');
+    const partial = (version === undefined) !== (digest === undefined);
+    const pin = version !== undefined && digest !== undefined ? { version, digest } : undefined;
+    const businessId =
+      PUBLIC.has(document) && !partial
+        ? await options.resolveBusiness(context.req.param('businessKey'))
+        : undefined;
     const published =
       businessId === undefined
         ? undefined
         : await options.database.withBusiness(
             businessId,
-            async (tx) => await readPublishedLegal(tx, document as LegalDocument),
+            async (tx) => await readPublishedLegal(tx, document as LegalDocument, pin),
           );
     if (published === undefined) return context.json({ code: 'NOT_FOUND' }, 404);
     return context.json({ ...published, publishedAt: published.publishedAt.toISOString() }, 200);

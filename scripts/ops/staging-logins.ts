@@ -79,6 +79,15 @@ export const LOGINS: readonly Login[] = [
     inherit: false,
     port: 5432,
   },
+  {
+    // 20261018222300: the M5's trace export (#1708, apps/trace-export/main.ts).
+    step: 'after-reset',
+    setting: 'DATABASE_TRACE_URL',
+    role: 'ops_astro_trace_login',
+    group: 'ops_astro_trace',
+    inherit: false,
+    port: 5432,
+  },
 ];
 
 type Environment = Readonly<Record<string, string | undefined>>;

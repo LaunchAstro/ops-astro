@@ -53,7 +53,8 @@ const COMMAND: Readonly<Record<EffectStep, string>> = {
 /** What the provider answered for the effect, as the register keeps it. */
 export interface EffectAnswer {
   readonly revision: string;
-  readonly deploymentId: string;
+  /** Absent only for a publish accepted before its deployment was found (not published yet). */
+  readonly deploymentId?: string;
   /** The publish's idempotency key at the provider. */
   readonly dispatchToken?: string;
   /** When the runner first took the revert up: its interval is timed from here. */
@@ -71,7 +72,20 @@ export function correctionEffectId(correctionId: string, step: EffectStep): stri
   return effectOperationId(`${correctionId}.${step}`);
 }
 
+/** A registered revert: always with its deployment, found before it was registered. */
+export type RegisteredRevert = RegisteredEffect & { readonly deploymentId: string };
+
 /** Did the step's effect happen? The register's answer, or nothing. */
+export async function readCorrectionEffect(
+  tx: TenantQuery,
+  correction: Pick<LiveCorrection, 'id' | 'taskId'>,
+  step: 'revert',
+): Promise<RegisteredRevert | undefined>;
+export async function readCorrectionEffect(
+  tx: TenantQuery,
+  correction: Pick<LiveCorrection, 'id' | 'taskId'>,
+  step: EffectStep,
+): Promise<RegisteredEffect | undefined>;
 export async function readCorrectionEffect(
   tx: TenantQuery,
   correction: Pick<LiveCorrection, 'id' | 'taskId'>,
@@ -93,14 +107,14 @@ export async function readCorrectionEffect(
   const detail = rows[0]?.detail;
   const revision = text(detail?.['revision']);
   const deploymentId = text(detail?.['deploymentId']);
-  if (revision === undefined || deploymentId === undefined) return undefined;
+  if (revision === undefined || (deploymentId === undefined && step === 'revert')) return undefined;
   const token = text(detail?.['dispatchToken']);
   const decidedAt = text(detail?.['decidedAt']);
   const occurrence = occurrenceFrom(detail?.['occurrence']);
   return {
     operationId,
     revision,
-    deploymentId,
+    ...(deploymentId === undefined ? {} : { deploymentId }),
     ...(token === undefined ? {} : { dispatchToken: token }),
     ...(decidedAt === undefined ? {} : { decidedAt }),
     ...(occurrence === undefined ? {} : { occurrence }),
@@ -121,7 +135,7 @@ export function acceptedOf(
   return {
     state: 'accepted',
     revision: effect.revision,
-    deploymentId: effect.deploymentId,
+    ...(effect.deploymentId === undefined ? {} : { deploymentId: effect.deploymentId }),
     liveUrl: correction.pageUrl,
     dispatchToken: sent,
     occurrence: effect.occurrence,

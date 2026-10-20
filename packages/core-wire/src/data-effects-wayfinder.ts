@@ -13,6 +13,7 @@ type WayfinderCommand = Extract<
   | 'map.revise'
   | 'map.view'
   | 'map.frontier'
+  | 'map.list'
   | 'map.chart'
   | 'task.set_blocking'
   | 'task.claim'
@@ -44,6 +45,7 @@ export const WAYFINDER_EFFECTS: { readonly [Name in WayfinderCommand]: DataEffec
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
   'map.view': READ,
   'map.frontier': READ,
+  'map.list': READ,
   // WF-2: a chart files the map, its tickets, their links and its first version.
   'map.chart': writing(MAP_VERSION.writes.concat(client('record_links'))),
   'task.set_blocking': writing(MAP_RAISE.writes.concat(client('record_links'))),

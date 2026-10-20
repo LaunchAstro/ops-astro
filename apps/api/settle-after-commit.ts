@@ -28,9 +28,24 @@ export interface AfterCommit {
 
 /**
  * Settle what the committed act `name` owes, and answer its result: a reset
- * whose provider step is done here says so (`providerStep: 'done'`).
+ * whose provider step is done here says so (`providerStep: 'done'`). The act
+ * has committed, so a throw here answers its result too, the steps owed.
  */
 export async function settleAfterCommit<R extends object>(
+  options: AfterCommit,
+  businessId: BusinessId,
+  name: string,
+  result: R,
+): Promise<R> {
+  try {
+    return await settle(options, businessId, name, result);
+  } catch {
+    console.error(`settle after commit: ${name}'s provider steps stay owed for the endings loop`);
+    return result;
+  }
+}
+
+async function settle<R extends object>(
   options: AfterCommit,
   businessId: BusinessId,
   name: string,

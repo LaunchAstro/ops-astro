@@ -5,9 +5,12 @@
 // (`${PUBLIC_PREFIX}<business>/legal/<document>`) and never through the
 // session's client, so no bearer goes with it.
 //
+// An evidence link (`legalVersionPath`) pins a version and its digest in the
+// query, and the page asks the public read for that version, not the latest.
 // The API answers a missing business, an unpublished version, the breach
-// runbook and a name that is no document with one 404, and the page draws
-// them as one "not published" state that says nothing about which it was.
+// runbook, a name that is no document and a pin naming no published words
+// with one 404, and the page draws them as one "not published" state that
+// says nothing about which it was.
 // The body is drawn as text paragraphs, split on blank lines, never as markup.
 
 import { useEffect, useState, type ReactElement } from 'react';
@@ -33,13 +36,26 @@ type Answer = 'reading' | 'not-published' | 'failed' | Published;
 export interface LegalScreenProps {
   readonly business: string;
   readonly document: string;
+  /** The address's `?version=&digest=` pin, or nothing for the latest publication. */
+  readonly query: string;
   readonly apiOrigin: string;
   /** Reads a public address: the open route's fetch, handed in by the registry. */
   readonly read: (address: string) => Promise<Response>;
 }
 
+/** The pin of an evidence link's query, as the public read takes it, or nothing. */
+function pinOf(query: string): string {
+  const asked = new URLSearchParams(query);
+  const pin = new URLSearchParams();
+  for (const name of ['version', 'digest']) {
+    const value = asked.get(name);
+    if (value !== null) pin.set(name, value);
+  }
+  return pin.size === 0 ? '' : `?${pin.toString()}`;
+}
+
 async function readPublished(props: LegalScreenProps): Promise<Answer> {
-  const address = `${props.apiOrigin}${PUBLIC_PREFIX}${encodeURIComponent(props.business)}/legal/${encodeURIComponent(props.document)}`;
+  const address = `${props.apiOrigin}${PUBLIC_PREFIX}${encodeURIComponent(props.business)}/legal/${encodeURIComponent(props.document)}${pinOf(props.query)}`;
   try {
     const response = await props.read(address);
     if (response.status === 404) return 'not-published';
@@ -56,17 +72,17 @@ async function readPublished(props: LegalScreenProps): Promise<Answer> {
 export function LegalScreen(props: LegalScreenProps): ReactElement {
   const [answer, setAnswer] = useState<Answer>('reading');
   const title = PUBLIC_DOCUMENTS.find(([name]) => name === props.document)?.[1];
-  const { business, document, apiOrigin, read } = props;
+  const { business, document, query, apiOrigin, read } = props;
   useEffect(() => {
     let current = true;
     void (async () => {
-      const next = await readPublished({ business, document, apiOrigin, read });
+      const next = await readPublished({ business, document, query, apiOrigin, read });
       if (current) setAnswer(next);
     })();
     return () => {
       current = false;
     };
-  }, [business, document, apiOrigin, read]);
+  }, [business, document, query, apiOrigin, read]);
 
   return (
     <div data-screen="legal">

@@ -76,7 +76,7 @@ check() {
 #     self range lit  exit  must say          label
 check 0 0 0        0  ""                 "all clean: the push proceeds"
 check 0 0 1        1  "contamination"    "literal 1, a hit: refused, and says why"
-check 0 0 2        0  "did not run"      "literal 2, no private list: proceeds, and says the sweep did not run"
+check 0 0 2        1  "HUB_GATE_TERMS"   "literal 2, no private list: refused, and names the setting"
 check 0 0 3        1  "broken"           "literal 3, gate broken: refused, and says the gate is broken"
 check 0 1 0        1  "contamination"    "range 1, a hit in the outgoing commits: refused"
 check 0 3 0        1  "broken"           "range 3, gate broken: refused"
@@ -203,6 +203,16 @@ proof_case pre-push-cleanup-keeps-files-beside-a-spaced-tmpdir \
   "the hook's cleanup keeps unrelated files when TMPDIR holds a space, and the scan still runs"
 proof_case sweep-refuses-denied-messages-and-symlinked-paths \
   "a denied commit message under any display encoding, and a denied path through a symlinked folder, are refused"
+proof_case pre-push-refuses-without-private-list \
+  "a push without the private list is refused, and one with it runs the literal sweep"
+proof_case pre-push-first-push-scans-unpassed-commits \
+  "a first push scans the commits this machine's gate has not passed, and refuses a key in them"
+proof_case pre-push-first-push-passed-record-covers-history \
+  "a passed commit vouches for its history only under the scanners and rules that judged it"
+proof_case pre-push-first-push-fingerprint-covers-scan-inputs \
+  "a passed commit vouches for a later push only under the same scan inputs"
+proof_case hooks-refuse-when-not-installed \
+  "a checkout without installed hooks refuses to push, whatever commit it is on"
 
 stdin_case "a later push scans only what the remote does not have" \
   "refs/heads/main aaaaaaa2 refs/heads/main bbbbbbb1" \

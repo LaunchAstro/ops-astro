@@ -12,6 +12,7 @@ import {
   leadingVerb,
   splitStatements,
 } from '../../packages/core-records/src/tenancy/statements.ts';
+import { open } from '../../packages/core-records/src/tenancy/database.ts';
 
 describe('splitStatements', () => {
   it('splits on the semicolons that end statements', () => {
@@ -240,5 +241,30 @@ describe('the log', () => {
     log.record('runtime', 'commit');
     expect(log.schemaChanging()).toStrictEqual([]);
     expect(classify('select 1').map((s) => s.kind)).toStrictEqual(['data']);
+  });
+});
+
+const nowhere = 'postgres://nobody@127.0.0.1:1/never';
+
+/** `times` statements through the connection's driver hook, as its traffic would. */
+function sent(sql: ReturnType<typeof open>['sql'], times: number): void {
+  const debug = sql.options.debug as unknown as (connection: number, query: string) => void;
+  for (let at = 0; at < times; at += 1) debug(1, `select $1::int -- ${String(at)}`);
+}
+
+describe('the log a connection keeps', () => {
+  it('keeps a bounded history of the newest statements when no log is asked for', async () => {
+    const { sql, log } = open(nowhere, {});
+    sent(sql, 100_000);
+    expect(log.entries.length).toBeLessThanOrEqual(2_000);
+    expect(log.entries.at(-1)?.text).toBe('select $1::int -- 99999');
+    await sql.end();
+  });
+
+  it('keeps every statement when the caller asks for a full log', async () => {
+    const { sql, log } = open(nowhere, { log: createStatementLog() });
+    sent(sql, 5_000);
+    expect(log.entries).toHaveLength(5_000);
+    await sql.end();
   });
 });

@@ -2,28 +2,28 @@
 //
 // Team conversations (C71-D; C71-G builds its groups on the same rows).
 //
-// A conversation is a record of its own type, `team_conversation`: its kind,
-// a group's name, who started it and, for a direct conversation, the pair it
-// is between. Its messages are comments on the one comment record
-// (`tasks/comments.ts`), anchored by the comment's `conversation` field in
-// place of a task, so no other table or store holds a message body (RA-12).
-// Who is in it is `team_conversation_members` (20261006074341): each member from
-// `joined_at` to `left_at`, with their own read marker.
+// A conversation is a record of its own type, `team_conversation`: its kind, a group's name, who
+// started it and, for a direct conversation, the pair it is between. Its messages are comments on
+// the one comment record (`tasks/comments.ts`), anchored by the comment's `conversation` field in
+// place of a task, so no other table or store holds a message body (RA-12). Who is in it is
+// `team_conversation_members` (20261006074341): each member from `joined_at` to `left_at`, with
+// their own read marker.
 //
-// **Membership is the filter, inside every query.** A conversation is read,
-// listed and counted only through the reader's own member row, so another
-// person's conversation, or another business's, is not there to be answered.
-// A member reads nothing written before they joined or after they left, and
-// nothing once they may no longer chat (`chatsNow`, asked in the same query). The
-// owner and administrators hold no way round it: a conversation is private to
-// its members (CAPABILITY-SLICES, team chat's audience, 27 September 2026).
+// **Membership is the filter, inside every query.** A conversation is read, listed and counted only
+// through the reader's own member row, so another person's conversation, or another business's, is
+// not there to be answered. A member reads nothing written before they joined or after they left,
+// and nothing once they may no longer chat (`chatsNow`, asked in the same query). The owner and
+// administrators hold no way round it: a conversation is private to its members (CAPABILITY-SLICES,
+// team chat's audience, 27 September 2026).
 
 import { randomUUID } from 'node:crypto';
+import { checkAuthority, type Subject } from '../authority/grants.ts';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { chatsNow } from '../inbox/access.ts';
 import type { SpineField } from '../tasks/spine.ts';
 import { shownAt, type ReadPosition } from './read-position.ts';
+import { conversationClock, messageTypeOf } from './conversation-clock.ts';
 
 /** The conversation type's key, beside `task_comment`. */
 export const CONVERSATION_TYPE_KEY = 'team_conversation';
@@ -69,8 +69,8 @@ export async function readConversationTypes(
 /** The server's now, to the millisecond a comment's `posted_at` carries. */
 const NOW_MS = `date_trunc('milliseconds', now())`;
 
-/** The wall clock to the millisecond, read after the conversation's lock is held. */
-const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
+/** The conversation's clock, read after its lock is held. */
+const CLOCK_MS = conversationClock('$1', '$2::uuid', messageTypeOf('$1'));
 
 /**
  * Serialise one conversation's message writes and read-marker moves until the
@@ -132,7 +132,7 @@ const POSITION = `c.ts_1 + interval '1 microsecond' * (select count(*) from publ
      and (s.created_at, s.id) <= (c.created_at, c.id))`;
 
 /**
- * Move a member's own read marker to `upTo`, never back and never past now; false when the
+ * Move a member's own read marker to `upTo`, never back and never past the conversation's now; false when the
  * person is not a current member. A marker is a position: the millisecond plus how many of
  * its messages were seen; `now` has seen all, counted before the clock is read, and a read
  * position the ones its reading showed (never more than exist; only the first if past now).
@@ -165,6 +165,13 @@ export async function moveReadMarker(
   return moved.length > 0;
 }
 
+/** A time as ISO text to the millisecond. */
+const iso = (time: string): string =>
+  `to_char(${time} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+
+/** The reader's marker. */
+const LAST_READ = `${iso('m.last_read_at')} as "lastRead"`;
+
 /** The messages a member may read: written while they were a member, and live. */
 const MEMBER_READS = `
   c.business_id = m.business_id and c.record_type_id = $2 and c.uuid_4 = m.conversation_id
@@ -184,6 +191,8 @@ export interface ConversationSummary {
   readonly lastMessageAt: string | null;
   /** Others' messages after the reader's marker. */
   readonly unread: number;
+  /** A group the reader may manage (`chat-groups.ts`), by the caller's own subjects' grants. */
+  readonly canManage: boolean;
 }
 
 /** The reader's conversations, newest message first, each with its unread derived now. */
@@ -191,27 +200,25 @@ export async function listConversations(
   tx: TenantQuery,
   types: ConversationTypes,
   personId: string,
+  subjects: readonly Subject[],
 ): Promise<readonly ConversationSummary[]> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly kind: ConversationKind;
-    readonly name: string | null;
-    readonly members: readonly string[];
-    readonly joined_at: Date | null;
-    readonly last_read_at: Date | null;
-    readonly last_message_at: Date | null;
-    readonly unread: string;
-  }>(
-    `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
+  const manager = await checkAuthority(tx, subjects, {
+    collection: 'chat',
+    action: 'manage',
+    scope: { kind: 'business', id: null },
+  });
+  return await tx.query<ConversationSummary>(
+    `select m.conversation_id as "conversationId", r.txt_1 as kind, ${LAST_READ},
             case when m.left_at is null then r.txt_2 end as name,
-            case when m.left_at is null then m.joined_at end as joined_at,
+            case when m.left_at is null then ${iso('m.joined_at')} end as "joinedAt",
+            r.txt_1 = 'group' and m.left_at is null and (r.uuid_1 = m.person_id or $5) as "canManage",
             case when m.left_at is null then array(
               select o.person_id::text from public.team_conversation_members o
                where o.business_id = m.business_id and o.conversation_id = m.conversation_id
                  and o.left_at is null order by o.joined_at, o.person_id)
             else '{}' end as members,
-            (select max(c.ts_1) from public.records c where ${MEMBER_READS}) as last_message_at,
-            (select count(*) from public.records c
+            ${iso(`(select max(c.ts_1) from public.records c where ${MEMBER_READS})`)} as "lastMessageAt",
+            (select count(*)::int from public.records c
                join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
               where ${MEMBER_READS} and a.person_id is distinct from m.person_id
                 and (m.last_read_at is null or ${POSITION} > m.last_read_at)) as unread
@@ -219,19 +226,9 @@ export async function listConversations(
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
         and r.record_type_id = $3 and r.deleted_at is null
       where m.business_id = $1 and m.person_id = $4 and ${chatsNow('m.person_id')}
-      order by last_message_at desc nulls last, m.conversation_id`,
-    [tx.businessId, types.commentTypeId, types.conversationTypeId, personId],
+      order by "lastMessageAt" desc nulls last, m.conversation_id`,
+    [tx.businessId, types.commentTypeId, types.conversationTypeId, personId, manager.ok],
   );
-  return rows.map((row) => ({
-    conversationId: row.id,
-    kind: row.kind,
-    name: row.name,
-    members: row.members,
-    joinedAt: row.joined_at?.toISOString() ?? null,
-    lastRead: row.last_read_at?.toISOString() ?? null,
-    lastMessageAt: row.last_message_at?.toISOString() ?? null,
-    unread: Number(row.unread),
-  }));
 }
 
 export interface ConversationMessage {
@@ -245,7 +242,7 @@ export interface ConversationMessage {
 }
 
 /** The reader's member row with each message, or none: one statement, so a revocation serves neither. */
-type MemberMessage = { readonly last_read_at: Date | null } & (
+type MemberMessage = { readonly lastRead: string | null } & (
   | { readonly id: null }
   | (Omit<ConversationMessage, 'at'> & { readonly at: Date; readonly tied: string })
 );
@@ -265,7 +262,7 @@ export async function readConversation(
 > {
   if (!isUuid(conversationId)) return undefined;
   const rows = await tx.query<MemberMessage>(
-    `select m.last_read_at, c.id, p.id as "authorId", p.display_name as author, c.ts_1 as at,
+    `select ${LAST_READ}, c.id, p.id as "authorId", p.display_name as author, c.ts_1 as at,
             count(*) over (partition by c.ts_1) as tied, c.data ->> 'body' as body
        from public.team_conversation_members m
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
@@ -281,7 +278,7 @@ export async function readConversation(
   );
   if (rows[0] === undefined) return undefined;
   return {
-    lastRead: rows[0].last_read_at?.toISOString() ?? null,
+    lastRead: rows[0].lastRead,
     messages: rows.flatMap((row) =>
       row.id === null
         ? []

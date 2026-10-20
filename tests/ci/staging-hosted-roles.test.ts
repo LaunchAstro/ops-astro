@@ -11,6 +11,7 @@
 // around each describe, and its cases run in order.
 
 import { randomBytes } from 'node:crypto';
+import postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFreshDatabase,
@@ -21,7 +22,6 @@ import {
   connectAsAdmin,
   connectObserved,
   type AdminConnection,
-  type ObservedPool,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   applyMigrations,
@@ -69,7 +69,7 @@ async function server<T>(work: (admin: AdminConnection) => Promise<T>): Promise<
 }
 
 const ROLES = [...SERVICES, ...LOOK_ALIKES];
-const held: ObservedPool[] = [];
+const held: { close(): Promise<void> }[] = [];
 const created: string[] = [];
 let db: FreshDatabase | undefined;
 
@@ -127,12 +127,39 @@ async function fresh(part: string): Promise<FreshDatabase> {
   return db;
 }
 
-/** A session held open on the database as `role`, and its backend's pid. */
-async function holdAs(on: FreshDatabase, role: string): Promise<number> {
+/**
+ * A session held open on the database as `role`, and its backend's pid. With
+ * `inTransaction`, it begins a transaction, runs those statements and holds
+ * it open, as a session mid-work does.
+ */
+async function holdAs(
+  on: FreshDatabase,
+  role: string,
+  inTransaction?: readonly string[],
+): Promise<number> {
   const url = new URL(serverUrl ?? '');
   url.pathname = `/${on.name}`;
   url.username = encodeURIComponent(role);
   url.password = PASSWORD;
+  if (inTransaction !== undefined) {
+    const sql = postgres(url.toString(), { max: 1, onnotice: () => {} });
+    const session = await sql.reserve();
+    held.push({
+      close: async () => {
+        session.release();
+        await sql.end({ timeout: 1 });
+      },
+    });
+    const [row] = await session.unsafe<{ readonly pid: number }[]>(
+      'select pg_backend_pid() as pid',
+    );
+    await session.unsafe('begin');
+    for (const statement of inTransaction)
+      // oxlint-disable-next-line no-await-in-loop
+      await session.unsafe(statement);
+    if (row === undefined) throw new Error(`no pid for the session held as ${role}`);
+    return row.pid;
+  }
   const pool = connectObserved(url.toString(), { source: `held-${role}` });
   held.push(pool);
   const [row] = await pool.betweenTransactions<{ readonly pid: number }>(
@@ -172,13 +199,13 @@ describe.skipIf(serverUrl === undefined)('migrate beside hosted Supabase', () =>
   }, 120_000);
 
   it.each(LOOK_ALIKES)(
-    'still refuses %s beside the platform services, naming only it',
+    'still refuses %s mid-transaction beside the platform services, naming only it',
     async (role) => {
       const on = await fresh('hostedno');
       for (const service of SERVICES)
         // oxlint-disable-next-line no-await-in-loop
         await holdAs(on, service);
-      const pid = await holdAs(on, role);
+      const pid = await holdAs(on, role, ['select 1']);
 
       const outcome = await applyMigrations(on.admin, [
         ...onDisk,
@@ -192,6 +219,34 @@ describe.skipIf(serverUrl === undefined)('migrate beside hosted Supabase', () =>
     },
     120_000,
   );
+});
+
+describe.skipIf(serverUrl === undefined)('locks beside hosted Supabase', () => {
+  withHostedRoles();
+
+  // #1984: the platform's own logins never stop and their schemas are never
+  // locked. One holding a lock in a schema of its own, mid-transaction,
+  // neither refuses the run nor makes it wait.
+  it('applies without waiting beside a platform service holding a lock outside ops and public', async () => {
+    const on = await fresh('hostedlock');
+    await on.admin.execute('create schema hosted_service');
+    await on.admin.execute('create table hosted_service.held (id int)');
+    await on.admin.execute('grant usage on schema hosted_service to supabase_auth_admin');
+    await on.admin.execute('grant all on hosted_service.held to supabase_auth_admin');
+    await holdAs(on, 'supabase_auth_admin', [
+      'lock table hosted_service.held in access exclusive mode',
+    ]);
+
+    const started = performance.now();
+    const outcome = await applyMigrations(
+      on.admin,
+      [...onDisk, syntheticMigration('9001_hosted_lock', 'select 1')],
+      { lockAttempts: 1, lockTimeoutMs: 2000 },
+    );
+
+    expect(outcome.applied).toStrictEqual(['9001_hosted_lock']);
+    expect(performance.now() - started).toBeLessThan(2000);
+  }, 120_000);
 });
 
 describe.skipIf(serverUrl === undefined)('made-up-only beside hosted Supabase', () => {

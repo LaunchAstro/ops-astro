@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "A ticket that leaves its granted map after the board rows are read gets none of its later board details from any later statement"
+}

@@ -127,6 +127,12 @@ const bodies = (claim: Claim): Record<string, Body> => ({
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
   'task.create': () => ({ fields: { title: 'made-up' } }),
   'onboarding.step_result': (record) => ({ recordId: record, outcome: 'done', result: 'made-up' }),
+  'task.take_launch': (record) => ({ launchId: record }),
+});
+
+const withStop = (claim: Claim): Record<string, Body> => ({
+  ...bodies(claim),
+  'run.end': () => ({ ...claim.lease, endCode: 'TOOL_REFUSED' }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
@@ -169,7 +175,7 @@ export function delegationCrossing(): void {
     expect(stepsBefore).toContainEqual(
       expect.objectContaining({ step_key: 'welcome-email', state: 'ready' }),
     );
-    const target = bodies({ lease: foreignLease, taskId: foreignTaskId, runId: foreignRunId });
+    const target = withStop({ lease: foreignLease, taskId: foreignTaskId, runId: foreignRunId });
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
     // The lease and the run: the delegation's one task is not the other person's. The
     // pickup: one live delegation per agent and purpose, so a second task never joins
@@ -181,9 +187,13 @@ export function delegationCrossing(): void {
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
+      // The worker's own stop (#1623 R1), asked of the lease; not in the control, which it would end.
+      'run.end': 'DELEGATION_OUT_OF_PURPOSE',
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
       'onboarding.step_result': 'DELEGATION_OUT_OF_PURPOSE',
+      // A take presents no credential: under one it is refused before a launch is read.
+      'task.take_launch': 'SCOPE_NOT_GRANTED',
     };
     for (const row of agentRows) {
       // A step result's crossing is the other person's ready agent step.

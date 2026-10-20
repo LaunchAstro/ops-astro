@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A top-up command with no amount or currency is refused and the run keeps waiting; the commands and the first-approval pairing are judged against real rows."
+}

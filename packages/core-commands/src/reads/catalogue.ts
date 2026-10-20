@@ -20,6 +20,7 @@ import {
   isUuid,
   listTags,
   ownAgents,
+  heldScopes,
   readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -34,7 +35,8 @@ import {
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { historyEventOperand } from './task-history.ts';
-import { readMapFrontier, readMapView } from './maps.ts';
+import { readMapFrontier, readMapList, readMapView } from './maps.ts';
+import { memberFacts } from './ticket-map.ts';
 import { boardAdmission, boardOf, liveTask, parseBoardScope } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -60,11 +62,14 @@ import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
-import { readHarnessTrigger } from './harness-trigger.ts';
-import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
-import { readAutomationRegistry } from './automations.ts';
+import { listInvitations } from './invitations.ts';
+import { CORRECTION_READS } from './live-correction.ts';
+import {
+  parseHistoryOperands,
+  readAutomationHistory,
+  readAutomationRegistry,
+} from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
-import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
 import { readChatConversations, readChatMessages } from './chat.ts';
@@ -195,6 +200,23 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return answer ?? (await notAMap(tx, recordId));
     },
   },
+  // No collection is asked at the door, as for `task.search`: a reader holding
+  // one map's grant lists that map. So the read refuses a caller holding no
+  // grant itself, and a map never reaches a client surface (WF-1).
+  'map.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine }) {
+      if (!isInternalReader(session.roleKey)) return refuseNotFound();
+      const subjects = subjectsOf(session);
+      const held = await heldScopes(tx, subjects, { collection: 'task', action: 'read' });
+      if (held.length === 0) return NO_GRANT_AT_ALL;
+      return await readMapList(tx, spine.taskTypeId, subjects);
+    },
+  },
   // AW-03. No collection is asked at the door: the owner reads their own
   // without the read-any grant, so the rule is the read's own
   // (`reads/conversation.ts`), and a caller holding nothing is refused there.
@@ -301,11 +323,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
-      // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view carry neither, at any detail level.
-      const shown = agent
-        ? task
-        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      // The Client field's facts (MP-4-8) and the ticket's map go to a member
+      // alone: an agent's detail and the shared view carry neither, at any
+      // detail level.
+      const shown = agent ? task : { ...task, ...(await memberFacts(tx, session, spine, task.id)) };
       if (operands.detail !== undefined) {
         const blockers = await readerBlockers(tx, session, recordId);
         return {
@@ -334,18 +355,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, session, operands, { spine }) {
       const admitted = await boardAdmission(tx, session, operands, spine);
       if ('refusal' in admitted) return admitted.refusal;
-      const { scope } = admitted;
-      const { tasks, changedAt } = await boardOf(
+      const { tasks, changedAt, wholeBusiness } = await boardOf(
         tx,
         session,
         spine.taskTypeId,
         operands,
-        scope,
         spine,
       );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
-      // narrower collection-wide rule exists. A member reading through record
+      // narrower collection-wide rule exists; that grant is judged in the
+      // statement that reads the rows (`wholeBusiness`). A member reading through record
       // grants is a client login under owner answer 22 and is told no count
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
@@ -363,7 +383,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const viewer = session.personId;
       const owed = await countOwed(tx, viewer, subjectsOf(session));
       const myAgents = await readerAgents(tx, viewer);
-      return scope.business
+      return wholeBusiness
         ? { ok: true, tasks, changedAt, viewer, owed, myAgents, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed, myAgents };
     },
@@ -779,22 +799,52 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, clients };
     },
   },
-  // C55. The business's own operations, so no subject record; it asks
-  // `read` on `operations`, which no agent holds. Its unattended items are
-  // `inbox.unattended`'s, read for the same caller.
-  'operations.read': {
+  // C39-T. The business's invitations, under `access:share` on the business,
+  // which no agent holds. No subject record, as for `access.read`.
+  'invitation.list': {
     identifiers: [],
     parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx, session) => ({ ok: true, ...(await readOperations(tx, session.personId)) }),
+    serve: async (tx) => await listInvitations(tx),
+  },
+  // C55. The business's own operations, so no subject record; it asks
+  // `read` on `operations`, which no agent holds. Its unattended items are
+  // `inbox.unattended`'s, read for the same caller.
+  // An evidence link pins the breach runbook's version and digest, both or neither.
+  'operations.read': {
+    identifiers: [],
+    parse(body) {
+      const { runbookVersion: version, runbookDigest: digest } = body;
+      if (version === undefined && digest === undefined) return parsed({});
+      if (typeof version !== 'string') {
+        return rejected('runbookVersion', 'Send runbookVersion with runbookDigest.');
+      }
+      if (typeof digest !== 'string') {
+        return rejected('runbookDigest', 'Send runbookDigest with runbookVersion.');
+      }
+      return parsed({ runbookVersion: version, runbookDigest: digest });
+    },
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands) => ({
+      ok: true,
+      ...(await readOperations(
+        tx,
+        session.personId,
+        operands.runbookVersion === undefined || operands.runbookDigest === undefined
+          ? undefined
+          : { version: operands.runbookVersion, digest: operands.runbookDigest },
+      )),
+    }),
   },
   // C81's breach drill. It asks `manage` on `privacy`, the key the incident is
   // recorded under, which no agent holds. The incident is looked up in the
   // business's own rows, so another business's id is NOT_FOUND like a made-up one.
   'privacy.draft_breach_notices': {
-    identifiers: [],
+    identifiers: ['incidentId'],
     parse(body) {
       const operands = parseBreachNotices(body);
       return isCommandRefusal(operands) ? { ok: false, refusal: operands } : parsed(operands);
@@ -894,34 +944,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
-  // AW-12: the harness test's result on one run. No subject record and no
-  // spine: the run names its task, and the read filters it by the caller's
-  // task `read` inside its statement (`reads/harness-trigger.ts`), so the
-  // door asks for any grant and the read refuses the rest itself.
-  'harness.read': {
-    identifiers: [],
-    parse: ({ runId }) =>
-      typeof runId === 'string'
-        ? parsed({ runId })
-        : rejected('runId', 'Send runId as the run’s identifier.'),
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    async serve(tx, session, { runId }) {
-      const harness = await readHarnessTrigger(tx, session, runId);
-      return 'refused' in harness ? harness : { ok: true, harness };
-    },
-  },
-  // C80: a correction's decision; `run:write` at its party, asked inside the query.
-  'live_correction.read': {
-    identifiers: ['correctionId'],
-    parse: parseCorrectionRead,
-    spine: false,
-    authority: 'holds-any-grant',
-    outsiderNotFound: false,
-    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
-    serve: serveCorrectionRead,
-  },
+  // C80 and #1694: a correction's decision, the list and a correction's receipts.
+  ...CORRECTION_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {
@@ -931,6 +955,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => await readAutomationRegistry(tx),
+  },
+  // One activation's history (#1741), asked as the registry is. Another
+  // business's activation is NOT_FOUND on `activationId` like a made-up one.
+  'automation.history': {
+    identifiers: ['activationId'],
+    parse: parseHistoryOperands,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, _session, operands) => await readAutomationHistory(tx, operands),
   },
 };
 

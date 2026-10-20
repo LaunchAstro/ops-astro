@@ -64,8 +64,14 @@ export interface Harness {
     credential?: string,
   ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /** Bind a client's own about page, for C80's request; the page's address. */
+  bindClientSite(partyId: string): Promise<string>;
   probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
   positiveBody(declaration: CommandDeclaration, author?: unknown): Promise<Prepared>;
+  /** The same recipes, each fresh task they write on made by `makeTask` (a ticket, say). */
+  positiveBodyOn(
+    makeTask: (title: string) => Promise<Task>,
+  ): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared>;
   approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
   reserve(task: Task, purpose: string): Promise<Answer>;
   activeRoleKeys(): Promise<readonly string[]>;

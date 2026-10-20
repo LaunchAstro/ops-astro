@@ -15,6 +15,8 @@
 // Clients panel has a tab the head is a link the application follows. The
 // reader's own work is a name. A task row goes to the task's page; Shift
 // opens it in the dock's Task panel beside the rest, where there is a dock.
+// A chat mention's row opens the Team panel by the same law. The panel takes
+// no conversation by address yet, so it opens on the first unread one (R36).
 
 import type { ReactElement } from 'react';
 import {
@@ -71,6 +73,9 @@ function groupsByEntry(items: Inbox['items']): (item: { readonly id: string }) =
 }
 
 const taskHref = (key: string): string => pathTo('agency:task-detail', { key });
+/** A mention's door: Team, opened on the conversation it was made in. */
+const conversationAt = (conversationId: string): string =>
+  `${pathTo('agency:team')}?conversation=${encodeURIComponent(conversationId)}`;
 
 interface Inbox {
   readonly items: InboxReadResult['inbox'];
@@ -111,10 +116,13 @@ export function InboxScreen(props: {
       taskPanel.open(key, 'open', undefined, true);
     } else navigate(taskHref(key));
   };
-  const onOpenClient = (clientId: string, how: OpenHow): void => {
-    const place = clientsAt(clientId);
-    if (openPanel?.('clients', how.beside, place) !== true) navigate(place);
+  // A client or a conversation opens in its dock panel, or at its address without one.
+  const openAt = (panel: 'clients' | 'team', place: string, how: OpenHow): void => {
+    if (openPanel?.(panel, how.beside, place) !== true) navigate(place);
   };
+  const onOpenClient = (id: string, how: OpenHow): void => openAt('clients', clientsAt(id), how);
+  const onOpenConversation = (id: string, how: OpenHow): void =>
+    openAt('team', conversationAt(id), how);
   // A live re-read keeps the list drawn, so the tab the person chose holds (C4 live-sync 4).
   return (
     <RecordState state={state} subject="inbox" onRetry={reload} keep>
@@ -126,6 +134,8 @@ export function InboxScreen(props: {
           taskHref={taskHref}
           onOpenTask={onOpenTask}
           onOpenClient={onOpenClient}
+          conversationHref={conversationAt}
+          onOpenConversation={onOpenConversation}
         />
       )}
     </RecordState>

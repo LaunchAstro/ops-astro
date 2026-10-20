@@ -2,29 +2,28 @@
 //
 // What a caller sends to read, and what comes back.
 //
-// A read is not a small write. It carries no `operation_id`, because there is
-// nothing to replay, and no `expected_revision`, because there is nothing to be
-// stale against. Giving it either would have made the envelope's two strongest
-// rules -- every mutation is identified, every write names the revision it is
-// writing against -- into things some operations have and some do not, which is
-// how a rule becomes a convention.
+// A read is not a small write. It carries no `operation_id`, because there is nothing to
+// replay, and no `expected_revision`, because there is nothing to be stale against. Giving it
+// either would have made the envelope's two strongest rules -- every mutation is identified,
+// every write names the revision it is writing against -- into things some operations have
+// and some do not, which is how a rule becomes a convention.
 //
-// What a read does share with a write is everything about who is asking: the
-// business comes from the path and is verified server-side, the actor from the
-// resolved login, and the grant check is the same `checkAuthority` the commands
-// use. A denied read says `SCOPE_NOT_GRANTED`; it never comes back as an empty
-// list, because empty and denied are different answers.
+// What a read does share with a write is everything about who is asking: the business comes
+// from the path and is verified server-side, the actor from the resolved login, and the grant
+// check is the same `checkAuthority` the commands use. A denied read says `SCOPE_NOT_GRANTED`;
+// it never comes back as an empty list, because empty and denied are different answers.
 //
 // A read does write an audit event. See `dispatch.ts`.
 //
-// What a read *has* gained is the commands' D06 refusal. A payload naming a
-// fact the server owns -- `actor_id`, `business_id`, `updated_at` and the rest
-// of `prepare.ts`'s `SYSTEM_OWNED_FIELDS` -- is `FIELD_NOT_WRITABLE`, naming
-// the keys. Ignoring it is the answer the accepted ledger rules out: a client
-// that believed it had set `actor_id` would get a `200` and no correction, so
-// the bug would live in the client.
+// What a read *has* gained is the commands' D06 refusal. A payload naming a fact the server
+// owns -- `actor_id`, `business_id`, `updated_at` and the rest of `prepare.ts`'s
+// `SYSTEM_OWNED_FIELDS` -- is `FIELD_NOT_WRITABLE`, naming the keys. Ignoring it is the answer
+// the accepted ledger rules out: a client that believed it had set `actor_id` would get a
+// `200` and no correction, so the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { HistoryOperands } from './history-operands.ts';
+import type { CorrectionReadOperands, CorrectionReadResult } from './correction-read-operands.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
@@ -39,7 +38,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
-  LiveCorrectionReadResult,
+  InvitationListResult,
   PersonListResult,
   TagListResult,
   AgentMineResult,
@@ -65,12 +64,12 @@ import type {
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationHistoryResult,
   AutomationRegistryResult,
-  MapViewResult,
-  MapFrontierResult,
+  MapReadResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt } from '../../../core-runtime/src/index.ts';
 import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -91,7 +90,7 @@ export type {
  * serving are typed on these and never on the wire body, so a field a read
  * uses is a field its `parse` checked.
  */
-export interface ReadOperands {
+export interface ReadOperands extends CorrectionReadOperands {
   readonly 'task.read': { readonly recordId: string; readonly historyEventId?: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': ({ readonly board: string | null } | { readonly mode: 'aggregate' }) & {
@@ -181,6 +180,7 @@ export interface ReadOperands {
   readonly 'map.view': { readonly recordId: string };
   /** A map's frontier and fog, from their read models (WF-2). */
   readonly 'map.frontier': { readonly recordId: string };
+  readonly 'map.list': NoOperands;
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -202,8 +202,8 @@ export interface ReadOperands {
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
   readonly 'client.list': NoOperands;
-  /** What needs the operator's eye: privacy incidents first (C55). */
-  readonly 'operations.read': NoOperands;
+  /** What needs the operator's eye (C55), with the runbook a link pins, both or neither. */
+  readonly 'operations.read': Partial<Record<'runbookVersion' | 'runbookDigest', string>>;
   /**
    * The breach drill's notices from the published runbook (C81), for the
    * recipients named. It writes nothing and sends nothing, so it is a read.
@@ -221,12 +221,10 @@ export interface ReadOperands {
   readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
-  /** The run whose harness test result is read (AW-12). */
-  readonly 'harness.read': { readonly runId: string };
-  /** One live correction's decision, read again for its card (C80). */
-  readonly 'live_correction.read': { readonly correctionId: string };
+  readonly 'invitation.list': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
+  readonly 'automation.history': HistoryOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -282,9 +280,9 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | LiveCorrectionReadResult
-  | MapViewResult
-  | MapFrontierResult
+  | CorrectionReadResult
+  | InvitationListResult
+  | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | ChatConversationsResult
   | ChatMessagesResult
@@ -296,5 +294,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading }
-  | AutomationRegistryResult;
+  | AutomationRegistryResult
+  | AutomationHistoryResult;

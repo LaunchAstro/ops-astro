@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Eight companion files describe the parts:
+does not do. Companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
@@ -15,6 +15,11 @@ does not do. Eight companion files describe the parts:
 - [CLI.md](CLI.md): the command line, which calls the same API as the app.
 - [LOCAL-AGENT.md](LOCAL-AGENT.md): the agent side panel on GPT through the owner's
   ChatGPT plan, on the laptop only (`local-gpt`).
+- [OLLAMA.md](OLLAMA.md): the agent side panel on Qwen or Gemma through Ollama
+- [OPENROUTER.md](OPENROUTER.md): the side panel on a paid model through OpenRouter, held against the AI chat budget
+  on the same machine as the API (`ollama`).
+- [LANGFUSE.md](LANGFUSE.md): inspect the existing M5 trace target and stage
+  the no-content exporter without changing running services.
 
 If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
 how a request travels, what to check before restarting anything, which command
@@ -25,7 +30,7 @@ proves what, and what a bug report has to carry.
 If you are new to this checkout, read this section first.
 
 - **Where state lives in the repository.** How the slice is built:
-  `docs/local/` (this file and the seven above). Settled decisions:
+  `docs/local/` (this file and the others above). Settled decisions:
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
@@ -145,9 +150,10 @@ the browser makes only same-origin requests.
 volume, so the data survives.
 
 To upgrade an existing install to a newer head, stop the application first.
-The runner checks for it: with a migration pending and anything else connected
-to the database, it applies nothing and names what is connected. It cannot
-tell a stopped application from an idle one, so the stop below is your step
+The runner checks for it: with a migration pending and any other session
+active, in a transaction or holding a lock, it applies nothing and names
+each one. It cannot tell a stopped application from an idle one, so the stop
+below is your step
 ([DATA.md, "Upgrade"](DATA.md#upgrade)).
 
 1. Stop the API: `kill <pid>` on the process you started with `api:up`, as
@@ -161,8 +167,8 @@ tell a stopped application from an idle one, so the stop below is your step
 A refusal exits 2 and prints each session it found, one per line:
 
 ```
-db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) while 1 other session(s) are connected to this database: ... Nothing was applied. Stop the application (the API and GoTrue) and anything else connected to this database, then run it again.
-db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00
+db-migrate: migrate: refusing to apply 8 pending migration(s) (0024_..., ...) while 1 other session(s) could be using the old schema (active, in a transaction or holding a lock): ... Nothing was applied. The database is still at 0023_delegation_revocation_cause. Stop the application (the API and GoTrue) and anything else working on this database, then run it again.
+db-migrate:   connected: pid 283, login app, application "postgres.js", from 127.0.0.1, since 2026-09-24 16:57:14+00, state idle in transaction, transaction since 2026-09-24 16:58:02+00, holding ExclusiveLock on virtualxid
 ```
 
 Nothing changed. A run is one transaction, so a refusal, at whatever point
@@ -200,7 +206,7 @@ The public content check allows exactly these six by name
 (`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a seventh
 invented login until that login is added here and to that list.
 
-There are two businesses, keys `alpha` and `bravo`. The business selector on
+There are two businesses, keys `alpha` and `bravo`. The business you type on
 the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a
 route. The API resolves who you are and what you may see on the server.
 [DATA.md](DATA.md) names which identities carry which negative case.

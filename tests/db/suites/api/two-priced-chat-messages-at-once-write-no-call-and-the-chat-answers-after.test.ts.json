@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two priced chat messages at once are refused before any call row or lock, and the conversation answers an unpriced model after (#1508 option B)"
+}

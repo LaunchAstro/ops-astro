@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's stop and restore judge the operator and their admission again under their locks: an actor grant is held, a resumed restore refuses a credential revoked since, every live login is banned, and an expired operator makes no ban call"
+}

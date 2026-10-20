@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { checkCandidate, indexFiles, options } from './candidate-snapshot.mjs';
 import { addressRules } from './public-addresses.mjs';
 import { historyReader } from './history-objects.mjs';
+import { branchHistorySelection } from './gate/public-branch.mjs';
 
 // This small public-foundation policy supplements the existing contamination
 // and secret scanners. Hashes avoid publishing excluded names and identities.
@@ -133,7 +134,7 @@ export function scanPublicFiles(entries) {
   return findings;
 }
 
-export function publicHistory(repository, range) {
+export function publicHistory(repository, range, branch) {
   const { git, objects } = historyReader(repository);
   let selection;
   if (range === undefined) selection = ['--branches', '--not', '--remotes'];
@@ -155,6 +156,11 @@ export function publicHistory(repository, range) {
     });
     selection = [commits.join('..')];
   }
+  const chosen = branch
+    ? branchHistorySelection(git, range, branch)
+    : { selection, seen: new Set() };
+  selection = chosen.selection;
+  const seen = chosen.seen;
   const commits = git(['rev-list', ...selection])
     .toString()
     .trim()
@@ -164,7 +170,7 @@ export function publicHistory(repository, range) {
   const files = [];
   const references = [];
   const blobs = new Map();
-  const seen = new Set();
+  const inherited = seen.size;
   const decoder = new TextDecoder('utf-8', { fatal: true });
   for (const sha of commits) {
     // Read the raw commit object, including author, committer and message.
@@ -193,7 +199,7 @@ export function publicHistory(repository, range) {
   }
   const content = objects([...blobs.keys()], 'blob');
   for (const { file, oid } of references) file.bytes = content.get(oid);
-  return { files, commits: commits.length, blobPaths: seen.size };
+  return { files, commits: commits.length, blobPaths: seen.size - inherited };
 }
 
 // Node resolves its own address through symlinks, so the path it was started
@@ -201,12 +207,26 @@ export function publicHistory(repository, range) {
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
     const args = process.argv.slice(2);
+    if (args.length === 1 && args[0] === '--supports-branch') {
+      console.log('branch-v1');
+      process.exit(0);
+    }
     const outgoingAt = args.indexOf('--outgoing');
     const outgoing = outgoingAt !== -1;
     if (outgoing) args.splice(outgoingAt, 1);
-    const opts = options(args, ['repo', 'candidate', 'manifest', 'range']);
+    const opts = options(args, [
+      'repo',
+      'candidate',
+      'manifest',
+      'range',
+      'branch',
+      'fingerprint',
+      'main',
+    ]);
     if (
       (opts.range && outgoing) ||
+      (opts.branch && (opts.range || outgoing || !opts.repo || !opts.fingerprint || !opts.main)) ||
+      (!opts.branch && (opts.fingerprint || opts.main)) ||
       (opts.repo
         ? opts.candidate || opts.manifest
         : !opts.candidate || !opts.manifest || opts.range || outgoing)
@@ -215,7 +235,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         'usage: public-content-check.mjs --repo DIR [--range REF_OR_BASE..HEAD | --outgoing]; or --candidate DIR --manifest EXTERNAL_JSON',
       );
     }
-    const history = opts.range || outgoing ? publicHistory(opts.repo, opts.range) : undefined;
+    const history = opts.branch
+      ? publicHistory(opts.repo, opts.branch, { fingerprint: opts.fingerprint, main: opts.main })
+      : opts.range || outgoing
+        ? publicHistory(opts.repo, opts.range)
+        : undefined;
     const files = history
       ? history.files
       : opts.repo

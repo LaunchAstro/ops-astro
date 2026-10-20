@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "the trace export's login reads and registers only diagnostic-trace copies, never an outbound prompt's, and is refused another business's copies and the client, person and credential tables"
+}

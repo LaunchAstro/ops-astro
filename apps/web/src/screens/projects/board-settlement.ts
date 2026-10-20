@@ -13,10 +13,11 @@ export function assignmentSender(options: {
   readonly onSettled: (refused: string | null) => void;
   readonly reload: () => void;
 }): (row: ProjectRow, fields: AssignmentFields) => void {
-  // Pure isolated row mounts have ephemeral custody; App supplies the durable owner.
+  // Pure isolated row mounts have ephemeral, lenient custody (a row may carry no
+  // revision); App supplies the durable owner, which always needs one.
   const assignment =
     options.assignment ??
-    new AssignmentCustody(options.client, options.client.businessKey, null, true);
+    new AssignmentCustody(options.client, options.client.businessKey, null, true, true);
   const assign = (row: ProjectRow, fields: AssignmentFields): void => {
     void assignment.choose(row.id, row.revision, fields).then((answer) => {
       if (answer === undefined) return answer;

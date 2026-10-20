@@ -25,6 +25,7 @@ export interface CapturePool {
 
 export const POOL_REVIEWS_REQUIRED = 3;
 const MAX_REDIRECTS = 3;
+const HOP_TIMEOUT_MS = 10_000;
 const USER_AGENT = 'page-capture (fenced; no credentials)';
 
 export type FenceCode =
@@ -145,19 +146,39 @@ const TRANSPORT_CODES: Record<string, FenceCode> = {
   address_changed: 'CAPTURE_ADDRESS_CHANGED',
 };
 
-async function pinnedAddress(host: string, resolve: Resolver): Promise<Fenced<string>> {
-  let answers: readonly string[];
+/** `work`'s answer, or undefined once `ms` pass first. */
+async function withinDeadline<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: Parameters<typeof clearTimeout>[0];
+  const late = new Promise<undefined>((done) => {
+    timer = setTimeout(done, ms);
+  });
   try {
-    answers = await resolve(host);
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The checked address, and what resolving it left of the hop's deadline. */
+async function pinnedAddress(
+  host: string,
+  resolve: Resolver,
+): Promise<Fenced<{ address: string; left: number }>> {
+  const started = Date.now();
+  let answers: readonly string[] | undefined;
+  try {
+    answers = await withinDeadline(resolve(host), HOP_TIMEOUT_MS);
   } catch {
     return { ok: false, code: 'CAPTURE_FAILED' };
   }
+  const left = HOP_TIMEOUT_MS - (Date.now() - started);
+  if (answers === undefined || left <= 0) return { ok: false, code: 'CAPTURE_TIMEOUT' };
   // Every answer is checked, not only the one used: a mixed answer is a
   // rebinding attempt waiting for the resolver's order to change.
   if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer))) {
     return { ok: false, code: 'CAPTURE_ADDRESS_DENIED' };
   }
-  return { ok: true, value: answers[0] ?? '' };
+  return { ok: true, value: { address: answers[0] ?? '', left } };
 }
 
 const UTF8_LABELS = new Set(
@@ -216,15 +237,16 @@ async function follow(
       : checkSubresource(current, options.page ?? '', options.pool);
   if (!allowed.ok) return refuse(allowed.code);
   const url = allowed.value;
-  const address = await pinnedAddress(url.hostname, options.resolve);
-  if (!address.ok) return refuse(address.code);
+  const pinned = await pinnedAddress(url.hostname, options.resolve);
+  if (!pinned.ok) return refuse(pinned.code);
+  const { address, left } = pinned.value;
   const answer = await options.transport({
     url,
-    address: address.value,
-    family: familyOf(address.value),
+    address,
+    family: familyOf(address),
     method: 'GET',
     headers: { accept: limits.type, 'user-agent': USER_AGENT },
-    timeoutMs: 10_000,
+    timeoutMs: left,
     maxBytes: limits.maxBytes,
   });
   if (answer.kind !== 'answer') return refuse(TRANSPORT_CODES[answer.kind] ?? 'CAPTURE_FAILED');
@@ -244,5 +266,5 @@ async function follow(
   } catch {
     return refuse('CAPTURE_BODY_MALFORMED');
   }
-  return { ok: true, value: { url: url.href, address: address.value, status: 200, body } };
+  return { ok: true, value: { url: url.href, address, status: 200, body } };
 }

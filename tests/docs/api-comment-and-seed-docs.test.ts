@@ -87,13 +87,15 @@ describe('API.md on the agent comment audience', () => {
 
 /**
  * Each `local-seed.mjs` line cite in the docs, found as the `index`th backticked
- * range after `after`, and a line of the seed it has to cover.
+ * range after `after`, and a line of the seed it has to cover. A cite with
+ * `file` names the seed's role table, `local-seed-roles.ts`, instead.
  */
 const SEED_CITES: readonly {
   readonly doc: string;
   readonly after: string;
   readonly index: number;
   readonly anchor: string;
+  readonly file?: string;
 }[] = [
   {
     doc: 'AUTHORITY.md',
@@ -118,6 +120,7 @@ const SEED_CITES: readonly {
     after: 'no membership and no business grant',
     index: 0,
     anchor: 'external: [],',
+    file: 'scripts/local-seed-roles.ts',
   },
   {
     doc: 'AUTHORITY.md',
@@ -143,34 +146,44 @@ const SEED_CITES: readonly {
     index: 0,
     anchor: 'ensureCredentialKeyFile(credentialFile)',
   },
-  { doc: 'PROOFS.md', after: 'the admin `task:decide`', index: 0, anchor: "['task', 'decide']," },
+  {
+    doc: 'PROOFS.md',
+    after: 'the admin `task:decide`',
+    index: 0,
+    anchor: "['task', 'decide'],",
+    file: 'scripts/local-seed-roles.ts',
+  },
 ];
 
 describe('scripts/local-seed.mjs line cites', () => {
-  const seed = read('scripts/local-seed.mjs').split('\n');
-
-  it.each(SEED_CITES)('$doc after "$after" covers $anchor', ({ doc, after, index, anchor }) => {
-    const text = folded(read(`docs/local/${doc}`));
-    const at = text.indexOf(after);
-    expect(at, `"${after}" in ${doc}`).toBeGreaterThanOrEqual(0);
-    const ranges = [
-      ...text.slice(at).matchAll(/`(?:(?:scripts\/)?local-seed\.mjs)?:(\d+)(?:-(\d+))?`/gu),
-    ];
-    const cite = ranges[index];
-    expect(cite, `cite ${String(index)} after "${after}"`).toBeDefined();
-    const from = Number(cite?.[1]);
-    const to = Number(cite?.[2] ?? cite?.[1]);
-    const line = seed.findIndex((source) => source.includes(anchor)) + 1;
-    expect(line, anchor).toBeGreaterThan(0);
-    expect(
-      line,
-      `${anchor} at :${String(line)}, cited :${String(from)}-${String(to)}`,
-    ).toBeGreaterThanOrEqual(from);
-    expect(
-      line,
-      `${anchor} at :${String(line)}, cited :${String(from)}-${String(to)}`,
-    ).toBeLessThanOrEqual(to);
-  });
+  it.each(SEED_CITES)(
+    '$doc after "$after" covers $anchor',
+    ({ doc, after, index, anchor, file }) => {
+      const seed = read(file ?? 'scripts/local-seed.mjs').split('\n');
+      const text = folded(read(`docs/local/${doc}`));
+      const at = text.indexOf(after);
+      expect(at, `"${after}" in ${doc}`).toBeGreaterThanOrEqual(0);
+      const ranges = [
+        ...text
+          .slice(at)
+          .matchAll(/`(?:(?:scripts\/)?local-seed(?:-roles\.ts|\.mjs))?:(\d+)(?:-(\d+))?`/gu),
+      ];
+      const cite = ranges[index];
+      expect(cite, `cite ${String(index)} after "${after}"`).toBeDefined();
+      const from = Number(cite?.[1]);
+      const to = Number(cite?.[2] ?? cite?.[1]);
+      const line = seed.findIndex((source) => source.includes(anchor)) + 1;
+      expect(line, anchor).toBeGreaterThan(0);
+      expect(
+        line,
+        `${anchor} at :${String(line)}, cited :${String(from)}-${String(to)}`,
+      ).toBeGreaterThanOrEqual(from);
+      expect(
+        line,
+        `${anchor} at :${String(line)}, cited :${String(from)}-${String(to)}`,
+      ).toBeLessThanOrEqual(to);
+    },
+  );
 });
 
 describe('API.md task.create row', () => {

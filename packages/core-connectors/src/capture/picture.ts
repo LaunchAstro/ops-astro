@@ -52,7 +52,8 @@ import {
   type Fenced,
   type Fetched,
 } from './fence.ts';
-import { importsOf, named, readDocument, resolved, type CaptureOptions } from './page.ts';
+import { importsOf } from './css.ts';
+import { named, readDocument, resolved, type CaptureOptions } from './page.ts';
 import { admittedTree } from './tree.ts';
 
 /** One request the browser made, as the port describes it. */
@@ -291,5 +292,5 @@ export async function capturePicture(
   state.failed ??= unapplied ? 'CAPTURE_FAILED' : undefined;
   if (state.failed !== undefined) return { ok: false, code: state.failed };
   const digest = `sha256:${createHash('sha256').update(png).digest('hex')}`;
-  return { ok: true, value: { url, digest, png, refused: state.refused } };
+  return { ok: true, value: { url: page.value.url, digest, png, refused: state.refused } };
 }

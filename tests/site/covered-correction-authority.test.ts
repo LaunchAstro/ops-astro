@@ -49,12 +49,15 @@ describeWorld('covered approval and reads judge the grant live', 'sol365fix1', (
       expect(await isActiveMember(tx, other.personId)).toBe(true);
       checked.release();
       await finish.held;
-      return await writeCorrectionDecision(tx, {
+      const decided = await writeCorrectionDecision(tx, {
         id,
         decision: 'approved',
         actorId: other.actorId,
         personId: other.personId,
+        selfApproval: false,
       });
+      if (decided === undefined) throw new Error('the decision found the page unchecked');
+      return decided;
     });
     try {
       await Promise.race([checked.held, writing]);

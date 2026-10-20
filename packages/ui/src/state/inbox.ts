@@ -25,7 +25,21 @@ export interface InboxItem {
   readonly counted: boolean;
   readonly raisedAt: string;
   readonly closedAt: string | null;
-  readonly task?: { readonly key: string; readonly title: string | null } | undefined;
+  readonly task?: InboxTask | undefined;
+  /** The team conversation a chat mention is about (C71); such an entry names no task. */
+  readonly conversation?: InboxConversation | undefined;
+}
+
+export interface InboxTask {
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** A team conversation: a group's name, null on a direct one. */
+export interface InboxConversation {
+  readonly conversationId: string;
+  readonly kind: 'direct' | 'group';
+  readonly name: string | null;
 }
 
 /** The group an item is drawn under: its client, or the business's own work. */
@@ -40,9 +54,10 @@ export type InboxTab = 'owed' | 'info';
 /** Owed and open, open and not owed, or closed and kept for the record. */
 export type InboxBand = 'owe' | 'fyi' | 'done';
 
-export interface DrawnItem extends InboxItem {
-  readonly task: { readonly key: string; readonly title: string | null };
-}
+/** An item drawn as a row: it opens its task, or, for a chat mention, its conversation. */
+export type DrawnItem =
+  | (InboxItem & { readonly task: InboxTask })
+  | (InboxItem & { readonly task?: undefined; readonly conversation: InboxConversation });
 
 export interface InboxGroup {
   readonly ref: InboxGroupRef;
@@ -64,11 +79,24 @@ export function tabOf(item: InboxItem): InboxTab {
 }
 
 /**
- * Only an item the reader can still read is drawn. A withheld or gone item
- * names no task, and one that somehow carried a task anyway is still not drawn.
+ * Only an item the reader can still read is drawn, and only with somewhere to
+ * open. A withheld or gone item names neither a task nor a conversation, and
+ * one that somehow carried one anyway is still not drawn.
  */
 export function drawable(item: InboxItem): item is DrawnItem {
-  return item.access === 'readable' && item.task !== undefined;
+  return item.access === 'readable' && (item.task !== undefined || item.conversation !== undefined);
+}
+
+/** What a drawn row opens and what it says: its task, or a chat mention's conversation. */
+export function doorOf(item: DrawnItem): {
+  readonly to: 'task' | 'conversation';
+  readonly key: string;
+  readonly text: string;
+} {
+  if (item.task !== undefined)
+    return { to: 'task', key: item.task.key, text: item.task.title ?? item.task.key };
+  const { conversationId, name } = item.conversation;
+  return { to: 'conversation', key: conversationId, text: name ?? 'A direct message' };
 }
 
 const activity = (item: InboxItem): number => Date.parse(item.closedAt ?? item.raisedAt) || 0;

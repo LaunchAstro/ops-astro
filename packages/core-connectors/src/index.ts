@@ -20,6 +20,7 @@ export {
   type AdapterRequest,
   type Declaration,
   type ModelAnswer,
+  type ModelToolCall,
   type ModelOperation,
   type ModelOperationDeclaration,
   type Registration,
@@ -51,6 +52,7 @@ export {
   emailText,
   readEmailAnswer,
   RESEND_DESTINATION,
+  resendDestination,
 } from './email.ts';
 export {
   startFakeEmailProvider,
@@ -75,6 +77,8 @@ export {
   checkableSender,
   checkSender,
   dmarcPolicy,
+  SENDER_FRESH_MS,
+  senderFresh,
   type DmarcPolicy,
   type RecordStatus,
   type SenderReport,
@@ -90,6 +94,9 @@ export {
   REPLAY_MODEL_WINDOW,
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
+  REPLAY_TURN,
+  AGENT_TURN_KEY,
+  REPLAY_AGENT_TURN,
   startReplayProvider,
   type ReplayLookupMode,
   type ReplayMode,
@@ -112,8 +119,11 @@ export {
 } from './catalogue.ts';
 export {
   callConnector,
+  SLOT_SEGMENTS,
   type CallDependencies,
   type ConnectorResult,
+  type CredentialReference,
+  type CustodyAnswer,
   type ProviderResult,
   type ProviderValue,
 } from './call.ts';
@@ -162,6 +172,8 @@ export {
   type ProposedChange,
 } from './site/envelope.ts';
 export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';
+export { replaced } from './site/replaced.ts';
+export { wordPairRefusal } from './site/word-pair.ts';
 export {
   dispatchToken,
   observeLanded,
@@ -169,6 +181,7 @@ export {
   revertCorrection,
   type Accepted,
   type GateDecision,
+  type Observed,
   type PublishJob,
   type PublishOutcome,
   type PublishPorts,
@@ -177,6 +190,7 @@ export {
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
   bindingRefuses,
+  findDeployment,
   mergeAndFind,
   partySiteRefuses,
   readServed,
@@ -189,6 +203,7 @@ export {
   type PartySite,
   type SiteBinding,
 } from './site/binding.ts';
+export { readServing } from './site/serving.ts';
 export { proposeSource, type ProposeInput } from './site/propose.ts';
 export {
   ACCEPTANCE_CASES,
@@ -212,8 +227,74 @@ export {
   readLocalGptAnswer,
 } from './local-gpt.ts';
 export {
+  OLLAMA_CONVERSATION,
+  OLLAMA_DEFAULT_MODEL,
+  OLLAMA_MODELS,
+  OLLAMA_PATH,
+  OLLAMA_PROVIDER,
+  foldOllamaStream,
+  ollamaAdapter,
+  ollamaCostMinor,
+  ollamaPieces,
+  readOllamaAnswer,
+} from './ollama.ts';
+export {
+  conversationInstructions,
+  promptPage,
+  TASK_BLOCK_FENCE,
+  type PromptPage,
+} from './conversation-prompt.ts';
+export {
   CONVERSATION_MODELS,
   conversationModelsOf,
+  conversationOperationOf,
   conversationProviderOf,
+  outsidePeopleOf,
   type ConversationModel,
 } from './conversation-models.ts';
+export {
+  OPENROUTER_AUD_PER_USD,
+  OPENROUTER_BODY_LIMIT,
+  OPENROUTER_CONVERSATION,
+  OPENROUTER_CONVERSATION_KEY,
+  OPENROUTER_MAX_TOKENS,
+  OPENROUTER_MODELS,
+  OPENROUTER_PATH,
+  OPENROUTER_PROVIDER,
+  openrouterCostMinor,
+  openrouterHoldMinor,
+  openrouterModel,
+  openrouterPieces,
+  openrouterRequest,
+  readOpenRouterAnswer,
+  type OpenRouterModel,
+} from './openrouter.ts';
+export {
+  CHATGPT_PLAN_ANSWER_BYTES,
+  CHATGPT_PLAN_BODY_LIMIT,
+  CHATGPT_PLAN_CONVERSATION,
+  CHATGPT_PLAN_DEFAULT_MODEL,
+  CHATGPT_PLAN_ISSUER,
+  CHATGPT_PLAN_MODELS,
+  CHATGPT_PLAN_NOTHING_HAPPENED,
+  CHATGPT_PLAN_ORIGIN,
+  CHATGPT_PLAN_PARAMETERS_BYTES,
+  CHATGPT_PLAN_PARAMETERS_DEPTH,
+  CHATGPT_PLAN_PATH,
+  CHATGPT_PLAN_PROVIDER,
+  CHATGPT_PLAN_TIMEOUT_MS,
+  chatgptPlanAdapter,
+  chatgptPlanBody,
+  readChatgptPlanAnswer,
+  readChatgptPlanToolCalls,
+  type PlanAsk,
+  type PlanItem,
+  type PlanTool,
+  type PlanTurn,
+} from './chatgpt-plan.ts';
+export {
+  AGENT_TURN_INSTRUCTIONS,
+  CHATGPT_PLAN_TURN,
+  chatgptPlanTurnAdapter,
+  readChatgptPlanTurnAnswer,
+} from './chatgpt-plan-turn.ts';

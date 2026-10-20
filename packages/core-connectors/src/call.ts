@@ -6,7 +6,8 @@
 // its schema and filtered to its declared fields. A write whose answer cannot
 // be read is unknown, never a success and never a failure: the provider may
 // have acted. The credential goes to the provider and nowhere else; no result
-// or record carries a provider's words.
+// or record carries a provider's words. A reference in place of a token sends
+// the call bare to custody, which adds the credential and withholds any echo of it.
 
 import type { OperationRegistration } from './catalogue.ts';
 import { connectorRelease, credentialHostMatches } from './catalogue.ts';
@@ -29,23 +30,35 @@ export type ProviderResult<T> =
 
 export type ConnectorResult = ProviderResult<ProviderValue>;
 
+/** A custody entry by name, never its value. */
+export interface CredentialReference {
+  readonly ref: 'source_control' | 'hosting';
+}
+
+/** Custody's answer: the provider's, a refusal before sending, or one withheld after sending. */
+export type CustodyAnswer = TransportAnswer | { kind: 'refused' | 'withheld'; code: string };
+
+type Send = (request: TransportRequest) => Promise<CustodyAnswer>;
+
 export interface CallDependencies {
   readonly transport: Transport;
   readonly resolve: Resolver;
-  /** Borrows the named custody entry for this one call. */
-  readonly credential: (entry: 'source_control' | 'hosting') => Promise<string>;
+  /** Borrows the named entry for this one call, or answers a reference for `custody` to send by. */
+  readonly credential: (entry: CredentialReference['ref']) => Promise<string | CredentialReference>;
+  readonly custody?: (request: TransportRequest, to: CredentialReference) => ReturnType<Send>;
   /** Every refusal and unknown on the path, by code (Receipt L field 14). */
   readonly record: (code: string) => void;
+  /** The caller's own refusal of a call, checked before all else (#1693): a code sends nothing. */
+  readonly admit?: (op: string, params: Readonly<Record<string, string>>) => string | undefined;
 }
 
 const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 
-function validSegment(value: string): boolean {
-  return SEGMENT.test(value) && value !== '.' && value !== '..';
-}
+const validSegment = (value: string): boolean =>
+  SEGMENT.test(value) && value !== '.' && value !== '..';
 
 /** A many-segment slot with a fixed shape: a repository is its owner and name, nothing deeper. */
-const SLOT_SEGMENTS: ReadonlyMap<string, number> = new Map([['repository', 2]]);
+export const SLOT_SEGMENTS: ReadonlyMap<string, number> = new Map([['repository', 2]]);
 
 /** The request path, or the refusal code for the parameters. */
 function buildPath(
@@ -88,7 +101,7 @@ export function readField(body: unknown, dotted: string): unknown {
 }
 
 type Prepared =
-  | { readonly request: TransportRequest; readonly secret: string | undefined }
+  | { readonly request: TransportRequest; readonly secret?: string; readonly send: Send }
   | { readonly refused: string };
 
 function requestFor(
@@ -125,45 +138,54 @@ function requestFor(
   };
 }
 
-/** Everything checked before a byte leaves: host, credential binding, release, parameters, address. */
+/** Everything checked before a byte leaves: admission, host, credential, release, parameters, address. */
 async function prepare(
   registration: OperationRegistration,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
 ): Promise<Prepared> {
   const { connector, declaration } = registration;
+  const refused = deps.admit?.(declaration.operation_name, params);
+  if (refused !== undefined) return { refused };
   if (!CONNECTOR_HOSTS.includes(connector.host)) return { refused: 'DESTINATION_NOT_LISTED' };
   if (!credentialHostMatches(connector)) return { refused: 'CREDENTIAL_HOST_MISMATCH' };
-  if (connectorRelease(connector) !== declaration.connector_release) {
+  if (connectorRelease(connector) !== declaration.connector_release)
     return { refused: 'CONNECTOR_RELEASE_UNAVAILABLE' };
-  }
   const built = buildPath(connector.pathTemplate, params, connector.bodyParams);
   if ('code' in built) return { refused: built.code };
   let address: string;
   try {
     const answers = await deps.resolve(connector.host);
-    if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer))) {
+    if (answers.length === 0 || answers.some((answer) => isDeniedAddress(answer)))
       return { refused: 'DESTINATION_ADDRESS_DENIED' };
-    }
     address = answers[0] ?? '';
   } catch {
     return { refused: 'PROVIDER_UNREACHABLE' };
   }
   let token: string | undefined;
+  let send: Send = deps.transport;
   if (connector.credential !== 'none') {
+    const { custody } = deps;
     try {
-      token = await deps.credential(connector.credential);
+      const held = await deps.credential(connector.credential);
+      if (typeof held === 'string') token = held;
+      // A reference names this call's own entry and goes to custody, or nothing is sent.
+      else if (held.ref === connector.credential && custody !== undefined)
+        send = async (request) => await custody(request, held);
+      else return { refused: 'CREDENTIAL_UNAVAILABLE' };
     } catch {
       return { refused: 'CREDENTIAL_UNAVAILABLE' };
     }
   }
-  return { request: requestFor(registration, params, built.path, address, token), secret: token };
+  const request = requestFor(registration, params, built.path, address, token);
+  return { request, send, ...(token === undefined ? {} : { secret: token }) };
 }
 
 type Read =
   | { readonly value: ProviderValue }
   | { readonly unreadable: string }
   | { readonly refused: string; readonly proof: string };
+const ECHOED: Read = { unreadable: 'PROVIDER_CREDENTIAL_ECHOED' };
 
 /** What the answer establishes. Nothing of the provider's own words crosses back. */
 function readAnswer(registration: OperationRegistration, answer: TransportAnswer): Read {
@@ -174,9 +196,8 @@ function readAnswer(registration: OperationRegistration, answer: TransportAnswer
   if (answer.status >= 300 && answer.status < 400)
     return { unreadable: 'PROVIDER_REDIRECT_REFUSED' };
   const proof = connector.refusalProofs[String(answer.status)];
-  if (proof !== undefined && declaration.nothing_happened_proof.includes(proof)) {
+  if (proof !== undefined && declaration.nothing_happened_proof.includes(proof))
     return { refused: 'PROVIDER_REFUSED', proof };
-  }
   if (answer.status < 200 || answer.status >= 300)
     return { unreadable: 'PROVIDER_STATUS_UNEXPECTED' };
   const type = (answer.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
@@ -252,17 +273,20 @@ export async function callConnector(
     deps.record(prepared.refused);
     return { kind: 'refused', code: prepared.refused };
   }
-  const answered = readAnswer(
-    registration,
-    await deps.transport({ ...prepared.request, timeoutMs: left }),
-  );
+  const sent = await prepared.send({ ...prepared.request, timeoutMs: left });
+  if (sent.kind === 'refused') {
+    deps.record(sent.code);
+    return { kind: 'refused', code: sent.code };
+  }
+  const answered: Read =
+    'code' in sent ? { unreadable: sent.code } : readAnswer(registration, sent);
   const { secret } = prepared;
   // A field holding the borrowed credential is the provider echoing it: unreadable, never returned.
   const echoed =
     'value' in answered &&
     secret !== undefined &&
     readings(answered.value).some((text) => text.includes(secret));
-  const read: Read = echoed ? { unreadable: 'PROVIDER_CREDENTIAL_ECHOED' } : answered;
+  const read: Read = echoed ? ECHOED : answered;
   if ('value' in read) return { kind: 'ok', value: read.value };
   if ('proof' in read) {
     deps.record(read.refused);

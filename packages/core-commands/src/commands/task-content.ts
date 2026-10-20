@@ -7,7 +7,13 @@
 // disagree about a task they both see. `task.board` sends each row's client by
 // the same rule (the Clients row door), so the board and the field agree too.
 
-import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  clientsReached,
+  readableTaskIds,
+  readableTaskParams,
+  type Subject,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import {
   COMMAND_SURFACE,
   type ClientView,
@@ -22,7 +28,10 @@ const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
     declaration.kind === 'write' &&
     // `map.scope` is a map's `task.set_party` (WF-1): a client change too.
-    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(declaration.name),
+    // `onboarding.start` names a step task only in laying it out: a creation.
+    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope', 'onboarding.start'].includes(
+      declaration.name,
+    ),
 ).map((declaration) => declaration.name);
 
 /**
@@ -98,7 +107,7 @@ export async function readClientFacts(
  * `readClientFacts`' rule: the id and `client.list`'s name only where the
  * reader's grants reach the client; null for none, and null for a client they
  * do not reach, whose row's `clientSet` says it is under one. Asked only of the
- * rows served.
+ * rows served that `subjects` may still read (`readableTaskIds`).
  */
 export async function withBoardClients<Row extends { readonly id: string }>(
   tx: TenantQuery,
@@ -110,8 +119,9 @@ export async function withBoardClients<Row extends { readonly id: string }>(
       ? []
       : await tx.query<{ readonly id: string; readonly client: string }>(
           `select id, uuid_7 as client from records
-            where business_id = $1 and id = any($2::uuid[]) and uuid_7 is not null`,
-          [tx.businessId, served.map((row) => row.id)],
+            where business_id = $1 and uuid_7 is not null
+              and id = any(${readableTaskIds('$2::uuid[]', 3)})`,
+          [tx.businessId, served.map((row) => row.id), ...readableTaskParams(subjects)],
         );
   const among = [...new Set(rows.map((row) => row.client))];
   const reached = new Map(

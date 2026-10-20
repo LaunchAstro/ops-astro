@@ -19,6 +19,10 @@ import {
 } from '../api/c59-factor-routes-world.ts';
 
 const replies: Record<string, Reply> = { ...GOOD };
+// Each wait below is for a panel the API draws after a database round trip: about
+// 0.05 to 0.25 s alone, up to 1.6 s beside 20 other runs of this file, past
+// vitest's 1 s default for `waitFor`. 10 s is about six times that loaded peak.
+const DRAWN = { timeout: 10_000 };
 
 beforeAll(async () => {
   await openRoutes('sol345signin', { replies: () => replies, saw: () => {} });
@@ -88,10 +92,10 @@ it('a newly enrolled person can enter their authenticator code on the next web s
   });
   try {
     await setup.view.click('[data-factor="enrol"] button');
-    await vi.waitFor(() => expect(setup.view.find('[data-factor="secret"]')).not.toBeNull());
+    await vi.waitFor(() => expect(setup.view.find('[data-factor="secret"]')).not.toBeNull(), DRAWN);
     await setup.view.type('[data-step-up="code"]', '123456');
     await setup.view.click('[data-factor="confirm"] button');
-    await vi.waitFor(() => expect(setup.view.find('[data-factor="done"]')).not.toBeNull());
+    await vi.waitFor(() => expect(setup.view.find('[data-factor="done"]')).not.toBeNull(), DRAWN);
     expect((await factorOf(world.mia.personId))?.status).toBe('verified');
   } finally {
     await setup.view.unmount();
@@ -100,15 +104,18 @@ it('a newly enrolled person can enter their authenticator code on the next web s
   try {
     await opened.view.type('#signin-email', 'mia@alpha.local');
     await opened.view.type('#signin-password', 'test-password');
+    await opened.view.choose('#signin-business', 'alpha');
     await opened.view.click('[data-screen="sign-in"] button[type="submit"]');
     // The password credential is real and the API correctly requires aal2.
     // The web app must offer the next factor rather than strand the person
     // on a refused board with no way to complete sign-in.
-    await vi.waitFor(() =>
-      expect(
-        opened.view.find('input[autocomplete="one-time-code"]'),
-        `refusals=${refusals.join(',')}; panel=${opened.view.text()}`,
-      ).not.toBeNull(),
+    await vi.waitFor(
+      () =>
+        expect(
+          opened.view.find('input[autocomplete="one-time-code"]'),
+          `refusals=${refusals.join(',')}; panel=${opened.view.text()}`,
+        ).not.toBeNull(),
+      DRAWN,
     );
   } finally {
     await opened.view.unmount();

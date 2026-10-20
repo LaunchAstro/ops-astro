@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a browser that leaves mid-answer still has the reply kept and read next time"
+}

@@ -72,7 +72,14 @@ export function frozenCopy(
   try {
     const copy = mkdtempSync(join(folder, '.copy-'));
     made.push(copy);
-    cpSync(selected.path, copy, { recursive: true, errorOnExist: true, force: false });
+    // Entry by entry: since Node 24.22 cpSync refuses a folder that is there, as the copy is (#2124).
+    // Listing the artefact by name would follow a link put in its place, which cpSync refused.
+    if (!lstatSync(selected.path).isDirectory())
+      return { why: `${selected.name} changed while it was copied` };
+    for (const name of readdirSync(selected.path)) {
+      const options = { recursive: true, errorOnExist: true, force: false };
+      cpSync(join(selected.path, name), join(copy, name), options);
+    }
     servedModes(copy, uid);
     if (!holds(copy, selected.digest))
       return { why: `${selected.name} changed while it was copied` };

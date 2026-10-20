@@ -13,6 +13,7 @@ import { json, mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import {
   ABOUT,
+  CHECK_HOLDS_MS,
   V1,
   V2,
   askFor,
@@ -26,7 +27,18 @@ import {
 afterEach(unmountAll);
 
 const asRead = (state: string, versionId: string, approver: string | null = null): Response =>
-  json({ ok: true, correction: { correctionId: 'mock-correction-1', state, approver, versionId } });
+  json({
+    ok: true,
+    correction: {
+      correctionId: 'mock-correction-1',
+      state,
+      approver,
+      versionId,
+      verifiedAt: '2026-10-19T00:00:00.000Z',
+      verifiedForMs: CHECK_HOLDS_MS,
+      refusal: null,
+    },
+  });
 
 /**
  * Alpha's API answering from a script: each read and each decision takes the
@@ -93,7 +105,7 @@ describe('a decision taken elsewhere, or not answered, reads the correction agai
     );
     const view = await mount(<SidebarCorrections client={client} propose={mockPropose().port} />);
     await askFor(view, ABOUT);
-    expect(controls(view)).toStrictEqual(['Approve', 'Decline']);
+    expect(controls(view)).toStrictEqual(['Launch', 'Decline']);
     await view.click('[data-correction-decide="approve"]');
     await tick();
     expect(sent('/live_correction/read')).toHaveLength(2);

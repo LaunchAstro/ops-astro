@@ -55,6 +55,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
   'run.delegate_child': ['leaseId', 'agent'],
+  // #1623 R1: the worker's own stop, by the lease its delegation holds.
+  'run.end': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
@@ -62,6 +64,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.request': ['taskId', 'liveCorrection'],
   'live_correction.decide': ['correctionId', 'liveCorrection'],
   'live_correction.read': ['correctionId', 'liveCorrection'],
+  'live_correction.receipts': ['correctionId', 'liveCorrection'],
+  'live_correction.revert': ['correctionId', 'liveCorrection'],
+  'live_correction.record_review': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.
@@ -119,6 +124,13 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
     'chat.leave': ['conversationId', 'c71-g'],
   };
 
+/** An agent login's own operation: a person is refused by design, so the comparison runs on the agent entry. */
+const AGENT_ENTRY: Readonly<Partial<Record<CommandName, string>>> = {
+  'task.take_launch':
+    'executed alternative: taking-a-launch-is-the-launched-agents-alone.test.ts compares ' +
+    'another agent’s launchId and a fabricated one by the whole refusal, on the agent entry',
+};
+
 /** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
@@ -136,6 +148,8 @@ export function alternativeFor(name: CommandName): string | undefined {
       `${own[0]} by status and raw bytes, audited at home`
     );
   }
+  const agentEntry = AGENT_ENTRY[name];
+  if (agentEntry !== undefined) return agentEntry;
   if (name === 'run.child_handback') {
     // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
@@ -143,18 +157,18 @@ export function alternativeFor(name: CommandName): string | undefined {
       "compares another business's child credential and a fabricated one by status and bytes"
     );
   }
-  if (name === 'harness.read') {
-    // AW-12: the body names a run, not a task, so the (c) and (d) cells' recordId misses it.
-    return (
-      'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
-      "compares another business's run and a fabricated one by status and bytes"
-    );
-  }
   if (name === 'invitation.resend' || name === 'invitation.revoke') {
     // C39-T: the invitation is the target, not a task.
     return (
       'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
       "another business's invitation and a fabricated one by code and raw bytes"
+    );
+  }
+  if (name === 'automation.history') {
+    // #1741: the activation is the target, not a task.
+    return (
+      'executed alternative: an-activation-history-is-kept-to-settings-readers-of-its-own-business.test.ts ' +
+      "compares another business's activation and a fabricated one by status and body"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

@@ -9,9 +9,11 @@ import type {
   FieldSource,
   ModelAnswer,
   ModelOperation,
+  ModelToolCall,
   RouteReach,
 } from '../../core-connectors/src/index.ts';
-import type { CarryRefusal, CredentialKind } from './credentials.ts';
+import type { CarryRefusal } from './carry-rule.ts';
+import type { CredentialKind } from './credentials.ts';
 import type { Custody } from './custody.ts';
 
 /**
@@ -27,8 +29,12 @@ export interface ProviderAdapter {
     operationId?: string,
     /** The exact model to ask for (CS-7.30); absent, the provider's default. */
     model?: string,
+    /** Ask for the answer as a stream: only where custody presents no credential. */
+    streamed?: boolean,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
+  /** The most bytes a built request's body may hold; a paid call above it is refused before its hold. */
+  readonly bodyLimit?: number;
   readonly lookup?: (operationId: string) => AdapterRequest;
   readonly readLookup?: (body: unknown) => string | undefined;
 }
@@ -66,11 +72,22 @@ export interface BrokerRoute {
  */
 export interface AuditNote {
   readonly action:
-    'model.call_dispatched' | 'model.call_released' | 'model.call_refused' | 'model.call_held';
+    | 'model.call_dispatched'
+    | 'model.call_released'
+    | 'model.call_refused'
+    | 'model.call_held'
+    // A paid answer whose call another writer had already ended: no money moved, nothing kept.
+    | 'model.call_settle_lost';
   readonly outcome: 'applied' | 'refused';
   /** Set on a refusal, from the refusal register. */
   readonly refusalCode: BrokerRefusal | null;
   readonly detail: Readonly<Record<string, unknown>>;
+}
+
+/** The deployment's carrier: its model agent, and the people it carries calls for. */
+export interface Carrier {
+  readonly agent: string;
+  readonly people: readonly string[];
 }
 
 export interface Broker {
@@ -85,8 +102,30 @@ export interface Broker {
    * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
    */
   readonly localOwnerTesting?: boolean;
+  /**
+   * `OPS_OUTSIDE_MODEL_PEOPLE` (#1508): the `businessId:personId` pairs whose own
+   * typed words may go to the outside paid route (`carriesOutside`). Absent or
+   * empty, nobody's do.
+   */
+  readonly outsidePeople?: readonly string[];
+  /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
+  readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
+  /**
+   * T3e1's drop at settlement, given by the command layer (#1623 R1): called
+   * before the settlement's own locks for a provider drop the worker could
+   * report, it takes its locks and returns the writer the stop calls last.
+   */
+  /**
+   * The calls a run attempt may make (#1623 R3); absent, `AGENT_MODEL_CALL_LIMIT`.
+   * Its first hold records it, so a change mid-attempt never raises it.
+   */
+  readonly callLimit?: number;
+  readonly drops?: (
+    tx: TenantQuery,
+    leaseId: string,
+  ) => Promise<((cause: DropCause) => Promise<void>) | undefined>;
 }
 
 /**
@@ -113,6 +152,35 @@ export interface ResolvedField {
   readonly name: string;
   readonly source: FieldSource;
   readonly value: string;
+  /** The broker found it the owner's own work, with no client in it (owner line 72). */
+  readonly ownerWork?: boolean;
+}
+
+/** What a paid call asks of the caller, inside a transaction opened as them. */
+export interface PaidCaller {
+  /** After the call's own lock: whether the send still rests on live facts. */
+  readonly stillAdmitted: () => Promise<boolean>;
+  /** Keeps the answer as the reply, in the settling transaction; false when it cannot be. */
+  readonly keep: (text: string) => Promise<boolean>;
+}
+
+export interface PaidSeams {
+  /** Who wrote each person turn the call sends: the asked message and the earlier ones. */
+  readonly authors: readonly string[];
+  /**
+   * Runs `work` in a transaction as the caller, resolved again from their
+   * session; undefined when they cannot be, or a lock they need is held elsewhere.
+   */
+  readonly asCaller: <T>(
+    work: (tx: TenantQuery, caller: PaidCaller) => Promise<T>,
+  ) => Promise<T | undefined>;
+}
+
+/** A turn as the body sent it, read by the broker's bounded parsers (`broker-turn.ts`). */
+export interface TurnRequest {
+  readonly turnOrdinal: unknown;
+  readonly tools: unknown;
+  readonly parts: unknown;
 }
 
 export interface ModelCallRequest {
@@ -121,6 +189,8 @@ export interface ModelCallRequest {
   readonly stepId: string;
   readonly operation: string;
   readonly fields: readonly ModelCallField[];
+  /** A model turn (#1623 R3), for an operation that takes one; its fields are then none. */
+  readonly turn?: TurnRequest;
 }
 
 /** Who is calling, from the authenticated envelope, never the body. */
@@ -146,6 +216,18 @@ export type BrokerRefusal =
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
   | 'LIABILITY_UNKNOWN'
+  // #1531: the message's one call is on its way or ended; the carrier is no member.
+  | 'STILL_ANSWERING'
+  | 'ANSWER_ENDED'
+  | 'CARRIAGE_UNAVAILABLE'
+  // #1508: a paid request past its destination's size; the send no longer admitted at the handoff.
+  | 'PROMPT_TOO_LARGE'
+  | 'CUSTODY_NOT_ADMITTED'
+  // #1623 R3: the attempt's calls at its limit; a turn out of shape, out of order or unbound.
+  | 'CALL_LIMIT_REACHED'
+  | 'TURN_MALFORMED'
+  | 'TURN_ORDINAL_STALE'
+  | 'PROVENANCE_UNBOUND'
   | CarryRefusal;
 
 export type ModelCallResult =
@@ -153,6 +235,10 @@ export type ModelCallResult =
       readonly ok: true;
       readonly callId: string;
       readonly text: string;
+      /** A turn's tools asked for, in the provider's order. */
+      readonly toolCalls?: readonly ModelToolCall[];
+      /** The call that reached its attempt's limit: its settlement ended the attempt. */
+      readonly terminal?: 'call_limit';
       readonly reservedMinor: number;
       readonly actualMinor: number;
       readonly releasedMinor: number;
@@ -164,6 +250,8 @@ export type ModelCallResult =
       readonly callId: string | null;
       readonly words?: string;
       readonly retryAfterSeconds?: number;
+      /** What the allowance has left, on a paid call refused for want of room. */
+      readonly leftMinor?: number;
     }
   | {
       readonly ok: false;

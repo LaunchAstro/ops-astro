@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "An onboarding start raced with a competing claim, a task moved to its client or a step moving on lays out its tasks with one applied event each, together in the chain; one that dies before its commit leaves nothing; the same start again answers as before."
+}

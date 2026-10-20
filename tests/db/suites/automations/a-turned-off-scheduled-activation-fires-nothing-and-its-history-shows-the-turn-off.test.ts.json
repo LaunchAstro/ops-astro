@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "C52-A owner check: a turned-off scheduled activation gets no occurrence or run from the sweep after its next due time, and its history shows the turn-off with actor and time"
+}

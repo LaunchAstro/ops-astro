@@ -9,25 +9,40 @@
 // maximum.
 //
 // Only a model the server can vouch for is listed: the replay stand-in's one
-// model, and the laptop runner's default. A model the owner approves on the
-// laptop is the runner's own business (`apps/local-agent/gate.ts`), so it is
-// never offered here.
+// model, the laptop runner's default, and the models Ollama runs on the M5. A
+// model the owner approves on the laptop is the runner's own business
+// (`apps/local-agent/gate.ts`), so it is never offered here. OpenRouter's paid
+// models (#1508) are listed for their provider, and offered only to a person
+// on the outside people list in a conversation with no client page; never the
+// default.
 
 import {
   LOCAL_GPT_CONVERSATION,
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
 } from './local-gpt.ts';
+import { OLLAMA_CONVERSATION, OLLAMA_MODELS, OLLAMA_PROVIDER } from './ollama.ts';
+import {
+  OPENROUTER_CONVERSATION_KEY,
+  OPENROUTER_MODELS,
+  OPENROUTER_PROVIDER,
+  openrouterHoldMinor,
+} from './openrouter.ts';
 import { CONVERSATION_ANSWER, REPLAY_MODEL_WINDOW } from './replay.ts';
 
 export interface ConversationModel {
   readonly id: string;
   readonly provider: string;
   readonly reach: 'local' | 'cloud';
-  /** The provider's name in a client's privacy settings. */
-  readonly egressName: 'replay' | 'chatgpt';
+  /**
+   * The provider's name in a client's privacy settings; null for one no setting
+   * names yet, which no client's conversation is offered (internal work only).
+   */
+  readonly egressName: 'replay' | 'chatgpt' | null;
   /** The price-book entry: the most one call may cost, in AUD minor units. */
   readonly ceilingMinor: number;
+  /** The picker's words, where they are not the id. */
+  readonly label?: string;
 }
 
 export const CONVERSATION_MODELS: readonly ConversationModel[] = [
@@ -46,7 +61,41 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     egressName: 'chatgpt',
     ceilingMinor: LOCAL_GPT_CONVERSATION.maximumMinor,
   },
+  ...OLLAMA_MODELS.map((id): ConversationModel => ({
+    id,
+    provider: OLLAMA_PROVIDER,
+    reach: 'local',
+    egressName: null,
+    ceilingMinor: OLLAMA_CONVERSATION.maximumMinor,
+  })),
+  ...OPENROUTER_MODELS.map((model): ConversationModel => ({
+    id: model.id,
+    provider: OPENROUTER_PROVIDER,
+    reach: 'cloud',
+    egressName: null,
+    ceilingMinor: openrouterHoldMinor(model),
+    label: model.label,
+  })),
 ];
+
+/** The conversation operation a provider's models answer on: OpenRouter's own, else the install's. */
+export const conversationOperationOf = (provider: string): string =>
+  provider === OPENROUTER_PROVIDER ? OPENROUTER_CONVERSATION_KEY : CONVERSATION_ANSWER.key;
+
+/**
+ * `OPS_OUTSIDE_MODEL_PEOPLE` as `businessId:personId` pairs, lower case, when
+ * `OPS_OUTSIDE_PROVIDER` is `openrouter`; otherwise nobody. The API's
+ * composition root refuses to start on a malformed list, so this never sees one.
+ */
+export function outsidePeopleOf(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  if (environment['OPS_OUTSIDE_PROVIDER'] !== OPENROUTER_PROVIDER) return [];
+  return (environment['OPS_OUTSIDE_MODEL_PEOPLE'] ?? '')
+    .split(',')
+    .map((pair) => pair.trim().toLowerCase())
+    .filter((pair) => pair !== '');
+}
 
 /** The models one provider's conversation operation runs, its default first. */
 export const conversationModelsOf = (provider: string): readonly ConversationModel[] =>
@@ -54,15 +103,17 @@ export const conversationModelsOf = (provider: string): readonly ConversationMod
 
 /**
  * The provider this install's conversation operation is on, by the rule the
- * API's composition root applies (`apps/api/model-broker.ts`): `local-gpt`
- * only where `OPS_ENVIRONMENT` is `local`, the replay provider otherwise. A
- * setting the root refuses never serves a request, so this never has to.
+ * API's composition root applies (`apps/api/model-broker.ts`): `ollama` in
+ * any environment, `local-gpt` only where `OPS_ENVIRONMENT` is `local`, the
+ * replay provider otherwise. A setting the root refuses never serves a
+ * request, so this never has to.
  */
 export function conversationProviderOf(
   environment: Readonly<Record<string, string | undefined>>,
 ): string {
-  return environment['OPS_AGENT_PROVIDER'] === 'local-gpt' &&
-    environment['OPS_ENVIRONMENT'] === 'local'
+  const named = environment['OPS_AGENT_PROVIDER'];
+  if (named === 'ollama') return OLLAMA_PROVIDER;
+  return named === 'local-gpt' && environment['OPS_ENVIRONMENT'] === 'local'
     ? LOCAL_GPT_PROVIDER
     : CONVERSATION_ANSWER.provider;
 }

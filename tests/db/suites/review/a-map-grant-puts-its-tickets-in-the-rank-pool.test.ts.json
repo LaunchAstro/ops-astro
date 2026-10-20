@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Sol's proof that a map grant's tickets are in the rank pool: the helper lists them and a ticket's rank counts its higher-scored sibling"
+}

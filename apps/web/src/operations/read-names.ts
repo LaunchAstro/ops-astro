@@ -25,9 +25,11 @@ import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
  * kept in step by hand.
  */
 export const READ_NAMES = [
-  // Wayfinder (WF-1, WF-2): the map's sections, its frontier and its fog.
+  // Wayfinder (WF-1, WF-2): the map's sections, its frontier and its fog, and
+  // the maps a person may read.
   'map.view',
   'map.frontier',
+  'map.list',
   'task.read',
   'task.board',
   'person.list',
@@ -100,12 +102,17 @@ export const READ_NAMES = [
   'inbox.unattended',
   // A task's runs' trace (AW-13 readers), for `operations:read`.
   'trace.read',
-  // The harness test's result on one run (AW-12); no screen draws it yet.
-  'harness.read',
   // One live correction's decision, read again for its card (C80).
   'live_correction.read',
+  // The business's corrections and one correction's receipts, for the card after a reload (#1694).
+  'live_correction.list',
+  'live_correction.receipts',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.
   'automation.registry',
+  // One activation's history (#1741), opened from its Workflow triggers row.
+  'automation.history',
 ] as const;
 
 /**

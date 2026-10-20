@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent login tool's make binds one login proved by signing in as the agent, resumes from its phase with the stored credential, waits on the agent's lock so two runs leave one of everything, and prints or stores no secret"
+}

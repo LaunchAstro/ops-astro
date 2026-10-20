@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a map-only read judges reach in each statement: a ticket rank counts its sibling while a map writer waits, and a grant lapsing after admission reaches no map content"
+}

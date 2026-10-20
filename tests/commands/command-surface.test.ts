@@ -2,13 +2,11 @@
 //
 // The surface, checked against the model rather than against itself.
 //
-// Minimum contract 5.3's fourth assertion is the one this file exists for:
-// "for each protected field, the owning operation named in `owning_operation`
-// exists and is reachable through an endpoint. A protected field whose owning
-// operation does not exist is a field nobody can change." The names are in
-// `field_defs`, written per business at install time, so the check reads the
-// installed model and not a list in a module — which is the whole reason T1e
-// put the classification in the data.
+// Minimum contract 5.3's fourth assertion is the one this file exists for: "for each protected
+// field, the owning operation named in `owning_operation` exists and is reachable through an
+// endpoint. A protected field whose owning operation does not exist is a field nobody can change."
+// The names are in `field_defs`, written per business at install time, so the check reads the
+// installed model and not a list in a module, which is why T1e put the classification in the data.
 //
 // It is also what settles the count. The contract names nine commands and the split is titled
 // after them; the seeded task type names ten owning operations. Nine is not enough for the model
@@ -79,7 +77,7 @@ describe('the surface as a table', () => {
     // with `decide` on tasks. `conversation` is a person's conversation with the agent (AW-03), its
     // writes and its read at its address. `model` is AW-01's call through the broker, asked of the
     // lease's task. `run` is AW-05's budget stop answers; `definition`, AW-04's attribution;
-    // `trace`, AW-13's readers; `harness`, AW-12's result. `operations` and `privacy` are C55's
+    // `trace`, AW-13's readers. `operations` and `privacy` are C55's
     // view and its incident record, and `legal` is C81's documents, asked of `privacy`.
     // `credential` is API-2's agent credential. `time` is MP-4-6's (time entries, rows beside a
     // task); `mandate`, `graduation` MP-14-10a. By piece: `tag` MP-4-11; `chat` C71-D; `invitation`
@@ -93,6 +91,7 @@ describe('the surface as a table', () => {
 const DECLARED_READS = [
   'access.read',
   'agent.mine',
+  'automation.history',
   'automation.registry',
   'chat.conversations',
   'chat.messages',
@@ -108,12 +107,15 @@ const DECLARED_READS = [
   'finance.agent_costs',
   'finance.skill_costs',
   'gate.pending',
-  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'invitation.list',
+  'live_correction.list',
   'live_correction.read',
+  'live_correction.receipts',
   'map.frontier',
+  'map.list',
   'map.view',
   'operations.read',
   'person.list',
@@ -138,14 +140,13 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the forty-three reads as reads, and everything else as a write', () => {
+  it('declares the forty-six reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
-      // A read has nothing to be stale against. It does not always take the
-      // `read` action: `preset.plan` writes nothing and still asks for
-      // `manage` on presets, which is why the action is on the declaration
-      // rather than assumed from the kind.
+      // A read has nothing to be stale against. It does not always take the `read` action:
+      // `preset.plan` writes nothing and still asks for `manage` on presets, which is why the
+      // action is on the declaration rather than assumed from the kind.
       if (command.kind === 'read') {
         expect(command.targetsExistingRecord, command.name).toBe(false);
       }
@@ -207,11 +208,10 @@ describe("MP-6-2's state revised", () => {
 });
 
 describe('the surface as a table', () => {
-  // A case asserting that every action is one of the seven a grant can carry
-  // was removed: `action` is typed `Action`, so an eighth is a type error and
-  // the case could not fail. What is worth checking is that the actions are
-  // not all the same one, which is what would happen if a declaration were
-  // copied rather than decided.
+  // A case asserting that every action is one of the seven a grant can carry was removed: `action`
+  // is typed `Action`, so an eighth is a type error and the case could not fail. What is worth
+  // checking is that the actions are not all the same one, which is what would happen if a
+  // declaration were copied rather than decided.
   it('does not give every command the same action', () => {
     const actions = new Set(COMMAND_SURFACE.map((command) => command.action));
     expect([...actions].toSorted()).toStrictEqual([

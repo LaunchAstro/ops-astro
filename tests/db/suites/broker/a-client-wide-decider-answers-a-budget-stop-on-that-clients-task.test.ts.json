@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "A client-wide decide grant answers a budget stop on that client's task and is refused on another client's and on a task with no client, with nothing moved there."
+}

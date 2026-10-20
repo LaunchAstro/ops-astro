@@ -25,6 +25,13 @@ import { realSurfaces, scanUses } from '../../scripts/command-parity.mjs';
 import { edit, real } from './api-1-catalogue-support.ts';
 
 const WEB = join(import.meta.dirname, '..', '..', 'apps', 'web', 'src');
+/** `handlers.ts` and the team chat, wayfinder and live correction blocks it spreads in. */
+const HANDLER_FILES = [
+  'handlers.ts',
+  'chat-handlers.ts',
+  'handlers-wayfinder.ts',
+  'live-correction-handlers.ts',
+];
 const NAMESPACES = new Set(COMMAND_SURFACE.map((one) => one.name.split('.')[0] as string));
 
 function webFiles(): Map<string, string> {
@@ -58,10 +65,9 @@ function catalogueMatchesCode(): void {
     const { rows, failures } = real();
     expect(failures).toEqual([]);
     expect(rows.map((row) => row.command)).toEqual(COMMAND_SURFACE.map((one) => one.name));
-    // `handlers.ts` and the team chat and wayfinder blocks it spreads in.
-    const handlers = ['handlers.ts', 'chat-handlers.ts', 'handlers-wayfinder.ts']
-      .map((file) => readFileSync(`packages/core-commands/src/commands/${file}`, 'utf8'))
-      .join('\n');
+    const handlers = HANDLER_FILES.map((file) =>
+      readFileSync(`packages/core-commands/src/commands/${file}`, 'utf8'),
+    ).join('\n');
     for (const row of rows.filter((one) => one.kind === 'write')) {
       expect(handlers).toContain(`'${row.command}':`);
     }
@@ -136,6 +142,7 @@ function scannerAndGrantSkip(): void {
     const comment = realSurfaces([]).agent.get('task.comment') as Profile;
     expect(checkParity(rows, planted('agent', 'task.decide', comment))).toEqual([
       'agent API task.decide skips the grant check task:decide the app makes',
+      'agent API task.decide adds the grant check task:comment the app does not make',
       'agent API task.decide asks at record scope where the app asks at target',
       'agent API task.decide drops the person-only marker and admits an agent',
     ]);
@@ -169,6 +176,8 @@ function commandsTheAppCalls(): Set<string> {
  */
 const CREATE_UI = [
   'agency:task-detail (screens/task/Subtasks.tsx)',
+  // The drawer's task proposal card (the chat path's piece 2).
+  'app shell (assistant/proposals.ts)',
   'app shell (screens/task/draft-command.ts)',
   'app shell (screens/task/draft-parts.ts)',
   'app shell (screens/task/draft-receipts.ts)',

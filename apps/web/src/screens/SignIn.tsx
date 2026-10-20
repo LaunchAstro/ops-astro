@@ -2,11 +2,15 @@
 //
 // `/sign-in`. An email, a password and which business to work in.
 //
-// The business selector is beside the credentials rather than after them
+// The business field is beside the credentials rather than after them
 // because the address a person lands on is `/api/b/<key>/...` and they need to
 // have chosen before the first call. Choosing the wrong one is not a security
 // event: the server resolves the token's subject to a login in that business
 // and refuses when there is none.
+//
+// **The business is typed, never listed.** A page anyone can open names no
+// tenant, so the person types their business's key. A key they cannot sign in
+// to fails as a wrong password does (`openSignIn`).
 //
 // **The form comes back offering the business the person was interrupted in.**
 // A task address is business-local, so sign-in defaulting to `alpha` after an
@@ -60,11 +64,6 @@ export interface SignInProps {
   readonly build?: string | null;
 }
 
-const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = [
-  { key: 'alpha', label: 'Alpha' },
-  { key: 'bravo', label: 'Bravo' },
-];
-
 /** The six-digit code, its continue and its cancel back to the password. */
 function CodeStep(props: { readonly step: ReturnType<typeof useCodeStep> }): ReactElement {
   const { code, setCode, because, checking } = props.step;
@@ -95,9 +94,10 @@ export function SignIn(props: SignInProps): ReactElement {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   // The business the interruption was in, when there was one: the form asks
-  // again for where the person was working, not for the first entry in the
-  // list. They may still choose another one, and App says so when they do.
-  const [businessKey, setBusinessKey] = useState(props.ended?.businessKey ?? 'alpha');
+  // again for where the person was working, and is empty otherwise. They may
+  // still type another one, and App says so when they do.
+  const [business, setBusiness] = useState(props.ended?.businessKey ?? '');
+  const businessKey = business.trim();
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const route = { apiOrigin: props.apiOrigin, fetch: props.fetch };
@@ -158,9 +158,9 @@ export function SignIn(props: SignInProps): ReactElement {
         {props.ended === null ? null : (
           <div className="banner banner--warn" role="status" data-reason="session-ended">
             <p className="banner__body">
-              Your session has ended and you need to sign in again. The server answered{' '}
-              <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
-              in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
+              wait a minute and sign in again. The server answered <code>{props.ended.code}</code>.
+              Any edit you had not saved was not saved, and signing in to{' '}
+              <strong>{props.ended.businessKey}</strong> will take you back to where you were.
             </p>
           </div>
         )}
@@ -216,20 +216,22 @@ export function SignIn(props: SignInProps): ReactElement {
               <label className="field__label" htmlFor="signin-business">
                 Business
               </label>
-              <select
+              <input
                 id="signin-business"
                 className="tf"
-                value={businessKey}
+                name="business"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                aria-describedby="signin-business-hint"
+                value={business}
                 onChange={(event) => {
-                  setBusinessKey(event.target.value);
+                  setBusiness(event.target.value);
                 }}
-              >
-                {BUSINESSES.map((business) => (
-                  <option key={business.key} value={business.key}>
-                    {business.label}
-                  </option>
-                ))}
-              </select>
+              />
+              <p className="field__hint" id="signin-business-hint">
+                The name your business uses in its Ops Astro address.
+              </p>
             </div>
             <div className="signin__foot">
               <button className="btn btn--primary" type="submit" disabled={busy} aria-busy={busy}>
@@ -241,14 +243,16 @@ export function SignIn(props: SignInProps): ReactElement {
           <CodeStep step={step} />
         )}
       </form>
-      {/* The business's public legal documents (C81), for the business chosen above. */}
-      <nav aria-label="Legal documents">
-        {PUBLIC_DOCUMENTS.map(([document, words]) => (
-          <p key={document}>
-            <a href={pathTo('agency:legal', { business: businessKey, document })}>{words}</a>
-          </p>
-        ))}
-      </nav>
+      {/* The business's public legal documents (C81), for the business typed above. */}
+      {businessKey === '' ? null : (
+        <nav aria-label="Legal documents">
+          {PUBLIC_DOCUMENTS.map(([document, words]) => (
+            <p key={document}>
+              <a href={pathTo('agency:legal', { business: businessKey, document })}>{words}</a>
+            </p>
+          ))}
+        </nav>
+      )}
       {/* The version stamp's fixed place when there is no rail (S0-1). */}
       <p className="rail__build signin__build" data-build={build ?? ''}>
         {build === null ? 'Build not stamped' : `Build ${build}`}

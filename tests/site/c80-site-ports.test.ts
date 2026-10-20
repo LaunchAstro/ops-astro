@@ -5,6 +5,7 @@
 // human review screen. Bindings refuse other corrections before provider
 // calls, captures or reconciliation receipts. Nothing reaches a live system.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { AFTER, BEFORE } from './c80-world.ts';
 import { line } from './c80-site-provider.ts';
@@ -20,6 +21,27 @@ import {
 } from './c80-register-world.ts';
 
 useRegisterWorld();
+
+/** Party A's approved correction copied onto `pageUrl` and `path` by the owner, past the store. */
+async function approvedPastTheStore(pageUrl: string, path: string): Promise<string> {
+  const own = await approved();
+  const id = randomUUID();
+  await w.world.db.admin.execute(
+    `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        delegation_id, target_path, word, replacement, page_url, pre_image_digest,
+        base_revision, seam, version_id, version_digest, state, decided_by_actor_id,
+        decided_by_person_id, decided_at, decided_version_digest, located_at, verified_at)
+     select business_id, $2::uuid, party_id, task_id, requested_by_actor_id,
+            requested_by_person_id, delegation_id, $4, word, replacement, $3,
+            pre_image_digest, base_revision, 'seam-' || $2, gen_random_uuid(), version_digest,
+            state, decided_by_actor_id, decided_by_person_id, decided_at,
+            decided_version_digest, located_at, verified_at
+       from public.live_corrections where id = $1`,
+    [own, id, pageUrl, path],
+  );
+  return id;
+}
 
 const SOURCE = 'GET /repos/agency/site/contents/src/pages/about.md?ref=main';
 const WRITE = 'PUT /repos/agency/site/contents/src/pages/about.md';
@@ -39,6 +61,11 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
       WRITE,
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee02&target=production&limit=1',
       'GET /v13/deployments/dpl_merged',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
+      'GET /v13/deployments/dpl_merged',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
     ]);
     expect(site.state.content).toBe(AFTER);
     site.sent.length = 0;
@@ -49,6 +76,11 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the site ports', () => {
       'PUT /repos/agency/site/contents/src/pages/about.md',
       'GET /v6/deployments?projectId=prj_site&sha=c0ffee03&target=production&limit=1',
       'GET /v13/deployments/dpl_reverted',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
+      'GET /v13/deployments/dpl_reverted',
+      'GET /v9/projects/prj_site',
+      'GET /v4/aliases/agency.example?projectId=prj_site',
     ]);
     expect(site.state.content).toBe(BEFORE);
   });
@@ -107,8 +139,9 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it("sends and captures nothing for party A's correction naming party B's page and file", async () => {
-      // Stored today: the request does not yet read a party's site (#989's request-time half).
-      const crossing = await approved({ pageUrl: B_PAGE, path: B_FILE });
+      // The request now refuses this crossing, so it is written past the store,
+      // as a row stored before the request read a client's site.
+      const crossing = await approvedPastTheStore(B_PAGE, B_FILE);
       await expect(bound(crossing)).rejects.toThrow('not bound: PAGE_OUTSIDE_PARTY_SITE');
       // Ports bound to party A's own correction on its own page, run on the crossing one.
       const own = await approved();
@@ -223,22 +256,24 @@ describe.skipIf(serverUrl === undefined)(
 );
 
 describe.skipIf(serverUrl === undefined)('C80 publication uses the stored approval', () => {
-  it('writes the job after-image when the binding and proposal hold different bytes', async () => {
+  it('writes nothing when the binding holds bytes other than the stored approval', async () => {
     const id = await approved();
     const { site, ports } = await bound(id, {
       change: { before: BEFORE, after: 'unapproved bytes' },
     });
     site.state.proposed = 'unapproved proposal bytes';
-    expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect(site.state.content).toBe(AFTER);
-    expect(site.state.request?.merged).toBe(false);
+    const outcome = await publish(id, ports());
+    expect(outcome).toMatchObject({ kind: 'recorded' });
+    expect(outcome).not.toMatchObject({ state: 'live' });
+    expect(site.state.content).toBe(BEFORE);
+    expect(site.sent.filter((sent) => sent.method === 'PUT')).toEqual([]);
   });
 
   it('publishes an unchanged BOM-bearing pre-image with the BOM preserved', async () => {
     const before = '\uFEFF' + BEFORE;
     const after = '\uFEFF' + AFTER;
-    const id = await approved({ before, after });
-    const { site, ports } = await bound(id, { change: { before, after } });
+    const id = await approved(before);
+    const { site, ports } = await bound(id, { approved: { before, after } });
     expect(await publish(id, ports())).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(site.state.content).toBe(after);
     const write = site.sent.find((sent) => sent.method === 'PUT');

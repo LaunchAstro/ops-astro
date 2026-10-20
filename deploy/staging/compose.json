@@ -33,7 +33,16 @@
       "networks": ["staging"],
       "restart": "unless-stopped",
       "healthcheck": {
-        "test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "ops_astro_staging_backups"],
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "${STAGING_BACKUPS_ADMIN_USER}",
+          "-d",
+          "ops_astro_staging_backups"
+        ],
         "interval": "5s",
         "timeout": "5s",
         "retries": 20
@@ -71,7 +80,7 @@
         "OPS_ASTRO_GOTRUE_URL": "${STAGING_GOTRUE_URL:?set from the staging runbook}",
         "SUPABASE_PUBLISHABLE_KEY": "${STAGING_PUBLISHABLE_KEY:?set from the staging runbook}",
         "OPS_ASTRO_DELEGATION": "${STAGING_WORKER_DELEGATION:?set from the staging runbook}",
-        "OPS_WORKER_HEARTBEAT_URL": "${STAGING_WORKER_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_WORKER_HEARTBEAT_URL": "${STAGING_WORKER_HEARTBEAT_URL:-}",
         "OPS_HEARTBEAT_EVERY_MS": "${STAGING_HEARTBEAT_EVERY_MS:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
         "OPS_EGRESS_AUTH_HOST": "${STAGING_EGRESS_AUTH_HOST:?set from the staging runbook}"

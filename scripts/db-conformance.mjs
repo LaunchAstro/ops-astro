@@ -53,6 +53,11 @@
 //   --shard       run only shard i of n (scripts/db-shards.ts decides which
 //                 suites; for --isolation, scripts/ci-shards.ts). Rules 2 and
 //                 3 still read the whole manifest.
+//   --without-isolation
+//                 leave out the isolation suites (scripts/db-shards.ts
+//                 databaseItems): ci.yml's `database conformance` shards,
+//                 beside the `isolation tests` shards that run them. Any other
+//                 caller, the nightly look-ahead's included, runs them.
 //   --list        print the run items it would run, one a line, and stop
 //                 before reaching the database (tests/ci/ci-shards.test.ts).
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
@@ -64,9 +69,16 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import pg from 'pg';
-import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
+import {
+  assignShards,
+  databaseItems,
+  itemOf,
+  parseShard,
+  planItems,
+  readPlan,
+} from './db-shards.ts';
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
-import { manifestPathIn, readIsolationSuites, readNamedSuites } from './named-suites.ts';
+import { manifestPathIn, readIsolationSuites, readNamedSuites, suiteList } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -74,6 +86,11 @@ const repoRoot = resolve(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
 const manifestFlag = argv.indexOf('--manifest');
 const isolationRun = argv.includes('--isolation');
+const withoutIsolation = argv.includes('--without-isolation');
+if (isolationRun && withoutIsolation) {
+  console.error('db-conformance: --isolation and --without-isolation do not go together.');
+  process.exit(2);
+}
 // Without --manifest the runner reads the repository's own manifest, the
 // per-area folder or the single file (scripts/named-suites.ts); with it, that
 // one file, as given.
@@ -103,22 +120,23 @@ if (!existsSync(manifestPath)) {
   process.exit(2);
 }
 
-let manifest;
+// A list that is not an array of strings is refused, never read as empty: a
+// suite category that silently disappears leaves the others to make a green.
+let named;
 try {
+  let manifest;
   if (manifestFlag === -1) {
     manifest = isolationRun ? readIsolationSuites(repoRoot) : readNamedSuites(repoRoot);
   } else {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   }
+  named = ['invariant', 'conformance'].flatMap((kind) =>
+    suiteList(manifestPath, kind, manifest?.[kind]),
+  );
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);
 }
-
-const named = [
-  ...(Array.isArray(manifest.invariant) ? manifest.invariant : []),
-  ...(Array.isArray(manifest.conformance) ? manifest.conformance : []),
-].map(String);
 
 const failures = [];
 
@@ -126,14 +144,18 @@ const failures = [];
 // except 2 and 3, which read the whole manifest in every shard.
 const plan = readPlan(join(repoRoot, 'tests/db/shard-plan.json'));
 const items = planItems(named, plan.parts);
+/** The items this run splits: all of them, or all but the isolation suites'. */
+const runItems = withoutIsolation
+  ? databaseItems(items, readIsolationSuites(repoRoot).invariant)
+  : items;
 /** This shard's items: an isolation shard's from the split beside its steps, which run outside this. */
 const shareOf = ({ index, count }) =>
   isolationRun
     ? (isolationShards(items, readShardPlan(repoRoot), count)[index - 1] ?? []).filter(
         (item) => !ISOLATION_STEPS.includes(item),
       )
-    : (assignShards(items, plan.seconds, count)[index - 1] ?? []);
-const toRun = shard === undefined ? items : shareOf(shard);
+    : (assignShards(runItems, plan.seconds, count)[index - 1] ?? []);
+const toRun = shard === undefined ? runItems : shareOf(shard);
 // Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
 // it never exits 0: a stray --list in a CI command fails that shard. It exits
 // once the list has left: a write to a full pipe is queued, and an exit
@@ -261,7 +283,7 @@ const siblingsOf = (suite) => {
     .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
 };
 
-/** Redact assertion text before it reaches stderr. */
+/** Redact a failed assertion, or any problem the run reports, before it reaches stderr. */
 const redactDetail = (detail) => {
   detail = stripVTControlCharacters(detail)
     .replaceAll(`file://${repoRoot}/`, '')
@@ -594,7 +616,10 @@ console.log(
 
 if (failures.length > 0) {
   console.error(`\ndb-conformance: ${String(failures.length)} problem(s)\n`);
-  for (const f of failures) console.error(`  ${f}\n`);
+  // Every problem passes through the same redaction as a failed assertion, so
+  // a suite's error, its output, a skipped test's name or a database message
+  // carries no credential or private path into the log.
+  for (const f of failures) console.error(`  ${redactDetail(f)}\n`);
   console.error(
     'db-conformance: a green here means the named suites ran against a real\n' +
       'db-conformance: database and none of them skipped. It means nothing else,\n' +

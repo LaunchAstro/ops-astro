@@ -1,6 +1,6 @@
 {
   "rules": {
-    "eslint(max-lines-per-function)": 6,
+    "eslint(max-lines-per-function)": 5,
     "eslint(max-lines)": 6,
     "eslint(no-inline-comments)": 10,
     "eslint(no-loop-func)": 2,

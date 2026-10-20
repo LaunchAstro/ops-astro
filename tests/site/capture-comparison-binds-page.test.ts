@@ -141,7 +141,7 @@ describe('the comparison is linear', () => {
 
 describe('the comparison bounds the word', () => {
   it('fails a replacement longer than it compares', () => {
-    const replacement = 'b'.repeat(65);
+    const replacement = 'b'.repeat(201);
     expect(
       compareCaptures({
         before,
@@ -157,7 +157,7 @@ describe('the comparison bounds the word', () => {
   });
 
   it('fails a word longer than it compares', () => {
-    const word = 'a'.repeat(65);
+    const word = 'a'.repeat(201);
     const long = { ...TARGET, word };
     const pair = (text: string) => ({
       before: page({ text: text.replace('alongside', word) }),

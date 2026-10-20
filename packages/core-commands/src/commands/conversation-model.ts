@@ -14,10 +14,14 @@
 //   catalogue (`conversation-models.ts` in core-connectors), the default first;
 // - on a conversation opened on a client's task, only those the client's
 //   model-egress setting allows (CS-7.40, `checkClientModelUse`): egress off,
-//   nothing; a providers list, those providers only, each assessed;
+//   nothing; a providers list, those providers only, each assessed; a model
+//   no setting names (Ollama's) never, so it serves internal work only;
 // - on a conversation whose task this session cannot see (gone, or its read
 //   grant revoked since the conversation was opened), nothing, so the offer
-//   tells nothing of its client, and a model chosen for it is refused.
+//   tells nothing of its client, and a model chosen for it is refused;
+// - OpenRouter's paid models (#1508) besides, only to a person on the outside
+//   people list for this business (`OPS_OUTSIDE_MODEL_PEOPLE`), and only on a
+//   conversation with no client page. Never the default.
 //
 // `conversation.set_model` is the tab row's (`conversation-tabs.ts`); both
 // writes keep the choice through `keepModel`.
@@ -25,6 +29,8 @@
 import {
   conversationModelsOf,
   conversationProviderOf,
+  OPENROUTER_PROVIDER,
+  outsidePeopleOf,
   type ConversationModel,
 } from '../../../core-connectors/src/index.ts';
 import {
@@ -85,19 +91,33 @@ export async function modelFacts(
   return { model: found.model_id, clientId: found.client_id, unseen };
 }
 
-/** The models offered on `provider`'s conversation operation: all of them, or the client's allowed. */
+/** Whether the caller is on this install's outside people list for this business (#1508). */
+export const outsideListed = (tx: TenantQuery, session: Session): boolean =>
+  outsidePeopleOf(process.env).includes(`${tx.businessId}:${session.personId}`.toLowerCase());
+
+/**
+ * The models offered on `provider`'s conversation operation, with the paid
+ * ones for a listed person (`outside`): all of them, or the client's allowed.
+ * A paid model names no client setting, so a client's conversation never gets one.
+ */
 export async function offeredModels(
   tx: TenantQuery,
   provider: string,
   facts: ModelFacts | null,
+  outside = false,
 ): Promise<readonly ConversationModel[]> {
-  const models = conversationModelsOf(provider);
+  const models = [
+    ...conversationModelsOf(provider),
+    ...(outside ? conversationModelsOf(OPENROUTER_PROVIDER) : []),
+  ];
   if (facts === null) return models;
   if (facts.unseen) return [];
   const { clientId } = facts;
   if (clientId === null) return models;
   const offered: ConversationModel[] = [];
   for (const model of models) {
+    // A model no client's setting can name is for internal work only.
+    if (model.egressName === null) continue;
     // oxlint-disable-next-line no-await-in-loop -- one privacy read per model, at most two
     if ((await checkClientModelUse(tx, clientId, model.egressName)).ok) offered.push(model);
   }
@@ -133,7 +153,7 @@ export async function keepModel(
   // What is offered turns on the conversation's own task and client, read here, never the body.
   const facts = await modelFacts(tx, session, conversationId);
   if (facts === undefined) return refuseNotFound();
-  const offered = await offeredModels(tx, installProvider(), facts);
+  const offered = await offeredModels(tx, installProvider(), facts, outsideListed(tx, session));
   if (model !== null && !offered.some((one) => one.id === model)) return MODEL_NOT_OFFERED;
   await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
     tx.businessId,
@@ -152,9 +172,10 @@ async function modelToAsk(
   tx: TenantQuery,
   provider: string,
   facts: ModelFacts,
+  outside: boolean,
 ): Promise<string | undefined | null> {
   if (facts.model === null) return conversationModelsOf(provider)[0]?.id;
-  const offered = await offeredModels(tx, provider, facts);
+  const offered = await offeredModels(tx, provider, facts, outside);
   return offered.some((model) => model.id === facts.model) ? facts.model : null;
 }
 
@@ -166,5 +187,6 @@ export async function askedModel(
   provider: string,
 ): Promise<string | undefined | null> {
   const facts = await modelFacts(tx, session, conversationId);
-  return facts === undefined ? null : await modelToAsk(tx, provider, facts);
+  if (facts === undefined) return null;
+  return await modelToAsk(tx, provider, facts, outsideListed(tx, session));
 }

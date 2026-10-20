@@ -127,10 +127,11 @@ it('a step whose spend used its whole hold stops at its budget and asks the pers
   ]);
   expect((await holdsOn(work)).map((one) => one.state)).toEqual(['actual']);
 
-  // The person's answer is the one way on: a top-up holds what it raised.
+  // The person's answer is the one way on: a top-up holds what it raised,
+  // answered exactly in minor units as a decimal string.
   expect(await topUp(work, 300)).toMatchObject({
     ok: true,
-    value: { state: 'applied', heldMinor: 300 },
+    value: { state: 'applied', heldMinor: '300' },
   });
   const [, topped] = await holdsOn(work);
   await pickup(s, topped?.id);

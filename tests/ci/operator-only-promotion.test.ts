@@ -24,6 +24,7 @@ import {
   spawn,
   marks,
   COMMANDS,
+  stagedInto,
 } from './operator-only-commands.fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import { markMadeUp } from '../../scripts/ops/made-up-only.ts';
@@ -111,6 +112,7 @@ function operatorOnlyCases7() {
     const artefacts = store();
     const selected = storedArtefact(STAGED, artefacts);
     if (typeof selected === 'string') throw new Error(selected);
+    const staged = stagedInto(at.records, artefacts);
     const result = spawn(
       PROMOTE,
       [
@@ -136,16 +138,23 @@ function operatorOnlyCases7() {
     );
     expect(lstatSync(served).isDirectory()).toBe(true);
     expect(outputDigest(served)).toBe(selected.digest);
-    const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
-    expect(records).toHaveLength(1);
-    expect(JSON.parse(records[0]!)).toMatchObject({
-      action: 'promotion recorded',
-      version: STAGED,
-      line: LINE,
-      dryRun: false,
-      business: 'alpha',
-      operator: operatorPerson,
-    });
-    expect(records[0]).not.toContain(signIn);
+    expectPromotionRecorded(at.records, staged, signIn);
   }, 60_000);
+}
+
+/** Staging's record, which the selection read, then the promotion's own: one line, naming the operator. */
+function expectPromotionRecorded(folder: string, staged: string, signIn: string): void {
+  const written = readFileSync(join(folder, 'deployments.jsonl'), 'utf8');
+  expect(written.startsWith(staged)).toBe(true);
+  const records = written.slice(staged.length).trim().split('\n');
+  expect(records).toHaveLength(1);
+  expect(JSON.parse(records[0]!)).toMatchObject({
+    action: 'promotion recorded',
+    version: STAGED,
+    line: LINE,
+    dryRun: false,
+    business: 'alpha',
+    operator: operatorPerson,
+  });
+  expect(records[0]).not.toContain(signIn);
 }

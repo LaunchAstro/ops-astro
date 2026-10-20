@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's revert ask under concurrency, each schedule with its lock wait observed in pg_stat_activity on a connection of its own: two asks at once store one, an ask behind an approver unset or behind its correction leaving live stores nothing, and an unset behind an ask in flight lands after the ask is stored."
+}

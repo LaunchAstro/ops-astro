@@ -32,8 +32,9 @@ const UNPAIRED_SURROGATE = /[\uD800-\uDFFF]/u;
  *
  * The one definition of the rule. The
  * field engine applies it to field values below, `prepare.ts` to every other
- * operand at the door, and `tasks-comment.ts` to the comment body the agent
- * entry writes without passing that door.
+ * operand at the door, `tasks-comment.ts` to the comment body the agent
+ * entry writes without passing that door, and `conversation-exchange.ts` to a
+ * model's reply, which passes no door either.
  */
 export function storableText(value: string): boolean {
   return !value.includes(NUL) && !UNPAIRED_SURROGATE.test(value);
@@ -104,7 +105,7 @@ function daysIn(year: number, month: number): number {
  * either way. A leap second stays refused, as `Date.parse` refuses it: the
  * column would take it, but only by rolling it into the next minute.
  */
-function isTimestamp(value: string): boolean {
+export function isTimestamp(value: string): boolean {
   const match = ISO_8601.exec(value);
   if (match === null) return false;
   const [, y, mo, d, h, mi, sec, fraction, zoneHours, zoneMinutes] = match.map((part) =>

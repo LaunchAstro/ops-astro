@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: a decision holding its correction makes an unbind or a provider move of its client's site wait on a second connection, observed in pg_stat_activity, and the change is refused after an approval and goes through after a rejection, so a decided correction never loses the site it was decided on."
+}

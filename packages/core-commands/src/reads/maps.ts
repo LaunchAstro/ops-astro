@@ -5,8 +5,19 @@
 // tickets in closing order, never stored on the map, so a decision lives once,
 // on its ticket (W2).
 
-import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
-import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
+import {
+  clientsReached,
+  readableTaskCondition,
+  readableTaskParams,
+  type Subject,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
+import type {
+  MapComponentView,
+  MapFrontierResult,
+  MapListResult,
+  MapView,
+} from '../../../core-wire/src/index.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -141,6 +152,24 @@ async function readMapTickets(
 }
 
 /**
+ * Whether the subjects' grants reach the map now, judged once its lock is held
+ * by this statement's clock: a grant that ended or was revoked while the lock
+ * was awaited reaches nothing.
+ */
+async function stillReaches(
+  tx: TenantQuery,
+  mapId: string,
+  subjects: readonly Subject[],
+): Promise<boolean> {
+  const rows = await tx.query(
+    `select 1 from public.records r where r.business_id = $1 and r.id = $2
+        and ${readableTaskCondition('r', 3)}`,
+    [tx.businessId, mapId, ...readableTaskParams(subjects)],
+  );
+  return rows.length > 0;
+}
+
+/**
  * The map, or undefined when the id names no live map of this business. Its
  * client goes by `readClientFacts`' rule: the id only where the reader's
  * grants reach that client, so a grant on the map alone reads null.
@@ -169,7 +198,7 @@ export async function readMapView(
         and deleted_at is null and data ->> 'type' = 'map' for share`,
     [tx.businessId, mapId],
   );
-  if (held.length === 0) return undefined;
+  if (held.length === 0 || !(await stillReaches(tx, mapId, subjects))) return undefined;
   // The components and versions as of the version read with the map, so a
   // revision committed since is not mixed into this one. A linked ticket's id
   // shows only while it is still a live non-map ticket of this map.
@@ -237,4 +266,32 @@ export async function readMapFrontier(
       .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
     fog: fog.map((row) => ({ id: row.id, text: row.body })),
   };
+}
+
+/**
+ * The live maps of this business the subjects' grants reach, by title: a
+ * business-scoped read, or a read on the map itself. A ticket's grant never
+ * reaches its map, nor a map's grant a map filed under it
+ * (`mapTicketCondition`), so each is listed exactly when `map.view` would
+ * admit the reader. Judged in the statement that reads the rows.
+ */
+export async function readMapList(
+  tx: TenantQuery,
+  taskTypeId: string,
+  subjects: readonly Subject[],
+): Promise<MapListResult> {
+  const maps = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+  }>(
+    `select r.id, r.txt_1 as key, r.txt_4 as title
+       from public.records r
+      where r.business_id = $1 and r.record_type_id = $2
+        and r.deleted_at is null and r.data ->> 'type' = 'map'
+        and ${readableTaskCondition('r', 3)}
+      order by r.txt_4, r.id`,
+    [tx.businessId, taskTypeId, ...readableTaskParams(subjects)],
+  );
+  return { ok: true, maps };
 }

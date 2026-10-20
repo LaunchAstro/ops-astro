@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C80 decision read: `live_correction.read` answers a correction's state, the
-// approver who decided it by name (or null) and its version, and nothing
-// else, to whoever may request it (`run:write` at the correction's own party,
+// approver who decided it by name (or null), its version and the page check
+// that vouches for it (#1693), and nothing else, to whoever may request it (`run:write` at the correction's own party,
 // ORCH33). Four real crossings, each beside a reader in scope who does see
 // the correction, and each refusal compared byte for byte with the answer to
 // an id that names nothing: another business, another client party in the
@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { B_PAGE } from './c80-sites.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { grantTo, shareWithClient, type Member } from '../commands/fixture.ts';
@@ -54,7 +55,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('C80 decision read', () => {
-  it('answers the state, the deciding approver by name and the version, and nothing else', async () => {
+  it('answers the state, the deciding approver by name, the version and its check, and nothing else', async () => {
     await w.setApprover(w.ben.personId);
     const asked = await requested(w.ava);
     expect(await readAs(w.ava, asked.id)).toStrictEqual({
@@ -64,6 +65,9 @@ describe.skipIf(serverUrl === undefined)('C80 decision read', () => {
         state: 'requested',
         approver: null,
         versionId: asked.versionId,
+        verifiedAt: expect.any(String),
+        verifiedForMs: expect.any(Number),
+        refusal: null,
       },
     });
     expect(codeOf(await w.approve(w.ben, asked.id, asked.versionId))).toBe('not-a-refusal');
@@ -74,6 +78,9 @@ describe.skipIf(serverUrl === undefined)('C80 decision read', () => {
         state: 'approved',
         approver: 'ben',
         versionId: asked.versionId,
+        verifiedAt: expect.any(String),
+        verifiedForMs: 0,
+        refusal: null,
       },
     });
   });
@@ -92,7 +99,7 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, another business', 
 
 describe.skipIf(serverUrl === undefined)('C80 decision read, another client', () => {
   it('a grant on party B reads party B’s correction and nothing on party A', async () => {
-    const onB = await requested(w.dee, { partyId: w.partyB, taskId: w.taskB });
+    const onB = await requested(w.dee, { taskId: w.taskB, page: B_PAGE });
     const onA = await requested(w.ava);
     expect(readCode(await readAs(w.dee, onB.id))).toBe('not-a-refusal');
     const crossed = await readAs(w.dee, onA.id);

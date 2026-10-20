@@ -90,6 +90,7 @@ it('the claimed catalogued document redirect produces a picture at its final URL
   const picture = await capturePicture(PAGE, options, browserPort(probe));
   expect(picture.ok, JSON.stringify(probe)).toBe(true);
   expect(probe.url).toBe(FINAL);
+  expect(picture).toMatchObject({ ok: true, value: { url: FINAL } });
   expect(probe.colour).toBe(RED);
 }, 30_000);
 

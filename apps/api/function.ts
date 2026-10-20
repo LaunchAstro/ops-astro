@@ -19,11 +19,19 @@
 // so the function runs the reconciliation pass (`passDeployment`: sweep,
 // replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
 // names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
-// `none`. Each business passes on its own, awaited by every request while it
-// runs, again each `SWEEP_INTERVAL_MS` after it succeeds, since an instance may
-// be frozen once it answers. Instances that pass at once meet
-// on the pass's own row locks. `server.ts` runs the same pass only where there
-// is no function.
+// `none`. Each business passes on its own, again each `SWEEP_INTERVAL_MS`
+// after it succeeds. A request waits on the pass in flight, since an instance
+// may be frozen once it answers, but for at most `RECOVERY_WAIT_MS`: the pass
+// runs on a connection of its own, so a pass stalled on a lock holds neither
+// the runtime connection nor any request past that bound (#1411). A request
+// served beside a pass is what another instance's request already is;
+// instances that pass at once meet on the pass's own row locks. `server.ts`
+// runs the same pass only where there is no function.
+//
+// **Every session closes once idle (#1530).** The runtime pool, the pass's,
+// the outbox and the lookup login keep no session state, and each closes a
+// connection idle for `RUNTIME_IDLE_SECONDS`, so with the alias detached a
+// migrate window drains without terminating anything.
 //
 // **No admin login (G2).** The business key, the one read before tenancy, is
 // read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
@@ -41,6 +49,8 @@
 // the events its own request raised are in the outbox or dropped, since the
 // instance may be frozen once it answers; another request's never hold it.
 // The sink's DSN is the forwarder's, so the entry refuses to start beside it.
+// So is the release each event is sent with (`rebuiltError`), so the function
+// reads no `OPS_RELEASE` (#1787).
 //
 // **The agent quota is per instance (API-2).** Its counts live in one
 // process's memory and every instance starts its own, so each holds the
@@ -55,7 +65,7 @@ import {
   connect,
   connectAsAdmin,
   connectOutbox,
-  type Database,
+  RUNTIME_IDLE_SECONDS,
 } from '../../packages/core-records/src/index.ts';
 import {
   crashSeamProblem,
@@ -68,6 +78,7 @@ import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent
 import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
+import { carriedOption } from './model-carriage.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -75,6 +86,7 @@ import {
   registerEffectLookup,
   SWEEP_INTERVAL_MS,
 } from './recovery-entry.ts';
+import { HELD_ELSEWHERE } from './held-elsewhere.ts';
 import { composeApi } from './server.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
@@ -111,22 +123,22 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
   for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
-  if (!keys.delegation.ok) {
+  if (!keys.delegation.ok)
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
-  }
   const alerts = outboxAlerts(settings, databaseUrl, required);
   const database = connect(databaseUrl, { source: 'runtime' });
   const { app, resolveBusiness } = composeApi({
     database,
-    admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
+    admin: connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS }),
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
     errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
+    ...carriedOption(settings),
   });
-  const pass = recoveryPass(settings, database, resolveBusiness, keys);
+  const pass = recoveryPass(settings, databaseUrl, resolveBusiness, keys);
 
   return async (request) => {
     const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
@@ -146,6 +158,17 @@ async function answered(
 ): Promise<Response> {
   const fetched = async (): Promise<Response> => await app.fetch(request);
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
+}
+
+/** The longest a request waits on the reconciliation pass in flight. */
+export const RECOVERY_WAIT_MS = 2_000;
+
+/** Wait for `work` or `ms`, whichever ends first; the timer keeps nothing running. */
+async function within(work: Promise<void>, ms: number): Promise<void> {
+  const bound = new Promise<void>((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
+  await Promise.race([work, bound]);
 }
 
 /** The most instances the limits split across with at least one of each. */
@@ -187,14 +210,16 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request while it runs. A business passes on its own, so a key
+ * awaited by every request while it runs, each for up to `RECOVERY_WAIT_MS`.
+ * It opens its own connection at its first statement, so a pass waiting on a
+ * lock leaves the runtime one to the requests. A business passes on its own, so a key
  * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
  * `none` does nothing; unset does nothing only where no environment is named,
  * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
-  database: Database,
+  databaseUrl: string,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: RuntimeKeys,
 ): () => Promise<void> {
@@ -203,6 +228,7 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
+  const database = connect(databaseUrl, { source: 'runtime' });
   const due = new Map<string, number>();
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
@@ -221,7 +247,7 @@ function recoveryPass(
       else console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
-  // Every request waits on the pass in flight, so none is served beside it.
+  // Every request waits on the pass in flight, until it ends or its bound passes.
   return async (): Promise<void> => {
     const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
     if (running === undefined && owed.length > 0) {
@@ -229,7 +255,7 @@ function recoveryPass(
         running = undefined;
       });
     }
-    await running;
+    if (running !== undefined) await within(running, RECOVERY_WAIT_MS);
   };
 }
 
@@ -246,28 +272,10 @@ function outboxAlerts(
   }
   const key = scopeKey(required('ALERT_SCOPE_KEY'));
   const outbox = connectOutbox(databaseUrl, { source: 'runtime' });
-  const release = settings['OPS_RELEASE'];
-  return createOutboxAlerts({ outbox, key, where, root: ROOT, ...(release ? { release } : {}) });
+  return createOutboxAlerts({ outbox, key, where, root: ROOT });
 }
 
 let handler: ((request: Request) => Promise<Response>) | undefined;
-
-/**
- * The admin login, the sink's key, the provider's admin key (C58's endings
- * loop, `apps/endings`), the backup and restore credentials and the daily
- * upkeep's login (20261002105957): the environment machine's and the operator's.
- */
-const HELD_ELSEWHERE = [
-  'DATABASE_ADMIN_URL',
-  'OPS_ERROR_SINK_DSN',
-  'SUPABASE_SERVICE_KEY',
-  'BACKUP_SOURCE_URL',
-  'BACKUP_RETENTION_URL',
-  'DATABASE_UPKEEP_URL',
-  'BACKUP_STORE_URL',
-  'RESTORE_STORE_URL',
-  'RESTORE_KEY_FILE',
-];
 
 /** Vercel's Node.js function signature, one export per method: built on first use. */
 async function handle(request: Request): Promise<Response> {

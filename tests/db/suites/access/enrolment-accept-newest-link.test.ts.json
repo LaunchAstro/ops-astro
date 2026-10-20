@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T only the newest enrolment link is live, newest by the order sends took the invitation's lock: a send that began first but minted last is the link the accept takes"
+}

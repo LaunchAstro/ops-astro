@@ -75,7 +75,11 @@ export function protectedVerdicts(
     [...output.matchAll(/FAIL\s+(tests\/\S+?\.test\.tsx?)/gu)].map((m) => m[1]),
   );
   const reached = new Set(
-    [...output.matchAll(/db-conformance: (\S+) moved the database counter by (\d+)\./gu)]
+    [
+      ...output.matchAll(
+        /^db-conformance: (\S+) moved the database counter by (\d+)(?: in \d+\.\ds)?\.$/gmu,
+      ),
+    ]
       .filter((m) => Number(m[2]) > 0)
       .map((m) => m[1] as string),
   );

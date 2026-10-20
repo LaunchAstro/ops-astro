@@ -36,7 +36,7 @@ export function useModels(
       // A refused, unavailable or malformed answer offers nothing.
       const offered = isRefusal(answer) || isUnavailable(answer) ? undefined : answer.value.models;
       const models = Array.isArray(offered)
-        ? offered.map((model) => ({ id: model.id, label: model.id }))
+        ? offered.map((model) => ({ id: model.id, label: model.label ?? model.id }))
         : NONE;
       setHeld({ client, conversationId, models });
     };

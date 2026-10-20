@@ -13,7 +13,7 @@
         "OPS_ASTRO_GOTRUE_URL": "${PRODUCTION_GOTRUE_URL:?set from the production runbook}",
         "SUPABASE_PUBLISHABLE_KEY": "${PRODUCTION_PUBLISHABLE_KEY:?set from the production runbook}",
         "OPS_ASTRO_DELEGATION": "${PRODUCTION_WORKER_DELEGATION:?set from the production runbook}",
-        "OPS_WORKER_HEARTBEAT_URL": "${PRODUCTION_WORKER_HEARTBEAT_URL:?set from the production runbook}",
+        "OPS_WORKER_HEARTBEAT_URL": "${PRODUCTION_WORKER_HEARTBEAT_URL:-}",
         "OPS_HEARTBEAT_EVERY_MS": "${PRODUCTION_HEARTBEAT_EVERY_MS:?set from the production runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${PRODUCTION_EGRESS_HEARTBEAT_HOST:?set from the production runbook}",
         "OPS_EGRESS_AUTH_HOST": "${PRODUCTION_EGRESS_AUTH_HOST:?set from the production runbook}"

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Add client: client.create makes a client that client.list names and a new task can be put under; a person without record:write is refused and nothing is made"
+}

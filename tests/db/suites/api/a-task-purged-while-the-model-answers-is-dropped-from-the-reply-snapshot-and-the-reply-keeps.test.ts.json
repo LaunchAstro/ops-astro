@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a created task purged while the model answers is dropped from the reply's snapshot, and the reply is still kept"
+}

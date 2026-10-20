@@ -98,14 +98,16 @@ describe('the workflows', () => {
   });
 
   it('a pull request cancels its own older run, and a merge group is never cancelled', () => {
-    for (const path of [
-      '.github/workflows/ci.yml',
-      '.github/workflows/codeql.yml',
-      '.github/workflows/review-evidence.yml',
-    ])
+    for (const path of ['.github/workflows/codeql.yml', '.github/workflows/review-evidence.yml'])
       expect(load(path)['concurrency'], path).toStrictEqual({
         group: '${{ github.workflow }}-${{ github.ref }}',
         'cancel-in-progress': "${{ github.event_name != 'merge_group' }}",
       });
+    // ci.yml groups a push to main by its commit, so no push cancels another (scripts/full-run.ts).
+    expect(load('.github/workflows/ci.yml')['concurrency']).toStrictEqual({
+      group:
+        "${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}",
+      'cancel-in-progress': "${{ github.event_name != 'merge_group' }}",
+    });
   });
 });

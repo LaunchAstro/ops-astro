@@ -22,7 +22,11 @@
 // no other task. A step archived by its parent's completion (MP-4-15) is not
 // open work, so it takes no number until the parent is reopened.
 
-import { readableRecordIds, type Subject } from '../../../core-records/src/index.ts';
+import {
+  readableTaskCondition,
+  readableTaskParams,
+  type Subject,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { priorityStageIds, type RankView } from '../../../core-wire/src/index.ts';
 
@@ -175,25 +179,20 @@ export function rankInputOf(row: RankPoolRow): RankInput {
 
 /**
  * The rank of one task as this reader is shown it. The pool is the open tasks
- * the reader's grants reach, listed by `readableRecordIds` inside the database
- * and handed to the one query that reads the marks, so a task outside the
- * reader's grants is never read here at all. The clock is the database's, the
- * one the grants' expiry reads.
+ * the reader's grants reach, a map's tickets included, judged inside the one
+ * query that reads the marks (`readableTaskCondition`), so a task outside the
+ * reader's grants is never read here at all and the pool is the one readable
+ * at that query's instant. The clock is the database's, the one the grants'
+ * expiry reads.
  */
 export async function readTaskRank(
   tx: TenantQuery,
   taskTypeId: string,
-  recordId: string,
+  asked: string,
   pool: RankPool,
 ): Promise<RankView> {
-  const readable =
-    pool.kind === 'task'
-      ? [recordId]
-      : await readableRecordIds(tx, pool.subjects, {
-          collection: 'task',
-          action: 'read',
-          recordTypeId: taskTypeId,
-        });
+  // Stored ids are lowercase, and the own row is found by comparing text.
+  const recordId = asked.toLowerCase();
   const rows = await tx.query<RankPoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
             r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease, r.txt_5 as stage,
@@ -208,8 +207,13 @@ export async function readTaskRank(
          on priority.business_id = r.business_id and priority.key = 'priority_stages'
         and priority.value_type = 'stage_ids'
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and (r.id = $3 or r.id = any($4::uuid[]))`,
-    [tx.businessId, taskTypeId, recordId, readable],
+        and (r.id = $3 or ($4::text[] is not null and ${readableTaskCondition('r', 4)}))`,
+    [
+      tx.businessId,
+      taskTypeId,
+      recordId,
+      ...readableTaskParams(pool.kind === 'task' ? null : pool.subjects),
+    ],
   );
   const own = rows.find((row) => row.id === recordId);
   if (own === undefined) return { number: null, score: null, calc: '' };

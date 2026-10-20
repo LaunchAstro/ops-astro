@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A publish whose deployment the provider shows no record of within the lookup window stays not published yet, found and read live at a later pass; one never found ends unknown at the host's last pass with one person task, also with two last passes at once on separate connections; a deployment for another commit or not serving the page stays unknown; the publish is sent once."
+}

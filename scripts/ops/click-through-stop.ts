@@ -12,7 +12,7 @@
 // breaks anyway is tried once more, as the command envelope tries it.
 
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { raiseBudgetWait } from '../../packages/core-custody/src/broker-wait.ts';
+import { stopAtBudget } from '../../packages/core-custody/src/broker-wait.ts';
 import { spentOn } from '../../packages/core-runtime/src/budget-stop.ts';
 import { acquire } from '../../packages/core-runtime/src/locks.ts';
 import {
@@ -57,14 +57,14 @@ export async function stopAtCeiling(
           [tx.businessId, leaseId],
         );
         if (held === undefined) throw new Error(`click-through-seed: no lease ${leaseId} to stop`);
-        await raiseBudgetWait(tx, {
+        await stopAtBudget(tx, {
           runId: held.run_id,
           leaseId,
           delegationId: held.delegation_id,
           reservationId: held.reservation_id,
           versionId: held.version_id,
           ceilingMinor: Number(held.held),
-          spentMinor: (await spentOn(tx, held.reservation_id)).spent,
+          spentMinor: Number((await spentOn(tx, held.reservation_id)).spent),
         });
       }),
   );

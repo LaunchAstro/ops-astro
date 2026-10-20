@@ -4,20 +4,22 @@
 // itself (the catalogue pool, a resolver and the pinned transport), never a
 // function a caller hands in, and the page the correction stored is checked
 // against the catalogue before anything is read, sent or fetched. The stored
-// `pageUrl` is as the requester sent it, so a page outside the catalogue must
-// stop the run: a publish nobody can observe is an effect nobody can verify.
+// `pageUrl` is as the client's site binds it, so a page bound there but
+// outside the catalogue must stop the run: a publish nobody can observe is an
+// effect nobody can verify.
 // Every provider here is a double: nothing reaches a live system.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { PAGE, c80World, type C80World } from './c80-world.ts';
+import { ABOUT, PAGE, c80World, type C80World } from './c80-world.ts';
 import { PUBLIC_ADDRESS, doubles } from './c80-runner-doubles.ts';
 import {
   runLivePublish,
   runLiveRevert,
   type RunnerPorts,
 } from '../../packages/core-commands/src/index.ts';
+import { bindPartySite, readPartySite } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
@@ -46,14 +48,34 @@ beforeAll(async () => {
   const row = rows[0];
   if (row === undefined) throw new Error('no live lease after pickup');
   lease = { leaseId: row.id, fence: Number(row.fence), taskId: picked.taskId, holder: row.holder };
+  await bindOnSiteA(ELSEWHERE);
 }, 120_000);
 afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+/**
+ * Bind `pageUrl` on party A's site as given, so the request stores it: the
+ * store takes a page as text, and the fence must still refuse one it does
+ * not catalogue.
+ */
+async function bindOnSiteA(pageUrl: string): Promise<void> {
+  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const site = await readPartySite(tx, w.partyA);
+    if (site === undefined) throw new Error('party A has no site');
+    const bound = await bindPartySite(
+      tx,
+      { ...site, pages: [...site.pages, { pageUrl, path: ABOUT }] },
+      w.admin.actorId,
+    );
+    if (!bound.ok) throw new Error(`bindOnSiteA: refused ${bound.code}`);
+  });
+}
+
 /** An approved correction whose stored page is `pageUrl`. */
 async function approved(pageUrl = PAGE): Promise<string> {
-  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl }));
+  await bindOnSiteA(pageUrl);
+  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, page: pageUrl }));
   const id = String(detail['correctionId']);
   expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
   return id;
@@ -125,7 +147,7 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
 
 describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => {
   it('answers an unapproved correction with its approval first, raising nothing', async () => {
-    const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl: ELSEWHERE }));
+    const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, page: ELSEWHERE }));
     const ports = doubles();
     expect(await publish(String(detail['correctionId']), ports)).toEqual({
       kind: 'refused',

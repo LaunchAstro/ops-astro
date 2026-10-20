@@ -21,8 +21,9 @@
 
 import {
   bindingRefuses,
+  findDeployment,
   mergeAndFind,
-  readServed,
+  readServing,
   readSiteSource,
   revertForward,
   type BindingDependencies,
@@ -30,7 +31,7 @@ import {
   type ReadBack,
   type SiteBinding,
 } from '../../../core-connectors/src/index.ts';
-import type { RunnerPorts } from './live-correction-runner.ts';
+import type { RunnerPorts } from './live-correction-run.ts';
 
 export interface SitePortDependencies extends Omit<BindingDependencies, 'record'> {
   /** The fence's inputs for `site.capture`: the catalogue pool, a resolver, the pinned transport. */
@@ -42,6 +43,12 @@ export interface SitePortDependencies extends Omit<BindingDependencies, 'record'
 const ABSENT = { state: 'absent' } as const;
 const UNKNOWN = { state: 'unknown' } as const;
 
+/** Custody's port and the caller's own admission of each call (#1693), where the caller set them. */
+const carried = ({ custody, admit }: SitePortDependencies) => ({
+  ...(custody === undefined ? {} : { custody }),
+  ...(admit === undefined ? {} : { admit }),
+});
+
 /** The runner's ports for one correction's proposal, every provider call guarded. */
 export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies): RunnerPorts {
   const codes: string[] = [];
@@ -49,6 +56,8 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     transport: deps.transport,
     resolve: deps.resolve,
     credential: deps.credential,
+    // A credential answered by reference is sent by custody, never by this process.
+    ...carried(deps),
     wait: deps.wait,
     record: (code) => codes.push(code),
   };
@@ -67,7 +76,9 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
       return read.kind === 'ok' && read.value.content === binding.change.before ? ABSENT : UNKNOWN;
     },
     publish: async (input) => await mergeAndFind(binding, input, guarded),
-    readDeployment: async (deploymentId) => await readServed(deploymentId, guarded),
+    // Served only while it serves the bound page; the page's host is read once for these ports.
+    readDeployment: readServing(binding, guarded),
+    findDeployment: async (revision) => await findDeployment(binding, revision, guarded),
     capture: {
       ...deps.capture,
       record: (refusal) => {
@@ -84,7 +95,8 @@ export function siteRunnerPorts(binding: SiteBinding, deps: SitePortDependencies
     revert: async (input) => await revertForward(binding, input, guarded),
     raiseTask: deps.raiseTask,
     now: deps.now,
-    refusals: () => [...codes],
+    // A run's refusals, read once at its receipt: the next run on these ports starts with none.
+    refusals: () => codes.splice(0),
     unbound: (correction) => bindingRefuses(binding, correction),
   };
 }

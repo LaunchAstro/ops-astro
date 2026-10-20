@@ -4,42 +4,40 @@
 // as a list kept beside any page, and at `/clients/` that list in full-page
 // form until MP-8-5's CRM board takes the address.
 //
-// Client records (MP-10-1) are not built, so the book is made up
-// (`data/clients-book.ts`), drawn under the design system's mock mark, and a
-// line says so. The count counts the book it draws, never a second total, and
-// a search that finds nothing says so in a sentence (D-6).
+// The book is the business's own clients as `client.list` (C32) names them:
+// those the reader's grants reach, A to Z. The count counts the book it draws,
+// never a second total, and a search that finds nothing says so in a sentence
+// (D-6). Nothing in it is made up.
 //
-// A row carries only the doors this application serves. The one drawn is
-// Projects: a link to the board that the dock's gesture law takes when the
-// Projects panel is registered (plain solos, shift stacks) and the application
-// follows as a link when it is not. A made-up row's door opens the whole board:
-// no board row is under a made-up client. Not drawn, and why:
-// - a row press walking to the client's record: the record is MP-10-1's;
-// - Portal (`/clients/<slug>/`): no person holds a client grant before MP-10-1,
-//   so every one lands on the refusal;
-// - Docs: no Docs panel is registered;
-// - the comment badge's door: no view narrows the board to a client's waiting
-//   messages, so the count is drawn as a mark, not a control.
-// The head's sync stamp and button are gone with live sync (LIVE-SYNC.md).
+// **Add client** sends `client.create` with the typed name, under the server's
+// own check (`record:write`, never an agent's); a refusal is quoted in the
+// server's words and a landed one rereads the book. One typed name is one
+// attempt: a send whose answer was lost keeps its `operationId` until an
+// answer comes back, so pressing Add again on that name, even after editing
+// it and back, is the same attempt and the server replays the client it made.
+// The book and the form are keyed on the grant, so an answer from before a
+// business or person switch touches nothing after it.
+//
+// A row's door is Projects filtered to that client (`/projects/?f=client:"<name>"`,
+// the board's Client facet), by the dock's gesture law when the Projects panel
+// is registered (plain solos, shift stacks) and as a link when it is not. The
+// board names a row's client only where the reader's grants reach it, as
+// `client.list` does. Not drawn: a press walking to the client's record
+// (MP-10-1's), Portal, Docs, and counts of open work or waiting messages, which
+// no read serves yet.
 //
 // Opened at a client (CS-7.29: an inbox group head's door, `/clients/?client=`),
-// the panel reads `client.list` (C32) and marks that client above the book, by
-// the name the read gives, outside the mock mark: the client is real, the book
-// is not. A client the read leaves out, gone or another business's, is said in
-// a sentence that names nothing of it.
-//
-// The marked client's row carries the Clients row door: Projects filtered to
-// that client (`/projects/?f=client:"<name>"`, the board's Client facet), by the
-// same gesture law. The board names a row's client only where the reader's
-// grants reach it, as `client.list` does, so the door shows that client's work
-// the reader may see and nothing of a client they do not reach.
+// the panel marks that client above the book, by the name the read gives. A
+// client the read leaves out, gone or another business's, is said in a
+// sentence that names nothing of it. Opened at another client, the panel asks
+// `client.list` again and marks nothing until that read answers.
 
-import { useState, type ReactElement } from 'react';
-import { Count, Icon, MockRegion, clientFacetId } from '@launchastro/ui';
-import type { ClientListResult } from '../../../../packages/core-wire/src/index.ts';
-import { MADE_UP_BOOK, type BookClient, type ClientBook } from '../data/clients-book.ts';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { Icon, clientFacetId } from '@launchastro/ui';
+import type { ClientListResult, ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
-import type { OperationsClient } from '../operations/client.ts';
+import { isUnavailable, type CallResult, type OperationsClient } from '../operations/client.ts';
+import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { pathTo } from '../routes.ts';
 
@@ -52,25 +50,12 @@ const initials = (name: string): string =>
     .map((word) => word.slice(0, 1).toUpperCase())
     .join('');
 
-/** The book's clients A to Z whose name or industry holds the query, whatever the case. */
-function search(book: ClientBook, query: string): readonly BookClient[] {
+/** The book's clients A to Z whose name holds the query, whatever the case. */
+function search(clients: readonly ClientView[], query: string): readonly ClientView[] {
   const wanted = query.trim().toLowerCase();
-  return book.clients
-    .filter(
-      (client) =>
-        wanted === '' ||
-        client.name.toLowerCase().includes(wanted) ||
-        client.industry.toLowerCase().includes(wanted),
-    )
+  return clients
+    .filter((client) => wanted === '' || client.name.toLowerCase().includes(wanted))
     .toSorted((a, b) => a.name.localeCompare(b.name));
-}
-
-/** "3 of 8 clients · 21 open · 4 waiting on us"; the last clause only when something waits. */
-function countLine(shown: readonly BookClient[], book: ClientBook): string {
-  const open = shown.reduce((sum, client) => sum + client.open, 0);
-  const waiting = shown.reduce((sum, client) => sum + client.waiting, 0);
-  const line = `${String(shown.length)} of ${String(book.clients.length)} clients · ${String(open)} open`;
-  return waiting > 0 ? `${line} · ${String(waiting)} waiting on us` : line;
 }
 
 /** The Projects door: to `place`, by the dock's gesture law, or as a link without a dock. */
@@ -95,137 +80,191 @@ function ProjectsDoor(props: { readonly place: string; readonly label: string })
 const boardOf = (name: string): string =>
   `${pathTo('agency:projects-board')}?${new URLSearchParams({ f: clientFacetId(name) }).toString()}`;
 
-function Row(props: { readonly client: BookClient }): ReactElement {
-  const { client } = props;
+function ClientRow(props: { readonly client: ClientView }): ReactElement {
+  const { name } = props.client;
   return (
-    <li className="clbook__item">
+    <>
       <div className="clbook__row">
         <span className="clbook__tile" aria-hidden="true">
-          {initials(client.name)}
+          {initials(name)}
         </span>
         <span className="clbook__who">
-          <span className="clbook__name">{client.name}</span>
-          <span className="clbook__industry">{client.industry}</span>
+          <span className="clbook__name">{name}</span>
         </span>
       </div>
-      <ProjectsDoor
-        place={pathTo('agency:projects-board')}
-        label="Open Projects, every client's work"
+      <ProjectsDoor place={boardOf(name)} label={`Open Projects, ${name}'s work`} />
+    </>
+  );
+}
+
+/** The book as `client.list` answered it: search, the count, and the rows. */
+export function Book(props: { readonly clients: readonly ClientView[] }): ReactElement {
+  const [query, setQuery] = useState('');
+  const shown = search(props.clients, query);
+  const asked = query.trim();
+  return (
+    <>
+      <div className="clbook__find">
+        <input
+          className="tf"
+          type="search"
+          aria-label="Search clients"
+          placeholder="Search clients"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+          }}
+        />
+      </div>
+      <p className="clbook__count">
+        {`${String(shown.length)} of ${String(props.clients.length)} clients`}
+      </p>
+      {shown.length === 0 ? (
+        <p className="clbook__empty">
+          {asked === ''
+            ? 'The book holds no clients yet.'
+            : `No client in the book matches “${asked}”.`}
+        </p>
+      ) : (
+        <ul className="clbook__list">
+          {shown.map((client) => (
+            <li key={client.clientId} className="clbook__item">
+              <ClientRow client={client} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+interface AddClientProps {
+  readonly client: OperationsClient;
+  readonly onAdded: () => void;
+}
+
+/** The typed name through `client.create`, one attempt per name until it is answered. */
+function useAddClient(props: AddClientProps) {
+  const [name, setName] = useState('');
+  const { busy, because, run } = useCommand();
+  // Each typed name's attempt id, kept until that attempt is answered.
+  // A Map, so a name like `constructor` never finds an inherited value.
+  const held = useRef(new Map<string, string>());
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const wanted = name.trim();
+    if (wanted === '' || busy) return;
+    const operationId = held.current.get(wanted) ?? props.client.newOperationId();
+    held.current.set(wanted, operationId);
+    run(
+      async () => {
+        const answer = await props.client.mutate(
+          'client.create',
+          { name: wanted },
+          { operationId },
+        );
+        if (!isUnavailable(answer)) held.current.delete(wanted);
+        return answer;
+      },
+      (settlement) => {
+        if (settlement.kind !== 'ok') return;
+        // Only the name it sent: one typed while it was out stays.
+        setName((now) => (now.trim() === wanted ? '' : now));
+        props.onAdded();
+      },
+    );
+  };
+  return { name, setName, busy, because, submit };
+}
+
+/** Add client: a name and the button; a refusal is quoted in the server's words. */
+function AddClient(props: AddClientProps): ReactElement {
+  const { name, setName, busy, because, submit } = useAddClient(props);
+  return (
+    <form className="clbook__add" data-client-add onSubmit={submit}>
+      <input
+        className="tf"
+        type="text"
+        aria-label="New client's name"
+        placeholder="New client's name"
+        value={name}
+        onChange={(event) => {
+          setName(event.target.value);
+        }}
       />
-      {client.waiting > 0 ? (
-        <span className="clbook__waiting">
-          <Icon name="comment-alt" size="sm" />
-          <Count n={client.waiting} look="corner" label="client messages waiting on us" />
-        </span>
-      ) : null}
-    </li>
+      <button className="btn btn--secondary btn--sm" type="submit" disabled={busy}>
+        Add client
+      </button>
+      {because === null ? null : (
+        <p className="field__error" role="alert">
+          {because}
+        </p>
+      )}
+    </form>
   );
 }
 
 /** The client the panel was opened at, named only where `client.list` names it. */
 function OpenedClient(props: {
-  readonly client: OperationsClient;
-  readonly grantKey: string;
+  readonly clients: readonly ClientView[];
   readonly clientId: string;
 }): ReactElement {
-  const { client, clientId } = props;
-  const { state, reload } = useRead<ClientListResult>({
-    grantKey: props.grantKey,
-    run: async () => await client.read<ClientListResult>('client.list', {}),
-    deps: [client],
-  });
+  const found = props.clients.find((each) => each.clientId === props.clientId);
+  if (found === undefined) {
+    return (
+      <p className="clbook__opened clbook__empty">The client you opened is not in your book.</p>
+    );
+  }
   return (
-    <RecordState state={state} subject="client" onRetry={reload}>
-      {(listed) => {
-        const found = listed.clients.find((each) => each.clientId === clientId);
-        if (found === undefined) {
-          return (
-            <p className="clbook__opened clbook__empty">
-              The client you opened is not in your book.
-            </p>
-          );
-        }
-        return (
-          <div className="clbook__opened clbook__item" aria-current="true">
-            <div className="clbook__row">
-              <span className="clbook__tile" aria-hidden="true">
-                {initials(found.name)}
-              </span>
-              <span className="clbook__who">
-                <span className="clbook__name">{found.name}</span>
-              </span>
-            </div>
-            <ProjectsDoor
-              place={boardOf(found.name)}
-              label={`Open Projects, ${found.name}'s work`}
-            />
-          </div>
-        );
-      }}
-    </RecordState>
+    <div className="clbook__opened clbook__item" aria-current="true">
+      <ClientRow client={found} />
+    </div>
   );
 }
 
+/** An answer with no client list is not drawn as one: the book says it is unavailable. */
+function listOrUnavailable(answer: CallResult<ClientListResult>): CallResult<ClientListResult> {
+  if (!('ok' in answer) || Array.isArray(answer.value.clients)) return answer;
+  return {
+    unavailable: true,
+    because: 'The API answered with something this screen could not read.',
+  };
+}
+
 interface ClientsProps {
-  readonly book?: ClientBook | undefined;
-  /** Reads the client the panel is opened at; without it, none is marked. */
-  readonly client?: OperationsClient | undefined;
-  readonly grantKey?: string | undefined;
+  readonly client: OperationsClient;
+  readonly grantKey: string;
   /** The client the panel's place names (CS-7.29). */
   readonly at?: string | undefined;
 }
 
-/** The opened client's mark, where the panel has a read and its place names a client. */
-const opened = ({ client, grantKey, at }: ClientsProps): ReactElement | null =>
-  client === undefined || grantKey === undefined || at === undefined ? null : (
-    <OpenedClient key={at} client={client} grantKey={grantKey} clientId={at} />
-  );
-
+/** One business's book and Add client: a grant change starts both afresh, so nothing carries across. */
 export function ClientsScreen(props: ClientsProps): ReactElement {
-  const book = props.book ?? MADE_UP_BOOK;
-  const [query, setQuery] = useState('');
-  const shown = search(book, query);
-  const asked = query.trim();
+  return <ClientsOf key={props.grantKey} {...props} />;
+}
+
+function ClientsOf(props: ClientsProps): ReactElement {
+  const { client } = props;
+  // A new opened client is read afresh: the book read for the last one may
+  // name a client whose grant has since gone (CS-7.29).
+  const { state, reload, own } = useRead<ClientListResult>({
+    grantKey: props.grantKey,
+    run: async () => listOrUnavailable(await client.read<ClientListResult>('client.list', {})),
+    deps: [client, props.at],
+  });
   return (
     <div className="clbook">
-      {opened(props)}
-      <MockRegion word>
-        <details className="clbook__note field-callout">
-          <summary aria-label="About these sample clients">Sample data</summary>
-          <div className="field-callout__body">
-            <p>
-              Made up for the look: client records are not built yet, so these clients and their
-              counts are samples.
-            </p>
-          </div>
-        </details>
-        <div className="clbook__find">
-          <input
-            className="tf"
-            type="search"
-            aria-label="Search clients"
-            placeholder="Search clients"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-            }}
-          />
-        </div>
-        <p className="clbook__count">{countLine(shown, book)}</p>
-        {shown.length === 0 ? (
-          <p className="clbook__empty">
-            {asked === ''
-              ? 'The book holds no clients yet.'
-              : `No client in the book matches “${asked}”.`}
-          </p>
-        ) : (
-          <ul className="clbook__list">
-            {shown.map((client) => (
-              <Row key={client.slug} client={client} />
-            ))}
-          </ul>
+      <AddClient client={client} onAdded={reload} />
+      <RecordState state={state} subject="clients" onRetry={reload} keep>
+        {(listed) => (
+          <>
+            {props.at === undefined || !own ? null : (
+              <OpenedClient key={props.at} clients={listed.clients} clientId={props.at} />
+            )}
+            <Book clients={listed.clients} />
+          </>
         )}
-      </MockRegion>
+      </RecordState>
     </div>
   );
 }

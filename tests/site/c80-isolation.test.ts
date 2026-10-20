@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { AFTER, BEFORE, c80World, requestBody, type C80World } from './c80-world.ts';
+import { c80World, requestBody, type C80World } from './c80-world.ts';
+import { B_PAGE } from './c80-sites.ts';
 import { listCoveredCorrections } from '../../packages/core-records/src/site/live-corrections.ts';
 import { subjectsOf } from '../../packages/core-records/src/authority/grants.ts';
 import { NO_ASSURANCE } from '../../packages/core-records/src/identity/verified-subject.ts';
@@ -20,7 +21,10 @@ import type { Member } from '../commands/fixture.ts';
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 isolation: DATABASE_URL is unset, so nothing ran.');
 
-const CANARY = `canary-${randomUUID()}`;
+// Letters only, so it can stand alone as the replacement (#1693, #1987).
+const CANARY = `canary${randomUUID()
+  .replaceAll('-', '')
+  .replaceAll(/\d/gu, (digit) => 'ghijklmnop'.charAt(Number(digit)))}`;
 
 let w: C80World;
 /** A correction on party B, carrying the canary in its content. */
@@ -47,12 +51,7 @@ beforeAll(async () => {
   if (serverUrl === undefined) return;
   w = await c80World('c80iso');
   await w.setApprover(w.ben.personId);
-  const result = await w.request(w.ava, {
-    partyId: w.partyB,
-    taskId: w.taskB,
-    before: `${BEFORE}${CANARY}\n`,
-    after: `${AFTER}${CANARY}\n`,
-  });
+  const result = await w.request(w.ava, { taskId: w.taskB, page: B_PAGE, replacement: CANARY });
   expect(codeOf(result)).toBe('not-a-refusal');
   const detail = detailOf(result);
   foreign = {
@@ -89,8 +88,8 @@ describe.skipIf(serverUrl === undefined)(
   'C80 isolation, another client in the same business',
   () => {
     it('a grant on party B reaches party B and nothing on party A', async () => {
-      const own = detailOf(await w.request(w.dee, { partyId: w.partyB, taskId: w.taskB }));
-      const onA = await w.request(w.dee, { partyId: w.partyA });
+      const own = detailOf(await w.request(w.dee, { taskId: w.taskB, page: B_PAGE }));
+      const onA = await w.request(w.dee);
       expect(codeOf(onA)).toBe('SCOPE_NOT_GRANTED');
       const onlyA = detailOf(await w.request(w.ava));
       const listed = await listFor(w.world.business, w.dee);
@@ -108,7 +107,7 @@ describe.skipIf(serverUrl === undefined)(
 );
 
 describe.skipIf(serverUrl === undefined)('C80 isolation, a party that is not the task’s', () => {
-  it('refuses a request naming party A for a task under party B, and stores nothing', async () => {
+  it("refuses party A's page for a task under party B, and stores nothing", async () => {
     const stored = async () =>
       (
         await w.world.db.admin.execute<{ readonly n: string }>(
@@ -117,8 +116,8 @@ describe.skipIf(serverUrl === undefined)('C80 isolation, a party that is not the
         )
       )[0]?.n;
     const before = await stored();
-    const crossed = await w.request(w.ava, { partyId: w.partyA, taskId: w.taskB });
-    expect(codeOf(crossed)).toBe('CORRECTION_PARTY_MISMATCH');
+    const crossed = await w.request(w.ava, { taskId: w.taskB });
+    expect(codeOf(crossed)).toBe('NOT_FOUND');
     expect(await stored()).toBe(before);
   });
 });
@@ -167,16 +166,11 @@ describe.skipIf(serverUrl === undefined)('C80 canary', () => {
     );
     try {
       // A request that is stored, carrying the canary, inside the spies.
-      const stored = await w.request(w.ava, {
-        before: `${BEFORE}${CANARY}\n`,
-        after: `${AFTER}${CANARY}\n`,
-      });
+      const stored = await w.request(w.ava, { replacement: CANARY });
       expect(codeOf(stored)).toBe('not-a-refusal');
       expect(JSON.stringify(stored)).not.toContain(CANARY);
-      const refusedEnvelope = await w.request(w.ava, {
-        before: `${BEFORE}${CANARY}\n`,
-        after: `${AFTER}${CANARY}-changed\n`,
-      });
+      // Over two lines, so the envelope refuses it whatever the phrase rule admits (#1987).
+      const refusedEnvelope = await w.request(w.ava, { replacement: `${CANARY}\nchanged` });
       expect(codeOf(refusedEnvelope)).toBe('CHANGE_ENVELOPE_EXCEEDED');
       expect(JSON.stringify(refusedEnvelope)).not.toContain(CANARY);
       const refusedScope = await w.approve(w.dee, foreign.correctionId, foreign.versionId);

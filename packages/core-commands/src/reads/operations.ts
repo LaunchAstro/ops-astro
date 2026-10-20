@@ -4,7 +4,8 @@
 // It places other parts' reads rather than keeping lists of its own (the
 // unattended items are INB-1's `readUnattendedInbox`, as the caller reads
 // them); the privacy incidents are the part that is this view's own record, and each
-// links the breach runbook published most recently (C81). The security alerts
+// links the breach runbook published most recently (C81), or the version an
+// evidence link pins while its words match (`legalVersionPath`). The security alerts
 // are the forwarder's log (S0-2, 0069), each with fixed words for its kind.
 //
 // Beside it, the breach drill's notices (C81): drafted from that runbook for
@@ -18,7 +19,7 @@ import {
   readPublishedLegal,
   readSecurityAlerts,
 } from '../../../core-records/src/index.ts';
-import type { NoticeRecipient, TenantQuery } from '../../../core-records/src/index.ts';
+import type { LegalPin, NoticeRecipient, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   BreachNoticesResult,
   OperationsReadResult,
@@ -64,7 +65,7 @@ const alertView = ({ kind, at }: { kind: string; at: Date }): SecurityAlertView 
  * API's reach, so this is its one copy here, pinned to the store's row by
  * `C55 last tested restore`.
  */
-const RESTORE_FRESH_DAYS = 35;
+export const RESTORE_FRESH_DAYS = 35;
 
 /**
  * The date of the last tested restore (C55, carried from S0-3), from the row
@@ -90,10 +91,11 @@ async function readLastTestedRestore(
 export async function readOperations(
   tx: TenantQuery,
   viewerPersonId: string,
+  runbookPin?: LegalPin,
 ): Promise<Omit<OperationsReadResult, 'ok'>> {
   const unattended = await readUnattendedInbox(tx, viewerPersonId);
   const incidents = await readPrivacyIncidents(tx);
-  const runbook = await readPublishedLegal(tx, 'breach-runbook');
+  const runbook = await readPublishedLegal(tx, 'breach-runbook', runbookPin);
   const alerts = await readSecurityAlerts(tx);
   const lastTestedRestore = await readLastTestedRestore(tx);
   return {

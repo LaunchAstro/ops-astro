@@ -5,11 +5,22 @@
       "rule": "javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring",
       "path": "scripts/local/auth-seed.mjs",
       "matches": ["1df0f89d5f9b328e"],
-      "file": "a35daf44e17534fa",
-      "reason": "Local seed script logging its own seed person's address and status. Reviewed again 29 September 2026 (SL01): S0-6b's ES256 service token over CQ-11's env-file reader; the flagged line is unchanged. Reviewed again 30 September 2026 (SL01-19): only Ada's made-up surname changed (staging's invented names); the flagged line is unchanged.",
+      "file": "b8b750a2f2746ef2",
+      "reason": "Local seed script logging its own seed person's address and status. Reviewed again 29 September 2026 (SL01): S0-6b's ES256 service token over CQ-11's env-file reader; the flagged line is unchanged. Reviewed again 30 September 2026 (SL01-19): only Ada's made-up surname changed (staging's invented names); the flagged line is unchanged. Reviewed again 12 October 2026 (M-A13-4): a reset GoTrue refuses now fails the seed (#1350); the flagged line is unchanged.",
       "impact": "None: the format string holds the script's own seed data, not input.",
       "owner": "Nathan Mulligan, maintainer",
       "control": "Not shipped: scripts/local/ runs only against the local auth container.",
+      "expires": "2026-12-28"
+    },
+    {
+      "rule": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+      "path": "packages/core-custody/src/token-file.ts",
+      "matches": ["149ff0d07e6bd7ca"],
+      "file": "6cf7c8ba84707100",
+      "reason": "The regexp has a fixed character class and interpolates only numeric limits from FIELD_MAX. Every caller passes one of those fixed constants; outside token text is tested against the pattern and never enters it. Reviewed for #1661 under DIRECTOR-P1CI-0850, and again for this revision (the sweep on every locked read and write) in #1620 P1a.",
+      "impact": "No regexp injection: the variable part is a bounded numeric repetition limit, not outside input.",
+      "owner": "Nathan Mulligan, maintainer",
+      "control": "The exception binds the matched expression and whole token-file.ts revision. Changes require renewed review; callers remain fixed FIELD_MAX constants.",
       "expires": "2026-12-28"
     }
   ]

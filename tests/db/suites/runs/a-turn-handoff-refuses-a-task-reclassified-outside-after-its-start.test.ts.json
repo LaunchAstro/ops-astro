@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1623 R3 with owner line 72: a turn's subscription send is judged again at the handoff from the rows, so a task made outside after the start never reaches the seat (data separation)."
+}

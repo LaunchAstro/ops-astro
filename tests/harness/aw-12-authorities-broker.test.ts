@@ -202,8 +202,11 @@ async function effectAuthority(): Promise<void> {
     { command: 'shell.exec', outcome: 'refused', refusal_code: 'DELEGATION_EXCLUDES_OPERATION' },
   ]);
   expect(seen()).toBe(before);
-  // Control: the catalogued operation goes through.
-  expect(await held.callTool('compose', '')).toMatchObject({ ok: true });
+  // Control: the catalogued operation goes through, on fresh work (B2: the refusal ended it).
+  const fresh = await liveWork(s, 'aw12 catalogue control', 2_000);
+  const compose = async () => await call(fresh, { operation: REPLAY_COMPOSE.key });
+  const control = framework(fresh, [['compose', compose]]);
+  expect(await control.callTool('compose', '')).toMatchObject({ ok: true });
   expect(seen()).toBe(before + 1);
 }
 
@@ -245,9 +248,11 @@ async function siblingHeldUnknown(): Promise<void> {
   world.provider.mode('answer');
   const before = seen();
 
+  // The unknown end retired the attempt and released its unsent hold (#1623 R1, B2), so
+  // the send finds no live lease and nothing starts.
   expect(await send(work, second)).toEqual({
     ok: false,
-    code: 'LIABILITY_UNKNOWN',
+    code: 'LEASE_EXPIRED',
     callId: second.callId,
   });
   expect(seen()).toBe(before);
@@ -264,8 +269,5 @@ describe('AW-12 authorities: a framework holds none of the eight authorities', (
     credentialAuthority,
   );
   it('A5 effect authority: an uncatalogued tool is refused and recorded', effectAuthority);
-  it(
-    'a call reserved before a sibling dropped unknown is released unsent at start',
-    siblingHeldUnknown,
-  );
+  it('a call reserved before a sibling dropped unknown is released unsent', siblingHeldUnknown);
 });

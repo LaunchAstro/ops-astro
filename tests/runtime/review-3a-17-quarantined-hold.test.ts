@@ -36,8 +36,13 @@ it('REVIEW-3A-17: a quarantined hold reads as held on the execution graph, not h
       where business_id = $1 and id = $2`,
     [w.s.business, work.decision['attemptId']],
   );
+  // A legacy mark is never a success (#1623 R2), so it hands back failed.
   const handed = appliedDetail(
-    await asAgent(w.s, handbackBody(work.picked), String(work.picked['credential'])),
+    await asAgent(
+      w.s,
+      { ...handbackBody(work.picked), outcome: 'failed' },
+      String(work.picked['credential']),
+    ),
     'task.handback of a marked attempt',
   );
   expect(handed['reservationState']).toBe('quarantined');

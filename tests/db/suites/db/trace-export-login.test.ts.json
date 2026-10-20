@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "the M5 trace export process, on a login in ops_astro_trace alone, exports a replay-fake run with no planted content, records and catches up a gap, and reads only a span's cells in its own business"
+}

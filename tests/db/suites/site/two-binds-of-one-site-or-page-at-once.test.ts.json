@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's party-site store under concurrency: two binds of one repository, project or page at once, on two connections with the second observed waiting, leave each bound once in the installation or business, the second refused only when the first commits; and a bind racing a request stores no correction for a page the bind has not committed."
+}

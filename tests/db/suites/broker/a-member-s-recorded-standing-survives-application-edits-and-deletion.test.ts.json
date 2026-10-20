@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "A member's proposal and decision carry the owner standing the database stamped as they were written; the application can neither edit the version's stamp, update or delete the decision, nor change either stamp by deleting the member's membership."
+}

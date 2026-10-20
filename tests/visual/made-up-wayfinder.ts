@@ -9,27 +9,49 @@
 // (#603): these answers make the page drawable, they do not match it.
 import type {
   MapFrontierResult,
+  MapListResult,
   MapView,
   MapViewResult,
 } from '../../packages/core-wire/src/index.ts';
+import { MERIDIAN } from './made-up-access.ts';
 
 const id = (n: number): string => `00000000-0000-4000-8000-00000000a${String(n).padStart(3, '0')}`;
 const NATHAN = 'p-nathan';
 
 const TICKETS = [
-  { n: 41, title: 'Pick the booking widget the clinics already pay for', state: 'Done' },
-  { n: 42, title: 'Draft the service pages from the intake answers', state: 'Active' },
-  { n: 43, title: 'Move the old blog posts across with their addresses', state: 'Active' },
-  { n: 44, title: 'Launch checklist and the redirect map', state: 'Waiting on client' },
+  {
+    n: 41,
+    title: 'Pick the booking widget the clinics already pay for',
+    type: 'research',
+    state: 'Done',
+  },
+  {
+    n: 42,
+    title: 'Draft the service pages from the intake answers',
+    type: 'build',
+    state: 'Active',
+  },
+  {
+    n: 43,
+    title: 'Move the old blog posts across with their addresses',
+    type: 'task',
+    state: 'Active',
+  },
+  {
+    n: 44,
+    title: 'Launch checklist and the redirect map',
+    type: 'task',
+    state: 'Waiting on client',
+  },
 ] as const;
 
 const MAP: MapView = {
   id: id(40),
   key: 'T-40',
-  title: 'Meridian Physio website rebuild',
+  title: `${MERIDIAN.name} website rebuild`,
   type: 'map',
   owner: NATHAN,
-  client: 'c-meridian',
+  client: MERIDIAN.clientId,
   clientSet: true,
   version: 3,
   revision: 5,
@@ -71,7 +93,7 @@ const MAP: MapView = {
     id: id(ticket.n),
     key: `T-${String(ticket.n)}`,
     title: ticket.title,
-    type: 'ticket',
+    type: ticket.type,
     state: ticket.state,
     revision: 1,
     // The launch waits on the pages and the posts; the pages on the widget.
@@ -89,11 +111,13 @@ const frontier = MAP.tickets
   .map(({ id: ticketId, key, title, type }) => ({ id: ticketId, key, title, type }));
 const fog = MAP.fog.map(({ id: fogId, text }) => ({ id: fogId, text }));
 
-/** The two wayfinder reads the map page makes, answered from the one made-up map. */
+/** The wayfinder reads the map and Maps pages make, answered from the one made-up map. */
 export const WAYFINDER_READS: {
   readonly 'map.view': MapViewResult;
   readonly 'map.frontier': MapFrontierResult;
+  readonly 'map.list': MapListResult;
 } = {
   'map.view': { ok: true, map: MAP } satisfies MapViewResult,
   'map.frontier': { ok: true, frontier, fog } satisfies MapFrontierResult,
+  'map.list': { ok: true, maps: [{ id: MAP.id, key: MAP.key, title: MAP.title }] },
 };

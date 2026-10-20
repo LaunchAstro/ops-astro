@@ -10,11 +10,16 @@
 //
 // It is the team's: a reader outside it is refused as one holding no grant, a
 // denied list never being an empty success. Each run is filtered by the
-// caller's `read` on its task inside the statement, as `gate.pending` filters
-// by `decide`: a business-wide grant sees every task's runs, a record-scoped
-// one only its own tasks'. A trashed task's runs are not listed.
+// caller's `read` on its task inside the statement (`readableTaskCondition`):
+// a business-wide grant sees every task's runs, a record-scoped one only its
+// own tasks', a map's its tickets'. A trashed task's runs are not listed.
 
-import { coveredScopes, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  coveredScopes,
+  readableTaskCondition,
+  readableTaskParams,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type { PreReviewAttribution, PreReviewRun } from '../../../core-wire/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
@@ -46,7 +51,7 @@ const RUNS = `select pr.task_id, b.run_id,
         and b.content_digest = $2
         and r.record_type_id = $3
         and r.deleted_at is null
-        and ($4::boolean or r.id = any($5::uuid[]))
+        and ${readableTaskCondition('r', 4)}
       group by pr.task_id, b.business_id, b.run_id
       order by b.run_id`;
 
@@ -56,7 +61,8 @@ export async function readAttribution(
   taskTypeId: string,
   digest: string,
 ): Promise<PreReviewAttribution | CommandRefusal> {
-  const scopes = await coveredScopes(tx, subjectsOf(session), {
+  const subjects = subjectsOf(session);
+  const scopes = await coveredScopes(tx, subjects, {
     collection: 'task',
     action: 'read',
   });
@@ -71,8 +77,7 @@ export async function readAttribution(
     tx.businessId,
     digest,
     taskTypeId,
-    scopes.business,
-    scopes.records,
+    ...readableTaskParams(subjects),
   ]);
   const runs: PreReviewRun[] = rows.map((row) => ({
     label: 'pre-review',

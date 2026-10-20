@@ -3,8 +3,8 @@
 // WF-4's held line (#637). The look waits on the accepted prototypes W4
 // (#603, open) and W5 (#604, accepted 28 September 2026 but drawn on W4's
 // surfaces). The width-and-theme harness (MP-1-7) came with batch 1. The
-// line is its named test, a todo until then; the file is listed as
-// deliberately unnamed in the database manifest.
+// line is its named test, a todo until then. It reaches no database, so the
+// database manifest does not name it.
 
 import { describe, it } from 'vitest';
 

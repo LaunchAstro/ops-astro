@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-07b's delivery worker at the entry: `MAIL_DELIVERY` is off unless set to
-// `mock`, the one value there is while no provider account exists; mock with
+// `mock` or `resend` (`mail-delivery-resend-settings.test.ts`); mock with
 // a setting missing or malformed stops the server, naming the setting and
-// never its value; the made-up email choices say they are made up. Mock runs
+// never its value; the made-up email choices say they are made up, and mock
+// reads no credentials file. Mock runs
 // only where `OPS_ENVIRONMENT` is unset or `staging` (SEC28 F3, SEC29 N1), and
 // a `MAIL_FROM` the sender gate would refuse stops the start (SEC28 F8).
 
 import { expect, it } from 'vitest';
 import { checkSender, fakeSenderSource } from '../../packages/core-connectors/src/index.ts';
 import {
-  MAIL_DELIVERY_SETTINGS,
+  MOCK_MAIL_SETTINGS,
   mailDeliverySettings,
   MOCK_PREFERENCES,
 } from '../../apps/api/mail-delivery.ts';
@@ -22,12 +23,11 @@ const SECRET_HOST = 'secret-host.test';
 const mock = {
   MAIL_DELIVERY: 'mock',
   MAIL_PROVIDER_ORIGIN: 'http://127.0.0.1:9',
-  MAIL_CREDENTIALS_FILE: '/nowhere/credentials.json',
   MAIL_APP_ORIGIN: 'https://ops.example.test',
   MAIL_FROM: `hello@${SENDING}`,
 };
 
-it('AW-07b mail delivery: off unless set, mock with every setting, anything else refused', () => {
+it('AW-07b mail delivery: off unless set, mock with every setting, an unknown value refused', () => {
   expect(mailDeliverySettings({})).toEqual({ kind: 'off' });
   expect(mailDeliverySettings({ MAIL_DELIVERY: 'off' })).toEqual({ kind: 'off' });
   expect(mailDeliverySettings(mock)).toMatchObject({
@@ -38,7 +38,7 @@ it('AW-07b mail delivery: off unless set, mock with every setting, anything else
     subdomain: 'send.example.test',
   });
   expect(MOCK_PREFERENCES.mock).toBe(true);
-  for (const toggle of ['on', 'resend', 'MOCK']) {
+  for (const toggle of ['on', 'Resend', 'MOCK']) {
     const refused = mailDeliverySettings({ ...mock, MAIL_DELIVERY: toggle });
     expect(refused).toMatchObject({ kind: 'invalid' });
     expect(JSON.stringify(refused)).toContain('MAIL_DELIVERY');
@@ -46,7 +46,7 @@ it('AW-07b mail delivery: off unless set, mock with every setting, anything else
 });
 
 it('AW-07b mail delivery: a setting missing or malformed is named, never its value', () => {
-  for (const name of MAIL_DELIVERY_SETTINGS) {
+  for (const name of MOCK_MAIL_SETTINGS) {
     const missing = mailDeliverySettings({ ...mock, [name]: '' });
     expect(missing).toMatchObject({ kind: 'invalid' });
     expect(JSON.stringify(missing)).toContain(name);
@@ -64,6 +64,16 @@ it('AW-07b mail delivery: a setting missing or malformed is named, never its val
     expect(JSON.stringify(refused)).toContain(name);
     expect(JSON.stringify(refused)).not.toContain('secret-host');
   }
+});
+
+it('mail delivery: mock refuses a credentials file, so a real key set by mistake is never read', () => {
+  const refused = mailDeliverySettings({
+    ...mock,
+    MAIL_CREDENTIALS_FILE: '/secret-host/credentials.json',
+  });
+  expect(refused).toMatchObject({ kind: 'invalid' });
+  expect(JSON.stringify(refused)).toContain('MAIL_CREDENTIALS_FILE');
+  expect(JSON.stringify(refused)).not.toContain('secret-host');
 });
 
 it('AW-07b mail delivery: mock reaches only a provider on this machine, never a real one', () => {

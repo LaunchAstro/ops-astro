@@ -88,6 +88,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['LEGAL_ALREADY_APPROVED', 409, 'caller'],
   ['LEGAL_NOT_APPROVED', 409, 'caller'],
   ['LEGAL_ALREADY_PUBLISHED', 409, 'caller'],
+  ['LEGAL_VERSION_SUPERSEDED', 409, 'caller'],
   ['LEGAL_REGISTER_CHANGED', 409, 'caller'],
   ['LEGAL_REGISTER_UNCONFIRMED', 409, 'caller'],
   ['CLIENT_LOCKED', 409, 'caller'],
@@ -132,6 +133,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['PRESET_TYPE_UNKNOWN', 404, 'caller'],
   ['PRESET_FIELD_UNPLACEABLE', 409, 'caller'],
   ['PRESET_FIELD_DUPLICATE', 422, 'caller'],
+  ['PRESET_FIELD_INVALID', 422, 'caller'],
   ['GATE_PENDING', 409, 'caller'],
   ['GATE_ALREADY_DECIDED', 409, 'caller'],
   ['GATE_NOT_APPROVED', 409, 'caller'],
@@ -140,6 +142,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FOUR_EYES_REQUIRED', 409, 'caller'],
   ['BUDGET_UNAVAILABLE', 409, 'caller'],
   ['BUDGET_EXHAUSTED', 402, 'caller'],
+  // #1623 R1: the worker's own stop, retained with its outcome (`run.end`).
+  ['RUN_ENDED', 409, 'caller'],
   ['EVIDENCE_MISMATCH', 409, 'caller'],
   ['GATE_NOT_FOUND', 404, 'caller'],
   ['GATE_EXPIRED', 410, 'caller'],
@@ -176,9 +180,23 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['SUBSCRIPTION_UNATTENDED', 403, 'caller'],
   ['SUBSCRIPTION_OTHER_TENANT', 403, 'caller'],
   ['SUBSCRIPTION_NOT_OWN_WORK', 403, 'caller'],
+  ['SUBSCRIPTION_NOT_FOR_CLIENT_WORK', 403, 'caller'],
+  ['SUBSCRIPTION_NOT_OWNER_STARTED', 403, 'caller'],
   ['RATE_LIMITED', 409, 'caller'],
   ['COPY_NOT_REGISTERED', 409, 'caller'],
+  // #1623 R3: the attempt's call limit and the model turn.
+  ['CALL_LIMIT_REACHED', 409, 'caller'],
+  ['TURN_MALFORMED', 422, 'caller'],
+  ['TURN_ORDINAL_STALE', 409, 'caller'],
+  ['PROVENANCE_UNBOUND', 422, 'caller'],
   ['LIABILITY_UNKNOWN', 409, 'caller'],
+  // #1531: one call per message, and carried calls.
+  ['STILL_ANSWERING', 409, 'caller'],
+  ['ANSWER_ENDED', 409, 'caller'],
+  ['CARRIAGE_UNAVAILABLE', 409, 'caller'],
+  // #1508: the paid chat's held path.
+  ['PROMPT_TOO_LARGE', 422, 'caller'],
+  ['CUSTODY_NOT_ADMITTED', 409, 'caller'],
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
@@ -192,7 +210,15 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['APPROVER_NOT_CONFIGURED', 409, 'caller'],
   ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
   ['SELF_APPROVAL_REFUSED', 403, 'caller'],
+  // R5's two, beside C80's.
+  ['SINGLE_OPERATOR_REFUSED', 409, 'caller'],
+  ['ASTRA_REVIEW_MISSING', 409, 'caller'],
   ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
+  ['PAGE_OUTSIDE_PARTY_SITE', 409, 'caller'],
+  ['REQUESTER_GRANT_ENDED', 409, 'caller'],
+  ['CORRECTION_NOT_OWN_WORK', 409, 'caller'],
+  ['VERSION_NOT_READY', 409, 'caller'],
+  ['VERSION_UNVERIFIED', 409, 'caller'],
 ];
 
 /**

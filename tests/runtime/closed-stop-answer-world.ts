@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The steps the closed-stop crossings take (`closed-stop-answer-isolation`):
-// two businesses, a stop raised on a closed hold with a call still reserved
+// two businesses, a stop raised on a closed hold with a call never sent
 // on it, the answers a person or an agent sends, and everything an answer
 // could write, read back as the owner reads it.
 
@@ -39,7 +39,7 @@ import {
   unsentCall,
 } from './version-room-world.ts';
 
-/** A run stopped on its closed first hold, with a call on that hold still reserved. */
+/** A run stopped on its closed first hold, with a call on that hold never sent, which its stop released. */
 export interface Stopped {
   readonly work: Work;
   readonly first: string;
@@ -71,8 +71,8 @@ async function prepare(s: Schedules): Promise<void> {
 }
 
 /**
- * The first hold spends 300 and reserves 200 it never sends; its lease ends,
- * the replacement spends the 200 the version has left and its worker is
+ * The first hold spends 300 and reserves 200 it never sends; its lease ends
+ * (the pickup's stop releases the 200, #1623 R1), the replacement spends the 200 the version has left and its worker is
  * stopped, so picking the first hold up again finds the version full and
  * stops on that closed hold.
  */
@@ -93,12 +93,13 @@ export async function stopped(s: Schedules): Promise<Stopped> {
   });
   const { runId, askId } = await askOf(s, first);
   const hold = (await holdsOf(s, work.proposal['versionId'])).find((h) => h.id === first);
+  // #1623 R1 (B2): the pickup that fenced the ended lease is a stop, which released the unsent call.
   expect({
     stopped: codeOf(claimed),
     asked: askId !== undefined,
     hold: hold?.state,
     call: await callState(s, unsent),
-  }).toEqual({ stopped: 'BUDGET_UNAVAILABLE', asked: true, hold: 'actual', call: 'reserved' });
+  }).toEqual({ stopped: 'BUDGET_UNAVAILABLE', asked: true, hold: 'actual', call: 'released' });
   return { work, first: String(first), unsent, runId, askId: String(askId) };
 }
 
@@ -227,14 +228,16 @@ export async function answerCodes(
 }
 
 /** Link the task to a client the way `task.set_party` stores it; the slot read back. */
-export async function linkClient(s: Schedules, taskId: string): Promise<string | null> {
+export async function linkClient(
+  s: Pick<Schedules, 'db' | 'business'>,
+  taskId: string,
+): Promise<string | null> {
   await s.db.admin.execute(
     `update public.records set data = data || jsonb_build_object('client', $2::text)
       where business_id = $1 and id = $3`,
     [s.business, randomUUID(), taskId],
   );
-  const [linked] = await rows<{ client: string | null }>(
-    s,
+  const [linked] = await s.db.admin.execute<{ client: string | null }>(
     'select uuid_7::text as client from public.records where business_id = $1 and id = $2',
     [s.business, taskId],
   );

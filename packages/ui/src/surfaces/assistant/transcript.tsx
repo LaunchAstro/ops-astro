@@ -12,7 +12,8 @@
 
 import type { ReactElement } from 'react';
 import { PlanCard } from './plan-card.tsx';
-import type { AssistantCite, AssistantMessage } from './types.ts';
+import { ProposalCard } from './proposal-card.tsx';
+import type { AssistantCite, AssistantMessage, AssistantPickMove } from './types.ts';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
 export const ownHref = (href: string): boolean =>
@@ -42,21 +43,33 @@ export function Transcript(props: {
   readonly messages: readonly AssistantMessage[];
   /** AW-04: the one click on a plan card, by message. */
   readonly onAccept?: ((messageId: string) => void) | undefined;
+  /** The one click on a task proposal card, by message. */
+  readonly onPropose?: ((messageId: string) => void) | undefined;
+  /** A move on an edit card's pick, by message. */
+  readonly onPick?: ((messageId: string, move: AssistantPickMove) => void) | undefined;
 }): ReactElement {
-  const { onAccept } = props;
+  const { onAccept, onPropose, onPick } = props;
   return (
     <div className="aip__scroll" role="log" aria-live="polite" aria-label="Conversation">
       {props.messages.map((message) => (
         <div
           key={message.id}
-          className={`aip__msg ${ROLE_CLASS[message.role]}`}
+          className={`aip__msg ${ROLE_CLASS[message.role]}${message.writing === true ? ' aip__msg--writing' : ''}`}
           data-message-role={message.role}
+          data-writing={message.writing === true ? '' : undefined}
         >
           {message.body}
           {message.plan === undefined ? null : (
             <PlanCard
               plan={message.plan}
               onAccept={onAccept === undefined ? undefined : () => onAccept(message.id)}
+            />
+          )}
+          {message.proposal === undefined ? null : (
+            <ProposalCard
+              proposal={message.proposal}
+              onSend={onPropose === undefined ? undefined : () => onPropose(message.id)}
+              onPick={onPick === undefined ? undefined : (move) => onPick(message.id, move)}
             />
           )}
           {message.role === 'ai' && message.cites.length > 0 ? (

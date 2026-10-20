@@ -8,6 +8,7 @@ import {
   publishesOnlyApprovedFile,
   refusesConcurrentEdit,
   refusesChangedBytes,
+  revertsApprovedPreImage,
 } from './c80-site-binding-atomic-cases.ts';
 import {
   SITE_OPERATIONS,
@@ -165,12 +166,12 @@ describe('C80 publish binding: the deployment is found by the written commit, a 
     expect(site.waits).toEqual([5000, 5000]);
   });
 
-  it('not found after the bounded tries is unknown, with the write sent once', async () => {
+  it('not found after the tries is accepted, no deployment yet, the write sent once', async () => {
     const site = proposed();
     site.state.lookupMisses = 99;
     expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
-      kind: 'unknown',
-      code: 'DEPLOYMENT_NOT_FOUND',
+      kind: 'ok',
+      value: { revision: MERGED, liveUrl: binding.pageUrl },
     });
     expect(site.sent.filter((sent) => sent.method === 'PUT')).toHaveLength(1);
     expect(site.sent.filter((sent) => sent.host === 'api.vercel.com')).toHaveLength(6);
@@ -264,6 +265,7 @@ describe('C80 publish binding: the revert', () => {
     });
     expect(site.sent.map((sent) => sent.method)).toEqual(['GET']);
   });
+  it('never reverts to a pre-image outside the approved version', revertsApprovedPreImage);
 });
 
 describe('C80 UTF-8 source bytes', () => {

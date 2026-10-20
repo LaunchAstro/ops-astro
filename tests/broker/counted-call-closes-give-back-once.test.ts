@@ -7,6 +7,7 @@
 // waiting on the envelope lock the first holds.
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
+import { REPLAY_NOTHING_HAPPENED } from '../../packages/core-connectors/src/index.ts';
 import {
   reserveModelCall,
   sendReservedCall,
@@ -109,7 +110,7 @@ it.each(['top_up', 'end'] as const)(
             s.business,
             async (tx) => await endAtBudgetStop(tx, decider(s, runId)),
           ),
-        ).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+        ).toMatchObject({ ok: true, value: { spentMinor: '500' } });
       }
       expect(await envelopeActual(active.work)).toBe(active.before + 500);
       const figures = await holdFigures(active.work);
@@ -154,7 +155,8 @@ it('two connections closing a counted unknown call wait on the envelope and give
       caller(active.work),
       requestFor(active.work),
       active.reserved,
-      { kind: 'nothing', reason: 'positive proof' },
+      // A reason the operation declares (B2): an undeclared one is held unknown, not released.
+      { kind: 'nothing', reason: REPLAY_NOTHING_HAPPENED },
       broker,
     );
   let closing: Promise<unknown>[] = [];

@@ -14,6 +14,7 @@
 // screen owes is to ask only its own business, to name a client only from the
 // read's own records, and to draw a refusal as a refusal, never as an empty list.
 
+import { act as flushed } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { settle } from './mount.tsx';
 import {
@@ -25,6 +26,7 @@ import {
   MIA_ON_ACME,
   access,
   choose,
+  heldAnswer,
   json,
   open,
   refusal,
@@ -134,15 +136,26 @@ describe('C32 grants and revocations on Settings ▸ Access', () => {
   });
 
   it('C32 refusal shown: a refused grant keeps the server code, and the preview is not changed', async () => {
-    const api = server([json(access([ADA, MIA]))], () => refusal('SCOPE_NOT_GRANTED', 403));
+    // A second read would answer Mia on Acme, so a reread after the refusal
+    // would show in her preview as well as in the calls.
+    const api = server([json(access([ADA, MIA])), json(access([ADA, MIA_ON_ACME]))], () =>
+      refusal('SCOPE_NOT_GRANTED', 403),
+    );
     const view = await open(api.fetch);
     await choose(view, 'holder', MIA.name);
     await choose(view, 'key', 'task:read');
     await choose(view, 'scope', ACME.name);
     await view.click('[data-access="give"] button[type="submit"]');
     await settle();
+    await settle();
     expect(view.find('[data-access-outcome]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+    // The one read the screen opened on, the refused grant, and no read after it.
+    expect(api.calls.map((call) => call.url)).toEqual([
+      '/api/b/alpha/access/read',
+      '/api/b/alpha/access/grant',
+    ]);
     expect(rowOf(view, MIA.personId)).toContain('No permission');
+    expect(rowOf(view, MIA.personId)).not.toContain(ACME.name);
   });
 });
 
@@ -185,5 +198,23 @@ describe('C32 agents on Settings ▸ Access', () => {
       },
     ]);
     expect(view.find('[data-agent="d-1"]')).toBeNull();
+  });
+
+  it('C32 agents: a second act while one is out is not sent, and the page says so', async () => {
+    const held = heldAnswer();
+    const api = server([json(access([ADA, MIA]))], () => held.promise);
+    const view = await open(api.fetch);
+    const revoke = view.find('[data-revoke="d-1"] button') as HTMLElement;
+    await flushed(() => {
+      revoke.click();
+      revoke.click();
+    });
+    const outcome = view.find('[data-access-outcome]');
+    expect(outcome?.getAttribute('role')).toBe('alert');
+    expect(outcome?.textContent).toContain('Not sent');
+    held.resolve(json({ recordId: 'd-1', revision: 2 }));
+    await settle();
+    await settle();
+    expect(api.commands().map((call) => call.url)).toEqual(['/api/b/alpha/delegation/revoke']);
   });
 });

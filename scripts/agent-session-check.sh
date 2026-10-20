@@ -47,7 +47,7 @@ if [ "${1:-}" = "--expect" ]; then
   printf '  %-46s %s\n' "What does .claude/settings.json set?" \
     "$(tr -d ' \n' < .claude/settings.json 2>/dev/null)"
   printf '  %-46s %s\n' "How many merge questions are there?" \
-    "$(grep -o 'on seven questions' AGENTS.md >/dev/null 2>&1 && echo seven || echo '(not seven; check AGENTS.md)')"
+    "$(grep -q '^### The seven questions' CONTRIBUTING.md 2>/dev/null && echo seven || echo '(not seven; check CONTRIBUTING.md)')"
   printf '  %-46s %s\n' "What may you never do without asking?" \
     "Spend, send outward, delete, or touch production"
   printf '  %-46s %s\n' "What may you do without asking?" \
@@ -118,7 +118,8 @@ else
   note "claude session hook" "none in this seat"
 fi
 if [ -f "$claude_dir/CLAUDE.md" ]; then
-  bad "$claude_dir/CLAUDE.md applies to every session in this seat. Read it before"
+  # Standing user instructions are expected; their presence requires reading, not refusal.
+  warn "$claude_dir/CLAUDE.md applies to every session in this seat. Read it before"
   printf '           trusting anything this session says about its own instructions.\n'
 else
   note "claude user law" "none, so AGENTS.md is the whole law here"
@@ -246,10 +247,11 @@ if [ -d "$ROOT/.claude/skills" ]; then
 else
   bad ".claude/skills"
 fi
-if [ -L "$ROOT/.codex/skills" ]; then
+if [ -L "$ROOT/.codex/skills" ] &&
+  [ "$(cd "$ROOT/.codex/skills" 2>/dev/null && pwd -P)" = "$(cd "$ROOT/.claude/skills" 2>/dev/null && pwd -P)" ]; then
   note "codex" ".codex/skills -> $(readlink "$ROOT/.codex/skills")"
 else
-  bad ".codex/skills symlink, so Codex reads the same files"
+  bad ".codex/skills symlink to .claude/skills, so Codex reads the same files"
 fi
 need_file ".claude/skills/_shared/security-review.md" "security review on any runtime"
 echo

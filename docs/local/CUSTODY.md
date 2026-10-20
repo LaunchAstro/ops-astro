@@ -6,7 +6,7 @@ What C31 built, what it proves, and what to do when a credential leaks.
 
 ## What is here
 
-`custody_secrets` (migration 20261004103606) holds one row per named secret at one
+`custody_secrets` (migration 20261005023013) holds one row per named secret at one
 scope: the whole business, or one client (a party id, the scope a
 party-scoped grant names). A row says whether a value is set, who set or
 cleared it, and when the broker last used it.
@@ -19,6 +19,13 @@ environment or the ignored `.local/custody.env`. It can seal and cannot open.
 The private half is the broker's (ADR 0028), which AW-01 builds. With no public
 key configured, `secret.set` refuses `DEPENDENCY_NOT_LANDED` and stores
 nothing.
+
+A sealed value is bound to its place: the AES-GCM additional data names the
+key id, the business, the secret's name and its scope, so a value copied to
+another row, name, scope or business does not open there. A bound value's
+stored nonce starts with a version byte. A value sealed before the binding
+keeps a bare 12-byte nonce and names no place, so it opens nowhere and is set
+again; `octet_length(nonce) = 12` finds the rows still holding one.
 
 `secret.set` stores only what custody's own load check would take
 (`parseCredentials` in `packages/core-custody/src/credentials.ts`, AW-01 and

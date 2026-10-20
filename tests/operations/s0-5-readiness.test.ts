@@ -26,6 +26,8 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
+import { grantTo } from '../commands/fixture.ts';
+import { AGENT_ONLY } from './s0-5-agent-only.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-readiness: DATABASE_URL is unset, so nothing below ran.');
@@ -119,8 +121,14 @@ async function notShut(
   return found;
 }
 
-/** The positive recipe, or, for a live delegation (the recipe has none), one made here. */
+/** The positive recipe, or one made here: a grant to revoke and a live delegation have none. */
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
+  if (declaration.name === 'grant.revoke') {
+    const grantId = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+      return await grantTo(tx, harness.world.noah as Parameters<typeof grantTo>[1], 'read');
+    });
+    return { grantId };
+  }
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 gate ${randomUUID()}`);
     const decided = await harness.reserve(task, 'draft_the_gate_reply');
@@ -128,11 +136,9 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, 
     const picked = await harness.asAgent('task.pickup', { reservationId });
     return { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] };
   }
-  // `model.call` and AW-11's child work answer on the agent prefix only: the person path
-  // refuses it whatever the gate says, so any body shows it writes nothing.
-  if (['model.call', 'run.delegate_child', 'run.child_handback'].includes(declaration.name)) {
-    return {};
-  }
+  // The person path refuses an agent-only command whatever the gate says, so any body shows it
+  // writes nothing.
+  if (AGENT_ONLY.has(declaration.name)) return {};
   const prepared = await harness.positiveBody(declaration);
   if ('exception' in prepared) throw new Error(`${declaration.name}: ${prepared.exception}`);
   return { ...prepared.body };

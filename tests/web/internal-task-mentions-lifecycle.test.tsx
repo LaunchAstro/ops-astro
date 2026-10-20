@@ -199,7 +199,9 @@ it('a task change retires pending results and the old selection before a new dra
     />,
   );
   expect(view.find('#comment-body')).toHaveProperty('value', '');
-  expect(view.find('[data-mention-person]')).toBeNull();
+  // The new task's composer holds no selected name: a held one, with no
+  // occurrence of it in the empty body, would draw Clear mentions.
+  expect(view.find('[data-mention-clear]')).toBeNull();
   await view.type('#comment-body', 'New task draft');
   await act(() => {
     delayed.resolve(refusal('SCOPE_NOT_GRANTED'));
@@ -208,6 +210,12 @@ it('a task change retires pending results and the old selection before a new dra
   expect(view.find('[data-comment="post"]')).toHaveProperty('disabled', false);
   expect(posted).toBe(0);
   expect(refused).toBe(0);
+  // The new task's post carries none of the old task's mention ids.
+  server.answers.comment = () => Promise.resolve(response({ recordId: 'task-two', revision: 5 }));
+  await view.click('[data-comment="post"]');
+  const sent = server.posts().at(-1)?.body;
+  expect(sent).toMatchObject({ recordId: 'task-two', body: 'New task draft' });
+  expect(sent).not.toHaveProperty('mentions');
 });
 
 it('an owner change offers neither old names nor a late old people answer', async () => {

@@ -88,7 +88,13 @@ it('AW-11 two child reservations at once cannot together pass the envelope', asy
     'BUDGET_UNAVAILABLE',
     'held',
   ]);
-  expect((await callsOn(w.s, x.work)).filter((call) => call.state === 'reserved')).toHaveLength(1);
+  // #1623 R1 (B2): the loser's budget stop ends the attempt both share, so the winner's
+  // 500, never sent, is released there; the loser held nothing.
+  const calls = await callsOn(w.s, x.work);
+  expect(calls.map((call) => [call.state, call.reserved_minor]).toSorted()).toStrictEqual([
+    ['refused', '0'],
+    ['released', '500'],
+  ]);
 });
 
 it('AW-11 no second delegation by a new lease', async () => {

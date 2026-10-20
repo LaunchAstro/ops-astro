@@ -14,12 +14,16 @@ import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 import { read, ROOT } from './merge-group-repo.ts';
 import { OPEN_GUARD, unguarded } from './open-pull-request.ts';
+import { FULL_GUARD } from './full-checks.ts';
+import { SHARDS_RUN } from './precheck-batch.ts';
 
 type Job = { if?: unknown; needs?: unknown };
 type Workflow = { on?: Record<string, { types?: string[] } | null>; jobs: Record<string, Job> };
-type Ctx = { event: string; state?: 'open' | 'closed' };
+type Ctx = { event: string; state?: 'open' | 'closed'; batch?: boolean };
 
 const WORKFLOWS = '.github/workflows';
+const VERDICT_GUARD =
+  "github.event_name == 'merge_group' || github.event.pull_request.state == 'open'";
 const load = (file: string): Workflow =>
   parseDocument(read(`${WORKFLOWS}/${file}`), { merge: true, uniqueKeys: true }).toJS({
     maxAliasCount: 100,
@@ -44,10 +48,16 @@ const guardHolds = (ctx: Ctx) => ctx.event !== 'pull_request' || ctx.state === '
 
 /** Whether a job's own condition lets it start under `ctx`; `always` ignores what it waits on. */
 function own(cond: unknown, ctx: Ctx, guarded: boolean): boolean | 'always' {
+  if (cond === VERDICT_GUARD)
+    return !guarded || ctx.event === 'merge_group' || ctx.state === 'open';
   const rest = unguarded(cond);
   if (guarded && rest !== cond && !guardHolds(ctx)) return false;
   if (rest === undefined) return true;
   if (rest === 'always()') return 'always';
+  // `full checks` waits on the gate, which decides; a closed pull request's gate never runs.
+  if (rest === FULL_GUARD) return true;
+  // The database shards: every event but a pull request, and a pre-check batch (#1918).
+  if (rest === SHARDS_RUN) return ctx.event !== 'pull_request' || ctx.batch === true;
   const match = /^github\.event_name (==|!=) '(\w+)'$/u.exec(String(rest));
   if (match === null) throw new Error(`a condition this test does not read: ${String(rest)}`);
   return (match[1] === '==') === (ctx.event === match[2]);
@@ -72,17 +82,19 @@ function ran(workflow: Workflow, ctx: Ctx, guarded = true): string[] {
 const CLOSED: Ctx = { event: 'pull_request', state: 'closed' };
 const RUNNING: [string, Ctx][] = [
   ['an open pull request', { event: 'pull_request', state: 'open' }],
+  ['an open pre-check batch', { event: 'pull_request', state: 'open', batch: true }],
   ['a push', { event: 'push' }],
   ['a merge group', { event: 'merge_group' }],
 ];
 
 describe('a label change on a closed or merged pull request runs nothing', () => {
-  it('ci.yml and review-evidence.yml are the workflows a label change starts', () => {
-    expect(listeners).toStrictEqual(['ci.yml', 'review-evidence.yml']);
+  it('the CI, review evidence and verdict workflows start on a label change', () => {
+    expect(listeners).toStrictEqual(['ci.yml', 'review-evidence.yml', 'sol-verdict.yml']);
   });
 
   it.each(listeners)('%s runs no job on a closed or merged pull request', (file) => {
     expect(ran(load(file), CLOSED)).toStrictEqual([]);
+    expect(ran(load(file), { ...CLOSED, batch: true })).toStrictEqual([]);
   });
 
   // Each event the workflow starts on; review-evidence.yml has no push.

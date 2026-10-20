@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseSync } from 'vite';
 import { describe, expect, it } from 'vitest';
+import { classifyAll } from './cq-8-support.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const RUNTIME = join(ROOT, 'packages', 'core-runtime', 'src');
@@ -106,9 +107,15 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C59: a login's one wrong-code lock, keyed by its subject's digest in
   // every business, taken first in a factor route's check transaction.
   'packages/core-commands/src/commands/account-factor-checks.ts',
+  // An agent write's last judgement takes the business's audit chain key
+  // before its session-ending keys, as the ending's own writer does.
+  'packages/core-commands/src/commands/agent-standing.ts',
   // C52-A: a change's last ask after its session takes the business's audit
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  // Route B's carriage judgement: the subject's and the session's ending keys,
+  // shared, held through a carried call's offer and send, as a write's last ask holds them.
+  'packages/core-commands/src/commands/carriage-origin.ts',
   // #1088 (Sol PRV-oa-1088-SC1, SEC1-1): a question's keep takes the audit
   // chain's key after its page task's share lock, so
   // its grant and page-read re-asks come after every wait.
@@ -152,6 +159,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // ending keys shared; a reset's window open takes the subject's alone, and a
   // provider sign-out its session's alone, as neither writes an audit event.
   'packages/core-records/src/identity/sessions.ts',
+  // C81 (#653): one publication of a legal document at a time, taken after the
+  // version's row lock and the register's, so the order checked is the order stamped.
+  'packages/core-records/src/operations/legal-documents.ts',
   // C81: the overseas-services register's one lock per business, taken
   // by a change and by a privacy policy's draft, approval and publication
   // before reading the register, inside the handler's transaction.
@@ -191,5 +201,37 @@ describe('CQ-8 runtime structure', () => {
     const text = readFileSync(join(RUNTIME, 'locks.ts'), 'utf8');
     expect(text).toMatch(/command-layer locks/iu);
     expect(text).toMatch(/before any lock `acquire` takes/iu);
+  });
+});
+
+/** One advisory lock statement as the helper sends it. */
+const lock = (key: string, shared = false) => ({
+  text: `select pg_advisory_xact_lock${shared ? '_shared' : ''}(hashtextextended($1, 0))`,
+  parameters: [key],
+});
+
+describe('CQ-8 lock classes', () => {
+  const business = '0e928700-ac2b-4f6e-9a51-6b1d2c3e4f50';
+
+  it('CQ-8 lock classes: the audit chain key and the ending keys after it are the tail of the order, not command-layer locks', () => {
+    expect(
+      classifyAll([
+        lock(`operation:${business}:actor:digest`),
+        lock(`${business}:decision`),
+        lock(business),
+        lock('session-ending:subject:someone', true),
+        lock('session-ending:session:a-session', true),
+      ]),
+    ).toEqual(['command', 'ordered', 'tail', 'tail', 'tail']);
+  });
+
+  it('CQ-8 lock classes: an ending key before the audit chain key stays a command-layer lock', () => {
+    expect(
+      classifyAll([
+        lock('session-ending:subject:someone', true),
+        lock(`task.siblings:${business}:set`),
+        lock(business),
+      ]),
+    ).toEqual(['command', 'command', 'tail']);
   });
 });

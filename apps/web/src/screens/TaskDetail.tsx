@@ -89,6 +89,7 @@ import { createPortal } from 'react-dom';
 import { useAssignments } from './task/assignment-context.tsx';
 import { PageAssignment } from './task/PageAssignment.tsx';
 import { useRereadOn } from './task/reread-on.ts';
+import { useUnansweredReread } from './task/unanswered-reread.ts';
 import { useHeld } from './task/held-state.ts';
 import { timerScreen, useTimerRead, useTimerRefresh } from './task/task-timer-context.tsx';
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
@@ -187,6 +188,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const timerRefresh = useTimerRefresh(timerRead.changed, state.outcome, reload);
   useTaskDependencies(client, props.grantKey, refresh, taskDependencyAdmission(state, own));
   useRereadOn(assignments.state.changed, refresh);
+  useUnansweredReread(state, refresh);
   useFreshOnPage(state, hub);
 
   // Drafts outlive ordinary rereads; live and timer rereads also preserve mounted
@@ -567,13 +569,16 @@ function Loaded(props: LoadedProps): ReactElement {
   // live re-read that keeps this mounted still shows the newest value.
   const title = props.draft?.title ?? saved.title;
   const due = props.draft?.due ?? saved.due;
-  // T3e2: the outage reports are the team's, read once from the queue.
+  // T3e2: the outage reports are the team's, from the queue. A provider drop
+  // invalidates the task, and its live re-read keeps this page mounted, so
+  // each task read asks the queue again.
   const outages = useRead<QueueResult>({
     grantKey: props.grantKey,
     run: () => client.read<QueueResult>('task.queue', {}),
     isEmpty: (value) => (value.outages ?? []).length === 0,
     deps: [],
   });
+  useRereadOn(task, outages.refresh);
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.

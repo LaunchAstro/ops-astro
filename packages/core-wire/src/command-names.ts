@@ -3,7 +3,9 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
+import type { SiteCommandName } from './surface-site-names.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -23,8 +25,6 @@ export type CommandName =
   | 'task.set_state'
   | 'task.duplicate'
   | 'task.assign'
-  // Launch from the task: a person opens a run for the task's agent.
-  | 'task.launch'
   | 'task.triage'
   | 'task.set_stage'
   | 'task.set_party'
@@ -158,27 +158,20 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // C80's live correction: an agent may request it inside its delegation, a
-  // person decides the exact version, a named setting names who, the decision
-  // is read back; the publish, revert and receipt are system writes, not rows here.
-  | 'live_correction.request'
-  | 'live_correction.read'
-  | 'live_correction.decide'
-  | 'settings.set_live_correction_approver'
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
   // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
   | 'task.set_type'
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
-  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.list'
+  // WF-2: chart a map, a ticket's blocking, claim and close, fog graduating, and the frontier.
   | 'map.chart'
   | 'task.set_blocking'
   | 'task.claim'
   | 'map.graduate'
   | 'task.resolve'
   | 'task.close_out_of_scope'
-  // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
@@ -203,8 +196,9 @@ export type CommandName =
   | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
-  // the broker verifies from rows; no person grant carries it.
+  // the broker verifies from rows; no person grant carries it. run.end: its stop (#1623 R1).
   | 'model.call'
+  | 'run.end'
   // A person's two answers to a run waiting at its approved ceiling (AW-05):
   // a top-up under four eyes above the business's threshold, or one click
   // that ends the work and parks the task. No agent answers either.
@@ -273,17 +267,16 @@ export type CommandName =
   | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
-  // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read'
-  // C39-T: a team invitation made, sent again and withdrawn under
-  // `access:share`; its expiry is the business's worker's, never a command.
+  // C39-T: team invitations under `access:share`; expiry is the worker's, never a command.
   | 'invitation.create'
   | 'invitation.resend'
   | 'invitation.revoke'
+  | 'invitation.list'
   // Settings ▸ Workflow triggers (C33): the registry is one read by
   // `settings:read`; changing an activation is `settings:manage` and releasing
   // a definition version `automation:manage`, neither an agent's.
   | 'automation.registry'
+  | 'automation.history'
   | 'activation.change'
   | 'definition.release'
   // Standing approvals (C52-A): adopting a version, rolling back, turning off
@@ -297,4 +290,6 @@ export type CommandName =
   | 'finance.skill_costs'
   | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
-  | SetupCommandName;
+  | SetupCommandName
+  | LaunchCommandName
+  | SiteCommandName;

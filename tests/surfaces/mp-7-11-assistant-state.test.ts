@@ -166,12 +166,12 @@ describe('MP-7-11 drawer state', () => {
 
   it('MP-7-11 page scope replaces: a second pointer replaces the first', () => {
     const one = initial();
-    const first = addPage(one, one.selected, { address: '/settings', shows: 'Settings' });
-    const second = addPage(first, one.selected, { address: '/projects/', shows: 'Projects' });
-    expect(second.chats[0]?.page).toStrictEqual({ address: '/projects/', shows: 'Projects' });
+    const first = addPage(one, one.selected, { address: '/task/T-1', shows: 'Task' });
+    const second = addPage(first, one.selected, { address: '/task/T-2', shows: 'Task' });
+    expect(second.chats[0]?.page).toStrictEqual({ address: '/task/T-2', shows: 'Task' });
     expect(second.chats[0]?.messages.filter((message) => message.id === 'page')).toHaveLength(1);
     expect(second.chats[0]?.messages.at(-1)?.body).toBe(
-      'Read this page into context — every widget on /projects/, and nothing else.',
+      'Read this page into context — every widget on /task/T-2, and nothing else.',
     );
   });
 });

@@ -39,6 +39,12 @@ export class Intents {
     return this.attempt(key, value, null).id;
   }
 
+  /** A new intent for `value` under `key`, in place of a held one whose id would only replay. */
+  renew(key: string, value: unknown): string {
+    this.#held.delete(key);
+    return this.idFor(key, value);
+  }
+
   /** An answer arrived for the attempt sent under `id`: the next save of `key` is a new intent. */
   answered(key: string, id: string): void {
     if (this.#held.get(key)?.id === id) this.#held.delete(key);

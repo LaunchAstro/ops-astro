@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's revert ask: only the configured staff approver, whose gate grant reaches the correction's client and who did not request it, asks to revert a live correction, once; a replay answers as the first, a refusal stores nothing, and the stored ask can be neither changed nor removed by the application."
+}

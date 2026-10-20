@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "An escalated gate is owed again on reassignment only to a recipient who still holds decide across the business; the stored recipient alone raises nothing."
+}

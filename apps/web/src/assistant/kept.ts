@@ -37,6 +37,7 @@ import {
   type AssistantState,
   type Reopened,
 } from './chats.ts';
+import { replyLine } from './proposals.ts';
 import { useStore, type Store } from './store.ts';
 
 interface Kept {
@@ -103,11 +104,13 @@ const PURGED = 'This conversation’s messages have been cleared; its wrap-up is
 /** `conversation.read`'s transcript as the drawer's lines, or a note once the body has purged. */
 function linesOf(read: ConversationReadResult): AssistantMessage[] {
   if (read.messages === null) return [{ id: 'purged', role: 'note', body: PURGED, cites: [] }];
+  const onTask = read.conversation.scope !== null;
   return read.messages.map((one) => ({
     id: `${READ_LINE}${one.id}`,
-    role: one.role === 'person' ? 'user' : 'ai',
-    body: one.body,
     cites: [],
+    ...(one.role === 'person'
+      ? { role: 'user', body: one.body }
+      : { role: 'ai', ...replyLine(one.body, onTask, one.targets) }),
   }));
 }
 
@@ -122,7 +125,12 @@ async function readOne(
   if (isUnavailable(answer)) return answer.because;
   if (isRefusal(answer)) return answer.fixes[0] ?? answer.code;
   const { conversation } = answer.value;
-  return { conversationId, title: conversation.title, messages: linesOf(answer.value) };
+  return {
+    conversationId,
+    title: conversation.title,
+    messages: linesOf(answer.value),
+    taskId: conversation.scope?.id ?? null,
+  };
 }
 
 /** The drawer's store, and each kept tab's read: a question asked there waits for it. */

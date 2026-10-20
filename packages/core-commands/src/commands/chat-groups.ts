@@ -27,6 +27,10 @@
 // (shared) before it writes, and a start does before it reads its teammates
 // (the lock it then takes is a new conversation's, which no one else can
 // hold). A leave asks none: it only ends the caller's own membership.
+// Lock order: a start or a send holds the access lock (shared) from the door,
+// which asks its grant (`prepareCommand`), before the conversation's; a rename
+// or member change asks its grant here, so it takes the access lock, shared,
+// after the conversation's.
 
 import {
   allStaff,

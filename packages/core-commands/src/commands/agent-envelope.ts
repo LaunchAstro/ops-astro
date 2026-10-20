@@ -19,10 +19,11 @@
 // see below -- so reporting the delegating person's here would be reporting
 // somebody else's authority as the agent's.
 //
-// **The two operations before there is anything to delegate.** An agent that
+// **The three operations before there is anything to delegate.** An agent that
 // has not picked work up holds no delegation, so there is nothing to intersect
-// its call with. It may do exactly two things: read `task.queue` and call
-// `task.pickup`. Every other exported operation is refused
+// its call with. It may do exactly three things: read `task.queue`, call
+// `task.pickup`, and take a launch made for it with `task.take_launch`, which
+// hands it that run's delegation. Every other exported operation is refused
 // `DELEGATION_EXCLUDES_OPERATION`, and `task.decide`
 // `DELEGATION_EXCLUDES_DECISION` (minimum contract 8.2 case 9, ledger I12):
 // with no credential presented the call is outside what an agent login may do
@@ -70,8 +71,9 @@ import { enter, retryOnce, settle } from './envelope.ts';
 import { firstClientGate } from './first-client-gate.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
-import { releaseReplay } from './agent-replay.ts';
-import { inSavepoint, recordApplied } from './agent-applied.ts';
+import { replaying } from './agent-replay.ts';
+import { recordApplied } from './agent-applied.ts';
+import { workJudged } from './agent-standing.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
@@ -84,9 +86,9 @@ import type { AgentCall, AgentRequest } from './agent-call.ts';
 import type { IdentifiedRequest } from './requests.ts';
 
 /**
- * The two operations an agent may reach before it holds anything.
+ * The three operations an agent may reach before it holds anything.
  *
- * `session.capabilities` is not a third: before a pickup it is refused
+ * `session.capabilities` is not a fourth: before a pickup it is refused
  * `DELEGATION_EXCLUDES_OPERATION` like every other operation outside this set
  * (minimum contract 8.2 case 9). Under a live delegation it answers the
  * delegation's purpose.
@@ -165,7 +167,7 @@ export async function executeAgentOperation(
           person: session.actorId,
         });
         if (overQuota !== undefined) return overQuota;
-        return await runAgentCommand(tx, { session, credential, request }, operation);
+        return await runAgentCommand(tx, { session, credential, request }, operation, presented);
       }),
   );
   // Committed: the lost-response gap before the worker reads this (T2c1).
@@ -222,6 +224,7 @@ async function runAgentCommand(
     readonly request: AgentRequest;
   },
   operation: AgentOperation | undefined,
+  verified: VerifiedSubject,
 ): Promise<CommandResult> {
   const { session, credential, request } = presented;
   if (operation === undefined) {
@@ -239,11 +242,10 @@ async function runAgentCommand(
     declaration,
   });
   return await enter(tx, session, request, {
-    release: async (stored, identified) =>
-      await releaseReplay(tx, callOf(identified), operation, stored),
+    ...replaying(tx, callOf, operation, verified),
     attempt: async (identified, digest) =>
       await operation.open(
-        async (row) => await runRow(tx, callOf(identified), identified, row, digest),
+        async (row) => await runRow(tx, callOf(identified), verified, identified, row, digest),
       ),
   });
 }
@@ -252,6 +254,7 @@ async function runAgentCommand(
 async function runRow<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
+  verified: VerifiedSubject,
   request: IdentifiedRequest,
   operation: TypedOperation<O>,
   digest: string,
@@ -283,7 +286,10 @@ async function runRow<O extends object>(
   const shut = await firstClientGate(tx, call.declaration.name);
   if (shut !== undefined) return await settle(tx, session, request, digest, shut);
 
-  const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
+  // Judged again after the handler's last wait, holding no operation id.
+  const judged = { call, presented: verified, authority: operation.authority };
+  const outcome = await workJudged(tx, judged, async () => await authorised.run(operands));
+  if ('ended' in outcome) return await settle(tx, session, request, digest, outcome.ended, 'none');
   if (isRefused(outcome)) {
     const { refusal, attempted, kept } = outcome;
     return await settle(tx, session, request, digest, refusal, 'register', attempted, kept);

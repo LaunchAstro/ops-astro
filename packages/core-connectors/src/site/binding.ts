@@ -12,7 +12,8 @@
 //   precondition, so a concurrent file edit refuses the write atomically.
 //   The request remains the human review screen and is never merged.
 // - The deployment is found by the written commit, a bounded number of tries.
-//   Not found, or found for another commit, is unknown after the write.
+//   Found for another commit is unknown after the write; not found yet is not
+//   published yet, accepted without it and looked up again when observed.
 // - The revert writes the pre-image back on the default branch, only over the
 //   published change and at the blob just read, and finds its deployment the
 //   same way.
@@ -22,17 +23,25 @@
 // A binding is made only by `siteBindingFor`, from the correction's own
 // party's site: the one place a party is mapped to its pages and their source
 // files (#989 criterion 2). A correction of another party, or on a page or
-// file the site does not hold spelt exactly, binds to nothing.
+// file the site does not hold spelt exactly, binds to nothing; nor do bytes
+// that are not the version the proposal names, so a revert writes back only
+// the approved pre-image.
 
 import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
 import { siteOperation } from './operations.ts';
 import type { Published, PublishPorts } from './publish.ts';
 import { checkEnvelope } from './envelope.ts';
-import { contentDigest, versionDigestOf } from './version.ts';
+import { findDeployment } from './serving.ts';
+import { contentDigest, versionDigestOf, type VersionPin } from './version.ts';
 
-/** One party's site: its providers, and each catalogued page with its source file. */
+export { findDeployment, readServed } from './serving.ts';
+
+/**
+ * One party's site, or the business's own (party null, R6): its providers, and each catalogued
+ * page with its source file.
+ */
 export interface PartySite {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly repository: string;
   readonly defaultBranch: string;
   readonly project: string;
@@ -41,7 +50,7 @@ export interface PartySite {
 
 /** One correction's proposal on its party's providers. */
 export interface SiteBinding {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly repository: string;
   readonly path: string;
   readonly defaultBranch: string;
@@ -69,7 +78,7 @@ export interface BindingDependencies extends CallDependencies {
 
 /** The stored correction a binding is made from and checked against. */
 export interface BoundCorrection {
-  readonly partyId: string;
+  readonly partyId: string | null;
   readonly pageUrl: string;
   readonly targetPath: string;
   readonly seam: string;
@@ -79,7 +88,7 @@ export type MadeBinding =
   | { readonly ok: true; readonly binding: SiteBinding }
   | { readonly ok: false; readonly code: SiteRefusal };
 
-type SiteRefusal = 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE';
+type SiteRefusal = 'PARTY_SITE_MISMATCH' | 'PAGE_OUTSIDE_PARTY_SITE' | 'PROPOSAL_SUPERSEDED';
 
 /**
  * Another party's site, or a page and file the site does not hold as one
@@ -96,16 +105,23 @@ export function partySiteRefuses(
   return held ? undefined : 'PAGE_OUTSIDE_PARTY_SITE';
 }
 
-/** The correction's binding on its own party's site, or `partySiteRefuses`'s refusal. */
+/**
+ * The correction's binding on its own party's site, or `partySiteRefuses`'s refusal. The change is
+ * the bytes of the version the proposal names, rebuilt with that version's pin, or nothing binds.
+ */
 export function siteBindingFor(
   site: PartySite,
   correction: BoundCorrection,
   made: Pick<SiteBinding, 'change'> & {
     readonly proposal: Omit<SiteBinding['proposal'], 'branch'>;
+    readonly version: Omit<VersionPin, 'change'>;
   },
 ): MadeBinding {
   const code = partySiteRefuses(site, correction);
   if (code !== undefined) return { ok: false, code };
+  const files = [{ path: correction.targetPath, ...made.change }];
+  if (versionDigestOf({ ...made.version, change: { files } }) !== made.proposal.versionDigest)
+    return { ok: false, code: 'PROPOSAL_SUPERSEDED' };
   const { partyId, repository, defaultBranch, project } = site;
   return {
     ok: true,
@@ -186,29 +202,20 @@ export async function readSiteSource(
   return ok({ content, revision: String(read.value['sha']) });
 }
 
-/** `site.deployment.lookup` by commit, tried until found or the attempts run out. */
+/** `findDeployment`, tried until found or the attempts run out. */
 async function deploymentOf(
   binding: SiteBinding,
   commit: string,
   deps: BindingDependencies,
   attempt = 1,
-): Promise<ProviderResult<Deployed>> {
-  const found = await call(
-    'site.deployment.lookup',
-    { project: binding.project, sha: commit },
-    deps,
-  );
-  if (found.kind === 'ok') {
-    if (found.value['deployments.0.meta.githubCommitSha'] !== commit)
-      return stop('unknown', 'DEPLOYMENT_COMMIT_MISMATCH', deps);
-    return ok({ revision: commit, deploymentId: String(found.value['deployments.0.uid']) });
-  }
-  if (attempt >= LOOKUP_ATTEMPTS) return stop('unknown', 'DEPLOYMENT_NOT_FOUND', deps);
+): Promise<ProviderResult<string | undefined>> {
+  const found = await findDeployment(binding, commit, deps);
+  if (found.kind !== 'ok' || found.value !== undefined || attempt >= LOOKUP_ATTEMPTS) return found;
   await deps.wait(LOOKUP_WAIT_MS);
   return await deploymentOf(binding, commit, deps, attempt + 1);
 }
 
-/** `site.publish`: one approved contents write, then its deployment by the written commit. */
+/** `site.publish`: one approved contents write, through a binding holding the approved bytes its revert needs. */
 export async function mergeAndFind(
   binding: SiteBinding,
   input: Omit<Parameters<PublishPorts['publish']>[0], 'dispatchToken'>,
@@ -223,8 +230,8 @@ export async function mergeAndFind(
     input.target.path !== binding.path ||
     !checkEnvelope(input.change, input.target).ok ||
     file === undefined ||
-    file.before === null ||
-    file.after === null ||
+    file.before !== binding.change.before ||
+    file.after !== binding.change.after ||
     contentDigest(file.before) !== input.preImageDigest
   ) {
     return stop('refused', 'PROPOSAL_SUPERSEDED', deps);
@@ -245,22 +252,12 @@ export async function mergeAndFind(
     deps,
   );
   if (written.kind !== 'ok') return written;
-  const deployed = await deploymentOf(binding, String(written.value['commit.sha']), deps);
+  const revision = String(written.value['commit.sha']);
+  const deployed = await deploymentOf(binding, revision, deps);
   if (deployed.kind !== 'ok') return deployed;
-  return ok({ ...deployed.value, liveUrl: binding.pageUrl });
-}
-
-/** `site.deployment.read`: served is ready on production; the revision is its commit. */
-export async function readServed(
-  deploymentId: string,
-  deps: CallDependencies,
-): Promise<ProviderResult<{ revision: string; served: boolean }>> {
-  const read = await call('site.deployment.read', { deployment: deploymentId }, deps);
-  if (read.kind !== 'ok') return read;
-  return ok({
-    revision: String(read.value['meta.githubCommitSha']),
-    served: read.value['readyState'] === 'READY' && read.value['target'] === 'production',
-  });
+  // None found yet is not published yet: accepted, its deployment looked up again when observed.
+  const deploymentId = deployed.value === undefined ? {} : { deploymentId: deployed.value };
+  return ok({ revision, ...deploymentId, liveUrl: binding.pageUrl });
 }
 
 /** `site.source.revert`: the pre-image back over the published change, then its deployment. */
@@ -287,5 +284,9 @@ export async function revertForward(
     deps,
   );
   if (written.kind !== 'ok') return written;
-  return await deploymentOf(binding, String(written.value['commit.sha']), deps);
+  const revision = String(written.value['commit.sha']);
+  const deployed = await deploymentOf(binding, revision, deps);
+  if (deployed.kind !== 'ok') return deployed;
+  if (deployed.value === undefined) return stop('unknown', 'DEPLOYMENT_NOT_FOUND', deps);
+  return ok({ revision, deploymentId: deployed.value });
 }

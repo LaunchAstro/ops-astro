@@ -21,7 +21,12 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { clientHere } from './client-rows.ts';
-import { emptyDraft, type TaskDraft } from '../../apps/web/src/screens/task/task-draft.ts';
+import {
+  emptyDraft,
+  prefilledDraft,
+  type TaskDraft,
+} from '../../apps/web/src/screens/task/task-draft.ts';
+import { prefillOf } from '../../apps/web/src/screens/task/task-prefill.ts';
 import { draftBody, draftRecipe, partLabel } from '../../apps/web/src/screens/task/draft-recipe.ts';
 import { command, phaseCommand } from '../../apps/web/src/screens/task/draft-command.ts';
 import type { DraftCommand, DraftReceipt } from '../../apps/web/src/screens/task/draft-receipts.ts';
@@ -227,6 +232,50 @@ describe.skipIf(serverUrl === undefined)('U112 Core 04 6: every draft field read
       command: 'task.set_party',
       recordId,
       expectedRevision: moved.revision,
+      fields: { client: world.clientId },
+    });
+    expect(isCommandRefusal(late) ? late.code : 'applied').toBe('CLIENT_LOCKED');
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('a plain board’s draft and its client', () => {
+  let world: World;
+
+  beforeAll(async () => {
+    world = await seed();
+  }, 180_000);
+
+  afterAll(async () => {
+    await world?.db.drop();
+  });
+
+  it('a plain board’s draft, its client chosen on the draft, is stored under that client and reads back', async () => {
+    const chosen: TaskDraft = {
+      ...prefilledDraft(prefillOf({ from: 'Projects' }, new Date())),
+      title: 'Draft the bakery newsletter',
+      clientId: world.clientId,
+    };
+    const created = await createFromDraft(world, chosen);
+    expect(created.missed).toStrictEqual([]);
+    expect(await readBack(world, created.recordId)).toMatchObject({
+      client: world.clientId,
+      category: 'admin',
+      hasContent: true,
+    });
+  });
+
+  it('a plain board’s draft sent with no client keeps its client locked, as before', async () => {
+    const draft: TaskDraft = {
+      ...prefilledDraft(prefillOf({ from: 'Projects' }, new Date())),
+      title: 'Internal tidy-up',
+    };
+    const created = await createFromDraft(world, draft);
+    const task = await readBack(world, created.recordId);
+    expect(task).toMatchObject({ client: null, hasContent: true });
+    const late = await send(world, {
+      command: 'task.set_party',
+      recordId: created.recordId,
+      expectedRevision: task.revision,
       fields: { client: world.clientId },
     });
     expect(isCommandRefusal(late) ? late.code : 'applied').toBe('CLIENT_LOCKED');

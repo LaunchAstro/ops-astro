@@ -32,13 +32,19 @@ const DEFAULT_MAX_BYTES = 4096;
 const STATUS_LIMIT = 200;
 
 export function createLangfuseHealth(options: LangfuseHealthOptions): HealthSource {
-  const base = new URL(options.baseUrl);
+  const base = URL.parse(options.baseUrl);
+  // Served under a path is kept: the route is appended to the base's path.
+  const url = base && URL.parse(`${base.pathname.replace(/\/+$/u, '')}/api/public/health`, base);
+  // Tracing is optional, so a URL that does not parse is a malformed reading,
+  // never a stop: the API starts, and the setting is named, never its value.
+  if (url === null) {
+    console.warn('tracing: LANGFUSE_HOST is not a URL, so its health reads as malformed');
+    return { observe: async () => await Promise.resolve({ ok: false, fault: 'malformed' }) };
+  }
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const send = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date());
-  // Served under a path is kept: the route is appended to the base's path.
-  const url = new URL(`${base.pathname.replace(/\/+$/u, '')}/api/public/health`, base);
 
   return {
     async observe(): Promise<SourceAnswer> {

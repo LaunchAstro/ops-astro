@@ -26,14 +26,17 @@
 // exactly a day apart would miss a day by the previous send's own delay.
 
 import {
-  isUuid,
   toldAtOnce,
   type BusinessId,
   type Database,
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
+import { performance } from 'node:perf_hooks';
+import { SENDER_FRESH_MS } from '../../core-connectors/src/index.ts';
+import { INVITATION_SEND_ACTS, sendOwedInvitation } from './broker-invitation.ts';
 import { DAY_MS, NOTHING_SENT } from './email-class.ts';
+import { activeWorker } from './worker-standing.ts';
 import { emailAtOnce, emailDailyBatch, type EmailTiming } from './email-timing.ts';
 
 export type DeliveryPass =
@@ -54,18 +57,25 @@ const DUE = `select i.id, i.recipient_person_id as recipient, i.reason
   order by i.raised_at, i.id`;
 
 /**
- * The worker actor, held `for share` and active: a deactivation in flight is waited on and then
- * read, and one that comes later waits for this transaction's end.
+ * Pending, live invitations whose applied `invitation.create` and `invitation.resend` acts outnumber
+ * their enrolment tokens: an act no send has answered yet. The send counts the same two under the
+ * invitation's lock (`broker-invitation.ts`), so this only chooses whom to try.
  */
-async function activeWorker(tx: TenantQuery, actorId: string): Promise<boolean> {
-  if (!isUuid(actorId)) return false;
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.actors
-      where business_id = $1 and id = $2 and kind = 'worker' and active for share`,
-    [tx.businessId, actorId],
-  );
-  return rows.length === 1;
-}
+const OWED = `select i.id
+   from public.invitations i
+  where i.business_id = $1 and i.state = 'pending' and i.expires_at > clock_timestamp()
+    and (select count(*) from public.audit_events a
+          where a.business_id = i.business_id and a.subject_record_id = i.id
+            and a.outcome = 'applied' and a.command = any($2::text[]))
+      > (select count(*) from public.enrolment_tokens t
+          where t.business_id = i.business_id and t.invitation_id = i.id)
+  order by i.created_at, i.id`;
+
+/** A pass's timing: fixed, or read again before each send (a sender check grown stale is re-run). */
+export type PassTiming = EmailTiming | (() => Promise<EmailTiming>);
+
+const read = async (timing: PassTiming): Promise<EmailTiming> =>
+  typeof timing === 'function' ? await timing() : timing;
 
 /** Whom this pass tries: the due items told at once, or the people waiting for the day's email. */
 async function whomToTry(
@@ -104,21 +114,23 @@ export async function deliverDue(
   database: Database,
   businessId: BusinessId,
   workerActorId: string,
-  timing: EmailTiming,
+  timing: PassTiming,
   kind: 'at_once' | 'daily',
   stop?: AbortSignal,
 ): Promise<DeliveryPass> {
+  const first = await read(timing);
   const targets = await database.withBusiness(businessId, async (tx) =>
-    (await activeWorker(tx, workerActorId)) ? await whomToTry(tx, timing, kind) : undefined,
+    (await activeWorker(tx, workerActorId)) ? await whomToTry(tx, first, kind) : undefined,
   );
   if (targets === undefined) return { ok: false, code: 'WORKER_REQUIRED' };
-  const asWorker: EmailTiming = {
-    ...timing,
-    standing: async (tx) => await activeWorker(tx, workerActorId),
-  };
   let emails = 0;
   for (const target of targets) {
     if (stop?.aborted === true) break;
+    const asWorker: EmailTiming = {
+      // oxlint-disable-next-line no-await-in-loop -- the timing as it stands for this send
+      ...(await read(timing)),
+      standing: async (tx) => await activeWorker(tx, workerActorId),
+    };
     // One send at a time: each is its own transactions and custody call.
     const sent =
       kind === 'at_once'
@@ -133,6 +145,61 @@ export async function deliverDue(
   return { ok: true, emails };
 }
 
+/**
+ * One pass of owed invitations over one business, as its worker; how many emails it handed to
+ * custody. Each send holds the worker, active, inside its own reservation (`sendOwedInvitation`).
+ */
+export async function deliverOwedInvitations(
+  database: Database,
+  businessId: BusinessId,
+  workerActorId: string,
+  timing: PassTiming,
+  stop?: AbortSignal,
+): Promise<DeliveryPass> {
+  const owed = await database.withBusiness(businessId, async (tx) =>
+    (await activeWorker(tx, workerActorId))
+      ? (await tx.query<{ readonly id: string }>(OWED, [tx.businessId, INVITATION_SEND_ACTS])).map(
+          (row) => row.id,
+        )
+      : undefined,
+  );
+  if (owed === undefined) return { ok: false, code: 'WORKER_REQUIRED' };
+  let emails = 0;
+  for (const invitationId of owed) {
+    if (stop?.aborted === true) break;
+    // oxlint-disable-next-line no-await-in-loop -- the timing as it stands for this send
+    const { broker, mail } = await read(timing);
+    // oxlint-disable-next-line no-await-in-loop -- one send at a time
+    const sent = await sendOwedInvitation(
+      database,
+      businessId,
+      workerActorId,
+      invitationId,
+      broker,
+      mail,
+    );
+    if (!sent.ok && sent.code === 'WORKER_REQUIRED') return { ok: false, code: 'WORKER_REQUIRED' };
+    if (sent.ok || sent.code === 'EMAIL_FAILED') emails += 1;
+    // At the ceiling, or a sender check gone stale: the next pass carries on.
+    else if (sent.code === 'EMAIL_AT_CEILING' || sent.code === 'SENDER_NOT_VERIFIED') break;
+  }
+  return { ok: true, emails };
+}
+
+/**
+ * The pass's timing, read now and then before each send: a sender report half its freshness old
+ * is checked again first, so a long pass never sends on a report past `SENDER_FRESH_MS`.
+ */
+async function refreshing(timing: () => Promise<EmailTiming>): Promise<() => Promise<EmailTiming>> {
+  let current = await timing();
+  return async () => {
+    if (performance.now() - current.mail.sender.checkedAt > SENDER_FRESH_MS / 2) {
+      current = await timing();
+    }
+    return current;
+  };
+}
+
 /** One business the worker serves, and the worker actor it runs as there. */
 export interface MailTarget {
   readonly businessId: BusinessId;
@@ -143,7 +210,11 @@ export interface MailTarget {
 export interface MailCadence {
   readonly atOnceMs?: number;
   readonly dailyTickMs?: number;
+  /** The invitation pass; at once's cadence unless set. */
+  readonly invitationsMs?: number;
 }
+
+type PassKind = 'at_once' | 'daily' | 'invitations';
 
 export const AT_ONCE_EVERY_MS = 15_000;
 
@@ -164,16 +235,18 @@ export function startMailWorker(
   timing: () => Promise<EmailTiming>,
   cadence: MailCadence = {},
 ): { readonly stop: () => Promise<void> } {
-  const running: Partial<Record<'at_once' | 'daily', Promise<void>>> = {};
+  const running: Partial<Record<PassKind, Promise<void>>> = {};
   const stopping = new AbortController();
-  const pass = async (kind: 'at_once' | 'daily'): Promise<void> => {
+  const pass = async (kind: PassKind): Promise<void> => {
     try {
-      const now = await timing();
+      const fresh = await refreshing(timing);
       for (const { businessId, workerActorId } of await targets()) {
         if (stopping.signal.aborted) break;
         try {
           // oxlint-disable-next-line no-await-in-loop -- one business's sends before the next's
-          await deliverDue(database, businessId, workerActorId, now, kind, stopping.signal);
+          await (kind === 'invitations'
+            ? deliverOwedInvitations(database, businessId, workerActorId, fresh, stopping.signal)
+            : deliverDue(database, businessId, workerActorId, fresh, kind, stopping.signal));
         } catch {
           console.error(`mail worker: a ${kind} pass failed for one business`);
         }
@@ -182,7 +255,7 @@ export function startMailWorker(
       console.error('mail worker: the pass could not read its sender check or its businesses');
     }
   };
-  const once = (kind: 'at_once' | 'daily'): void => {
+  const once = (kind: PassKind): void => {
     if (stopping.signal.aborted || running[kind] !== undefined) return;
     running[kind] = pass(kind).finally(() => {
       delete running[kind];
@@ -191,6 +264,10 @@ export function startMailWorker(
   const timers = [
     setInterval(() => once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
     setInterval(() => once('daily'), cadence.dailyTickMs ?? DAY_MS / 24),
+    setInterval(
+      () => once('invitations'),
+      cadence.invitationsMs ?? cadence.atOnceMs ?? AT_ONCE_EVERY_MS,
+    ),
   ];
   for (const timer of timers) timer.unref();
   return {

@@ -22,7 +22,7 @@
 // approving or publishing it is refused once they have changed since.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { readDataClasses, type ListedDataClass } from './data-classes.ts';
 import { lockRegister, readRegister, type ListedService } from './overseas-services.ts';
 
@@ -89,12 +89,14 @@ export type VersionRefusal =
   | 'already-approved'
   | 'not-approved'
   | 'already-published'
+  | 'superseded'
   | 'register-changed'
   | 'data-classes-changed'
   | 'register-unconfirmed';
 
 interface LockedRow {
   readonly document: LegalDocument;
+  readonly version: string;
   readonly register_digest: string | null;
   readonly data_classes_digest: string | null;
   readonly body_digest: string;
@@ -146,7 +148,7 @@ export async function draftLegalVersion(
 
 async function lockVersion(tx: TenantQuery, versionId: string): Promise<LockedRow | undefined> {
   const rows = await tx.query<LockedRow>(
-    `select document, register_digest, data_classes_digest, body_digest, approved_at,
+    `select document, version, register_digest, data_classes_digest, body_digest, approved_at,
             published_at
        from public.legal_document_versions
       where business_id = $1 and id = $2
@@ -208,9 +210,14 @@ export async function publishLegalVersion(
   if (row.approved_at === null) return 'not-approved';
   const register = await registerRefusal(tx, row);
   if (register !== undefined) return register;
+  // One publication of a document at a time (#1011), so the order checked
+  // below is the order stamped: a later version already published is never
+  // rolled back by an older approved one published after it (#653).
+  await advisoryLock(tx, `legal-publish:${tx.businessId}:${row.document}`);
+  if (await laterPublished(tx, row)) return 'superseded';
   // Stamped when the publish is written, not when its transaction began, so a
   // publication written after another committed is current whichever began
-  // first (#444); two written at once stamp in write order (#1011).
+  // first (#444).
   await tx.query(
     `update public.legal_document_versions
         set published_at = clock_timestamp(), published_by_actor = $3
@@ -220,10 +227,33 @@ export async function publishLegalVersion(
   return undefined;
 }
 
-/** The version of `document` published most recently, if any. */
+/** Whether a later version of this row's document, by its major.minor label, is published. */
+async function laterPublished(tx: TenantQuery, row: LockedRow): Promise<boolean> {
+  const rows = await tx.query<{ readonly later: boolean }>(
+    `select exists (
+       select 1 from public.legal_document_versions
+        where business_id = $1 and document = $2 and published_at is not null
+          and string_to_array(version, '.')::int[] > string_to_array($3, '.')::int[]
+     ) as later`,
+    [tx.businessId, row.document, row.version],
+  );
+  return rows[0]?.later === true;
+}
+
+/** A version and the digest of its words, as `legalVersionPath` pins them. */
+export interface LegalPin {
+  readonly version: string;
+  readonly digest: string;
+}
+
+/**
+ * The version of `document` published most recently, if any; or, given a
+ * `pin`, that published version while its words still have the pinned digest.
+ */
 export async function readPublishedLegal(
   tx: TenantQuery,
   document: LegalDocument,
+  pin?: LegalPin,
 ): Promise<PublishedVersion | undefined> {
   const rows = await tx.query<{
     readonly version: string;
@@ -236,9 +266,10 @@ export async function readPublishedLegal(
     `select version, body, body_digest, published_at, register, data_classes
        from public.legal_document_versions
       where business_id = $1 and document = $2 and published_at is not null
+        and ($3::text is null or (version = $3 and body_digest = $4))
       order by published_at desc, drafted_at desc
       limit 1`,
-    [tx.businessId, document],
+    [tx.businessId, document, pin?.version ?? null, pin?.digest ?? null],
   );
   const row = rows[0];
   return row === undefined

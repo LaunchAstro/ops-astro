@@ -2,14 +2,11 @@
 import { useState, type ReactElement } from 'react';
 import { Icon, TabPanel, usePageToolbar } from '@launchastro/ui';
 import { createPortal } from 'react-dom';
-import type { ClientView } from '../../../../packages/core-wire/src/index.ts';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
-import { ProjectsToolbar } from './projects/ProjectsToolbar.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import { useProjectBoardAddress } from './projects/board-address.ts';
-import { useProjectClient } from './projects/project-client.ts';
 
 export type { ProjectsProps };
 
@@ -19,28 +16,19 @@ export function Projects(props: ProjectsProps): ReactElement {
   const { tab, select, workLogOpened } = useProjectsTab(props.address, inPanel === true);
   // The board's place, held here so the toolbar's door carries the view the board is on.
   const place = useProjectBoardAddress(props.address, inPanel === true, tab !== 'board');
-  const [clients, setClients] = useState<readonly ClientView[]>([]);
-  // A selected project's own client, which every door on its board files.
-  const project = useProjectClient(props.client, props.grantKey, place.query);
+  // The page's New task goes in the page toolbar, else in its own row; the board's read draws it.
+  const inline = inPanel === true || toolbar === null;
+  const [row, setRow] = useState<HTMLElement | null>(null);
   return (
     <div className="stack projects">
-      {tab === 'board' ? (
-        <ProjectsToolbar
-          inPanel={inPanel === true}
-          canFileTask={canFileTask}
-          address={place.view}
-          clients={clients}
-          project={project}
-        />
-      ) : null}
+      {tab === 'board' && inline ? <div className="projects__toolbar" ref={setRow} /> : null}
       <ViewSwitch tab={tab} select={select} toolbar={inPanel === true ? null : toolbar} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           canFileTask={canFileTask}
           hidden={tab !== 'board'}
           place={place}
-          onClients={setClients}
-          project={project}
+          toolbar={tab === 'board' ? (inline ? row : toolbar) : null}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}

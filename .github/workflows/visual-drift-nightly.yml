@@ -1,0 +1,65 @@
+name: visual drift nightly
+
+# RELAYROI1515 cut 6 (13 October 2026): `visual drift` left the merge queue,
+# where it was not required and no group waited on it. ci.yml still runs it on
+# a pull request and a push; this workflow runs it each night on main, so main
+# is proved at least once a day. The steps are ci.yml's `visual-drift` steps,
+# exactly (tests/ci/non-required-jobs-stay-out-of-merge-groups.test.ts). Not
+# required, and nothing waits on it. Actions are pinned by commit, as in ci.yml.
+
+on:
+  # 16:30 UTC, 03:30 in Sydney under daylight saving. Schedules run from main only.
+  schedule:
+    - cron: '30 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-drift-nightly
+  cancel-in-progress: false
+
+jobs:
+  visual-drift:
+    name: visual drift (nightly)
+    runs-on: ubuntu-latest
+    # The same limit as ci.yml's job.
+    timeout-minutes: 25
+    steps:
+      # Full history: on a pull request the scope reads the change from its base.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
+      # request the wrapped command runs only when the change reaches what it
+      # proves, and the step says why when it does not; on any
+      # other event it always runs. No step here carries a condition.
+      - name: Use the official HTTPS Ubuntu archive for browser dependencies
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu/|https://archive.ubuntu.com/ubuntu/|' /etc/apt/apt-mirrors.txt
+          fi
+      - name: The pinned headless shell and its system libraries
+        run: node scripts/ci-scope.ts 'visual drift' -- pnpm exec playwright install --with-deps --only-shell chromium
+      - name: The mode's own cases, against a made-up page
+        run: node scripts/ci-scope.ts 'visual drift' -- node tests/visual/app-drift-cases.ts
+      - run: node scripts/ci-scope.ts 'visual drift' -- pnpm build:web
+      - name: App-only drift and look parity on the built app
+        run: |
+          set -euo pipefail
+          decision="$(node scripts/ci-scope.ts 'visual drift' --decide)"
+          case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
+          pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
+          node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"
+          node tests/visual/look.ts --app http://127.0.0.1:5391 --out "$RUNNER_TEMP/look"

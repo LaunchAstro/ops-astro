@@ -5,6 +5,7 @@
 
 import type { CommandName } from './command-names.ts';
 import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
+import { AGENT_RUN_OPERANDS } from './write-operands-agent-run.ts';
 import { CHAT_OPERANDS } from './write-operands-chat.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
@@ -18,7 +19,6 @@ import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
 export type OperandSpec = Readonly<Record<string, Operand>>;
-
 // Each write's operands, as `requests.ts` types them. `recordId` is here on
 // every targeted command, and `operationId` and `expectedRevision` nowhere:
 // the envelope reads those two itself. An operand whose kind its command
@@ -106,6 +106,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   },
   'task.assign': FIELDS,
   'task.launch': TARGET,
+  'task.take_launch': { launchId: 'any' },
   'task.triage': FIELDS,
   'task.set_stage': FIELDS,
   'task.set_party': FIELDS,
@@ -189,6 +190,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     providerStarting: 'any',
   },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  'run.end': { leaseId: 'any', fence: 'any', endCode: 'any' },
   // Minor units, of the maximum the person saw; no standing ceiling (Q168).
   'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
   // The task, the attempt held unknown, and one of the three outcomes (O7).
@@ -202,25 +204,8 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     currency: 'text',
     fromLimitMinor: 'count|null',
   },
-  'task.observe': {
-    leaseId: 'any',
-    recordId: 'any',
-    fence: 'any',
-    attemptId: 'any',
-    usage: 'any',
-    outcome: 'any',
-    receiptLink: 'any',
-  },
-  'task.check': {
-    leaseId: 'any',
-    recordId: 'any',
-    fence: 'any',
-    name: 'any',
-    outcome: 'any',
-    note: 'any',
-  },
   ...CONVERSATION_OPERANDS,
-  'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
+  ...AGENT_RUN_OPERANDS,
   'run.top_up': {
     recordId: 'any',
     runId: 'any',

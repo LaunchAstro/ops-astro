@@ -123,7 +123,12 @@ describe('the worker renews its own sign-in', () => {
     expect([refused?.bearer, retried?.bearer]).toEqual(['bearer-canary-1', 'bearer-canary-2']);
     expect(retried?.verb).toBe(refused?.verb);
     expect(retried?.body['operationId']).toBe(refused?.body['operationId']);
-    expect(rest.map((call) => call.bearer)).toEqual(['bearer-canary-2', 'bearer-canary-2']);
+    // The queue, for its own proposal from before a restart, then the task and the proposal.
+    expect(rest.map((call) => call.bearer)).toEqual([
+      'bearer-canary-2',
+      'bearer-canary-2',
+      'bearer-canary-2',
+    ]);
     expect(ran.beats).toEqual([HEARTBEAT]);
     expect(ran.text).toContain('"proposed"');
     expect(ran.printedSecret, 'a credential was printed').toBe(false);
@@ -229,7 +234,8 @@ describe('a worker its credentials no longer let in exits, naming the setting', 
     });
     expect(ran.code).toBe(1);
     expect(passes).toBe(10);
-    expect(ran.sent.filter((call) => call.verb.endsWith(pathOf('task.queue')))).toHaveLength(10);
+    // Ten polls after the proposal, and the tenth pass's own look for a proposal from before.
+    expect(ran.sent.filter((call) => call.verb.endsWith(pathOf('task.queue')))).toHaveLength(11);
   });
 });
 
