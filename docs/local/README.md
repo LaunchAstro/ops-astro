@@ -19,7 +19,7 @@ does not do. Companion files describe the parts:
 - [OPENROUTER.md](OPENROUTER.md): the side panel on a paid model through OpenRouter, held against the AI chat budget
   on the same machine as the API (`ollama`).
 - [AGENT-TESTS.md](AGENT-TESTS.md): the agent case sets, their results file and
-  saving Astra's review, on the replay fake.
+  saving Astra's review, on the replay fake and, owner-started, on the plan.
 - [LANGFUSE.md](LANGFUSE.md): inspect the existing M5 trace target and stage
   the no-content exporter without changing running services.
 

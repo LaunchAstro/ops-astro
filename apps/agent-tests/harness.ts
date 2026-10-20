@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent test harness (#1626 R11). It runs each case of a set through
-// `core-agent`'s loop, `runAttempt`, with the replay fake as its model: each
-// turn goes to the fake on loopback through the replay adapter, its parts
-// made into messages as the broker makes them (the task, the page `task.read`
-// returned, the answers kept), and its answer is read against the replay
-// schema, as the broker reads it. No database, no credential and no host
-// beyond loopback is reached, so a set gives the same results on every run.
+// The agent test harness (#1626 R11, R12). It runs each case of a set through
+// `core-agent`'s loop, `runAttempt`, with a model asked each turn: the turn's
+// parts made into messages as the broker makes them (the task, the page
+// `task.read` returned, the answers kept). On the replay fake each turn goes
+// to the fake on loopback through the replay adapter and its answer is read
+// against the replay schema, as the broker reads it, so a set gives the same
+// results on every run. On the owner's plan (`plan.ts`) each turn goes
+// through custody to the `chatgpt-plan` route.
 //
 // A case passes when its attempt ends in the code it expects and, when it
 // finishes, its final answer holds what it must and leaves out what it must
 // not. The fake's 429 stands for the plan's allowance running out, which
-// the plan route records as `LOCAL_PLAN_LIMIT` (R12 wires the real route).
+// the plan route records as `LOCAL_PLAN_LIMIT`.
 
 import {
   attemptState,
   runAttempt,
   type AttemptPorts,
   type Turn,
-  type TurnAnswer,
 } from '../../packages/core-agent/src/index.ts';
 import {
   readReplayAnswer,
@@ -47,6 +47,8 @@ export interface AgentCase {
   /** The attempt's call limit. */
   readonly limit: number;
   readonly replies: readonly Reply[];
+  /** Its replies break a rule or fault on cue, which only the fake gives: left out on the plan. */
+  readonly fakeOnly?: true;
   readonly expect: {
     readonly endCode: EndCode;
     readonly includes?: string;
@@ -58,6 +60,8 @@ export interface CaseSet {
   readonly name: string;
   /** The model the set is written for, on the plan. */
   readonly target: string;
+  /** The plan's model the set runs on there. */
+  readonly planModel: string;
   readonly cases: readonly AgentCase[];
 }
 
@@ -81,7 +85,7 @@ export interface CaseResult {
 export interface Results {
   readonly set: string;
   readonly target: string;
-  readonly provider: 'replay';
+  readonly provider: 'replay' | 'chatgpt_plan';
   readonly passed: number;
   readonly failed: number;
   readonly usage: Usage;
@@ -91,11 +95,23 @@ export interface Results {
 const TASK_ID = '00000000-0000-4000-8000-0000000000c1';
 const REVISION = 1;
 
-interface Answered {
+/** What the model answered one turn. */
+export interface Answered {
   readonly model: string | null;
   readonly text: string;
+  readonly toolCalls: readonly ToolCall[];
   readonly usage: Usage;
 }
+
+/** A turn's messages as the broker makes them. */
+export type Message = Readonly<Record<string, unknown>>;
+
+/** One turn asked of a model: its answer, or the end code that stopped it. */
+export type Ask = (
+  one: AgentCase,
+  turn: Turn,
+  messages: readonly Message[],
+) => Promise<Answered | { readonly stopped: EndCode; readonly recorded: boolean }>;
 
 const sum = (usages: readonly Usage[]): Usage => ({
   inputUnits: usages.reduce((total, usage) => total + usage.inputUnits, 0),
@@ -103,7 +119,7 @@ const sum = (usages: readonly Usage[]): Usage => ({
 });
 
 /** A turn's part as the message the model reads; the harness gives no definition part. */
-function messageOf(one: AgentCase, part: TurnPart): Readonly<Record<string, unknown>> {
+function messageOf(one: AgentCase, part: TurnPart): Message {
   if (part.ref === 'answer')
     return { role: 'assistant', text: part.text, toolCalls: part.toolCalls };
   if (part.ref === 'definition') throw new Error('the harness sends no definition part');
@@ -112,53 +128,58 @@ function messageOf(one: AgentCase, part: TurnPart): Readonly<Record<string, unkn
     : { role: 'tool', toolCallId: part.toolCallId, text: one.page };
 }
 
-/** One turn sent to the fake, answered with the reply the case gives it. */
-async function send(
-  provider: ReplayProvider,
-  one: AgentCase,
-  turn: Turn,
-  answered: Answered[],
-): Promise<TurnAnswer> {
-  const reply = one.replies[turn.turnOrdinal];
-  if (reply !== undefined && 'fault' in reply) {
-    provider.mode(reply.fault);
-  } else {
-    provider.mode('answer');
-    provider.script(
-      reply === undefined
-        ? []
-        : [
-            {
-              text: reply.text,
-              model: REPLAY_MODEL_WINDOW.model,
-              usage: { input: 40, output: 30 },
-              tool_calls: reply.toolCalls ?? [],
-            },
-          ],
-    );
-  }
-  const callId = `${one.id}:${String(turn.turnOrdinal)}`;
-  const messages = turn.parts.map((part) => messageOf(one, part));
-  const request = replayAdapter({ turn: JSON.stringify(messages) }, callId);
-  const response = await fetch(`${provider.origin}${request.path}`, {
-    method: request.method,
-    body: request.body,
-  });
-  if (response.status === 429) return { stopped: 'LOCAL_PLAN_LIMIT', recorded: true };
-  const read = response.ok ? readReplayAnswer(await response.json()) : undefined;
-  if (read === undefined) return { stopped: 'ANSWER_LOST', recorded: false };
-  answered.push({ model: read.model, text: read.text, usage: read.usage });
-  return { callId, text: read.text, toolCalls: read.toolCalls ?? [] };
-}
+/** The replay fake as the model: each turn answered with the reply the case gives it. */
+const replayAsk =
+  (provider: ReplayProvider): Ask =>
+  async (one, turn, messages) => {
+    const reply = one.replies[turn.turnOrdinal];
+    if (reply !== undefined && 'fault' in reply) {
+      provider.mode(reply.fault);
+    } else {
+      provider.mode('answer');
+      provider.script(
+        reply === undefined
+          ? []
+          : [
+              {
+                text: reply.text,
+                model: REPLAY_MODEL_WINDOW.model,
+                usage: { input: 40, output: 30 },
+                tool_calls: reply.toolCalls ?? [],
+              },
+            ],
+      );
+    }
+    const callId = `${one.id}:${String(turn.turnOrdinal)}`;
+    const request = replayAdapter({ turn: JSON.stringify(messages) }, callId);
+    const response = await fetch(`${provider.origin}${request.path}`, {
+      method: request.method,
+      body: request.body,
+    });
+    if (response.status === 429) return { stopped: 'LOCAL_PLAN_LIMIT', recorded: true };
+    const read = response.ok ? readReplayAnswer(await response.json()) : undefined;
+    if (read === undefined) return { stopped: 'ANSWER_LOST', recorded: false };
+    return {
+      model: read.model,
+      text: read.text,
+      toolCalls: read.toolCalls ?? [],
+      usage: read.usage,
+    };
+  };
 
-async function runCase(provider: ReplayProvider, one: AgentCase): Promise<CaseResult> {
+async function runCase(ask: Ask, one: AgentCase): Promise<CaseResult> {
   const answered: Answered[] = [];
   let turns = 0;
   const ports: AttemptPorts = {
     broker: {
       turn: async (turn) => {
         turns += 1;
-        return await send(provider, one, turn, answered);
+        const messages = turn.parts.map((part) => messageOf(one, part));
+        const answer = await ask(one, turn, messages);
+        if ('stopped' in answer) return answer;
+        answered.push(answer);
+        const callId = `${one.id}:${String(turn.turnOrdinal)}`;
+        return { callId, text: answer.text, toolCalls: answer.toolCalls };
       },
     },
     tools: new Map([
@@ -187,25 +208,35 @@ async function runCase(provider: ReplayProvider, one: AgentCase): Promise<CaseRe
   };
 }
 
+/** These cases of a set, one after another, each turn asked of `ask`. */
+export async function runCases(
+  set: CaseSet,
+  provider: Results['provider'],
+  cases: readonly AgentCase[],
+  ask: Ask,
+): Promise<Results> {
+  const results: CaseResult[] = [];
+  for (const one of cases) {
+    // oxlint-disable-next-line no-await-in-loop -- one model, asked one case at a time
+    results.push(await runCase(ask, one));
+  }
+  const passed = results.filter((result) => result.passed).length;
+  return {
+    set: set.name,
+    target: set.target,
+    provider,
+    passed,
+    failed: results.length - passed,
+    usage: sum(results.map((result) => result.usage)),
+    cases: results,
+  };
+}
+
 /** Every case of a set, one after another, on one replay fake. */
 export async function runSet(set: CaseSet): Promise<Results> {
   const provider = await startReplayProvider();
   try {
-    const cases: CaseResult[] = [];
-    for (const one of set.cases) {
-      // oxlint-disable-next-line no-await-in-loop -- one fake, scripted one case at a time
-      cases.push(await runCase(provider, one));
-    }
-    const passed = cases.filter((result) => result.passed).length;
-    return {
-      set: set.name,
-      target: set.target,
-      provider: 'replay',
-      passed,
-      failed: cases.length - passed,
-      usage: sum(cases.map((result) => result.usage)),
-      cases,
-    };
+    return await runCases(set, 'replay', set.cases, replayAsk(provider));
   } finally {
     await provider.close();
   }
@@ -215,6 +246,6 @@ export async function runSet(set: CaseSet): Promise<Results> {
 export const isResults = (value: unknown): value is Results =>
   typeof value === 'object' &&
   value !== null &&
-  (value as Partial<Results>).provider === 'replay' &&
+  ['replay', 'chatgpt_plan'].includes(String((value as Partial<Results>).provider)) &&
   typeof (value as Partial<Results>).set === 'string' &&
   Array.isArray((value as Partial<Results>).cases);
