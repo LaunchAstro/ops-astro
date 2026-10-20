@@ -228,11 +228,20 @@ export const eventsOf = async (operationId: string, of: Schedules = s): Promise<
     [of.business, operationId],
   );
 
-/** Nothing the read would write: no ledger row on the run, no copy of the file, no event. */
+/**
+ * Nothing the read would write: no ledger row on the run, no copy of the file,
+ * no applied event. The refusal's own audit row is the envelope's, and stays.
+ */
 export async function wroteNothing(on: Pinned, path: string, operationId: string): Promise<void> {
   expect(await ledgerOf(on.runId), 'no ledger row').toBe(0);
   expect(await copiesOf(path), 'no kept copy').toBe(0);
-  expect(await eventsOf(operationId), 'no audit event').toBe(0);
+  const applied = await scalar(
+    s,
+    `select count(*)::text as n from public.audit_events
+      where business_id = $1 and operation_id = $2 and outcome = 'applied'`,
+    [s.business, operationId],
+  );
+  expect(applied, 'no applied audit event').toBe(0);
 }
 
 /** The lease's expiry, on the database clock, `seconds` from now. Its delegation is untouched. */
