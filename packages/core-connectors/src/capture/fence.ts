@@ -24,6 +24,11 @@ export interface CapturePool {
 }
 
 export const POOL_REVIEWS_REQUIRED = 3;
+/**
+ * The pool the fence runs, as a closed review names it (#2018). Only reviews of this version
+ * count, so a material change to the fence or the pool bumps it and every review is owed again.
+ */
+export const CAPTURE_POOL_VERSION = 'fence-1';
 const MAX_REDIRECTS = 3;
 const HOP_TIMEOUT_MS = 10_000;
 const USER_AGENT = 'page-capture (fenced; no credentials)';
