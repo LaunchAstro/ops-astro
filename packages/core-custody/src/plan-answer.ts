@@ -2,9 +2,13 @@
 //
 // The owner's ChatGPT plan's answer as custody gives it back (#1620 P3).
 // The Responses stream is read whole and folded to its completed response;
-// the deltas never leave custody. Only a stream whose last event is
-// `response.completed`, with a `completed` response of the closed shape
-// (`plan-shape.ts`), is answered. Anything
+// the deltas never leave custody. The plan sends its stream with no
+// content-type and a completed response whose output is empty, its items only
+// in `response.output_item.done` events (register 284), so a missing media
+// type is read as an event stream and an empty output is filled from those
+// items. Only a stream whose last event is `response.completed`, with a
+// `completed` response of the closed shape (`plan-shape.ts`), is answered.
+// Anything
 // else is withheld, or is a named refusal: 429 or a mid-stream usage limit is
 // the plan allowance, 403 a refusal of this account, 400 an unsupported
 // capability, 401 signing in again, 503 the plan being unavailable. An error
@@ -75,12 +79,26 @@ const usageLimit = (event: Record<string, unknown>): boolean =>
     (place) => field(place, 'code') === USAGE_LIMIT,
   );
 
-/** The terminal event folded: the completed response, the allowance, or why it is withheld. */
-function terminal(event: Record<string, unknown>): Folded {
-  const response = event['response'];
+/** The done items in their places, or undefined when a place between them is missing. */
+function inOrder(items: ReadonlyMap<number, unknown>): unknown[] | undefined {
+  const out = Array.from({ length: items.size }, (_, at) => items.get(at));
+  return out.every((item) => item !== undefined) ? out : undefined;
+}
+
+/**
+ * The terminal event folded: the completed response, the allowance, or why it
+ * is withheld. An empty output takes the done items, which are judged as the
+ * output is.
+ */
+function terminal(event: Record<string, unknown>, items: ReadonlyMap<number, unknown>): Folded {
+  const named = event['response'];
   if (event['type'] === 'error' || event['type'] === 'response.failed')
     return { kind: 'withheld', why: 'failed' };
-  if (!record(response)) return { kind: 'withheld', why: 'malformed' };
+  if (!record(named)) return { kind: 'withheld', why: 'malformed' };
+  const empty = Array.isArray(named['output']) && named['output'].length === 0;
+  const output = empty && items.size > 0 ? inOrder(items) : named['output'];
+  if (output === undefined) return { kind: 'withheld', why: 'malformed' };
+  const response: Record<string, unknown> = { ...named, output };
   if (nestsTooDeep(response, MOST_DEPTH)) return { kind: 'withheld', why: 'too deep' };
   if (event['type'] === 'response.incomplete' || response['status'] !== 'completed')
     return { kind: 'withheld', why: response['status'] === 'failed' ? 'failed' : 'incomplete' };
@@ -89,6 +107,7 @@ function terminal(event: Record<string, unknown>): Folded {
 }
 
 const TERMINAL = /^(?:error|response\.(?:completed|failed|incomplete))$/u;
+const ITEM_DONE = 'response.output_item.done';
 
 /**
  * Each event a conforming reader dispatches (one leading BOM ignored; lines
@@ -122,6 +141,7 @@ function folded(stream: string): Folded {
   const events = eventsOf(stream);
   if (events === undefined) return { kind: 'withheld', why: 'interrupted' };
   let end: Folded | undefined;
+  const items = new Map<number, unknown>();
   for (const { data, name } of events) {
     // Nothing may follow the terminal event.
     if (end !== undefined) return { kind: 'withheld', why: 'malformed' };
@@ -134,7 +154,19 @@ function folded(stream: string): Folded {
     if (!record(event) || (name !== undefined && name !== event['type']))
       return { kind: 'withheld', why: 'malformed' };
     if (usageLimit(event)) return { kind: 'allowance' };
-    if (typeof event['type'] === 'string' && TERMINAL.test(event['type'])) end = terminal(event);
+    if (event['type'] === ITEM_DONE) {
+      const at = event['output_index'];
+      if (
+        !Number.isSafeInteger(at) ||
+        Number(at) < 0 ||
+        items.has(Number(at)) ||
+        !record(event['item'])
+      )
+        return { kind: 'withheld', why: 'malformed' };
+      items.set(Number(at), event['item']);
+    }
+    if (typeof event['type'] === 'string' && TERMINAL.test(event['type']))
+      end = terminal(event, items);
   }
   return end ?? { kind: 'withheld', why: 'interrupted' };
 }
@@ -165,7 +197,10 @@ export function planAnswer(
       }
       const lost = outcome.fault === 'timeout' || outcome.fault === 'network';
       out = { kind: 'withheld', why: lost ? 'interrupted' : 'failed' };
-    } else if (outcome.mediaType !== 'text/event-stream' || outcome.notUtf8 === true) {
+    } else if (
+      (outcome.mediaType !== undefined && outcome.mediaType !== 'text/event-stream') ||
+      outcome.notUtf8 === true
+    ) {
       out = { kind: 'withheld', why: 'malformed' };
     } else {
       out = folded(outcome.body);

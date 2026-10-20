@@ -40,15 +40,15 @@ export interface Sent {
   readonly raw: string;
 }
 
-/** What the stand-in answers: a status, a body and its media type. */
+/** What the stand-in answers: a status, a body and its media type (null sends no content-type). */
 export interface Reply {
   readonly status: number;
   readonly body: string;
-  readonly type?: string;
+  readonly type?: string | null;
 }
 
 export const ASK: PlanAsk = {
-  model: 'gpt-6.1-luna',
+  model: 'gpt-6.1-sol',
   instructions: 'Draft the About page change the task asks for.',
   input: [{ role: 'user', content: 'Fix the opening hours on the About page.' }],
 };
@@ -139,7 +139,8 @@ async function standIn(world: {
       };
       world.sent.push(sent);
       const answer = world.reply(sent);
-      response.writeHead(answer.status, { 'content-type': answer.type ?? 'application/json' });
+      const type = answer.type === undefined ? 'application/json' : answer.type;
+      response.writeHead(answer.status, type === null ? {} : { 'content-type': type });
       response.end(answer.body);
     });
   });
