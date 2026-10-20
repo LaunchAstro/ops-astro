@@ -17,7 +17,7 @@
 // (`modelOffer`), so no command leaves for it. The model picker offers what
 // `conversation.models` answers for the selected tab (CS-7.30, `assistant/models.ts`);
 // a choice is held in the tab until it starts and sent by `conversation.set_model`
-// straight after the start, then each later choice in turn, landing before the next question.
+// straight after the start, each later one in turn before the next question (`useModelChoice`).
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
 // on AW-01's conversation seam) and is drawn after its question, as text, as it
@@ -40,9 +40,6 @@ import {
   addPage,
   ask,
   asking,
-  chooseModel,
-  markSwitch,
-  switching,
   fresh,
   rename,
   select,
@@ -58,7 +55,7 @@ import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
-import { keptChoice, useModels } from '../assistant/models.ts';
+import { keptChoice, useModelChoice, useModels, type Written } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import { withPieces } from '../assistant/writing.ts';
 import type {
@@ -186,9 +183,6 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
-const setModel = (client: OperationsClient, conversationId: string, model: string): Sent =>
-  client.mutate('conversation.set_model', { conversationId, model });
-
 /** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
@@ -199,19 +193,17 @@ function useWrites(
   readonly addPage: (key: string) => void;
   readonly chooseModel: (key: string, model: string) => void;
 } {
-  const written = (
-    key: string,
-    write: (conversationId: string) => Sent,
-    kept: () => void = () => {},
-  ): void => {
+  const written: Written = (key, write, after) => {
     // A tab kept or reopened was started elsewhere: its conversation is known.
     const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
     const turn = (sender.starts.get(key) ?? known).then(async (id) => {
-      if (id !== null && (await sender.report(key, write(id)))) kept();
+      const kept = id === null ? null : await sender.report(key, write(id));
+      after?.(kept);
       return id;
     });
     sender.starts.set(key, turn);
   };
+  const chooseModel = useModelChoice(props.client, store, written);
   return {
     rename: (key, title) => {
       store.update((current) => rename(current, key, title));
@@ -225,13 +217,7 @@ function useWrites(
       store.update((current) => addPage(current, key, page));
       written(key, (conversationId) => setScope(props.client, conversationId, page));
     },
-    chooseModel: (key, model) => {
-      const mark = switching(store.chat(key), model);
-      store.update((current) => chooseModel(current, key, model));
-      // Marked only once the server kept it: a refusal says why instead.
-      const kept = () => mark && store.update((current) => markSwitch(current, key, model));
-      written(key, (conversationId) => setModel(props.client, conversationId, model), kept);
-    },
+    chooseModel,
   };
 }
 
