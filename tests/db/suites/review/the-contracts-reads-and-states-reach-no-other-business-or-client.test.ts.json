@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C73 contract crossings: another business's member and a party-B-only grant cannot sign or read party A's asset, and another business's transaction scans and lands nothing on it."
+}

@@ -62,6 +62,24 @@ export const SITE_UPDATES = [
     from: '20261020052900',
     columns: ['revision_id', 'state', 'updated_at'],
   },
+  // The upload contract (#2039) admits a completed asset by these columns: refused, or
+  // quarantined with its probe until a scan's verdict lands.
+  {
+    table: 'public.review_media_assets',
+    from: '20261020053000',
+    columns: [
+      'probe_codec',
+      'probe_duration',
+      'probe_fps_den',
+      'probe_fps_num',
+      'probe_timecode',
+      'probe_timescale',
+      'refusal',
+      'scan_engine',
+      'scan_state',
+      'scanned_at',
+    ],
+  },
   // A capture is claimed and landed by these columns; its trigger keeps its revision and width.
   {
     table: 'public.review_captures',

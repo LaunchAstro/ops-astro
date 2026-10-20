@@ -5,17 +5,20 @@
 // query (`lockCoveredReview`), so another client's or business's upload is
 // one that is not there. Nothing is a revision until the store's own size and
 // digest match the declared ones; a mismatch removes the object and keeps no
-// revision.
+// revision. A completed asset is admitted by the upload contract (#2039):
+// quarantined until its scan lands, or refused with its object removed.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Covering } from '../site/covering.ts';
 import { addRevision, lockCoveredReview, type Review, type ReviewWriter } from './reviews.ts';
 import type { ObjectTransfers, StoredPart } from './storage.ts';
+import { admitCompleted, HostileStoreAnswer, type Admission } from './upload-contract.ts';
 import {
   mediaRefusal,
   MOST_PARTS_SIGNED,
   PART_LIFE_SECONDS,
   partCountOf,
+  type DeclaredAsset,
   type MediaRefusal,
   type SignedPart,
 } from './media.ts';
@@ -24,6 +27,9 @@ interface AssetRow {
   readonly id: string;
   readonly review_id: string;
   readonly planned_revision_id: string;
+  readonly kind: DeclaredAsset['kind'];
+  readonly declared_type: string;
+  readonly declared_codec: string | null;
   readonly declared_bytes: string;
   readonly declared_digest: string;
   readonly object_key: string;
@@ -49,8 +55,8 @@ async function lockStartedUpload(
   const review = await lockCoveredReview(tx, named.review_id, covering);
   if (review === undefined) return mediaRefusal('NOT_FOUND');
   const [asset] = await tx.query<AssetRow>(
-    `select id, review_id, planned_revision_id, declared_bytes::text, declared_digest, object_key,
-            upload_id, state
+    `select id, review_id, planned_revision_id, kind, declared_type, declared_codec,
+            declared_bytes::text, declared_digest, object_key, upload_id, state
        from public.review_media_assets
       where business_id = $1 and id = $2 and review_id = $3
         for update`,
@@ -100,8 +106,11 @@ export async function mediaUploadParts(
 
 /**
  * Complete an upload whose parts the store holds, then compare the store's size and digest with
- * the declared ones. Only a match writes the revision, numbered under the review's lock, with the
- * asset's digest; a mismatch removes the stored object and marks the upload abandoned.
+ * the declared ones, then run the upload contract on the stored bytes. A mismatch, or a store
+ * answering a range with another length, removes the stored object and marks the upload
+ * abandoned. Otherwise the revision is written, numbered under the review's lock, with the
+ * asset's digest, and the asset is admitted as the contract says: quarantined with its probe, or
+ * refused with its reason and its object removed.
  */
 export async function completeMediaUpload(
   tx: TenantQuery,
@@ -113,40 +122,78 @@ export async function completeMediaUpload(
       readonly revisionId: string;
       readonly number: number;
       readonly digest: string;
+      readonly admission: Admission;
     }
   | MediaRefusal
 > {
   const locked = await lockStartedUpload(tx, input.assetId, input.covering);
   if ('code' in locked) return locked;
   const { review, asset } = locked;
-  const held = await store.listParts(asset.object_key, asset.upload_id);
-  if ('refused' in held) return mediaRefusal('STORE_REFUSED');
-  if (missingParts(asset, held, store.partBytes).length > 0)
-    return mediaRefusal('UPLOAD_INCOMPLETE');
-  const partNumbers = held.map((part) => part.partNumber).toSorted((a, b) => a - b);
-  const stored = await store.complete(asset.object_key, asset.upload_id, partNumbers);
-  if ('refused' in stored) return mediaRefusal('STORE_REFUSED');
-  if (
-    stored.byteCount !== Number(asset.declared_bytes) ||
-    stored.digest !== asset.declared_digest
-  ) {
+  const declared = declaredOf(asset);
+  const stored = await completeAtStore(asset, store);
+  if ('code' in stored) return stored;
+  if (stored.byteCount !== declared.byteCount || stored.digest !== asset.declared_digest) {
     await store.remove(asset.object_key);
-    await markUpload(tx, asset.id, 'abandoned', null);
+    await abandonUpload(tx, asset.id);
     return mediaRefusal('UPLOAD_MISMATCH');
   }
+  const admission = await admitted(store, asset.object_key, declared);
+  if (admission === undefined) {
+    await store.remove(asset.object_key);
+    await abandonUpload(tx, asset.id);
+    return mediaRefusal('STORE_ANSWER_REFUSED');
+  }
+  if (admission.verdict === 'refused' && (await store.remove(asset.object_key)) !== true)
+    return mediaRefusal('STORE_REFUSED');
   const revision = await addRevision(
     tx,
     review,
     { id: asset.planned_revision_id, digest: stored.digest, sourceRevision: null },
     input.writer,
   );
-  await markUpload(tx, asset.id, 'completed', revision.id);
+  await admitUpload(tx, asset.id, revision.id, admission);
   return {
     reviewId: review.id,
     revisionId: revision.id,
     number: revision.number,
     digest: revision.digest,
+    admission,
   };
+}
+
+const declaredOf = (asset: AssetRow) => ({
+  kind: asset.kind,
+  type: asset.declared_type,
+  codec: asset.declared_codec,
+  byteCount: Number(asset.declared_bytes),
+});
+
+/** The store's own size and digest of an upload it holds every part of. */
+async function completeAtStore(
+  asset: AssetRow,
+  store: ObjectTransfers,
+): Promise<{ readonly byteCount: number; readonly digest: string } | MediaRefusal> {
+  const held = await store.listParts(asset.object_key, asset.upload_id);
+  if ('refused' in held) return mediaRefusal('STORE_REFUSED');
+  if (missingParts(asset, held, store.partBytes).length > 0)
+    return mediaRefusal('UPLOAD_INCOMPLETE');
+  const partNumbers = held.map((part) => part.partNumber).toSorted((a, b) => a - b);
+  const stored = await store.complete(asset.object_key, asset.upload_id, partNumbers);
+  return 'refused' in stored ? mediaRefusal('STORE_REFUSED') : stored;
+}
+
+/** The contract's admission, or undefined when the store answered a range with another length. */
+async function admitted(
+  store: ObjectTransfers,
+  key: string,
+  declared: Parameters<typeof admitCompleted>[2],
+): Promise<Admission | undefined> {
+  try {
+    return await admitCompleted(store, key, declared);
+  } catch (error) {
+    if (error instanceof HostileStoreAnswer) return undefined;
+    throw error;
+  }
 }
 
 /** Abort a started upload at the store and mark it abandoned. */
@@ -159,19 +206,44 @@ export async function abandonMediaUpload(
   if ('code' in locked) return locked;
   const aborted = await store.abort(locked.asset.object_key, locked.asset.upload_id);
   if (aborted !== true) return mediaRefusal('STORE_REFUSED');
-  await markUpload(tx, locked.asset.id, 'abandoned', null);
+  await abandonUpload(tx, locked.asset.id);
   return { reviewId: locked.review.id };
 }
 
-async function markUpload(
+async function abandonUpload(tx: TenantQuery, assetId: string): Promise<void> {
+  await tx.query(
+    `update public.review_media_assets set state = 'abandoned', updated_at = now()
+      where business_id = $1 and id = $2`,
+    [tx.businessId, assetId],
+  );
+}
+
+/** The completed asset named with its revision and admitted as the contract said. */
+async function admitUpload(
   tx: TenantQuery,
   assetId: string,
-  state: 'completed' | 'abandoned',
-  revisionId: string | null,
+  revisionId: string,
+  admission: Admission,
 ): Promise<void> {
+  const probe = admission.verdict === 'quarantined' ? admission.probe : null;
   await tx.query(
-    `update public.review_media_assets set state = $3, revision_id = $4, updated_at = now()
+    `update public.review_media_assets
+        set state = 'completed', revision_id = $3, refusal = $4, scan_state = $5,
+            probe_codec = $6, probe_fps_num = $7, probe_fps_den = $8, probe_timecode = $9,
+            probe_duration = $10, probe_timescale = $11, updated_at = now()
       where business_id = $1 and id = $2`,
-    [tx.businessId, assetId, state, revisionId],
+    [
+      tx.businessId,
+      assetId,
+      revisionId,
+      admission.verdict === 'refused' ? admission.refusal : null,
+      admission.verdict === 'quarantined' ? 'quarantined' : null,
+      probe?.codec ?? null,
+      probe?.fps.num ?? null,
+      probe?.fps.den ?? null,
+      probe?.startTimecode ?? null,
+      probe?.duration ?? null,
+      probe?.timescale ?? null,
+    ],
   );
 }
