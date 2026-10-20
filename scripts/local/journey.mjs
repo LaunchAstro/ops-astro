@@ -42,22 +42,17 @@ import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 import { emptyMeasures, takeMeasure } from './journey-measure.ts';
 import { runTestSide } from './journey-process.ts';
 import { readNamedSuites } from '../named-suites.ts';
+import { planItems, readPlan } from '../db-shards.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
-/**
- * What this base cannot run yet, with the reason. Each prints `unrun` and
- * fails the command until the part lands here (Rebase notes on the pull request).
- */
+// What this base cannot run yet, with the reason. Each prints `unrun` and
+// fails the command until the part lands here (Rebase notes on the pull request).
 const UNRUN = [
-  ['T2g: request changes, the revision round, journey_parity_cli', { owner: 'T2g', pr: '#136' }],
-  ['T3a: escalate at the bound, reject, cancel and restart', { owner: 'T3a', pr: '#153' }],
-  ['T4c: the pinned-mockup comparison at 1480, 900 and 390', { owner: 'T4c', pr: '#134' }],
-].map(([name, facts]) => [
-  name,
-  `${facts.owner} (${facts.pr}) is not on this base; the re-baseline brings it`,
-  facts,
-]);
-UNRUN.push(
+  [
+    'T4c: the pinned-mockup comparison at 1480, 900 and 390',
+    'T4c (#134) is not on this base; the re-baseline brings it',
+    { owner: 'T4c', pr: '#134' },
+  ],
   [
     'the browser pass (slice-acceptance) on this stack',
     'the web app signs in through GoTrue, which this stack does not start yet',
@@ -68,7 +63,7 @@ UNRUN.push(
     'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
     { owner: 'T4b2' },
   ],
-);
+];
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const flag = (name, fallback) => {
@@ -187,7 +182,8 @@ function afterJourney() {
     const file = join(evidence, 'runtime-proofs.txt');
     const own = ['--name', `${container}-proofs`, '--port', ports.proofsPg];
     const api = ['--api-port', ports.proofsApi, '--evidence', file];
-    const legs = run('bash', ['scripts/local/runtime-proofs.sh', ...own, ...api]);
+    // It never pulls: the preflight found the image, and a pull now would be a different run.
+    const legs = run('bash', ['scripts/local/runtime-proofs.sh', '--no-pull', ...own, ...api]);
     record(proofs, legs.ok ? 'pass' : 'fail', `evidence ${file}`);
     const env = { DATABASE_URL: admin, DATABASE_ADMIN_URL: admin };
     const named = run(process.execPath, ['scripts/db-conformance.mjs'], env);
@@ -198,7 +194,11 @@ function afterJourney() {
     const tail = named.out.trim().split('\n').slice(-3).join(' / ');
     record(suites, named.ok ? 'pass' : 'fail', tail);
     const manifest = readNamedSuites(ROOT);
-    for (const line of [...protectedVerdicts(named.out, manifest), ...builtCases()]) {
+    // Every item the runner should have judged: each named suite, or its parts.
+    const names = [...(manifest.invariant ?? []), ...(manifest.conformance ?? [])];
+    const items = planItems(names, readPlan(join(ROOT, 'tests/db/shard-plan.json')).parts);
+    const expected = { ...manifest, items, restartLeg: legs.ok };
+    for (const line of [...protectedVerdicts(named.out, expected), ...builtCases()]) {
       record(line.case, line.status, line.detail);
     }
   }
