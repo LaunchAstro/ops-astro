@@ -23,6 +23,7 @@ import {
   type Transport as PinnedPost,
 } from '../../../packages/core-connectors/src/capture/transport.ts';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
+import { withinDeadline } from './deadline.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
 // What a sink off the machine cannot be: the watcher's own rule.
 import { UNREACHABLE } from '../../worker/heartbeat.ts';
@@ -205,18 +206,15 @@ export function alertEvent(
   return { ...base('warning', kind, where, release, id), message };
 }
 
-const SEND_MS = 10_000;
-
 const NOT_A_DSN =
   'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
 
 /**
- * The sink's store endpoint, from its DSN. The key travels in the auth header
- * only, over https, to a public address, and never after a redirect; a
- * malformed or private DSN is refused by the setting's name, never echoed.
- * The name is resolved once per event and every address it gives must be
- * public; the event goes to the first, pinned, with the name kept for TLS,
- * so a lookup answering differently later is never asked.
+ * The sink's store endpoint, from its DSN. The key travels in the auth header only, over https, to
+ * a public address, and never after a redirect; a malformed or private DSN is refused by the
+ * setting's name, never echoed. The name is resolved once per event and every address must be
+ * public; the event goes to the first, pinned, the name kept for TLS, so a later lookup is never
+ * asked. A hung sink is down: one ten-second deadline covers lookup and post.
  */
 export function dsnTransport(
   dsn: string,
@@ -237,19 +235,9 @@ export function dsnTransport(
   const store = new URL(`${url.protocol}//${url.host}/api/${project}/store/`);
   const auth = `Sentry sentry_version=7, sentry_client=ops-astro/1, sentry_key=${url.username}`;
   return async (event) => {
-    // A hung sink is a sink that is down: one deadline for the whole send,
-    // the lookup included; give up, the watcher reports it.
-    const deadline = Date.now() + SEND_MS;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error('the error sink did not answer (timeout)')),
-        SEND_MS,
-      );
-    });
-    const addresses = await Promise.race([resolve(store.hostname), late]).finally(() =>
-      clearTimeout(timer),
-    );
+    const ends = Date.now() + 10_000;
+    const addresses = await withinDeadline(resolve(store.hostname), 10_000);
+    if (addresses === undefined) throw new Error('the error sink did not answer (timeout)');
     const [address] = addresses;
     if (address === undefined || addresses.some((each) => isDeniedAddress(each)))
       throw new Error(NOT_A_DSN);
@@ -260,7 +248,7 @@ export function dsnTransport(
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
       body: new TextEncoder().encode(JSON.stringify(event)),
-      timeoutMs: Math.max(0, deadline - Date.now()),
+      timeoutMs: Math.max(0, ends - Date.now()),
       maxBytes: 64 * 1024,
     });
     if (answer.kind !== 'answer') throw new Error(`the error sink did not answer (${answer.kind})`);

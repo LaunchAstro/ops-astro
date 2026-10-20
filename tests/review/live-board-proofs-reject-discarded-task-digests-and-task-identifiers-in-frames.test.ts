@@ -30,6 +30,7 @@ const mutations = [
 
 it.each(mutations)(
   'live-board proofs reject $name',
+  // eslint-disable-next-line max-lines-per-function -- one mutant, run against all four proofs
   async (mutation) => {
     const mutant = createSourceMutant({
       file: 'apps/api/live-board.ts',
