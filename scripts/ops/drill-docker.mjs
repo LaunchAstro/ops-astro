@@ -10,10 +10,11 @@ import { pipeline } from 'node:stream/promises';
 /**
  * Runs `docker`; stdout comes back as text, stderr is discarded. `input` is
  * bytes or a stream, written as the child takes it; the exit code decides.
+ * `detached` runs it in a process group of its own.
  */
-export function docker(args, input) {
+export function docker(args, input, { detached = false } = {}) {
   return new Promise((resolve) => {
-    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'ignore'] });
+    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'ignore'], detached });
     const chunks = [];
     child.stdout.on('data', (chunk) => chunks.push(chunk));
     child.stdin.on('error', () => {});

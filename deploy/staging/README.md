@@ -137,7 +137,9 @@ key. Each run appends a record to `OPS_ASTRO_DEPLOYMENTS` that names no
 setting's value.
 
 Backups are never restored into staging: the restore drill takes no target and
-restores only into a throwaway container of its own.
+restores only into a throwaway container of its own. The container stops and
+is removed when the drill ends, however it ends: a pass, a failed step, a stop
+or a kill (`scripts/ops/drill-restore.mjs`, the lifeline).
 
 ### How a migrate window drains
 
