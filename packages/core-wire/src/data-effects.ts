@@ -174,6 +174,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // The installation's own rows: no client's, so no client-scoped write.
   'operations.record_gate_item': writing(business('ops.gate_items')),
   'operations.change_installation_mode': writing(business('ops.installation')),
+  'operations.record_capture_pool_review': writing(business('ops.capture_pool_reviews')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   // Custody (C31): a set may store a client's credential (a clientId), so it

@@ -11,14 +11,20 @@
 // the runner carries the review's pins onto that revision under the same lease
 // (`review-carry.ts`, #2166).
 //
+// The fence's pool is read after the claim (#2018): the agency's own pages from the settings,
+// and for a review of a client's page, that page while the client's site binds it and the
+// installation's closed reviews of the pool the fence runs now. Nothing is kept between captures.
+//
 // Spare work: the host runs it after the corrections, one capture a pass. A queue it cannot
 // read fails the pass (`QueueUnread`), as the corrections' does, and so does a claim refused or
 // never answered (`CaptureUnclaimed`), and so does a carry refused or never answered
-// (`PinsUncarried`). A capture the fence or the browser refused lands nothing
-// and hands the lease back failed with the fence's code; a lost lease has nothing to hand back.
+// (`PinsUncarried`) or a pool it could not read (`PoolUnread`). A capture the fence or the
+// browser refused lands nothing and hands the lease back failed with the fence's code; a lost
+// lease has nothing to hand back.
 // Only codes are printed or reported, never a path.
 
 import {
+  CAPTURE_POOL_VERSION,
   capturePage,
   capturePicture,
   type CaptureOptions,
@@ -49,7 +55,10 @@ export interface CaptureJob {
   readonly call: AgentCall;
   readonly db: Database;
   readonly business: BusinessId;
-  /** The fence's inputs: the agency's own pages (`reviewPool`), the resolver and the transport. */
+  /**
+   * The fence's inputs: the agency's own pages (`reviewPool`), the resolver and the transport.
+   * Its other pages and closed reviews are read from the rows for each capture, never taken here.
+   */
   readonly capture: CaptureOptions;
   readonly browserAt: SizedBrowser;
 }
@@ -66,6 +75,15 @@ export class CaptureUnclaimed extends Error {
   }
 }
 
+/** The pool's reviews or bound page could not be read: the pass fails, nothing is fetched. */
+export type PoolUnread = Error & { readonly code: 'POOL_UNREAD' };
+
+const poolUnread = (): PoolUnread =>
+  Object.assign(new Error('the capture pool could not be read'), {
+    name: 'PoolUnread',
+    code: 'POOL_UNREAD' as const,
+  });
+
 /** One capture step taken: its task, and `landed` or the code it ended on. */
 export interface Captured {
   readonly taskId: string;
@@ -73,9 +91,9 @@ export interface Captured {
 }
 
 /**
- * The fence's pool for review captures: the configured site's pages when that site is
- * the business's own, and nothing when it is a client's. No other page is reachable until the
- * pool's reviews are recorded (#2018).
+ * The agency's own part of the fence's pool for review captures: the configured site's pages
+ * when that site is the business's own, and nothing when it is a client's. A client's page is
+ * added for its own capture only (`poolFor`).
  */
 export const reviewPool = (site: ConfiguredSite, business: string): CapturePool => ({
   agencyPages: site.holder === business ? site.pages.map((page) => page.pageUrl) : [],
@@ -83,23 +101,72 @@ export const reviewPool = (site: ConfiguredSite, business: string): CapturePool 
   closedPoolReviews: [],
 });
 
+interface Asked {
+  readonly revisionId: string;
+  readonly pageUrl: string;
+  readonly path: string;
+  /** The task's client, or null for the business's own page. */
+  readonly partyId: string | null;
+}
+
 /** The task's oldest revision with a width not yet landed, and the page its review is of. */
 async function askedOn(
   db: Database,
   business: BusinessId,
   taskId: string,
-): Promise<{ readonly revisionId: string; readonly pageUrl: string } | undefined> {
+): Promise<Asked | undefined> {
   return await db.withBusiness(business, async (tx) => {
-    const [row] = await tx.query<{ readonly revision_id: string; readonly page_url: string }>(
-      `select v.id as revision_id, c.page_url from public.review_captures k
+    const [row] = await tx.query<{
+      readonly revision_id: string;
+      readonly page_url: string;
+      readonly path: string;
+      readonly party_id: string | null;
+    }>(
+      `select v.id as revision_id, c.page_url, c.path, c.party_id from public.review_captures k
          join public.review_revisions v on v.business_id = k.business_id and v.id = k.revision_id
          join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
         where k.business_id = $1 and c.task_id = $2 and k.state <> 'landed'
         order by v.created_at, v.id limit 1`,
       [tx.businessId, taskId],
     );
-    return row === undefined ? undefined : { revisionId: row.revision_id, pageUrl: row.page_url };
+    return row === undefined
+      ? undefined
+      : {
+          revisionId: row.revision_id,
+          pageUrl: row.page_url,
+          path: row.path,
+          partyId: typeof row.party_id === 'string' ? row.party_id : null,
+        };
   });
+}
+
+/**
+ * The fence's pool for this capture, read now: for a client's page, that page alone while the
+ * client's site binds it, and the identities of the closed reviews of the pool the fence runs.
+ * Undefined when they could not be read.
+ */
+async function poolFor(job: CaptureJob, asked: Asked): Promise<CapturePool | undefined> {
+  const { agencyPages } = job.capture.pool;
+  if (asked.partyId === null) return { agencyPages, otherPages: [], closedPoolReviews: [] };
+  const read = await job.db
+    .withBusiness(job.business, async (tx) => {
+      const [row] = await tx.query<{
+        readonly reviews: readonly string[];
+        readonly bound: boolean;
+      }>(
+        `select array(select r.review from ops.capture_pool_reviews r
+                       where r.pool_version = $1 order by r.review) as reviews,
+                exists(select 1 from public.party_site_pages p
+                        where p.business_id = $2 and p.holder = $3 and p.page_url = $4
+                          and p.path = $5) as bound`,
+        [CAPTURE_POOL_VERSION, tx.businessId, asked.partyId, asked.pageUrl, asked.path],
+      );
+      return row;
+    })
+    .catch(() => null);
+  if (read === null || read === undefined || !Array.isArray(read.reviews)) return undefined;
+  const otherPages = read.bound === true ? [asked.pageUrl] : [];
+  return { agencyPages, otherPages, closedPoolReviews: read.reviews };
 }
 
 /** A refusal's code from the API, as it may be printed, or the fault it reads as when there is none. */
@@ -121,14 +188,15 @@ interface Taken {
 async function taken(
   pageUrl: string,
   widths: readonly CaptureWidth[],
-  job: CaptureJob,
+  capture: CaptureOptions,
+  browserAt: SizedBrowser,
 ): Promise<Taken | FenceCode> {
-  const observation = await capturePage(pageUrl, job.capture);
+  const observation = await capturePage(pageUrl, capture);
   if (!observation.ok) return observation.code;
   const pictures: (readonly [CaptureWidth, Uint8Array])[] = [];
   for (const width of widths) {
     // oxlint-disable-next-line no-await-in-loop -- one browser at a time
-    const picture = await capturePicture(pageUrl, job.capture, job.browserAt(width));
+    const picture = await capturePicture(pageUrl, capture, browserAt(width));
     if (!picture.ok) return picture.code;
     pictures.push([width, picture.value.png]);
   }
@@ -136,7 +204,7 @@ async function taken(
 }
 
 /** A step's end that fails the pass after its hand-back. */
-type PassFailing = CaptureUnclaimed | PinsUncarried;
+type PassFailing = CaptureUnclaimed | PinsUncarried | PoolUnread;
 
 /**
  * Claim, capture and land under `lease`, then carry when a land answered `carryDue`: `landed`,
@@ -158,7 +226,9 @@ async function captureUnder(
   if (!('detail' in claimed)) return new CaptureUnclaimed(codeOf(claimed, 'CLAIM_FAULT'));
   const handed = claimed.detail['widths'];
   const widths = CAPTURE_WIDTHS.filter((width) => Array.isArray(handed) && handed.includes(width));
-  const capture = await taken(asked.pageUrl, widths, job);
+  const pool = await poolFor(job, asked);
+  if (pool === undefined) return poolUnread();
+  const capture = await taken(asked.pageUrl, widths, { ...job.capture, pool }, job.browserAt);
   if (typeof capture === 'string') return capture;
   // The pictures took a while: the lease is renewed, or nothing lands.
   if (!('detail' in (await call('task.heartbeat', { leaseId, fence }, pickup)))) {
@@ -178,7 +248,8 @@ async function captureUnder(
 
 /**
  * One queued capture step: picked up, captured under its lease, handed back and logged by its
- * task and code. An unclaimed capture or an uncarried pin throws after its hand-back.
+ * task and code. An unclaimed capture, an uncarried pin or an unread pool throws after its
+ * hand-back.
  */
 async function captureStep(
   job: CaptureJob,
