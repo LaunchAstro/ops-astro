@@ -7,11 +7,14 @@
 // a picture at each width the claim handed out, all through the C18-1 fence, renews the lease
 // and lands each width (`review.capture_land`). The API judges the lease, the fence and the
 // rows under lock at every call; finding the review grants nothing. A claim hands out only
-// the widths not yet landed, so a retry never overwrites one.
+// the widths not yet landed, so a retry never overwrites one. When a land answers `carryDue`,
+// the runner carries the review's pins onto that revision under the same lease
+// (`review-carry.ts`, #2166).
 //
 // Spare work: the host runs it after the corrections, one capture a pass. A queue it cannot
 // read fails the pass (`QueueUnread`), as the corrections' does, and so does a claim refused or
-// never answered (`CaptureUnclaimed`). A capture the fence or the browser refused lands nothing
+// never answered (`CaptureUnclaimed`), and so does a carry refused or never answered
+// (`PinsUncarried`). A capture the fence or the browser refused lands nothing
 // and hands the lease back failed with the fence's code; a lost lease has nothing to hand back.
 // Only codes are printed or reported, never a path.
 
@@ -31,6 +34,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { printable, queueOf, type AgentCall, type Answer } from './claims.ts';
 import type { ConfiguredSite } from './configured.ts';
+import { carryPins, type PinsUncarried } from './review-carry.ts';
 
 /** The purpose a person's approval gives the step that puts a review's capture on the queue. */
 export const CAPTURE_PURPOSE = 'review_capture';
@@ -131,12 +135,18 @@ async function taken(
   return { observation: observation.value, pictures };
 }
 
-/** Claim, capture and land under `lease`: `landed`, the code it stopped on, or an unclaimed capture. */
+/** A step's end that fails the pass after its hand-back. */
+type PassFailing = CaptureUnclaimed | PinsUncarried;
+
+/**
+ * Claim, capture and land under `lease`, then carry when a land answered `carryDue`: `landed`,
+ * the code it stopped on, or what fails the pass.
+ */
 async function captureUnder(
   job: CaptureJob,
   taskId: string,
   lease: Lease,
-): Promise<string | CaptureUnclaimed> {
+): Promise<string | PassFailing> {
   const { call } = job;
   const { leaseId, fence, pickup } = lease;
   const asked = await askedOn(job.db, job.business, taskId);
@@ -154,19 +164,21 @@ async function captureUnder(
   if (!('detail' in (await call('task.heartbeat', { leaseId, fence }, pickup)))) {
     return 'LEASE_LOST';
   }
+  let carryDue = false;
   for (const [width, png] of capture.pictures) {
     const picture = Buffer.from(png).toString('base64');
     const body = { leaseId, fence, revisionId, width, picture, observation: capture.observation };
     // oxlint-disable-next-line no-await-in-loop -- one width at a time
     const landed = await call('review.capture_land', body, pickup);
     if (!('detail' in landed)) return codeOf(landed, 'LAND_FAULT');
+    carryDue ||= landed.detail['carryDue'] === true;
   }
-  return 'landed';
+  return (carryDue ? await carryPins(call, lease, revisionId) : undefined) ?? 'landed';
 }
 
 /**
  * One queued capture step: picked up, captured under its lease, handed back and logged by its
- * task and code. An unclaimed capture throws after its hand-back.
+ * task and code. An unclaimed capture or an uncarried pin throws after its hand-back.
  */
 async function captureStep(
   job: CaptureJob,
@@ -183,7 +195,7 @@ async function captureStep(
     pickup: String(picked.detail['credential']),
   };
   const ended = await captureUnder(job, taskId, lease).catch(() => 'CAPTURE_FAULT');
-  const outcome = ended instanceof CaptureUnclaimed ? ended.code : ended;
+  const outcome = typeof ended === 'string' ? ended : ended.code;
   if (outcome !== 'LEASE_LOST') {
     const { leaseId, fence, pickup } = lease;
     const done = outcome === 'landed' ? 'completed' : 'failed';
@@ -192,7 +204,7 @@ async function captureStep(
     await call('task.handback', body, pickup).catch(() => null);
   }
   console.log(`review capture ${taskId} ${outcome}`);
-  if (ended instanceof CaptureUnclaimed) throw ended;
+  if (typeof ended !== 'string') throw ended;
   return { taskId, outcome };
 }
 
