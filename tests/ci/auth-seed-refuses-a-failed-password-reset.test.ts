@@ -19,6 +19,7 @@ const ROOT = join(import.meta.dirname, '../..');
 const COPIED = [
   'scripts/local/auth-seed.mjs',
   'scripts/local/signing-key.mjs',
+  'scripts/local/synthetic-logins.mjs',
   'packages/core-records/src/env-file.ts',
 ];
 

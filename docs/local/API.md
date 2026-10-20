@@ -17,8 +17,9 @@ export PATH="$TOOLCHAIN/node-v24.21.0-darwin-arm64/bin:$PATH"
 bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
 bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
+node scripts/local/db-admit.mjs    # guard and mark it (new database: LOCAL_SEED_MADE_UP=confirm)
 node scripts/local/auth-seed.mjs   # the five synthetic logins
-node scripts/local-seed.mjs        # SLICE-DATA grants (new database: LOCAL_SEED_MADE_UP=confirm)
+node scripts/local-seed.mjs        # SLICE-DATA grants
 bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```

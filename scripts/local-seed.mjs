@@ -387,6 +387,7 @@ const signs = await admitMadeUp(admin, confirmed);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
   console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
+  console.error('local-seed: with sign-ins, on db:admit before auth:seed (docs/local/README.md)');
   await admin.close();
   process.exit(1);
 }
