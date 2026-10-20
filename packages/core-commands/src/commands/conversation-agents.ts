@@ -11,9 +11,11 @@
 // link or a deactivation running now commits first and is seen, or waits.
 
 import {
+  CHATGPT_PLAN_PROVIDER,
   conversationModelsOf,
   OLLAMA_PROVIDER,
   OPENROUTER_PROVIDER,
+  planRouteSet,
 } from '../../../core-connectors/src/index.ts';
 import { slotOf, TASK_SPINE, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -24,12 +26,17 @@ const CLIENT = slotOf(TASK_SPINE, 'client');
 /**
  * The carrier carries Ollama, and only on an install whose conversations run
  * on it; there, OpenRouter's paid models too (#1508), which only a person the
- * outside list names was offered.
+ * outside list names was offered, and the owner's plan's models where its
+ * route is set (#2175), which only the owner was offered.
  */
 function carries(model: unknown): boolean {
   const provider = installProvider();
   if (provider !== OLLAMA_PROVIDER) return false;
-  const models = [...conversationModelsOf(provider), ...conversationModelsOf(OPENROUTER_PROVIDER)];
+  const models = [
+    ...conversationModelsOf(provider),
+    ...conversationModelsOf(OPENROUTER_PROVIDER),
+    ...(planRouteSet(process.env) ? conversationModelsOf(CHATGPT_PLAN_PROVIDER) : []),
+  ];
   return model === null ? models.length > 0 : models.some((one) => one.id === model);
 }
 

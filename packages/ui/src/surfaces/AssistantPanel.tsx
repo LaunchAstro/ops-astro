@@ -13,6 +13,8 @@
 // **With no model on offer and a reason in words, the drawer sends nothing**
 // (owner line 72): the picker is empty and disabled, the reason sits under the
 // head, and a question asked anyway is answered in the drawer, not sent.
+// A model shown as unavailable (#2175) is listed with its reason and never
+// chosen, and counts as no model on offer.
 import { StyledSelect } from '../kit/styled-select.tsx';
 import { useRef, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
@@ -20,6 +22,7 @@ import { usePanelToolbar } from './PageToolbar.tsx';
 import type {
   AssistantChat,
   AssistantMessage,
+  AssistantModel,
   AssistantOffer,
   AssistantPanelProps,
 } from './assistant/types.ts';
@@ -54,28 +57,41 @@ export { PICK_SIZE } from './assistant/proposal-pick.tsx';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
 
+/** The models that may be chosen now: not those shown as unavailable. */
+const onOffer = (offer: AssistantOffer): readonly AssistantModel[] =>
+  offer.models.filter((model) => model.unavailable === undefined);
+
 function ModelPicker(props: {
   readonly chat: AssistantChat | undefined;
   readonly offer: AssistantOffer;
   readonly onModel: (key: string, model: string) => void;
 }): ReactElement {
   const { chat, offer } = props;
+  const available = onOffer(offer);
   return (
     <StyledSelect
       className="aip__hmodel"
       data-assistant="model"
       aria-label="Which model you are talking to"
-      disabled={offer.models.length === 0 || chat === undefined}
-      value={chat?.model ?? offer.models[0]?.id ?? ''}
+      disabled={available.length === 0 || chat === undefined}
+      value={chat?.model ?? available[0]?.id ?? ''}
       onChange={(event) => {
-        if (chat !== undefined) props.onModel(chat.key, event.target.value);
+        const choice = event.target.value;
+        if (chat === undefined || !available.some((model) => model.id === choice)) return;
+        props.onModel(chat.key, choice);
       }}
     >
-      {offer.models.map((model) => (
-        <option key={model.id} value={model.id}>
-          {model.label}
-        </option>
-      ))}
+      {offer.models.map((model) =>
+        model.unavailable === undefined ? (
+          <option key={model.id} value={model.id}>
+            {model.label}
+          </option>
+        ) : (
+          <option key={model.id} value={model.id} disabled title={model.unavailable}>
+            {`${model.label} (unavailable)`}
+          </option>
+        ),
+      )}
     </StyledSelect>
   );
 }
@@ -230,7 +246,7 @@ function Thread(props: {
 
 export function AssistantPanel(props: AssistantPanelProps): ReactElement {
   const chat = props.chats.find((each) => each.key === props.selected);
-  const sendable = !(props.offer.models.length === 0 && props.offer.waiting !== null);
+  const sendable = !(onOffer(props.offer).length === 0 && props.offer.waiting !== null);
   const send = useChipGuard(props.subject.chips, props.onSend);
   const history = useHistory(props.history);
   return (

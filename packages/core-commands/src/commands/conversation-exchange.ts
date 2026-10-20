@@ -18,7 +18,10 @@
 //    AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
-//    is written or sent (AW-03 egress off). It asks for the conversation's
+//    is written or sent (AW-03 egress off), save the owner's ChatGPT plan for
+//    his own typed message (#2175, P4): the request names who wrote each turn
+//    sent, the page and the earlier exchanges' tasks, and the broker judges
+//    them again under its locks. It asks for the conversation's
 //    model (CS-7.30), the default when none is chosen; a chosen model no
 //    longer offered it (`offeredModels`) is refused first, nothing sent. Where
 //    the caller takes pieces, the answer's display text goes to it as the
@@ -99,6 +102,8 @@ interface Question {
   readonly context: Context;
   /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
   readonly model: string | undefined | null;
+  /** The install's conversation provider, which an id two providers share is first read against. */
+  readonly provider: string;
   /** The page task the conversation is on, as read with the context. */
   readonly page: string | null;
   /** Who wrote the asked message and each earlier person turn read. */
@@ -144,6 +149,7 @@ async function questionOf(
   const context = await contextOf(tx, session, { ...asked, body }, page);
   return {
     model: await askedModel(tx, session, asked.conversationId, provider),
+    provider,
     scope: {
       id: asked.conversationId,
       businessId: tx.businessId,
@@ -179,7 +185,7 @@ async function answerOnce(
     await withSession(database, businessId, presented, (tx, now) => replyTo(tx, now, asked));
   const earlier = await reread();
   if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier, []);
-  const operation = operationFor(question.model);
+  const operation = operationFor(question.model, question.provider);
   const paid =
     operation === OPENROUTER_CONVERSATION_KEY
       ? paidSeams({ database, businessId, presented, asked, ...question })
@@ -199,7 +205,7 @@ async function answerOnce(
     { ...broker, audit: auditAs(session.actorId) },
   );
   await pieces?.drained();
-  if (!result.ok) return await unanswered(result, reread);
+  if (!result.ok) return await unanswered(result, reread, operation);
   if (paid !== undefined) return paid.replied(question.context.cites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');

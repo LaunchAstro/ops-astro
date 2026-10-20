@@ -17,7 +17,7 @@
 // (`modelOffer`), so no command leaves for it. The model picker offers what
 // `conversation.models` answers for the selected tab (CS-7.30, `assistant/models.ts`);
 // a choice is held in the tab until it starts and sent by `conversation.set_model`
-// straight after the start, then each later choice in turn, landing before the next question.
+// straight after the start, each later one in turn before the next question (`useModelChoice`).
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
 // on AW-01's conversation seam) and is drawn after its question, as text, as it
@@ -40,7 +40,6 @@ import {
   addPage,
   ask,
   asking,
-  chooseModel,
   fresh,
   rename,
   select,
@@ -56,7 +55,15 @@ import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import { answersTo, type Store } from '../assistant/store.ts';
-import { useModels } from '../assistant/models.ts';
+import {
+  keptChoice,
+  type Confirm,
+  UNREAD_MODEL,
+  useModelChoice,
+  useModels,
+  type Outcome,
+  type Written,
+} from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import { withPieces } from '../assistant/writing.ts';
 import type {
@@ -107,7 +114,7 @@ async function startWith(
   client: OperationsClient,
   store: Store,
   opening: Opening,
-  report: (key: string, sent: Sent) => Promise<boolean>,
+  report: (key: string, sent: Sent) => Promise<Outcome>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
   // The tab as the question was asked: a model chosen before it rides in the
@@ -135,12 +142,13 @@ async function startWith(
 }
 
 /** The start, the join, and every write after them, each refusal shown in the tab. */
-function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
+function useSender(props: AssistantViewProps, store: Store, subject: Subject, confirm: Confirm) {
   const starts = useRef(new Map<string, Promise<string | null>>());
-  const report = async (key: string, sent: Sent): Promise<boolean> => {
+  // A lost answer is 'unknown', never a refusal: the server may have kept the write.
+  const report = async (key: string, sent: Sent): Promise<Outcome> => {
     const settled = settle(await sent);
     if (settled.kind !== 'ok') store.line(key, 'failed', settled.because);
-    return settled.kind === 'ok';
+    return settled.kind === 'ok' ? 'kept' : settled.kind === 'unknown' ? 'unknown' : 'refused';
   };
   const scope = (): { readonly kind: 'task'; readonly id: string } | null => {
     const task = store.now().scope.task;
@@ -160,18 +168,22 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     // read, in the tab's queue, so a model chosen after it lands after it.
     // A tab not yet started joins what its last start made, or starts itself
     // only once that start is refused.
+    // Its model is known first: one unread after a lost switch is read back, or it waits unsent.
     let asked = false;
+    let known = true;
     const before = starts.current.get(key) ?? Promise.resolve(chat.conversationId);
     const turn = before.then(async (id) => {
       await read;
+      if (id !== null) known = await confirm(key, id);
       if (id !== null) return id;
       asked = true;
       return await start(opening, on);
     });
     starts.current.set(key, turn);
-    const known = await turn;
-    if (asked || known === null) return;
-    const message = { conversationId: known, body };
+    const conversationId = await turn;
+    if (asked || conversationId === null) return;
+    if (!known) return void on.line(key, 'failed', UNREAD_MODEL);
+    const message = { conversationId, body };
     const settled = settle(
       await withPieces(on, key, (by) => props.client.mutate('conversation.message', message, by)),
     );
@@ -184,24 +196,23 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
-const setModel = (client: OperationsClient, conversationId: string, model: string): Sent =>
-  client.mutate('conversation.set_model', { conversationId, model });
-
 /** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
   store: Store,
   sender: Pick<ReturnType<typeof useSender>, 'report' | 'starts'>,
+  choose: ReturnType<typeof useModelChoice>['choose'],
 ): {
   readonly rename: (key: string, title: string) => void;
   readonly addPage: (key: string) => void;
   readonly chooseModel: (key: string, model: string) => void;
 } {
-  const written = (key: string, write: (conversationId: string) => Sent): void => {
+  const written: Written = (key, write, after) => {
     // A tab kept or reopened was started elsewhere: its conversation is known.
     const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
     const turn = (sender.starts.get(key) ?? known).then(async (id) => {
-      if (id !== null) await sender.report(key, write(id));
+      const outcome = id === null ? 'held' : await sender.report(key, write(id));
+      await after?.(outcome, id);
       return id;
     });
     sender.starts.set(key, turn);
@@ -219,10 +230,7 @@ function useWrites(
       store.update((current) => addPage(current, key, page));
       written(key, (conversationId) => setScope(props.client, conversationId, page));
     },
-    chooseModel: (key, model) => {
-      store.update((current) => chooseModel(current, key, model));
-      written(key, (conversationId) => setModel(props.client, conversationId, model));
-    },
+    chooseModel: (key, model) => choose(key, model, written),
   };
 }
 
@@ -251,15 +259,16 @@ export function AssistantView(props: AssistantViewProps & CorrectionHost): React
   }, [props.entry]);
   useAsks(props.grantKey, (asked) => update((current) => ask(current, asked)));
   const subject = subjectFor({ route: props.route, ...state.scope });
-  const sender = useSender(props, store, subject);
-  const writes = useWrites(props, store, sender);
+  const choices = useModelChoice(props.client, store);
+  const sender = useSender(props, store, subject, choices.confirm);
+  const writes = useWrites(props, store, sender, choices.choose);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
-  const models = useModels(props.client, opened);
+  const { models, chosen } = useModels(props.client, opened);
   return (
     <AssistantPanel
       subject={subject}
-      chats={state.chats}
+      chats={keptChoice(state.chats, chat, chosen)}
       selected={state.selected}
       offer={modelOffer(subject, models, null)}
       address={

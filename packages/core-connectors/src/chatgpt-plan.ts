@@ -143,6 +143,7 @@ export function chatgptPlanBody(ask: PlanAsk): string {
 /**
  * The adapter: a person's question in their conversation, as the pinned call
  * for the model asked for (the smaller unless named), with any tools offered.
+ * A model outside the plan's two sends no input, which the M5's check refuses.
  */
 export function chatgptPlanAdapter(
   values: Readonly<Record<string, string>>,
@@ -150,12 +151,14 @@ export function chatgptPlanAdapter(
   model: string = CHATGPT_PLAN_DEFAULT_MODEL,
   tools?: readonly PlanTool[],
 ): AdapterRequest {
-  const input: PlanTurn[] = [
-    ...earlierTurns(values['earlier']).flatMap((turn) =>
-      turn.role === 'system' ? [] : [{ role: turn.role, content: turn.content }],
-    ),
-    { role: 'user', content: values['message'] ?? '' },
-  ];
+  const input: PlanTurn[] = CHATGPT_PLAN_MODELS.includes(model)
+    ? [
+        ...earlierTurns(values['earlier']).flatMap((turn) =>
+          turn.role === 'system' ? [] : [{ role: turn.role, content: turn.content }],
+        ),
+        { role: 'user', content: values['message'] ?? '' },
+      ]
+    : [];
   const instructions = conversationInstructions(promptPage(values['page']));
   return {
     path: CHATGPT_PLAN_PATH,
