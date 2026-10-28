@@ -47,7 +47,7 @@ import {
   type JudgedLast,
   type Refused,
 } from './outcome.ts';
-import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
+import { endedRefusal, standsAfterWaits, type Standing } from './live-correction-standing.ts';
 import {
   AGENT_AUDIENCES,
   audiencesOf,
@@ -132,6 +132,12 @@ function liveRefusal(sent: Sent, anchor: Anchor): Refused | undefined {
   return marksOnly ? undefined : refused(LIVE_QUOTE);
 }
 
+/** The key, and an agent's delegation, read after the waits: the refusal, or nothing. */
+const endedAfterWaits = (tx: TenantQuery, standing: Standing) => async () => {
+  const stood = await standsAfterWaits(tx, standing);
+  return stood === 'stands' ? undefined : endedRefusal(stood, standing.delegationId !== undefined);
+};
+
 async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast> {
   const anchor = anchorOf(sent);
   if (!('source' in anchor)) return anchor;
@@ -174,15 +180,11 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast>
     sent['audience'] === 'client' ? 'client' : undefined,
   );
   if (isRefused(written)) return written;
-  const standing = {
+  const ended = endedAfterWaits(tx, {
     covering,
     partyId: locked.review.partyId,
     ...(by.delegation === undefined ? {} : { delegationId: by.delegation.id }),
-  };
-  const ended = async () => {
-    const stood = await standsAfterWaits(tx, standing);
-    return stood === 'stands' ? undefined : endedRefusal(stood, by.delegation !== undefined);
-  };
+  });
   const first = await ended();
   // The agent path waits on its actor, login and audit chain after this returns (its last
   // waits, `agent-standing.ts`), so the key and the delegation are read once more after them.

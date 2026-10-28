@@ -96,10 +96,7 @@ export async function readCoveredReview(
     decision: decisions.get(revision.id) ?? null,
     correctionId: revision.correction_id,
   }));
-  const held = { reviewId, taskId: review.task_id };
-  const pins = await readPins(tx, held);
-  const carried = await readCarried(tx, held, views.at(-1) ?? null);
-  const changeRequests = await readChangeRequests(tx, reviewId);
+  const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views.at(-1) ?? null);
   if ((await stillCovered(tx, covering, [reviewId])).size === 0) return undefined;
   return {
     reviewId,
@@ -111,9 +108,20 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins,
-    ...carried,
-    changeRequests,
+    ...notes,
+  };
+}
+
+/** The review's pins, their carry onto the latest revision, and its change requests. */
+async function notesOf(
+  tx: TenantQuery,
+  held: { readonly reviewId: string; readonly taskId: string },
+  latest: RevisionView | null,
+): Promise<Pick<ReviewView, 'pins' | 'carried' | 'carryDue' | 'changeRequests'>> {
+  return {
+    pins: await readPins(tx, held),
+    ...(await readCarried(tx, held, latest)),
+    changeRequests: await readChangeRequests(tx, held.reviewId),
   };
 }
 
