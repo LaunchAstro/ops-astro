@@ -426,8 +426,6 @@ async function recheckClaim(
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
-            -- #2277: a write-off leaves outcome unknown on its attempt, or, where a marked attempt
-            -- written off at nothing cannot carry it, cause written_off on its hold.
             exists (select 1 from public.attempts w
                       join public.reservations wr
                         on wr.business_id = w.business_id and wr.id = w.reservation_id
@@ -832,7 +830,11 @@ interface ClaimState {
   readonly superseded: boolean;
   readonly attempt_id: string;
   readonly attempt_state: string;
-  /** One of the step's attempts was written off: the step never runs again (#2277). */
+  /**
+   * One of the step's attempts was written off, so the step never runs again (#2277): the
+   * write-off leaves outcome `unknown` on the attempt (quarantine's is not one), or, where a
+   * marked attempt written off at nothing cannot carry it, cause `written_off` on its hold.
+   */
   readonly written_off: boolean;
   readonly marked: boolean;
   readonly bound_lease_state: string | null;
