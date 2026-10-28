@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The Review workspace (C35, #2105; CS-15.1): one review read through `review.read`. The
-// revision bar says which revision is under review and which one it is compared with; each
-// width, laptop and phone, shows the revision before beside the one under review with the
-// pins drawn on each, and what changed between their landed observations; the pin list
-// numbers every pin as the panes do. Pins carried onto the revision under review (#2140) draw
-// there by their carried anchor; a lost one draws nowhere under review and sits first in the
-// list, flagged and still open, and a carry still to come says so. A first revision shows no
-// before. A click on a landed capture of the revision under review marks a spot, and the form
-// beneath pins a comment on it. Capture again under the revision bar asks the revision's
-// captures, or opens the next revision and asks its own (`CaptureAgain.tsx`). The live view of
-// the bound page stands beside each capture under review, and the review's change requests sit
-// under the pin list. The read is the team's, so the client
-// never reaches this page; what a client sees of a pin is the task's client projection.
+// revision bar names the revision under review and the one it is compared with; each width
+// (laptop, phone) shows the before beside it with pins drawn on each, and what changed between
+// their landed observations; the pin list numbers pins as the panes do. Carried pins (#2140) draw
+// by their carried anchor; a lost one sits first in the list, flagged and open, and a pending
+// carry says so. A click on a landed capture under review marks a spot for the pin form. Capture
+// again asks the revision's captures or opens the next revision (`CaptureAgain.tsx`). The live
+// view stands beside each capture; change requests sit under the pin list. The read is the
+// team's: the client never reaches this page and sees only the pin's client projection.
 
 import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Card, Chip, Empty, ListRow, SectionHead, sectionIndex } from '@launchastro/ui';
