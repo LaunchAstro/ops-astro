@@ -20,13 +20,14 @@
 // replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
 // names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
 // `none`. Each business passes on its own, again each `SWEEP_INTERVAL_MS`
-// after it succeeds. A request waits on the pass in flight, since an instance
-// may be frozen once it answers, but for at most `RECOVERY_WAIT_MS`: the pass
-// runs on a connection of its own, so a pass stalled on a lock holds neither
-// the runtime connection nor any request past that bound (#1411). A request
-// served beside a pass is what another instance's request already is;
-// instances that pass at once meet on the pass's own row locks. `server.ts`
-// runs the same pass only where there is no function.
+// after it succeeds. A request waits on the pass in flight until it ends: an
+// instance may be frozen once it answers, and a pass frozen in a transaction
+// keeps its row locks (#2240). So the pass has one deadline, `RECOVERY_WAIT_MS`
+// from its start, over its key lookups and every phase: nothing starts past it,
+// and the statement running at it is cancelled and rolled back first, so no
+// request waits much past it (#1411). The pass runs on a connection of its own,
+// and the longest owed goes first.
+// `server.ts` runs the same pass only where there is no function.
 //
 // **Every session closes once idle (#1530).** The runtime pool, the pass's,
 // the outbox and the lookup login keep no session state, and each closes a
@@ -66,6 +67,7 @@ import {
   connectAsAdmin,
   connectOutbox,
   RUNTIME_IDLE_SECONDS,
+  type AdminConnection,
 } from '../../packages/core-records/src/index.ts';
 import {
   crashSeamProblem,
@@ -79,6 +81,7 @@ import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import { carriedOption } from './model-carriage.ts';
+import { passUntil } from './pass-deadline.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -110,8 +113,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   const servedHost = required('SERVED_HOST').toLowerCase();
   if (!HOST.test(servedHost)) throw new Error('SERVED_HOST is not a bare host name.');
   const databaseUrl = required('DATABASE_URL');
-  // Without a lookup login the runtime one stands in: it may not take the
-  // lookup identity, so every key read is refused, and health still measures.
+  // Unset, the runtime login stands in: no key resolves on it, and health still measures.
   const lookupUrl = settings['DATABASE_LOOKUP_URL'] || databaseUrl;
   const issuer = required('GOTRUE_URL');
   const keySetUrl = keySetUrlFor(settings['SUPABASE_KEY_SET_URL'] ?? '', issuer);
@@ -127,9 +129,10 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
   const alerts = outboxAlerts(settings, databaseUrl, required);
   const database = connect(databaseUrl, { source: 'runtime' });
-  const { app, resolveBusiness } = composeApi({
+  const lookup = connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS });
+  const { app } = composeApi({
     database,
-    admin: connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS }),
+    admin: lookup,
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
@@ -138,7 +141,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
     ...carriedOption(settings),
   });
-  const pass = recoveryPass(settings, databaseUrl, resolveBusiness, keys);
+  const pass = recoveryPass(settings, databaseUrl, lookup, keys);
 
   return async (request) => {
     const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
@@ -160,16 +163,8 @@ async function answered(
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
-/** The longest a request waits on the reconciliation pass in flight. */
+/** How long after it starts the reconciliation pass is over, its running statement cancelled. */
 export const RECOVERY_WAIT_MS = 2_000;
-
-/** Wait for `work` or `ms`, whichever ends first; the timer keeps nothing running. */
-async function within(work: Promise<void>, ms: number): Promise<void> {
-  const bound = new Promise<void>((resolve) => {
-    setTimeout(resolve, ms).unref();
-  });
-  await Promise.race([work, bound]);
-}
 
 /** The most instances the limits split across with at least one of each. */
 const INSTANCES_MOST = Math.min(
@@ -210,17 +205,18 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request while it runs, each for up to `RECOVERY_WAIT_MS`.
+ * awaited by every request to its end, `RECOVERY_WAIT_MS` after it starts at most.
  * It opens its own connection at its first statement, so a pass waiting on a
- * lock leaves the runtime one to the requests. A business passes on its own, so a key
- * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
+ * lock leaves the runtime one to the requests; it reads keys on `lookup`. A
+ * business passes on its own, so a key that does not resolve, or a pass that
+ * rolls back, holds up no other (#287 A8).
  * `none` does nothing; unset does nothing only where no environment is named,
  * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
   databaseUrl: string,
-  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  lookup: AdminConnection,
   keys: RuntimeKeys,
 ): () => Promise<void> {
   const raw = settings[RECOVERY_SCOPE_SETTING];
@@ -228,12 +224,15 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  const database = connect(databaseUrl, { source: 'runtime' });
+  const connected = connect(databaseUrl, { source: 'runtime' });
   const due = new Map<string, number>();
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
+    const deadline = Date.now() + RECOVERY_WAIT_MS;
+    const { database, resolveBusiness } = passUntil(deadline, connected, lookup);
     for (const key of owed) {
-      // One business at a time, as `passDeployment` runs them.
+      // One business at a time, as `passDeployment` runs them, and none begun past the deadline.
+      if (Date.now() >= deadline) break;
       // eslint-disable-next-line no-await-in-loop
       const outcome = await withRuntimeKeys(
         keys,
@@ -242,20 +241,20 @@ function recoveryPass(
         ok: false as const,
         problem: cause instanceof Error ? cause.message : 'unknown',
       }));
-      // Only a pass that finished marks its interval done; a failed one runs again.
-      if (outcome.ok) due.set(key, Date.now() + SWEEP_INTERVAL_MS);
-      else console.error(`api: reconciliation pass: ${outcome.problem}`);
+      // Only a pass that finished marks its interval done; a failed one runs again, after the others owed.
+      due.set(key, Date.now() + (outcome.ok ? SWEEP_INTERVAL_MS : 0));
+      if (!outcome.ok) console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
-  // Every request waits on the pass in flight, until it ends or its bound passes.
   return async (): Promise<void> => {
     const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
+    owed.sort((one, other) => (due.get(one) ?? 0) - (due.get(other) ?? 0));
     if (running === undefined && owed.length > 0) {
       running = run(owed).finally(() => {
         running = undefined;
       });
     }
-    if (running !== undefined) await within(running, RECOVERY_WAIT_MS);
+    if (running !== undefined) await running;
   };
 }
 

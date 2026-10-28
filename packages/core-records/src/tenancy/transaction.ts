@@ -2,9 +2,12 @@
 //
 // The handle `withBusiness` gives its caller (`database.ts`): one open
 // transaction whose business is already set, and a savepoint inside it that a
-// failed statement rolls back without ending the transaction.
+// failed statement rolls back without ending the transaction. Given a
+// deadline, each statement is sent only before it and cancelled at it
+// (`deadline.ts`).
 
 import postgres from 'postgres';
+import { untilDeadline, type Deadline } from './deadline.ts';
 
 /** A business identifier. Checked before it reaches the server, never interpolated. */
 export type BusinessId = string;
@@ -29,17 +32,21 @@ export interface TransactionQuery extends TenantQuery {
 }
 
 /** The caller's handle on an open transaction, or on a savepoint inside one. */
-export function handleOn(tx: postgres.TransactionSql, businessId: BusinessId): TransactionQuery {
+export function handleOn(
+  tx: postgres.TransactionSql,
+  businessId: BusinessId,
+  deadline?: Deadline,
+): TransactionQuery {
   return {
     businessId,
     async query<Row>(text: string, parameters: readonly unknown[] = []): Promise<readonly Row[]> {
-      const rows = await tx.unsafe(text, parameters as never[]);
+      const rows = await untilDeadline(tx, deadline, () => tx.unsafe(text, parameters as never[]));
       return rows as unknown as readonly Row[];
     },
     async savepoint(work: (inner: TransactionQuery) => Promise<void>): Promise<boolean> {
       try {
         await tx.savepoint(async (inner) => {
-          await work(handleOn(inner, businessId));
+          await work(handleOn(inner, businessId, deadline));
         });
         return true;
       } catch (error) {

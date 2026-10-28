@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (Sol S2243-2): one transaction of the reconciliation pass that waits on the budget cap's row, then the task envelope's, holds the request no longer than the pass deadline, within the #1411 bound"
+}

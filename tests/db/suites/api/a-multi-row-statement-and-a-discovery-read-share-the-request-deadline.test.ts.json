@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (Sol's design check on #2243): one UPDATE waiting on two held rows, and one discovery read waiting behind two relation locks, hold the request no longer than the pass deadline"
+}

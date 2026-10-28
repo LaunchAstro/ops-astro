@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (Sol's review of #2243): a reconciliation pass whose lock wait passes its deadline rolls back whole before the request answers, applying nothing to budget caps, reservations, task envelopes, leases or attempts"
+}

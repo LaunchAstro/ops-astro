@@ -272,6 +272,8 @@
         "tests/ci/restore-includes-staging-guards.test.ts",
         "tests/api/hosted-recovery-waits-for-pass.test.ts",
         "tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts",
+        "tests/api/two-stalled-businesses-share-one-request-bound.test.ts",
+        "tests/api/a-timed-out-recovery-pass-applies-nothing.test.ts",
         "tests/ci/staging-archive-restores-guards.test.ts",
         "tests/ci/restore-drill-keeps-staging-guards.test.ts"
       ],

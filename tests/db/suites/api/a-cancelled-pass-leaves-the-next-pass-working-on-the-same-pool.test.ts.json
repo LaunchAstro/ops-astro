@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240: at the pass deadline the driver cancels the running statement (57014) without ending the session; nothing goes uncaught, and the next request's pass recovers on the same session"
+}

@@ -388,9 +388,36 @@ not "Reconnecting" (where hosted pages get a live channel is #1242). It owns rec
 before a request it runs the reconciliation pass for each business
 `RECOVERY_BUSINESS_KEYS` names, which a named environment (`OPS_ENVIRONMENT`)
 must set, if only to `none`. The pass runs on a connection of its own, and a
-request waits on the pass in flight for at most `RECOVERY_WAIT_MS` (2 s), so a
-pass stalled on a lock holds no request past that
-(`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`).
+request waits on the pass in flight until it ends, since an instance may be
+frozen once it answers and a pass frozen in its transaction holds its row locks
+(#2240,
+`tests/api/the-hosted-function-answers-only-once-its-recovery-pass-holds-no-transaction.test.ts`).
+The pass has one deadline, `RECOVERY_WAIT_MS` (2 s) after it starts, over each
+business key's lookup and every phase of every business
+(`apps/api/pass-deadline.ts`). Nothing starts past it: no business, lookup,
+transaction or statement (the longest owed starts first on a later request).
+The statement running at it is cancelled with the driver's own cancel request,
+whatever it waits on, and its transaction rolls back on the same connection,
+which stays in the pool; the server never ends the session. A cancel the
+server has not taken within 500 ms could still land on the next transaction,
+so that connection is closed from the client side and the pool opens a fresh
+one. Before each statement, those transactions also set `statement_timeout`
+and `lock_timeout` to the time left plus 250 ms, as a backstop for a cancel
+that never arrives, and run their commit-time checks as their last statement,
+so the COMMIT has nothing left to wait on
+(`packages/core-records/src/tenancy/deadline.ts`,
+`tests/tenancy/a-cancel-the-server-has-not-taken-closes-its-connection.test.ts`).
+So a pass stalled on a lock, over one business or several, holds no request
+much past the deadline
+(`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`,
+`tests/api/two-stalled-businesses-share-one-request-bound.test.ts`,
+`tests/api/successive-waits-in-one-transaction-share-the-request-deadline.test.ts`,
+`tests/api/a-multi-row-statement-and-a-discovery-read-share-the-request-deadline.test.ts`,
+`tests/api/business-lookup-shares-the-request-deadline.test.ts`,
+`tests/api/a-cancelled-pass-leaves-the-next-pass-working-on-the-same-pool.test.ts`,
+`tests/api/a-lost-cancel-cannot-hold-hosted-health-past-the-shared-request-bound.test.ts`).
+The function's logins end a transaction left idle 60 s
+(`idle_in_transaction_session_timeout`, set by `scripts/ops/staging-logins.ts`).
 Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a
 migrate window drains
 (`tests/api/the-hosted-functions-database-sessions-close-once-idle.test.ts`). It has no admin login. It reads the business key

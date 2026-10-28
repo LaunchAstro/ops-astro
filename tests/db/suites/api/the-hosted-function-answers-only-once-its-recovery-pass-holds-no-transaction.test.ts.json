@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240: a hosted instance may be frozen once it answers, so the function answers only once its reconciliation pass holds no transaction; a pass left open past the answer sat idle in transaction on staging holding budget_caps locks"
+}

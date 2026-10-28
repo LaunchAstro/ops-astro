@@ -17,6 +17,7 @@ import type postgres from 'postgres';
 import { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 import type { StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
+import { checkDeferred, deadlineOn, timeLeft, untilDeadline, type Deadline } from './deadline.ts';
 import {
   handleOn,
   type BusinessId,
@@ -65,7 +66,21 @@ export interface Connection {
 
 /** What the application gets. There is no way through it but the wrapper. */
 export interface Database extends Connection {
-  withBusiness<T>(businessId: BusinessId, run: (tx: TransactionQuery) => Promise<T>): Promise<T>;
+  withBusiness<T>(
+    businessId: BusinessId,
+    run: (tx: TransactionQuery) => Promise<T>,
+    options?: TransactionDeadline,
+  ): Promise<T>;
+}
+
+/** A transaction that ends by a deadline (`deadline.ts`). */
+export interface TransactionDeadline {
+  /**
+   * When, in `Date.now()` milliseconds, the transaction must be over: none
+   * begins after it, no statement is sent after it, and the statement running
+   * at it is cancelled, which rolls the transaction back. Unset, no deadline.
+   */
+  readonly deadline?: number;
 }
 
 /**
@@ -82,7 +97,7 @@ export interface AdminConnection extends Connection {
   ): Promise<T>;
 }
 
-export interface TransactionOptions {
+export interface TransactionOptions extends TransactionDeadline {
   /**
    * Send each text over the extended query protocol, so the server refuses
    * one that holds more than one command ("cannot insert multiple commands
@@ -108,10 +123,13 @@ async function sendUnsafe<Row>(
   text: string,
   parameters: readonly unknown[],
   oneCommand = false,
+  deadline?: Deadline,
 ): Promise<readonly Row[]> {
-  const rows = oneCommand
-    ? await handle.unsafe(text, parameters as never[], EXTENDED_PROTOCOL)
-    : await handle.unsafe(text, parameters as never[]);
+  const rows = await untilDeadline(handle, deadline, () =>
+    oneCommand
+      ? handle.unsafe(text, parameters as never[], EXTENDED_PROTOCOL)
+      : handle.unsafe(text, parameters as never[]),
+  );
   return rows as unknown as readonly Row[];
 }
 
@@ -124,10 +142,12 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
   return async function withBusiness<T>(
     businessId: BusinessId,
     run: (tx: TransactionQuery) => Promise<T>,
+    { deadline }: TransactionDeadline = {},
   ): Promise<T> {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
+    if (deadline !== undefined) timeLeft(deadline);
     // One spelling of the id, the lower case Postgres prints, so a key built
     // from `tx.businessId` (a limiter's lock) is one key in either letter case.
     const business = businessId.toLowerCase() as BusinessId;
@@ -139,7 +159,11 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
       await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
-      return await run(handleOn(tx, business));
+      if (deadline === undefined) return await run(handleOn(tx, business));
+      const handle = handleOn(tx, business, await deadlineOn(tx, deadline));
+      const result = await run(handle);
+      await checkDeferred(handle.query);
+      return result;
     })) as T;
   };
 }
@@ -245,13 +269,15 @@ export function connectAsAdmin(url: string, options: DatabaseOptions = {}): Admi
       transactionOptions: TransactionOptions = {},
     ): Promise<T> {
       const oneCommand = transactionOptions.oneCommandEach === true;
-      return (await sql.begin(
-        async (tx) =>
-          await body(
-            async <Row>(text: string, parameters: readonly unknown[] = []) =>
-              await sendUnsafe<Row>(tx, text, parameters, oneCommand),
-          ),
-      )) as T;
+      const { deadline } = transactionOptions;
+      if (deadline !== undefined) timeLeft(deadline);
+      return (await sql.begin(async (tx) => {
+        const limited = deadline === undefined ? undefined : await deadlineOn(tx, deadline);
+        return await body(
+          async <Row>(text: string, parameters: readonly unknown[] = []) =>
+            await sendUnsafe<Row>(tx, text, parameters, oneCommand, limited),
+        );
+      })) as T;
     },
     async close(): Promise<void> {
       await sql.end();

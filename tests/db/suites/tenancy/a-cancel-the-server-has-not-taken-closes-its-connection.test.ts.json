@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (S2243-3, S2243-4): a cancel the server has not taken in time closes its connection, so it cannot cancel the pool's next transaction, and the server limits each statement to the time left"
+}
