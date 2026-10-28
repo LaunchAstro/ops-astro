@@ -12,8 +12,10 @@
   align-items: center;
 }
 
-/* The mono note line the page's sections share (mockup `.approval__meta`). */
-.approval__meta {
+/* The mono note line the page's sections share (mockup `.approval__meta`).
+   This rule and the page's other short names (`.panel__actions`, `.nr`) start
+   from the page, so a later page that picks the same name is not restyled. */
+[data-screen='connections'] .approval__meta {
   margin: 0;
   color: var(--text-muted);
   font: var(--type-data);
@@ -77,13 +79,13 @@
 .conn__panel p {
   margin: 0;
 }
-.panel__actions {
+[data-screen='connections'] .panel__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--s-2);
 }
-.panel__actions > p {
+[data-screen='connections'] .panel__actions > p {
   flex-basis: 100%;
 }
 
@@ -113,7 +115,7 @@
 }
 .grl__grp ul,
 .tw__row,
-.nr,
+[data-screen='connections'] .nr,
 .nr__roster ul {
   margin: 0;
   padding: 0;
@@ -148,13 +150,13 @@
 .tw__row--dead {
   border-left: 2px solid var(--warning);
 }
-.nr {
+[data-screen='connections'] .nr {
   padding: var(--s-4) var(--s-5);
 }
-.nr > li {
+[data-screen='connections'] .nr > li {
   padding: var(--s-1) 0;
 }
-.nr time {
+[data-screen='connections'] .nr time {
   display: inline-block;
   min-width: 4.2rem;
 }

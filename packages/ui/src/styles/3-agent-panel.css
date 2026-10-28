@@ -105,12 +105,18 @@ select.aip__hmodel:hover:not(:disabled) {
   gap: var(--s-3);
   padding: var(--s-4) var(--s-5);
 }
+/* A long unbroken word (a hash, an address) wraps inside the panel. */
 .aip__msg {
   max-width: 92%;
   padding: 0.6rem 0.8rem;
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
+  overflow-wrap: anywhere;
+}
+/* A body is read as it was written: its line breaks and indentation stay. */
+.aip__body {
+  white-space: pre-wrap;
 }
 .aip__msg--ai {
   align-self: flex-start;

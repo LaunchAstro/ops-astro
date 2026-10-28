@@ -115,7 +115,8 @@ export const tabTitles = (page: Mounted): (string | null)[] =>
 
 export const bodies = (page: Mounted): (string | null)[] =>
   (page.all('[data-message-role]') as HTMLElement[]).map(
-    (line) => `${line.dataset['messageRole']}: ${line.textContent}`,
+    (line) =>
+      `${line.dataset['messageRole']}: ${line.querySelector('.aip__body')?.textContent ?? ''}`,
   );
 
 export const STORED: Stored = {

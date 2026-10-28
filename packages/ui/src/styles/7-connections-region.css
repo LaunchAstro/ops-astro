@@ -224,12 +224,13 @@
 }
 
 /* -- Standing approvals: a sentence is a record; a refusal's left rule is
-   the whole difference from an approval. ------------------------------- */
-.pslist {
+   the whole difference from an approval. The short `.ps` names start from
+   the region, so a later page that picks them is not restyled. ---------- */
+.gradsec .pslist {
   display: grid;
   gap: var(--s-2);
 }
-.ps {
+.gradsec .ps {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
@@ -239,24 +240,24 @@
   border-left: 3px solid var(--border);
   background: var(--surface);
 }
-.ps--no {
+.gradsec .ps--no {
   border-left-color: var(--danger);
 }
-.ps__text {
+.gradsec .ps__text {
   margin: 0;
   color: var(--text);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
 }
-.ps__meta {
+.gradsec .ps__meta {
   margin-top: 0.25rem;
   color: var(--ink-faint);
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
 }
-.ps__x {
+.gradsec .ps__x {
   padding: 0 0.2rem;
   border: 0;
   background: none;
@@ -266,7 +267,7 @@
   text-transform: var(--type-subheading-case);
   cursor: pointer;
 }
-.ps__x:hover {
+.gradsec .ps__x:hover {
   color: var(--danger);
 }
 /* The graduation forms' row. Scoped to the region, since Projects > Work log
@@ -285,6 +286,14 @@
   align-self: stretch;
   height: auto;
   white-space: nowrap;
+}
+/* A standing approval's sentence is the words a person writes, so above the
+   narrow stop it takes three shares of the row's spare room to the ceiling's
+   and the date's one. */
+@media (width > 640px) {
+  .gradsec .psadd > [data-mandate-label] {
+    flex-grow: 3;
+  }
 }
 .connnote__field {
   min-width: 8rem;

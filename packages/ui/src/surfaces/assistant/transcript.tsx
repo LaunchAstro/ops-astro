@@ -27,6 +27,15 @@ const ROLE_CLASS = {
   plan: 'aip__msg--ai aip__msg--plan',
 } as const satisfies Record<AssistantMessage['role'], string>;
 
+/** Who said it, in words: the role's class is colour and position only. */
+const SPEAKER = {
+  user: 'You',
+  ai: 'Agent',
+  note: 'Note',
+  failed: 'Problem',
+  plan: 'Agent plan',
+} as const satisfies Record<AssistantMessage['role'], string>;
+
 function Cites(props: { readonly cites: readonly AssistantCite[] }): ReactElement {
   return (
     <ul className="aip__cites" data-cites="" aria-label="What this answer read">
@@ -58,7 +67,8 @@ export function Transcript(props: {
           data-message-role={message.role}
           data-writing={message.writing === true ? '' : undefined}
         >
-          {message.body}
+          <span className="visually-hidden">{`${SPEAKER[message.role]}: `}</span>
+          <span className="aip__body">{message.body}</span>
           {message.plan === undefined ? null : (
             <PlanCard
               plan={message.plan}

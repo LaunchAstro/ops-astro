@@ -81,7 +81,7 @@ describe('MP-7-11 drawer: head and tab row', () => {
   it('MP-7-11 conversation tabs: double-click renames in place', async () => {
     const page = await drawer();
     expect(page.find('[data-chat="1"]')?.getAttribute('title')).toBe(
-      'Chat 1 — double-click to rename',
+      'Chat 1 — double-click or press F2 to rename',
     );
     await doubleClick(page, '[data-chat="1"]');
     const field = page.find('[data-chat-rename="1"]');

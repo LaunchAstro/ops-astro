@@ -128,10 +128,9 @@ describe('MP-7-11 records', () => {
         body: { conversationId: CONVERSATION, body: 'And the next one?' },
       },
     ]);
-    expect(page.all('[data-message-role="user"]').map((m) => m.textContent)).toStrictEqual([
-      'What does this setting do?',
-      'And the next one?',
-    ]);
+    expect(
+      page.all('[data-message-role="user"] .aip__body').map((m) => m.textContent),
+    ).toStrictEqual(['What does this setting do?', 'And the next one?']);
   });
 
   it('a rename or a page before the first question is kept and sent once it starts', async () => {
@@ -223,10 +222,9 @@ describe('MP-7-11 the agent’s answer', () => {
     });
     await ask(page, 'What does this setting do?');
     await ask(page, 'And the next one?');
-    expect(page.all('[data-message-role="ai"]').map((m) => m.textContent)).toStrictEqual([
-      'Here is what it does.',
-      'Here is what it does.',
-    ]);
+    expect(page.all('[data-message-role="ai"] .aip__body').map((m) => m.textContent)).toStrictEqual(
+      ['Here is what it does.', 'Here is what it does.'],
+    );
     expect(page.all('[data-message-role="note"]')).toHaveLength(0);
   });
 
@@ -244,7 +242,7 @@ describe('MP-7-11 the agent’s answer', () => {
     const planted = '<img src=x onerror="globalThis.ran=1"><script>globalThis.ran=2</script>';
     const { page } = await view({ reply: { answered: true, messageId: 'm1', body: planted } });
     await ask(page, 'Anything?');
-    expect(page.find('[data-message-role="ai"]')?.textContent).toBe(planted);
+    expect(page.find('[data-message-role="ai"] .aip__body')?.textContent).toBe(planted);
     expect(page.all('[data-message-role="ai"] img, [data-message-role="ai"] script')).toHaveLength(
       0,
     );
@@ -280,7 +278,7 @@ describe('MP-7-11 the answer’s cites', () => {
       reply: { answered: true, messageId: 'm1', body: 'Done.', cites },
     });
     await ask(page, 'What is this?');
-    expect(page.find('[data-message-role="ai"]')?.textContent).toBe('Done.');
+    expect(page.find('[data-message-role="ai"] .aip__body')?.textContent).toBe('Done.');
     expect(page.all('[data-cites]')).toHaveLength(0);
   });
 });
