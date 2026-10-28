@@ -152,7 +152,7 @@ describe.skipIf(serverUrl === undefined)('a step written off at nothing', () => 
 
 describe.skipIf(serverUrl === undefined)('a step a person says nothing happened on', () => {
   it('runs again on a fresh hold once a person records nothing_happened', async () => {
-    const { work, versionId, first, attemptId } = await heldUnknown(300);
+    const { work, versionId, attemptId } = await heldUnknown(300);
     appliedDetail(
       await asPerson(s, {
         command: 'budget.record_outcome',
@@ -164,12 +164,13 @@ describe.skipIf(serverUrl === undefined)('a step a person says nothing happened 
       'budget.record_outcome',
     );
 
-    const picked = await pickupOf(first);
+    // The outcome resumes the step on a fresh hold of what is left, and a pickup runs it.
     const fresh = (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held');
+    const picked = await pickupOf(fresh[0]?.id);
     expect({
       outcome: (await holdOf(s, { attemptId }))?.['outcome'],
-      picked: codeOf(picked),
       fresh: fresh.map((hold) => hold.held),
-    }).toEqual({ outcome: 'abandoned', picked: 'applied', fresh: ['200'] });
+      picked: codeOf(picked),
+    }).toEqual({ outcome: 'abandoned', fresh: ['200'], picked: 'applied' });
   });
 });
