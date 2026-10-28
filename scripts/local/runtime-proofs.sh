@@ -12,7 +12,8 @@
 # Postgres of the run's own, never the shared one (T3.md, RUN-07).
 # `restart-proof.sh` creates, migrates and removes that container and kills
 # whatever the run left running; this names the suite, a container and ports
-# of its own, and asks for the proofs. Later arguments win.
+# of its own, and asks for the proofs. Later arguments win, and the rest
+# (the journey's `--no-pull`) pass through.
 
 set -euo pipefail
 
