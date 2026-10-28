@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a top-up at a budget stop is refused once the stopped step was written off at nothing, as after a write-off above nothing, so a step whose effect may have happened never runs again, and the end still answers the stop"
+}
