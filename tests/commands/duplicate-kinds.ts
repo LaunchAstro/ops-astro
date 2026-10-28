@@ -261,6 +261,8 @@ export const DECLARED: Readonly<
   // C35: a review is opened at the old task's client and its bound page; a duplicate carries none.
   'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
   'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.capture_claim': { carry: 'not carried', plant: 'needs a requested capture and a lease' },
+  'review.capture_land': { carry: 'not carried', plant: 'needs a claimed capture' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
