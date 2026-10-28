@@ -133,13 +133,8 @@ async function seen(w: Work, replacement: string) {
   return { hold, envelope: await h.envelope(w) };
 }
 
-/** The replacement's worker starts a model call, and `amount` is written off while it is out. */
-async function writtenOffWhileTheReplacementsCallIsOut(amount: number) {
-  const w = await h.unknownStep({ applied: false, room: true });
-  expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
-  const replacement = await h.replacement(w);
-  if (replacement === undefined) throw new Error('the pass reserved no replacement');
-  const picked: Detail = await pickup(s, replacement);
+/** The model call the replacement's worker asks for, under the lease its pickup took. */
+async function callUnder(w: Work, picked: Detail) {
   const [attempt] = await rows<{ readonly step_id: string }>(
     s,
     'select step_id from public.attempts where business_id = $1 and id = $2',
@@ -157,6 +152,17 @@ async function writtenOffWhileTheReplacementsCallIsOut(amount: number) {
     operation: REPLAY_COMPOSE.key,
     fields: [{ name: 'tone', from: { recordId: w.taskId, key: 'title' } }],
   };
+  return { caller, request };
+}
+
+/** The replacement's worker starts a model call, and `amount` is written off while it is out. */
+async function writtenOffWhileTheReplacementsCallIsOut(amount: number) {
+  const w = await h.unknownStep({ applied: false, room: true });
+  expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
+  const replacement = await h.replacement(w);
+  if (replacement === undefined) throw new Error('the pass reserved no replacement');
+  const picked: Detail = await pickup(s, replacement);
+  const { caller, request } = await callUnder(w, picked);
   let whileOut: unknown;
   const broker = brokerOver(
     custodyAnswering(async () => {
