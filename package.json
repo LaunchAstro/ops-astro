@@ -53,7 +53,7 @@
     "public:content": "node scripts/public-content-check.mjs",
     "public:content:tree": "node scripts/public-content-check.mjs --repo .",
     "secrets": "node scripts/secrets-scan.mjs",
-    "public:history:cases": "node --test tests/ci/public-history-cases.mjs",
+    "public:history:cases": "node --test tests/ci/public-history-cases.mjs tests/ci/public-address-edge-punctuation.test.mjs tests/ci/public-address-in-a-filename-has-no-emphasis.test.mjs tests/ci/public-address-is-judged-complete.test.mjs tests/ci/public-address-code-shapes-are-refused.test.mjs",
     "spdx": "node scripts/spdx-check.mjs",
     "spdx:cases": "node --test tests/licences/spdx-cases.mjs",
     "deps:cruise": "node scripts/deps-cruise.mjs",

@@ -11,7 +11,40 @@
 // The final label must be alphabetic. Without that, an npm specifier such as
 // a scoped package at a three-part version reads as an address and every
 // lockfile in the repository becomes a finding.
-const addressPattern = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+//
+// The local part is taken whole: every character a local part may carry
+// (RFC 5322 atext, and dots), so punctuation at either edge of a listed local
+// part makes a different, unlisted address, and is never dropped.
+const addressPattern =
+  /[\p{L}\p{N}!#$%&'*+/=?^_`{|}~.-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/giu;
+// A match with an address character touching either end is part of a longer
+// address, so no exact allowance applies to it.
+const touchesBefore = /[@\p{L}\p{N}]$/u;
+const touchesAfter = /^(?:[@\p{L}\p{N}_-]|\.[a-z0-9-])/iu;
+
+/**
+ * The address without what can be shown to frame it rather than belong to
+ * it: a quote that closes later on the line, emphasis repeated right after
+ * it, or the `//` of a URL's authority. Any other edge character stays.
+ */
+function framed(text, index, address) {
+  const end = index + address.length;
+  const lineEnd = text.indexOf('\n', end);
+  const after = text.slice(end, lineEnd === -1 ? undefined : lineEnd);
+  const quote = /^['`]/u.exec(address)?.[0];
+  // The next such quote closes it, unless a letter or digit follows that one:
+  // then it opens more code, or sits inside a word (`don't`), and frames nothing.
+  // Nor does a straight quote right after an `s`, a plural possessive
+  // (`operators'`), so the address stays whole.
+  const close = quote === undefined ? -1 : after.indexOf(quote);
+  const possessive = quote === "'" && close > 0 && /s$/iu.test(after.slice(0, close));
+  if (close >= 0 && !possessive && !/^[\p{L}\p{N}]/u.test(after.slice(close + 1)))
+    return address.slice(1);
+  const emphasis = /^(?:\*\*?|__?)/u.exec(address)?.[0];
+  if (emphasis !== undefined && after.startsWith(emphasis)) return address.slice(emphasis.length);
+  if (address.startsWith('//') && text[index - 1] === ':') return address.slice(2);
+  return address;
+}
 
 // Provenance only. Allowed as a commit identity; a finding inside a blob.
 const provenanceIdentities = [
@@ -34,10 +67,10 @@ const provenanceIdentities = [
 // password `example` before a host, which read as addresses; those strings alone.
 const publishedAddresses = [
   /^security@launchastro\.com$/u,
-  /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^[^@]+@example\.(?:invalid|test|localhost)$/u,
   // owner@ is the synthetic pooler login Sol's staging-logins proof names (ORCH76 D1ALLOW).
   /^(?:example@(?:production-db\.example\.test|aws-0-ap-southeast-2\.pooler\.supabase\.com)|owner@aws-0-ap-southeast-2\.pooler\.supabase\.com)$/u,
-  /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
+  /^[^@]+@example\.(?:com|net|org)$/u,
   /^ada@alpha\.local$/u,
   /^mia@alpha\.local$/u,
   /^noah@alpha\.local$/u,
@@ -48,11 +81,30 @@ const publishedAddresses = [
 
 export function addressRules(text, scope) {
   const found = new Set();
-  for (const [address] of text.matchAll(addressPattern)) {
-    const value = address.toLowerCase();
-    if (publishedAddresses.some((allowed) => allowed.test(value))) continue;
+  for (const { 0: address, index } of text.matchAll(addressPattern)) {
+    // A file name has no quotes or emphasis to frame an address: it is read whole.
+    // Every frame comes off, outermost first (`'`a`'`).
+    let [value, at] = [address, index];
+    if (scope !== 'path') {
+      for (let next = framed(text, at, value); next !== value;) {
+        [at, value] = [at + value.length - next.length, next];
+        next = framed(text, at, value);
+      }
+    }
+    value = value.toLowerCase();
+    const local = value.slice(0, value.lastIndexOf('@'));
+    // Not a written address: nothing left of the local part once its frames
+    // go (a quoted bare `'@host'`), or a placeholder's lone `}` closing a
+    // call (`${f(x)}@host`), which code fills in when it runs.
+    if (local === '' || /\$\{[^}]*\}$/u.test(local) || (local === '}' && text[index - 1] === ')'))
+      continue;
+    const end = index + address.length;
+    const whole =
+      !touchesBefore.test(text.slice(Math.max(0, index - 2), index)) &&
+      !touchesAfter.test(text.slice(end, end + 2));
+    if (whole && publishedAddresses.some((allowed) => allowed.test(value))) continue;
     if (scope === 'commit') {
-      if (provenanceIdentities.some((allowed) => allowed.test(value))) continue;
+      if (whole && provenanceIdentities.some((allowed) => allowed.test(value))) continue;
       found.add('unlisted-commit-identity');
       continue;
     }
