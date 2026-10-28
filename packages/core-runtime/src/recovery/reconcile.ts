@@ -33,6 +33,7 @@ import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import type { EffectLookup } from './effect-lookup.ts';
 import { markCameBack } from './outage.ts';
+import { stepIsWrittenOff } from '../step-written-off.ts';
 
 export type { EffectLookup } from './effect-lookup.ts';
 
@@ -236,8 +237,12 @@ export const settle = async (
  * has no room for, or whose approval moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again).
  */
+const WRITTEN_OFF = 'not resumed: a person wrote this step off, so it never runs again';
+
 export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
+  // Written off, from the pass or an outcome (#2288): under the step lock; the hold waits.
+  if (await stepIsWrittenOff(tx, row.attempt_id)) return WRITTEN_OFF;
   const heldMinor = BigInt(row.held_minor) - BigInt(row.spent_minor);
   // AW-05: nothing left to hold stops the run at its budget and asks a person.
   if (heldMinor <= 0n) {

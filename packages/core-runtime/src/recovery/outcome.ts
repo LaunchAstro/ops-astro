@@ -7,7 +7,8 @@
 // whole hold is spent, the work is finished, and a replacement the pass
 // reserved is stopped before it dispatches) or it happened differently (the
 // whole hold is spent, the work reopens). An unknown effect not yet known is
-// no fourth outcome: it keeps its stop.
+// no fourth outcome: it keeps its stop. A step a person wrote off resumes on
+// no outcome (#2288): `resume` refuses it.
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
