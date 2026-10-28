@@ -11,10 +11,12 @@
 // A change request's filing (#2016) is a `record` row that is refused CLIENT_MODEL_USE_OFF
 // (`review-change.ts`); its decision has no row, as the surface never offers it to an agent.
 // The worker's `review.make_change_task` (#2117) is a lease row: `task:write` on the leased task.
+// Every row that serves returns `JudgedLast`: each success it can answer carries the judgement
+// asked again after the agent path's identity waits (`agent-standing.ts`).
 
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentCall, NoOperands } from './agent-call.ts';
-import type { HandlerOutcome } from './outcome.ts';
+import type { JudgedLast } from './outcome.ts';
 import { claimCapture, landCapture } from './review-captures.ts';
 import { carryPins } from './review-carry.ts';
 import { PIN_COMMENT } from './review-pin.ts';
@@ -45,7 +47,7 @@ export interface UnderLease {
     call: AgentCall,
     operands: NoOperands,
     delegation: Delegation,
-  ) => Promise<HandlerOutcome>;
+  ) => Promise<JudgedLast>;
 }
 
 const underLease = (

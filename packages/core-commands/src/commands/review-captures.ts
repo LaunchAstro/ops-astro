@@ -39,7 +39,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type JudgedLast, type Refused } from './outcome.ts';
 import { personClaimant } from './tasks-claimant.ts';
 
 /** The observation's cap once serialised, so a land fits the API's body limit with its picture. */
@@ -170,14 +170,14 @@ export const judgedAgain =
   async (): Promise<CommandRefusal | undefined> =>
     (await stillHeld(tx, lease, caller)) ?? undefined;
 
-export const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
+export const fieldsRefused = (wrong: readonly string[], fix: string): Refused =>
   refused(refuseCommand('FIELD_VALUE_INVALID', wrong, [fix]));
 
 export async function claimCapture(
   tx: TenantQuery,
   fields: LeaseFields,
   caller: CaptureCaller,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const wrong = invalidLease(fields);
   if (wrong.length > 0) {
     return fieldsRefused(wrong, 'Send the fence the pickup handed back and the revision.');
@@ -239,7 +239,7 @@ export async function landCapture(
   tx: TenantQuery,
   fields: LandFields,
   caller: CaptureCaller,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const { picture, observation } = fields;
   const width = CAPTURE_WIDTHS.find((known) => known === fields.width);
   const wrong = [

@@ -33,7 +33,7 @@ import { readTaskSpine } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { lockTask } from './prepare.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type JudgedLast, type Refused } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
@@ -79,7 +79,7 @@ const OUT_OF_PURPOSE = refuseCommand(
 );
 
 /** An id left out is the caller's to send; a malformed one names nothing, as a fabricated one. */
-const MISSING = (name: string): HandlerOutcome =>
+const MISSING = (name: string): Refused =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [name], [`Send ${name} as an identifier.`]));
 
 const proposal = (context: CommandContext, action: 'write' | 'decide'): Covering => ({
@@ -184,7 +184,7 @@ export const PROPOSE_CHANGE: {
     },
     operands: Readonly<Record<string, never>>,
     delegation: Delegation,
-  ) => Promise<HandlerOutcome>;
+  ) => Promise<JudgedLast>;
 } = {
   authority: 'record',
   subjectTask: 'record',
