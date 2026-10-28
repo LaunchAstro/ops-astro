@@ -55,6 +55,11 @@ export interface VersionDeployOptions {
   records?: string;
   /** The operator's held grant, under which Vercel is asked; production refuses without it. */
   authorised?: Authorised;
+  /**
+   * The owner's decision that turned staging off (`--staging-off`), production's
+   * alone: the digest the release step recorded stands in for staging's (#2285).
+   */
+  stagingOff?: string;
 }
 
 /** What the version deploy takes once every check before Vercel has passed. */
