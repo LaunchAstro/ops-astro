@@ -57,7 +57,12 @@ const reads = (sent: readonly Sent[]) => sent.filter((each) => each.path === 're
 
 async function workspace(client: OperationsClient) {
   const view = await mount(
-    <ReviewWorkspaceScreen client={client} grantKey="alpha:member" reviewId={REVIEW_ID} />,
+    <ReviewWorkspaceScreen
+      client={client}
+      grantKey="alpha:member"
+      reviewId={REVIEW_ID}
+      navigate={() => {}}
+    />,
   );
   await tick();
   await tick();
