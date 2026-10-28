@@ -9,8 +9,9 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
  * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
  * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
  * The envelope gives the hold back once and takes only that spend, never an invented zero.
- * A hold the classifier `stopped` records its cause on `actual` too (20261004040100); a person's
- * write-off or recorded outcome that settles it records none, as before.
+ * A hold the classifier `stopped` records its cause on `actual` too (20261004040100), and so
+ * does a person's write-off of a marked attempt at nothing (#2277); a write-off or recorded
+ * outcome that settles it records none, as before.
  */
 export async function closeHold(
   tx: TenantQuery,

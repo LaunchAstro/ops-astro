@@ -58,6 +58,8 @@ describe('T3 no machine path: one caller of the write-off', () => {
       // Reads it only: a call a person wrote off gives nothing back when it settles late.
       'packages/core-custody/src/broker-give-back.ts',
       // AW-10: records the write-off on the step's held broker calls, called only by the write-off.
+      // Reads it only: a written-off step's holds are never replaced (#2277).
+      'packages/core-runtime/src/pickup.ts',
       'packages/core-runtime/src/recovery/broker-effect.ts',
       'packages/core-runtime/src/recovery/write-off.ts',
     ]);

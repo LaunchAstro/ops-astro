@@ -9,7 +9,8 @@
 // no row. Red until T3b produces a liability to write off. Beside it: the
 // four-eyes band is T2e's stored setting, read and not restated; a lost
 // response replays by operation identity; absence proved resumes the work
-// while the first hold stays unknown until a person writes it off (O6); two
+// while the first hold stays unknown until a person writes it off, which stops
+// the replacement too, since a written-off step never runs again (O6, #2277); two
 // people writing off at once, and a write-off racing a recorded outcome, have
 // exactly one winner.
 
@@ -152,7 +153,7 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
     expect(await holdOf(s, w)).toStrictEqual(after);
   });
 
-  it('O6: absence proved resumes the work, and the first hold stays unknown until a person writes it off', async () => {
+  it('O6: absence proved resumes the work, the first hold stays unknown until a person writes it off, and the write-off stops the replacement', async () => {
     const w = await h.unknownStep({ applied: false, room: true });
     const answered = (await h.reconcile()).find((one) => one.attemptId === w.attemptId);
     expect(answered?.answer).toBe('absent');
@@ -166,12 +167,12 @@ describe.skipIf(url === undefined)('T3c the write-off', { timeout: 60_000 }, () 
 
     appliedDetail(await as(s.decider, writeOffBody(w, 0)), 'budget.write_off');
     expect(await holdOf(s, w)).toMatchObject({ reservation_state: 'abandoned' });
-    // The write-off resumes nothing: the replacement is the one hold left.
+    // The write-off resumes nothing and stops the replacement it found (#2277).
     const now = await h.holds(w);
     expect(now).toHaveLength(holds.length);
     expect(now.find((hold) => hold['id'] === replacement)).toMatchObject({
-      state: 'held',
-      attempt_state: 'reserved',
+      state: 'abandoned',
+      attempt_state: 'abandoned',
     });
   });
 
