@@ -10,12 +10,16 @@
 // any of the step's holds is refused with nothing written and no money moved.
 // The reconciliation pass, proving that replacement's effect absent, resumes
 // nothing either: no hold is reserved, and the replacement waits for a person.
+// A write-off committed while the outcome waits on the step's locks is seen
+// once the outcome holds them.
 // With no write-off, the same `nothing_happened` resumes the step and a pickup
 // runs it.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { writeOff } from '../../packages/core-runtime/src/recovery/write-off.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { hold as holdLocks, waitingOn } from '../support/lock-waits.ts';
 import {
   appliedDetail,
   asAgent,
@@ -145,5 +149,41 @@ describe.skipIf(url === undefined)(
         expect(await h.t3b.snapshot()).toStrictEqual(before);
       },
     );
+  },
+);
+
+describe.skipIf(url === undefined)(
+  'a write-off committed while the outcome waits on its locks',
+  { timeout: 60_000 },
+  () => {
+    it('the outcome, past its lock wait, sees the write-off and resumes nothing', async () => {
+      const { w, next } = await dispatchedReplacementHeldUnknown(null);
+      // The first attempt written off at nothing in a transaction that keeps its locks.
+      const writing = await holdLocks(s.db.appUrl, s.business, async (tx) => {
+        const written = await writeOff(tx, {
+          taskId: w.taskId,
+          attemptId: w.attemptId,
+          amountMinor: 0n,
+          reason: 'Written off while the outcome waits.',
+          personId: s.decider.personId,
+          subjects: [
+            { kind: 'person', id: s.decider.personId },
+            { kind: 'actor', id: s.decider.actorId },
+          ],
+          collection: 'billing',
+        });
+        expect(written.ok).toBe(true);
+      });
+      let recording: ReturnType<typeof h.outcome> | undefined;
+      try {
+        recording = h.outcome(next, 'nothing_happened');
+        await waitingOn(s.db.admin, 'transactionid', 'for update');
+      } finally {
+        await writing.letGo();
+      }
+      const recorded = appliedDetail(await recording, 'budget.record_outcome');
+      expect(recorded['resumed']).toMatch(/^not resumed: a person wrote this step off/u);
+      expect((await h.holds(w)).filter((one) => one['state'] === 'held')).toStrictEqual([]);
+    });
   },
 );
