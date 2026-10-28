@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "The client-lock harness traces a review capture through its revision and review to its task, so review_captures is held by the task-client lock proof."
+}

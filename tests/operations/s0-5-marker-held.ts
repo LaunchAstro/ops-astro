@@ -52,6 +52,9 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'live_correction.revert',
   // R5: a review files a row naming a correction, which names the task.
   'live_correction.record_review',
+  // C35: a review names the task, its revisions and captures lead back to it; the task keeps its revision.
+  'review.open',
+  'review.capture',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);

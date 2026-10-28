@@ -148,6 +148,9 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['mandate', 'manage'],
   // MP-14-9, MP-14-6: what agent runs cost, the key catalogue's `finance:read`.
   ['finance', 'read'],
+  // C35 (#2011): a page review opened, its capture asked and read.
+  ['review', 'write'],
+  ['review', 'read'],
 ];
 
 export async function tokenFor(

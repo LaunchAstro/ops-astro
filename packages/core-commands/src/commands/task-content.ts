@@ -42,7 +42,7 @@ const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
  * entry (deleted or not: a time event names no subject, RS-VAULT-9, so the
  * entry's row is what the lock reads), a live correction (its audit event
  * names the correction, not the task, and its party is pinned to the client it
- * was filed under).
+ * was filed under), or a review (C35, its holder pinned the same way).
  */
 export async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   const [row] = await tx.query<{ readonly content: boolean }>(
@@ -59,6 +59,7 @@ export async function hasContent(tx: TenantQuery, taskId: string): Promise<boole
          or exists (select 1 from alerts where business_id = $1 and task_id = $2)
          or exists (select 1 from time_entries where business_id = $1 and task_id = $2)
          or exists (select 1 from live_corrections where business_id = $1 and task_id = $2)
+         or exists (select 1 from reviews where business_id = $1 and task_id = $2)
            as content`,
     [tx.businessId, taskId, CONTENT_COMMANDS],
   );

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 bound pages: a review page outside the task holder's site, or unbound since the review opened, is refused PAGE_OUTSIDE_HOLDER_SITE and stores nothing; a capture asks both widths once."
+}

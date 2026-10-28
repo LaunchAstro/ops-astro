@@ -18,6 +18,8 @@
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { seedForeignReview } from './c35-bodies.ts';
+import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -669,6 +671,33 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
         foreign: { ...request, taskId: w.foreign.task.id },
         fabricated: { ...request, taskId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.review,
+    async () => {
+      // A review of bravo's and fabricated ids: each pair answers alike.
+      const { reviewId, revisionId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      await refuses('review.capture', 'revisionId', ada, 'NOT_FOUND', {
+        foreign: { revisionId },
+        fabricated: { revisionId: randomUUID() },
+      });
+      await refuses('review.read', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { reviewId },
+        fabricated: { reviewId: randomUUID() },
+      });
+      const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
+      await refuses('review.open', 'taskId', ada, 'NOT_FOUND', {
+        foreign: { ...page, taskId: w.foreign.task.id },
+        fabricated: { ...page, taskId: randomUUID() },
       });
     },
     120_000,
