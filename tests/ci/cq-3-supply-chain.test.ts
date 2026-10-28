@@ -41,6 +41,13 @@ const scratch = () => {
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 };
+/** The workspace's patchedDependencies name files under patches/, which pnpm reads on install. */
+const withPatches = (tree: string) => {
+  if (existsSync(join(ROOT, 'patches')))
+    cpSync(join(ROOT, 'patches'), join(tree, 'patches'), { recursive: true });
+};
+const withoutPatches = (workspace: string) =>
+  workspace.replace(/^patchedDependencies:\n(?: {2}.*\n)*/mu, '');
 const WANT = { minimumReleaseAge: String(7 * 24 * 60), trustPolicy: 'no-downgrade' };
 const CANARY = `cq3-canary-${randomUUID()}`;
 const PLANTED = { NODE_AUTH_TOKEN: CANARY, NPM_TOKEN: CANARY, CQ3_CANARY_SECRET: CANARY };
@@ -135,7 +142,8 @@ async function install(workspace: string, want: (url: string) => string): Promis
   mkdirSync(join(tree, 'a'));
   writeFileSync(join(tree, 'a/package.json'), JSON.stringify(a));
   writeFileSync(join(tree, 'package.json'), JSON.stringify(p));
-  writeFileSync(join(tree, 'pnpm-workspace.yaml'), workspace);
+  // `c` is the only dependency, so the repository's patches would be unused and refused.
+  writeFileSync(join(tree, 'pnpm-workspace.yaml'), withoutPatches(workspace));
   writeFileSync(join(tree, '.npmrc'), `registry=${url}/\n${url.slice(5)}/:_authToken=${CANARY}\n`);
   const args = ['install', '--ignore-scripts', '--store-dir', join(tree, 'store')];
   return await run('pnpm', args, tree).finally(() => server.close());
@@ -187,6 +195,7 @@ describe('CQ-3 supply-chain settings', () => {
     const tree = scratch();
     for (const path of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'])
       cpSync(join(ROOT, path), join(tree, path));
+    withPatches(tree);
     for (const dir of ['apps', 'packages'].flatMap((d) =>
       readdirSync(join(ROOT, d)).map((p) => join(d, p)),
     )) {
