@@ -68,11 +68,19 @@ const PEOPLE = [
   { personId: 'p-cy', name: 'Cy Tran', availability: null },
 ];
 
+/** How a send goes wrong: refused, unanswered before it lands, or landed with its answer lost. */
+interface Sending {
+  refuse: Record<string, unknown> | null;
+  unanswered: 'before' | 'after' | null;
+}
+
 interface World {
   readonly chats: Chats;
-  readonly state: { refuse: Record<string, unknown> | null };
+  readonly state: Sending;
   readonly reads: string[];
   readonly sent: { at: string; body: Record<string, unknown> }[];
+  /** Each message a send landed, once per operation id, as the operations register keeps it. */
+  readonly posted: Map<string, string>;
 }
 
 /** The reads and commands, answered from `world`. */
@@ -95,12 +103,22 @@ function answer(world: World, at: string, body: Record<string, unknown>): Respon
   if (!at.includes('/chat/')) throw new Error(`unrouted ${at}`);
   world.sent.push({ at: at.slice(at.indexOf('/chat/')), body });
   if (world.state.refuse !== null) return json(world.state.refuse, 422);
+  if (world.state.unanswered === 'before') return json({}, 503);
+  const sends = at.endsWith('/chat/send_direct') || at.endsWith('/chat/send_group');
+  if (sends) world.posted.set(String(body['operationId']), String(body['body']));
+  if (world.state.unanswered === 'after') return json({}, 503);
   return json({ recordId: DIRECT, revision: 1, detail: { conversationId: DIRECT } });
 }
 
 /** One business: me, Bo and Cy, and a live channel whose latest stream the case writes into. */
 export function server() {
-  const world: World = { chats: chatsOf(), state: { refuse: null }, reads: [], sent: [] };
+  const world: World = {
+    chats: chatsOf(),
+    state: { refuse: null, unanswered: null },
+    reads: [],
+    sent: [],
+    posted: new Map(),
+  };
   const joins: string[] = [];
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   const encoder = new TextEncoder();

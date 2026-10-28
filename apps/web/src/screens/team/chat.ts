@@ -17,7 +17,7 @@
 // which shows a group left read-only; a change re-reads a group it shows departed as such.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DirectThread, GroupAction, GroupThread, TeamConversations } from '@launchastro/ui';
+import type { DirectThread, GroupThread } from '@launchastro/ui';
 import type {
   ChatConversationView,
   ChatConversationsResult,
@@ -28,17 +28,12 @@ import { BOARD } from '../../data/board-live.ts';
 import { nudgeTeamUnread } from '../../data/dock-counts.ts';
 import { hubOf } from '../../data/live.ts';
 import { describeFailure } from '../../records/submit.ts';
+import { commandOf, type ChatCommand } from './commands.ts';
+import type { Talk } from './outbox.ts';
 
 const FOLLOWED = 16;
-
-type ChatCommand =
-  | 'chat.send_direct'
-  | 'chat.send_group'
-  | 'chat.mark_read'
-  | 'chat.start_group'
-  | 'chat.rename_group'
-  | 'chat.change_members'
-  | 'chat.leave';
+type Body = Readonly<Record<string, unknown>>;
+type Options = Parameters<OperationsClient['mutate']>[2];
 
 /**
  * The reader's conversations: null until a read answers with them or a
@@ -56,7 +51,11 @@ export interface ChatModel {
   readonly held: Held;
   /** The first list and each of its conversations' messages have answered; unavailable is not. */
   readonly settled: boolean;
-  readonly run: (name: ChatCommand, body: Readonly<Record<string, unknown>>) => void;
+  readonly run: (
+    name: ChatCommand,
+    body: Body,
+    options?: Options,
+  ) => ReturnType<OperationsClient['mutate']>;
 }
 
 interface Reads {
@@ -207,47 +206,21 @@ export function useChat(
   }
 
   const run = useCallback(
-    (name: ChatCommand, body: Readonly<Record<string, unknown>>): void => {
+    async (name: ChatCommand, body: Body, options?: Options) => {
       say(null);
-      void client.mutate(name, body).then((result) => {
-        const failed = describeFailure(result);
-        say(failed);
-        if (failed === null) {
-          reads?.list();
-          nudgeTeamUnread(client);
-        }
-        return result;
-      });
+      const result = await client.mutate(name, body, options);
+      const failed = describeFailure(result);
+      say(failed);
+      if (failed === null) {
+        reads?.list();
+        nudgeTeamUnread(client);
+      }
+      return result;
     },
     [client, reads, say],
   );
 
   return { list, held, settled: settledRef.current, run };
-}
-
-/** A group's action as its chat command; members sends only the side that names someone. */
-function commandOf(action: GroupAction): readonly [ChatCommand, Record<string, unknown>] {
-  switch (action.do) {
-    case 'start':
-      return ['chat.start_group', { name: action.name, members: action.members }];
-    case 'rename':
-      return ['chat.rename_group', { conversationId: action.id, name: action.name }];
-    case 'members':
-      return [
-        'chat.change_members',
-        {
-          conversationId: action.id,
-          ...(action.add.length > 0 ? { add: action.add } : {}),
-          ...(action.remove.length > 0 ? { remove: action.remove } : {}),
-        },
-      ];
-    case 'leave':
-      return ['chat.leave', { conversationId: action.id }];
-    case 'read':
-      return ['chat.mark_read', { conversationId: action.id, upTo: action.upTo }];
-    case 'send':
-      return ['chat.send_group', { conversationId: action.id, body: action.body }];
-  }
 }
 
 /**
@@ -256,7 +229,7 @@ function commandOf(action: GroupAction): readonly [ChatCommand, Record<string, u
  * word that the reader may rename the group and change its members; the
  * server answers either way.
  */
-export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
+export function talkOf(chat: ChatModel, me: string): Talk | null {
   const { list } = chat;
   if (list === null || list === 'none') return null;
   const threads: DirectThread[] = [];
@@ -287,13 +260,13 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
     groups,
     onMarkRead: (person, upTo) => {
       const conversationId = directWith(person);
-      if (conversationId !== undefined) chat.run('chat.mark_read', { conversationId, upTo });
+      if (conversationId !== undefined) void chat.run('chat.mark_read', { conversationId, upTo });
     },
     onSend: (person, body) => {
-      chat.run('chat.send_direct', { teammateId: person, body });
+      void chat.run('chat.send_direct', { teammateId: person, body });
     },
     onGroup: (action) => {
-      chat.run(...commandOf(action));
+      void chat.run(...commandOf(action));
     },
   };
 }
