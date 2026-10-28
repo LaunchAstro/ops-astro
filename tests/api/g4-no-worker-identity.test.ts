@@ -68,6 +68,8 @@ const SETTINGS = [
   'OPS_ENVIRONMENT',
   // C55: the error sink's web address, never its DSN (ORCH49).
   'OPS_ERROR_SINK_URL',
+  // #2270: who is offered Hermes Agent, businessId:personId pairs; read to refuse it uncarried.
+  'OPS_HERMES_PEOPLE',
   'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',
   'SUPABASE_KEY_SET_URL',

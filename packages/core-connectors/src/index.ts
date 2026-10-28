@@ -242,15 +242,7 @@ export {
   TASK_BLOCK_FENCE,
   type PromptPage,
 } from './conversation-prompt.ts';
-export {
-  CONVERSATION_MODELS,
-  conversationModelsOf,
-  conversationOperationOf,
-  conversationProviderOf,
-  outsidePeopleOf,
-  planRouteSet,
-  type ConversationModel,
-} from './conversation-models.ts';
+export * from './conversation-models.ts';
 export {
   OPENROUTER_AUD_PER_USD,
   OPENROUTER_BODY_LIMIT,
@@ -268,6 +260,7 @@ export {
   readOpenRouterAnswer,
   type OpenRouterModel,
 } from './openrouter.ts';
+export * from './hermes.ts';
 export {
   CHATGPT_PLAN_ANSWER_BYTES,
   CHATGPT_PLAN_BODY_LIMIT,

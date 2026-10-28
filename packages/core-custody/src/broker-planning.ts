@@ -112,7 +112,7 @@ export async function callModelForPlanning(
   request: ConversationCallRequest,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
+  if (!ownsConversation(businessId, caller, request, broker)) return refused('AUTHORITY_LOST');
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');

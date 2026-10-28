@@ -34,6 +34,7 @@ import type {
 import {
   installProvider,
   modelFacts,
+  hermesListed,
   offeredModels,
   outsideListed,
   planStanding,
@@ -99,6 +100,7 @@ async function answerOf(
     facts,
     outsideListed(tx, session),
     plan,
+    hermesListed(tx, session),
   );
   const unavailable = await unavailableOf(tx, session, facts, models);
   return {

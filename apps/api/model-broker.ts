@@ -97,12 +97,8 @@ function parsedJson(text: string): { readonly ok: true; readonly value: unknown 
   }
 }
 
-function routeOf(
-  entry: unknown,
-  provider: AgentProvider,
-  outside: boolean,
-  plan: boolean,
-): BrokerRoute | undefined {
+/** One route, or undefined; its provider must be one the install catalogues (`providers`). */
+function routeOf(entry: unknown, providers: ReadonlyMap<string, unknown>): BrokerRoute | undefined {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
   const shape = entry as Record<string, unknown>;
   const keys = Object.keys(shape);
@@ -119,7 +115,7 @@ function routeOf(
   }
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
-  if (!catalogueOf(provider, outside, plan).providers.has(text('provider'))) return undefined;
+  if (!providers.has(text('provider'))) return undefined;
   // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes
   // through. Ollama is on this machine: a `cloud` label would let its route leave it.
   if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
@@ -168,18 +164,20 @@ function offMachineProblem(
 /**
  * The routes setting's entries, each a route or undefined; undefined when it
  * is not a list, or when two routes share a key, since a call names its route
- * by key alone. Only the carried deployment passes `plan`, so no other
- * install takes the owner's plan route.
+ * by key alone. Only the carried deployment passes `plan` and `hermes`, so
+ * no other install takes the owner's plan route or Hermes Agent's (#2270).
  */
 export function routesOf(
   text: string,
   provider: AgentProvider,
   outside = false,
   plan = false,
+  hermes = false,
 ): readonly (BrokerRoute | undefined)[] | undefined {
   const entries = parsedJson(text)?.value;
   if (!Array.isArray(entries)) return undefined;
-  const routes = entries.map((entry: unknown) => routeOf(entry, provider, outside, plan));
+  const { providers } = catalogueOf(provider, outside, plan, hermes);
+  const routes = entries.map((entry: unknown) => routeOf(entry, providers));
   const keys = routes.flatMap((route) => (route === undefined ? [] : [route.key]));
   return new Set(keys).size === keys.length ? routes : undefined;
 }

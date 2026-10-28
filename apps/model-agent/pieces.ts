@@ -5,9 +5,12 @@
 // WORKING_EVERY_MS while no words come (a cold model load). Ollama's are read
 // from the whole local stream by its adapter (`ollamaPieces`: whole lines, a
 // leading thinking block never shown). OpenRouter's come from custody already
-// decoded and redacted (`stream-decode.ts`), and pass as they are.
+// decoded and redacted (`stream-decode.ts`), and pass as they are. Hermes
+// Agent's reply is shown whole when it is done (#2270), so its call shows only
+// `working` while it runs.
 
 import {
+  HERMES_CONVERSATION,
   ollamaPieces,
   OPENROUTER_CONVERSATION,
   openrouterPieces,
@@ -21,7 +24,11 @@ export function piecesFor(
   say: (event: 'piece' | 'working', body: unknown, seq?: number) => void,
 ): { push(chunk: string): void; end(): void } {
   const reader =
-    destination === OPENROUTER_CONVERSATION.destination ? openrouterPieces() : ollamaPieces();
+    destination === HERMES_CONVERSATION.destination
+      ? { push: (): readonly string[] => [] }
+      : destination === OPENROUTER_CONVERSATION.destination
+        ? openrouterPieces()
+        : ollamaPieces();
   let waiting = '';
   let seq = 0;
   let said = now();

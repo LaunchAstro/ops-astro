@@ -35,7 +35,8 @@ export const REALTIME_URL_SETTING = 'SUPABASE_REALTIME_URL';
 /**
  * The carried broker over `custody`, holding no credential: Ollama's
  * conversation, OpenRouter's paid one where the outside provider is on, and
- * the agent's turn on the owner's plan where its route is set (#2091).
+ * the agent's turn on the owner's plan where its route is set (#2091), and
+ * Hermes Agent's conversation where its people are set (#2270).
  */
 export const carriedBroker = (carried: CarriedSettings, custody: Custody): ModelBroker => ({
   custody,
@@ -43,11 +44,13 @@ export const carriedBroker = (carried: CarriedSettings, custody: Custody): Model
     'ollama',
     carried.outsidePeople.length > 0,
     carried.routes.some((route) => carriesOnPlan(route)),
+    carried.hermesPeople.length > 0,
   ),
   routes: carried.routes,
   installation: carried.installation,
   carrier: carried.carrier,
   outsidePeople: carried.outsidePeople,
+  hermesPeople: carried.hermesPeople,
 });
 
 /** The carried exchange and executor, or a throw naming the setting that is missing or malformed. */

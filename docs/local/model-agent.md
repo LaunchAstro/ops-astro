@@ -32,6 +32,9 @@ it to Ollama within 3 seconds of the accept on the M5's clock, or not at all
    sends nothing. For the owner's ChatGPT plan, add all or none of
    `planTokenFile`, `planOrigin` and `planIssuer`
    ([chatgpt-plan.md](chatgpt-plan.md)).
+   For Hermes Agent, add both or neither of `hermesCredentialRef` (`hermes`)
+   and `hermesOrigin` (exactly `http://127.0.0.1:8642`), and the Hermes entry
+   in custody's credential file ([HERMES.md](HERMES.md)).
 4. Run `scripts/m5/model-agent-install-check.sh <settings> <credentials>`.
 5. Fill the `@…@` values in `deploy/m5/ops-astro-model-agent.plist`, copy it
    to `~/Library/LaunchAgents/` and `launchctl load` it. launchd starts it

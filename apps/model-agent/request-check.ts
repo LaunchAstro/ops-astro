@@ -9,8 +9,10 @@
 // as `chatgptPlanBody` writes it (#1620 P4): one of the plan's two models, the
 // instructions, `{ role, content }` turns, unstored and streamed, and nothing
 // else but offered tools, each a strict function tool within its depth and
-// size, with the model's earlier calls and their outputs. Anything else is
-// refused before custody sees it.
+// size, with the model's earlier calls and their outputs. Hermes Agent's chat,
+// exactly as `hermesRequest` writes it (#2270): its one model, the
+// conversation's own `{ role, content }` turns ending with the person's,
+// streamed, and nothing else. Anything else is refused before custody sees it.
 
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -23,6 +25,10 @@ import {
   CHATGPT_PLAN_PROVIDER,
   CHATGPT_PLAN_TIMEOUT_MS,
   chatgptPlanBody,
+  HERMES_BODY_LIMIT,
+  HERMES_CONVERSATION,
+  HERMES_MODEL,
+  HERMES_PATH,
   OLLAMA_MODELS,
   OLLAMA_PATH,
   OPENROUTER_CONVERSATION,
@@ -49,6 +55,14 @@ const BOUNDS: ReadonlyMap<string, { path: string; ms: number; bytes: number }> =
   [
     CHATGPT_PLAN_PROVIDER,
     { path: CHATGPT_PLAN_PATH, ms: CHATGPT_PLAN_TIMEOUT_MS, bytes: CHATGPT_PLAN_ANSWER_BYTES },
+  ],
+  [
+    HERMES_CONVERSATION.destination,
+    {
+      path: HERMES_PATH,
+      ms: HERMES_CONVERSATION.timeoutMs,
+      bytes: HERMES_CONVERSATION.maxResponseBytes,
+    },
   ],
 ]);
 
@@ -194,6 +208,33 @@ function planCall(call: Record<string, unknown>, body: string): boolean {
   );
 }
 
+/**
+ * Hermes Agent's chat as `hermesRequest` writes it: the body sent is exactly
+ * the serialisation of its one model, its `{ role, content }` turns (the
+ * person's and the answers', the person's last) and `stream: true`, so no
+ * instructions, tools, provider or repeated key can pass, within its body limit.
+ */
+function hermesChat(chat: Record<string, unknown>, body: string): boolean {
+  const turns = chat['messages'];
+  if (!Array.isArray(turns) || turns.length === 0 || Buffer.byteLength(body) > HERMES_BODY_LIMIT) {
+    return false;
+  }
+  const valid = turns.every(
+    (turn: Record<string, unknown> | null) =>
+      typeof turn?.['content'] === 'string' &&
+      PLAN_ROLES.has(turn['role']) &&
+      same(keysOf(turn), 'content,role'),
+  );
+  const messages = valid
+    ? (turns as Record<string, unknown>[]).map(({ role, content }) => ({ role, content }))
+    : [];
+  return (
+    valid &&
+    messages.at(-1)?.role === 'user' &&
+    JSON.stringify({ model: HERMES_MODEL, messages, stream: true }) === body
+  );
+}
+
 /** One of the agent's requests, within the catalogue's bounds. */
 export function chatOf(request: unknown): OutboundRequest | undefined {
   if (typeof request !== 'object' || request === null) return undefined;
@@ -223,6 +264,8 @@ export function chatOf(request: unknown): OutboundRequest | undefined {
   if (typeof chat !== 'object' || chat === null || Array.isArray(chat)) return undefined;
   if (asked.destination === CHATGPT_PLAN_PROVIDER)
     return planCall(chat as Record<string, unknown>, asked.body) ? asked : undefined;
+  if (asked.destination === HERMES_CONVERSATION.destination)
+    return hermesChat(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   if (asked.destination !== 'ollama')
     return paidChat(chat as Record<string, unknown>, asked.body) ? asked : undefined;
   const { model, messages, stream, think } = chat as Record<string, unknown>;

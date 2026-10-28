@@ -2,7 +2,8 @@
 //
 // CS-7.30's code catalogue of conversation models: only models the server can
 // vouch for, each priced by its conversation operation's ceiling (an
-// OpenRouter paid model by its own hold, #1508) and holding
+// OpenRouter paid model by its own hold, #1508; Hermes Agent, #2270, at
+// nothing) and holding
 // 0098's id shape; the install's provider follows the composition root's rule;
 // and each adapter asks the provider for the exact model it is handed, the
 // provider's default when none is.
@@ -15,6 +16,9 @@ import {
   CONVERSATION_MODELS,
   conversationModelsOf,
   conversationProviderOf,
+  HERMES_CONVERSATION,
+  HERMES_MODEL,
+  HERMES_PROVIDER,
   LOCAL_GPT_CONVERSATION,
   LOCAL_GPT_DEFAULT_MODEL,
   LOCAL_GPT_PROVIDER,
@@ -35,19 +39,21 @@ const modelIn = (body: string): unknown => (JSON.parse(body) as Record<string, u
 
 // oxlint-disable-next-line max-lines-per-function -- the catalogue, the provider rule and the adapters
 describe('CS-7.30 the conversation model catalogue', () => {
-  it('lists only the replay model, the laptop runner’s default, the M5’s Ollama models, OpenRouter’s paid ones and the plan’s two, each priced', () => {
+  it('lists only the replay model, the laptop runner’s default, the M5’s Ollama models, OpenRouter’s paid ones, the plan’s two and Hermes Agent, each priced', () => {
     expect(CONVERSATION_MODELS.map((model) => model.id)).toStrictEqual([
       REPLAY_MODEL_WINDOW.model,
       LOCAL_GPT_DEFAULT_MODEL,
       ...OLLAMA_MODELS,
       ...OPENROUTER_MODELS.map((model) => model.id),
       ...CHATGPT_PLAN_MODELS,
+      HERMES_MODEL,
     ]);
     const operations = new Map([
       [CONVERSATION_ANSWER.provider, CONVERSATION_ANSWER],
       [LOCAL_GPT_CONVERSATION.provider, LOCAL_GPT_CONVERSATION],
       [OLLAMA_PROVIDER, OLLAMA_CONVERSATION],
       [CHATGPT_PLAN_CONVERSATION.provider, CHATGPT_PLAN_CONVERSATION],
+      [HERMES_PROVIDER, HERMES_CONVERSATION],
     ]);
     // #1508: every free provider's model is unpriced; the stand-in's is priced, and refused;
     // OpenRouter's are priced at their own hold, and never offered to a client's conversation.

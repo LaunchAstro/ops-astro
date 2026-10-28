@@ -7,7 +7,7 @@
 // database would, joins the call's line, and seals what the function sends.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -38,6 +38,7 @@ import {
   type ModelAgentOptions,
 } from '../../apps/model-agent/carrier.ts';
 import { ollamaOnLoopback, streamedLines, type LoopbackOllama } from './ollama-on-loopback.ts';
+import { decoded, writeNoneCredential } from './model-agent-credentials.ts';
 import { memoryCarriage, type MemoryCarriage } from '../support/memory-carriage.ts';
 
 export const carryKey = (): string => randomBytes(32).toString('base64url');
@@ -100,13 +101,14 @@ export interface Call {
   until(event: string, n?: number, ms?: number): Promise<readonly Heard[]>;
 }
 
-/** The made-up key custody presents to the stand-in OpenRouter. */
-export const BEARER: string = `or-test-${randomUUID()}`;
+export { BEARER, HERMES_BEARER } from './model-agent-credentials.ts';
 
 export interface AgentWorld {
   readonly ollama: LoopbackOllama;
   /** The stand-in OpenRouter, where the world carries paid calls. */
   readonly openrouter: OpenRouterStandIn | undefined;
+  /** The stand-in Hermes Agent, an OpenAI-shaped stream, where the world carries its calls. */
+  readonly hermes: OpenRouterStandIn | undefined;
   readonly carriage: MemoryCarriage;
   readonly custody: ProcessCustody;
   readonly agent: ModelAgent;
@@ -131,6 +133,8 @@ export interface WorldOptions {
   readonly wrap?: (custody: AgentCustody) => AgentCustody;
   /** Custody holds a bearer key for a stand-in OpenRouter, and the agent its reference. */
   readonly paid?: boolean;
+  /** Custody holds a bearer key for a stand-in Hermes Agent, and the agent its reference. */
+  readonly hermes?: boolean;
 }
 
 function heardOn(line: Line, keys: ReturnType<typeof keysOf>, k: string): Heard[] {
@@ -159,28 +163,6 @@ async function untilHeard(heard: readonly Heard[], event: string, n: number, ms:
   return heard.filter((each) => each.event === event);
 }
 
-function writeNoneCredential(folder: string, paid: boolean): string {
-  const file = join(folder, 'credentials.json');
-  const entry = {
-    ref: 'ollama_key',
-    kind: 'api_key',
-    account: 'm5-ollama',
-    destination: 'ollama',
-    scheme: 'none',
-  };
-  const bearer = {
-    ref: 'openrouter',
-    kind: 'api_key',
-    account: 'agency-astro-openrouter',
-    destination: 'openrouter',
-    header: 'authorization',
-    scheme: 'bearer',
-    value: BEARER,
-  };
-  writeFileSync(file, JSON.stringify(paid ? [entry, bearer] : [entry]), { mode: 0o600 });
-  return file;
-}
-
 // oxlint-disable-next-line max-lines-per-function -- the world and its broker side
 export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentWorld> {
   const folder = mkdtempSync(join(tmpdir(), 'model-agent-'));
@@ -188,15 +170,17 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
   ollama.reply = (model) => ({ status: 200, chunks: streamedLines(model, WORDS) });
   const paid = options.paid === true;
   const openrouter = paid ? await standInOpenRouter() : undefined;
+  const hermes = options.hermes === true ? await standInOpenRouter() : undefined;
   const custody = await startCustody({
-    credentialsFile: writeNoneCredential(folder, paid),
+    credentialsFile: writeNoneCredential(folder, paid, hermes !== undefined),
     destinations: [
       { key: 'ollama', origin: ollama.origin },
-      ...(openrouter === undefined
-        ? []
-        : [{ key: 'openrouter', origin: openrouter.origin, stream: 'openai_sse' as const }]),
+      ...decoded('openrouter', openrouter),
+      ...decoded('hermes', hermes),
     ],
   });
+  if (hermes !== undefined)
+    hermes.answer = () => ({ status: 200, chunks: sse('hermes-agent', WORDS, null) });
   if (openrouter !== undefined) {
     openrouter.answer = (request) => ({
       status: 200,
@@ -206,7 +190,11 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
   const handed: OutboundRequest[] = [];
   // Each request under its own destination's credential, as the agent's process maps them.
   const mapped = agentCustody(
-    { credentialRef: 'ollama_key', ...(paid ? { openrouterCredentialRef: 'openrouter' } : {}) },
+    {
+      credentialRef: 'ollama_key',
+      ...(paid ? { openrouterCredentialRef: 'openrouter' } : {}),
+      ...(hermes === undefined ? {} : { hermesCredentialRef: 'hermes' }),
+    },
     custody,
   );
   const counted: AgentCustody = {
@@ -274,6 +262,7 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
   return {
     ollama,
     openrouter,
+    hermes,
     carriage,
     custody,
     agent: started,
@@ -289,6 +278,7 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
       await custody.stop();
       await ollama.close();
       await openrouter?.close();
+      await hermes?.close();
       rmSync(folder, { recursive: true, force: true });
     },
   };

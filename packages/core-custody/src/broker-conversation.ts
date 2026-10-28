@@ -15,8 +15,10 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
 import { planHolds, planRoute } from './broker-conversation-plan.ts';
+import { HERMES_PROVIDER_KEY, hermesStanding } from './hermes-standing.ts';
 import { sendingCarrier } from './broker-carrier.ts';
 import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
+import { oversized } from './broker-size.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
 import { carriedIn } from './broker-carriage.ts';
 import { insertStarted, messageCall } from './broker-message-call.ts';
@@ -53,17 +55,24 @@ export function outsideFields(fields: readonly ClaimedField[]): readonly Resolve
   }));
 }
 
-/** Only the owner, in their own session, with no delegation between them and the call. */
+/**
+ * Only the owner, in their own session, with no delegation between them and the call;
+ * Hermes Agent's operation only for a person its list names (#2270), whatever the
+ * command layer offered.
+ */
 export function ownsConversation(
   businessId: BusinessId,
   caller: ModelCaller,
-  { conversation }: ConversationCallRequest,
+  { conversation, operation }: ConversationCallRequest,
+  broker: Pick<Broker, 'operations' | 'hermesPeople'>,
 ): boolean {
+  const hermes = broker.operations.get(operation)?.provider === HERMES_PROVIDER_KEY;
   return (
     conversation.businessId === businessId &&
     caller.delegationId === null &&
     caller.attendedByPersonId !== null &&
-    caller.attendedByPersonId === conversation.ownerPersonId
+    caller.attendedByPersonId === conversation.ownerPersonId &&
+    (!hermes || hermesStanding(broker, businessId, caller))
   );
 }
 
@@ -144,6 +153,40 @@ async function earlierOrLost(
 }
 
 /**
+ * The started row for an unpriced call, inside its business's transaction: an
+ * earlier or lost call first, then the ceiling, then carriage, then the insert.
+ * A string is the started call's id.
+ */
+async function startCall(
+  tx: TenantQuery,
+  call: {
+    request: ConversationCallRequest;
+    caller: ModelCaller;
+    operation: ModelOperation;
+    route: BrokerRoute;
+    account: string | null;
+  },
+  broker: Broker,
+): Promise<string | ModelCallResult> {
+  const { request, caller, operation, route, account } = call;
+  const earlier = await earlierOrLost(tx, request, caller, operation);
+  if (earlier !== undefined) return earlier;
+  // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
+  if (await atCeiling(tx, operation, route)) {
+    return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
+  }
+  const { carrier } = broker;
+  if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
+    return refused('CARRIAGE_UNAVAILABLE');
+  }
+  return (
+    (await insertStarted(tx, request, operation, route, account, carrier)) ??
+    (await messageCall(tx, request.messageId)) ??
+    RATE_LIMITED
+  );
+}
+
+/**
  * A person's unpriced model call from their own conversation, streamed only where
  * custody presents no credential the answer could echo (`sendingCarrier`). Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
@@ -159,7 +202,7 @@ export async function callModelUnpriced(
   request: ConversationCallRequest,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
+  if (!ownsConversation(businessId, caller, request, broker)) return refused('AUTHORITY_LOST');
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
@@ -168,28 +211,13 @@ export async function callModelUnpriced(
   const { fields } = chosen;
   // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
+  // Sized against its adapter's limit (Hermes Agent's) before any row or send.
+  if (oversized(broker, operation, fields, request.model)) return refused('PROMPT_TOO_LARGE');
   const { route } = chosen;
   const { account, presentsNothing } = await sendingCarrier(broker, route, operation.destination);
   const streamed = presentsNothing && operation.fold !== undefined;
-  const started = await database.withBusiness(
-    businessId,
-    async (tx): Promise<string | ModelCallResult> => {
-      const earlier = await earlierOrLost(tx, request, caller, operation);
-      if (earlier !== undefined) return earlier;
-      // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
-      if (await atCeiling(tx, operation, route)) {
-        return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
-      }
-      const { carrier } = broker;
-      if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
-        return refused('CARRIAGE_UNAVAILABLE');
-      }
-      return (
-        (await insertStarted(tx, request, operation, route, account, carrier)) ??
-        (await messageCall(tx, request.messageId)) ??
-        RATE_LIMITED
-      );
-    },
+  const started = await database.withBusiness(businessId, (tx) =>
+    startCall(tx, { request, caller, operation, route, account }, broker),
   );
   if (typeof started !== 'string') return started;
   const callId = started;
