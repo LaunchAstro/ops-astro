@@ -9,7 +9,8 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
- * A step written off with its effect unknown, at any time: a top-up cannot apply; the end does.
+ * A step written off with its effect unknown, at any time and at any amount: a top-up cannot
+ * apply; the end does.
  *
  * A step settled `completed` in any transaction but the ask's own (a person's `happened` or
  * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
@@ -22,11 +23,21 @@ export async function recordedRefusal(
   stop: { readonly reservation_id: string; readonly ask_id: string },
 ): Promise<RuntimeResult<never> | null> {
   // A positive write-off settles the step at an unknown outcome (`write-off.ts`),
-  // and nothing else does. Its effect may have happened, so a top-up must not
-  // run it again, whenever the write-off landed: no stamp comparison here.
+  // and nothing else does. One at nothing abandons it, as a person's
+  // `nothing_happened` does, and closes the hold with no cause when its calls
+  // spent anything (`closeHold`), so only its applied operation, written in the
+  // write-off's transaction and never changed, tells the two apart. Either way
+  // its effect may have happened, so a top-up must not run it again, whenever
+  // the write-off landed: no stamp comparison here.
   const writtenOff = await tx.query(
-    `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and state = 'settled' and outcome = 'unknown'`,
+    `select 1 from public.attempts a
+      where a.business_id = $1 and a.reservation_id = $2
+        and ((a.state = 'settled' and a.outcome = 'unknown')
+          or (a.state = 'abandoned' and exists (
+                select 1 from public.operations o
+                 where o.business_id = $1 and o.command = 'budget.write_off'
+                   and o.outcome = 'applied' and o.result -> 'detail' ->> 'state' = 'applied'
+                   and o.result -> 'detail' ->> 'attemptId' = a.id::text)))`,
     [tx.businessId, stop.reservation_id],
   );
   if (writtenOff.length > 0) {
