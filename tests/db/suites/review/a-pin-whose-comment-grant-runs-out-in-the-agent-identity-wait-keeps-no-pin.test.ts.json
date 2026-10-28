@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 an agent's pin re-judged after its actor identity wait: a review:comment grant that ran out while the agent actor was held refuses the pin, so it keeps no pin and no anchor."
+}
