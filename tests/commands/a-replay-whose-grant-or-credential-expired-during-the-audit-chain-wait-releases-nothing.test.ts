@@ -86,7 +86,7 @@ async function kept(operationId: string, recordId: string): Promise<unknown> {
 
 /** Waits until the database's clock is past `table`'s row `id` expiry. */
 async function pastExpiry(
-  table: 'grants' | 'agent_credentials' | 'delegations',
+  table: 'grants' | 'agent_credentials' | 'delegations' | 'leases',
   id: string,
 ): Promise<void> {
   for (let attempt = 0; attempt < 500; attempt += 1) {
@@ -259,6 +259,111 @@ it.skipIf(serverUrl === undefined)(
       audit: [
         { outcome: 'applied', code: null },
         { outcome: 'refused', code: 'DELEGATION_NOT_LIVE' },
+      ],
+    });
+  },
+);
+
+/** The lease a pickup receipt names, expiring two seconds from the database's now. */
+async function leaseExpiringSoon(receipt: Readonly<Record<string, unknown>>): Promise<string> {
+  const leaseId = String(receipt['leaseId']);
+  await world.db.admin.execute(
+    `update public.leases set expires_at = clock_timestamp() + interval '2 seconds'
+      where business_id = $1 and id = $2`,
+    [world.business, leaseId],
+  );
+  return leaseId;
+}
+
+it.skipIf(serverUrl === undefined)(
+  'an agent pickup whose lease expired while its replay waited on the audit chain hands back no credential',
+  async () => {
+    const decider = await world.decider('agent-picker');
+    const picked = await world.pickUp(decider, 'a pickup replayed across its lease end');
+    const leaseId = await leaseExpiringSoon(picked.detail);
+    const pickup = {
+      command: 'task.pickup',
+      operationId: picked.operationId,
+      reservationId: picked.reservationId,
+    };
+    const answer = await waitingOnTheChain(
+      async (replayer) =>
+        (await executeAgentCommand(
+          replayer,
+          world.business,
+          { provider: 'supabase', subject: world.agentSubject() },
+          undefined,
+          pickup as never,
+        )) as CommandResult,
+      async () => await pastExpiry('leases', leaseId),
+    );
+    expect({
+      answer: codeOf(answer),
+      leaked: JSON.stringify(answer).includes(picked.credential),
+      audit: await world.auditFor(picked.operationId),
+    }).toStrictEqual({
+      answer: 'LEASE_EXPIRED',
+      leaked: false,
+      audit: [
+        { outcome: 'applied', code: null },
+        { outcome: 'refused', code: 'LEASE_EXPIRED' },
+      ],
+    });
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  "a person's pickup whose lease expired while its replay waited on the audit chain is refused",
+  async () => {
+    const decider = await world.decider('person-picker');
+    const task = await world.asPerson(decider, {
+      command: 'task.create',
+      operationId: randomUUID(),
+      fields: { title: 'a person pickup replayed across its lease end' },
+    });
+    if (isCommandRefusal(task)) throw new Error(`task.create refused ${task.code}`);
+    const revision = Number(task.revision);
+    const proposed = await world.asPerson(decider, {
+      command: 'task.propose',
+      operationId: randomUUID(),
+      recordId: task.recordId,
+      expectedRevision: revision,
+      purpose: `draft_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3_000,
+      currency: 'AUD',
+      payload: { instruction: 'draft a reply' },
+      step: { kind: 'compose', payload: {} },
+    });
+    if (isCommandRefusal(proposed)) throw new Error(`task.propose refused ${proposed.code}`);
+    const decided = await world.asPerson(decider, {
+      command: 'task.decide',
+      operationId: randomUUID(),
+      gateId: proposed.detail['gateId'],
+      versionId: proposed.detail['versionId'],
+      decision: 'approve',
+      note: 'approved so a person can work it',
+    });
+    if (isCommandRefusal(decided)) throw new Error(`task.decide refused ${decided.code}`);
+    const pickup = {
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId: decided.detail['reservationId'],
+    };
+    const first = await send(decider, pickup);
+    if (isCommandRefusal(first)) throw new Error(`task.pickup refused ${first.code}`);
+    const leaseId = await leaseExpiringSoon(first.detail);
+    const answer = await waitingOnTheChain(
+      async (replayer) => await send(decider, pickup, replayer),
+      async () => await pastExpiry('leases', leaseId),
+    );
+    expect({
+      answer: codeOf(answer),
+      audit: await world.auditFor(pickup.operationId),
+    }).toStrictEqual({
+      answer: 'LEASE_EXPIRED',
+      audit: [
+        { outcome: 'applied', code: null },
+        { outcome: 'refused', code: 'LEASE_EXPIRED' },
       ],
     });
   },
