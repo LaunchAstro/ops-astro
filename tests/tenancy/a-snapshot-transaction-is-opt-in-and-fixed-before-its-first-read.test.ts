@@ -7,10 +7,12 @@
 // option changes when a transaction looks, never which business it looks at.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   connect,
   type BusinessId,
+  type BusinessTransaction,
   type Database,
   type TransactionQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
@@ -145,4 +147,71 @@ describe.skipIf(serverUrl === undefined)('withBusiness: the option is not a door
       }),
     ).rejects.toThrow(/is not an isolation withBusiness offers/u);
   });
+});
+
+/**
+ * One holder takes an advisory lock; a second transaction, its business
+ * setting sent, waits on that lock while the holder renames alpha and commits.
+ * Returns the name the second transaction reads after the lock.
+ */
+const readAfterLock = async (
+  pool: Database,
+  options: BusinessTransaction,
+  to: string,
+): Promise<string | undefined> => {
+  const key = Math.floor(Math.random() * 2 ** 31);
+  let locked!: () => void;
+  const isLocked = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  let go!: () => void;
+  const mayCommit = new Promise<void>((resolve) => {
+    go = resolve;
+  });
+  const holder = pool.withBusiness(alpha, async (tx) => {
+    await tx.query('select 1 from pg_advisory_xact_lock($1)', [key]);
+    locked();
+    await mayCommit;
+    await tx.query('update businesses set name = $2 where id = $1', [alpha, to]);
+  });
+  await isLocked;
+  const lockThenRead = async (tx: TransactionQuery): Promise<string | undefined> => {
+    go();
+    await tx.query('select 1 from pg_advisory_xact_lock($1)', [key]);
+    const [row] = await tx.query<{ readonly name: string }>(
+      'select name from businesses where id = $1',
+      [alpha],
+    );
+    return row?.name;
+  };
+  const name = await pool.withBusiness(alpha, lockThenRead, options);
+  await holder;
+  return name;
+};
+
+describe.skipIf(serverUrl === undefined)(
+  "withBusiness: the caller's duty under repeatable read",
+  () => {
+    // S2340-1: a read after a lock reads the snapshot, not what the lock's holder
+    // committed while it waited, so a lock-then-count path (hasRoom) must not opt in.
+    it("reads the snapshot after a lock, so the lock holder's commit stays unseen", async () => {
+      // Two transactions at once: the fixture's pool holds one connection.
+      const twoAtOnce = connect(db.appUrl, { source: 'runtime', max: 2 });
+      try {
+        expect(await readAfterLock(twoAtOnce, {}, 'held once')).toBe('held once');
+        expect(await readAfterLock(twoAtOnce, { isolation: 'repeatable read' }, 'held twice')).toBe(
+          'held once',
+        );
+      } finally {
+        await twoAtOnce.close();
+      }
+    });
+  },
+);
+
+it('says where the option is offered that lock-then-count paths must not opt in', () => {
+  const doc = readFileSync('packages/core-records/src/tenancy/isolation.ts', 'utf8');
+  expect(doc).toMatch(/lock-then-count/u);
+  expect(doc).toMatch(/`hasRoom`,? must not opt in/u);
+  expect(doc).toMatch(/40001/u);
 });
