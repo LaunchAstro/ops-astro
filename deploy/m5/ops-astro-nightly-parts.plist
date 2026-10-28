@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- #2302: scripts/ops/nightly-parts.sh at 02:00 AEST; install steps in scripts/ops/README.md. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ops-astro-nightly-parts</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>@NIGHTLY_SCRIPT@</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@NIGHTLY_PATH@</string>
+    <key>NIGHTLY_GH_USER</key>
+    <string>@NIGHTLY_GH_USER@</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>Nice</key>
+  <integer>15</integer>
+  <key>StandardOutPath</key>
+  <string>@NIGHTLY_LOG@</string>
+  <key>StandardErrorPath</key>
+  <string>@NIGHTLY_LOG@</string>
+</dict>
+</plist>
