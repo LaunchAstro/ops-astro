@@ -12,9 +12,9 @@
 // still waiting for one. Launch is drawn only while the version's check holds
 // (`use-launch-clock.ts`). A publish follows that decision on the server,
 // never a press here. A published or reverted card opens its receipts. Every
-// value is drawn as text. While Launch is drawn, the card asks the second
-// approval in the owner's words (#1988): the change is ready to go live, with
-// the located text before and after.
+// value is drawn as text. While Launch is drawn and not held for a review
+// (#1781), the card asks the second approval in the owner's words (#1988):
+// the change is ready to go live, with the located text before and after.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { CorrectionReceiptView } from '../../../../packages/core-wire/src/index.ts';
@@ -124,7 +124,7 @@ export function CorrectionCard(props: {
         {correction.approver === null ? '' : ` Decided by ${correction.approver}.`}
       </p>
       <Notes checking={checking} correction={correction} />
-      {decidable && launchable ? <Ready ask={ask} /> : null}
+      {decidable && launchable && !reviewHeld(correction) ? <Ready ask={ask} /> : null}
       {decidable ? (
         <Decisions
           busy={busy}
