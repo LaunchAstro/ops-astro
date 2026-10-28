@@ -20,7 +20,7 @@ import {
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type JudgedLast } from './outcome.ts';
 import {
   fieldsRefused,
   holdLease,
@@ -51,7 +51,7 @@ export async function carryPins(
   tx: TenantQuery,
   fields: CarryFields,
   caller: CaptureCaller,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const wrong = invalidLease(fields);
   if (wrong.length > 0) {
     return fieldsRefused(wrong, 'Send the fence the pickup handed back and the revision.');

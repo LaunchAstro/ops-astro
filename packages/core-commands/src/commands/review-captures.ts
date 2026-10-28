@@ -38,7 +38,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { personClaimant } from './tasks-claimant.ts';
 
 /** The observation's cap once serialised, so a land fits the API's body limit with its picture. */
@@ -169,7 +169,7 @@ export const judgedAgain =
   async (): Promise<CommandRefusal | undefined> =>
     (await stillHeld(tx, lease, caller)) ?? undefined;
 
-export const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
+export const fieldsRefused = (wrong: readonly string[], fix: string): Refused =>
   refused(refuseCommand('FIELD_VALUE_INVALID', wrong, [fix]));
 
 export async function claimCapture(
