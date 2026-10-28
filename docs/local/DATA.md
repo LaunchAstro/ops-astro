@@ -1176,7 +1176,7 @@ the revision's digest; a digest other than the latest revision's is refused
 (`VERSION_STALE`). Both tables are insert and select only, tenancy-keyed with
 the restrictive policy.
 
-## The revision's correction (20261019180000, #2120)
+## The revision's correction (20261028180000, #2120)
 
 `review_revisions.correction_id` names the live correction whose published page
 a revision captures, so the review workspace can show that publish's Receipt.
