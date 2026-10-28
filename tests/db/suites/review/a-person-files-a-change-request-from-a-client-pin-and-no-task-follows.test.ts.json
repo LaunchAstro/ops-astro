@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C57: a person files one change request from a client pin with bounded text; an internal pin, a foreign or malformed id and a second filing write nothing; filing and approving make no task."
+}

@@ -19,6 +19,7 @@
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { LANDING, seedAskedRevision, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
+import { seedForeignChangeRequest } from './c57-bodies.ts';
 import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -793,6 +794,35 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('review.pin_comment', 'revisionId', ada, 'NOT_FOUND', {
         foreign: { ...pin, revisionId },
         fabricated: { ...pin, revisionId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.changeRequest,
+    async () => {
+      // A change request of bravo's, and a record of bravo's named as the pin.
+      const taskId = w.foreign.task.id;
+      const review = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        taskId,
+        w.foreign.admin,
+      );
+      const changeRequestId = await seedForeignChangeRequest(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        { reviewId: review.reviewId, taskId },
+        w.foreign.admin,
+      );
+      await refuses('review.propose_change', 'commentId', ada, 'NOT_FOUND', {
+        foreign: { commentId: taskId, text: 't' },
+        fabricated: { commentId: randomUUID(), text: 't' },
+      });
+      await refuses('review.decide_change', 'changeRequestId', ada, 'NOT_FOUND', {
+        foreign: { changeRequestId, decision: 'approve' },
+        fabricated: { changeRequestId: randomUUID(), decision: 'approve' },
       });
     },
     120_000,

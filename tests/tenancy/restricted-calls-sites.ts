@@ -24,6 +24,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35 (20261028142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
+  // C57 (20261028160000): a change request is filed once and decided once, by column.
+  ['si', 'review_change_requests'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -66,6 +68,18 @@ export const SITE_UPDATES = [
       'picture_digest',
       'picture_id',
       'state',
+      'updated_at',
+    ],
+  },
+  {
+    table: 'public.review_change_requests',
+    from: '20261028160000',
+    columns: [
+      'state',
+      'decided_by_actor_id',
+      'decided_by_person_id',
+      'decided_at',
+      'created_task_id',
       'updated_at',
     ],
   },

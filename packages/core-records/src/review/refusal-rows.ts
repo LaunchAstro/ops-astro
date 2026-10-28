@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's rows of the refusal register (`../register.ts`, #2011), beside its records so the
+// C35's and C57's rows of the refusal register (`../register.ts`, #2011), beside its records so the
 // register stays under the per-file size cap; the register reads them with its own table.
 
 export const REVIEW_ROWS = [
@@ -33,5 +33,17 @@ export const REVIEW_ROWS = [
     status: 422,
     meaning: 'The picture is past the storage cap',
     source: 'C35, the storage seam',
+  },
+  {
+    code: 'CHANGE_REQUEST_ALREADY_FILED',
+    status: 409,
+    meaning: 'The pin is filed as a change request already',
+    source: 'C57, the change-request record',
+  },
+  {
+    code: 'CHANGE_REQUEST_ALREADY_DECIDED',
+    status: 409,
+    meaning: 'The change request is approved or refused already',
+    source: 'C57, the change-request record',
   },
 ] as const;

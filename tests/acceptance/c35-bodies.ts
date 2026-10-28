@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's positive bodies for the role-case matrix (#2011), answered from `role-case-setup.ts`'s
+// C35's and C57's positive bodies for the role-case matrix (#2011, #2016), answered from `role-case-setup.ts`'s
 // `tableBody`: a review is opened by the admin on a task under a client of its own, for that
 // client's bound about page, so the capture and the read each name one the admin reaches.
 
@@ -22,6 +22,8 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.capture_claim',
   'review.capture_land',
   'review.picture',
+  'review.propose_change',
+  'review.decide_change',
 ]);
 
 /** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
@@ -57,6 +59,27 @@ async function pinBody(context: BodyContext, revisionId: unknown): Promise<Prepa
   };
 }
 
+/**
+ * C57's bodies (#2016): a client pin on the revision, filed as a change request for a decision.
+ */
+async function changeBody(
+  context: BodyContext,
+  name: CommandName,
+  revisionId: unknown,
+): Promise<Prepared> {
+  const pin = await pinBody(context, revisionId);
+  if (!('body' in pin)) return pin;
+  const pinned = await context.asPerson('review.pin_comment', { ...pin.body, audience: 'client' });
+  if (pinned.code !== 'ok') throw new Error(`matrix: review.pin_comment refused ${pinned.code}`);
+  const { commentId } = pinned.body['detail'] as Readonly<Record<string, unknown>>;
+  const filing = { commentId, text: 'a change asked for' };
+  if (name === 'review.propose_change') return { body: filing };
+  const filed = await context.asPerson('review.propose_change', filing);
+  if (filed.code !== 'ok') throw new Error(`matrix: review.propose_change refused ${filed.code}`);
+  const { changeRequestId } = filed.body['detail'] as Readonly<Record<string, unknown>>;
+  return { body: { changeRequestId, decision: 'approve' } };
+}
+
 export async function c35PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (WORKER_NAMES.has(name)) return await workerBody(name, context);
   const open = await openBody(context);
@@ -65,6 +88,9 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
   if (opened.code !== 'ok') throw new Error(`matrix: review.open refused ${opened.code}`);
   const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
   if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
+  if (name === 'review.propose_change' || name === 'review.decide_change') {
+    return await changeBody(context, name, detail['revisionId']);
+  }
   return name === 'review.capture'
     ? { body: { revisionId: detail['revisionId'] } }
     : { body: { reviewId: detail['reviewId'] } };

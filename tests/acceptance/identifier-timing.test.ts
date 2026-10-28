@@ -20,6 +20,7 @@
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { LANDING, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
+import { seedForeignChangeRequest } from './c57-bodies.ts';
 import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -407,6 +408,21 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       body: 'b',
       audience: 'internal',
     }));
+    // C57: bravo's task named as the pin, and a change request of bravo's.
+    const change = await seedForeignChangeRequest(
+      w.h.world.db.admin,
+      w.h.world.bravo,
+      { reviewId: review.reviewId, taskId: f.task.id },
+      f.admin,
+    );
+    byAda('review.propose_change', 'commentId', f.task.id, (commentId) => ({
+      commentId,
+      text: 't',
+    }));
+    byAda('review.decide_change', 'changeRequestId', change, (changeRequestId) => ({
+      changeRequestId,
+      decision: 'approve',
+    }));
     const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
@@ -709,11 +725,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 126 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 128 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(126);
-    expect(names).toHaveLength(126);
+    expect(new Set(names).size, 'distinct operations').toBe(128);
+    expect(names).toHaveLength(128);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

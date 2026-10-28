@@ -26,6 +26,7 @@ export const CASE = {
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
   liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   review: 'refuses a foreign and a fabricated task, revision, review or picture alike (C35)',
+  changeRequest: 'refuses a foreign and a fabricated pin or change request alike (C57)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
@@ -76,6 +77,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'review.capture_claim': ['leaseId and revisionId', 'agent'],
   'review.capture_land': ['leaseId and revisionId', 'agent'],
   'review.picture': ['pictureId', 'review'],
+  'review.propose_change': ['commentId', 'changeRequest'],
+  'review.decide_change': ['changeRequestId', 'changeRequest'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

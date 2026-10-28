@@ -23,4 +23,6 @@ export const REVIEW_OPERANDS = {
     body: 'any',
     audience: 'any',
   },
+  'review.propose_change': { commentId: 'any', text: 'any' },
+  'review.decide_change': { changeRequestId: 'any', decision: 'any' },
 } as const;
