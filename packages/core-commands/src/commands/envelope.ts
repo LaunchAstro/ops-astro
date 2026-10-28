@@ -74,6 +74,7 @@ import {
 } from './requests.ts';
 import { handleCommand } from './handlers.ts';
 import { isRefused, refused, type Applied, type Refused } from './outcome.ts';
+import { leaseLapsed } from './lease-replay.ts';
 import { pickupReceiptBinding } from './pickup-receipt.ts';
 import { REVISION_FIXES, askedAtCommit, expectedRevisionOf, prepareCommand } from './prepare.ts';
 
@@ -188,9 +189,14 @@ export async function runCommand(
     },
     // A replay is a call (#2307): its stored success goes out only to a caller
     // the door would let in after its last wait, judged as a fresh write is,
-    // and a pickup's receipt only while its lease is still the caller's.
+    // a lease command's only while its lease is still the caller's (#2332),
+    // and a pickup's receipt only while the lease it took is.
     lastCheck: async (identified) =>
       (await standsNow(tx, session, identified, declaration, standing, replayAsked, true)) ??
+      (await leaseLapsed(tx, declaration, identified, {
+        claimant: 'person',
+        actorId: session.actorId,
+      })) ??
       (declaration.name === 'task.pickup' && replayStored !== undefined
         ? (await unboundPickup(tx, session, replayStored))?.refusal
         : undefined),
