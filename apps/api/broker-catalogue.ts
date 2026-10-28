@@ -8,6 +8,8 @@
 // plan route set (#2091) adds the agent's turn on the plan and the owner's
 // typed message on it (#2175), with one adapter under the plan's own provider
 // key, so the route stays the plan's.
+// The carried deployment with Hermes Agent's people set (#2270) adds its
+// conversation operation and adapter.
 
 import {
   catalogue,
@@ -17,6 +19,11 @@ import {
   chatgptPlanAdapter,
   CHATGPT_PLAN_TURN,
   chatgptPlanTurnAdapter,
+  HERMES_BODY_LIMIT,
+  HERMES_CONVERSATION,
+  HERMES_PROVIDER,
+  hermesCostMinor,
+  hermesRequest,
   readReplayLookup,
   CONVERSATION_ANSWER,
   LOCAL_GPT_COMPOSE,
@@ -102,15 +109,24 @@ const PLAN_ADAPTER: ProviderAdapter = {
   bodyLimit: CHATGPT_PLAN_BODY_LIMIT,
 };
 
+/** Hermes Agent's conversation operation and its adapter, the request sized before it is sent. */
+const HERMES_OPERATIONS = catalogue([HERMES_CONVERSATION]);
+const HERMES_ADAPTER: ProviderAdapter = {
+  build: hermesRequest,
+  price: hermesCostMinor,
+  bodyLimit: HERMES_BODY_LIMIT,
+};
+
 /**
  * The install's operations and adapters, with OpenRouter's where the outside
- * provider is on, and the plan's turn only where the carried deployment has
- * the plan route.
+ * provider is on, and the plan's turn and Hermes Agent's conversation only
+ * where the carried deployment has their routes.
  */
 export function catalogueOf(
   provider: AgentProvider,
   outside: boolean,
   plan = false,
+  hermes = false,
 ): {
   readonly operations: ReadonlyMap<string, ModelOperation>;
   readonly providers: ReadonlyMap<string, ProviderAdapter>;
@@ -124,6 +140,10 @@ export function catalogueOf(
   if (plan && provider === 'ollama') {
     for (const [key, operation] of PLAN_OPERATIONS) operations.set(key, operation);
     providers.set(CHATGPT_PLAN_PROVIDER, PLAN_ADAPTER);
+  }
+  if (hermes && provider === 'ollama') {
+    for (const [key, operation] of HERMES_OPERATIONS) operations.set(key, operation);
+    providers.set(HERMES_PROVIDER, HERMES_ADAPTER);
   }
   return { operations, providers };
 }

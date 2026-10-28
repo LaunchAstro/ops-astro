@@ -13,6 +13,7 @@
 import {
   CHATGPT_PLAN_PROVIDER,
   conversationModelsOf,
+  HERMES_PROVIDER,
   OLLAMA_PROVIDER,
   OPENROUTER_PROVIDER,
   planRouteSet,
@@ -26,8 +27,9 @@ const CLIENT = slotOf(TASK_SPINE, 'client');
 /**
  * The carrier carries Ollama, and only on an install whose conversations run
  * on it; there, OpenRouter's paid models too (#1508), which only a person the
- * outside list names was offered, and the owner's plan's models where its
- * route is set (#2175), which only the owner was offered.
+ * outside list names was offered, the owner's plan's models where its
+ * route is set (#2175), which only the owner was offered, and Hermes Agent
+ * (#2270), which only a person its own list names was.
  */
 function carries(model: unknown): boolean {
   const provider = installProvider();
@@ -36,6 +38,7 @@ function carries(model: unknown): boolean {
     ...conversationModelsOf(provider),
     ...conversationModelsOf(OPENROUTER_PROVIDER),
     ...(planRouteSet(process.env) ? conversationModelsOf(CHATGPT_PLAN_PROVIDER) : []),
+    ...conversationModelsOf(HERMES_PROVIDER),
   ];
   return model === null ? models.length > 0 : models.some((one) => one.id === model);
 }

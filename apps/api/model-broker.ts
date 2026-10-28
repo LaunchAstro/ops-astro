@@ -22,14 +22,17 @@
 // `OPS_OUTSIDE_PROVIDER=openrouter` adds OpenRouter's paid conversation
 // operation beside any of them (#1508), for the people `OPS_OUTSIDE_MODEL_PEOPLE`
 // lists only, on one cloud API key route to exactly `https://openrouter.ai`
-// (`outside-provider.ts`).
+// (`outside-provider.ts`). `OPS_HERMES_PEOPLE` (#2270) is the carried
+// deployment's alone (`model-carrier.ts`), and stops any other install.
 
 import {
   CHATGPT_PLAN_PROVIDER,
+  HERMES_PROVIDER,
   LOCAL_GPT_PROVIDER,
   OLLAMA_PROVIDER,
 } from '../../packages/core-connectors/src/index.ts';
 import { catalogueOf, type AgentProvider } from './broker-catalogue.ts';
+import { HERMES_PEOPLE_SETTING } from './hermes-people.ts';
 import { outsideOf, outsideRouteProblem } from './outside-provider.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import {
@@ -102,6 +105,7 @@ function routeOf(
   provider: AgentProvider,
   outside: boolean,
   plan: boolean,
+  hermes: boolean,
 ): BrokerRoute | undefined {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
   const shape = entry as Record<string, unknown>;
@@ -119,7 +123,9 @@ function routeOf(
   }
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
-  if (!catalogueOf(provider, outside, plan).providers.has(text('provider'))) return undefined;
+  if (!catalogueOf(provider, outside, plan, hermes).providers.has(text('provider'))) {
+    return undefined;
+  }
   // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes
   // through. Ollama is on this machine: a `cloud` label would let its route leave it.
   if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
@@ -128,6 +134,13 @@ function routeOf(
   if (
     text('provider') === CHATGPT_PLAN_PROVIDER &&
     (text('reach') !== 'cloud' || text('credentialKind') !== 'subscription')
+  ) {
+    return undefined;
+  }
+  // Hermes Agent is on the M5's loopback, under its own key, or not at all (#2270).
+  if (
+    text('provider') === HERMES_PROVIDER &&
+    (text('reach') !== 'local' || text('credentialKind') !== 'api_key')
   ) {
     return undefined;
   }
@@ -168,18 +181,19 @@ function offMachineProblem(
 /**
  * The routes setting's entries, each a route or undefined; undefined when it
  * is not a list, or when two routes share a key, since a call names its route
- * by key alone. Only the carried deployment passes `plan`, so no other
- * install takes the owner's plan route.
+ * by key alone. Only the carried deployment passes `plan` and `hermes`, so no
+ * other install takes the owner's plan route or Hermes Agent's.
  */
 export function routesOf(
   text: string,
   provider: AgentProvider,
   outside = false,
   plan = false,
+  hermes = false,
 ): readonly (BrokerRoute | undefined)[] | undefined {
   const entries = parsedJson(text)?.value;
   if (!Array.isArray(entries)) return undefined;
-  const routes = entries.map((entry: unknown) => routeOf(entry, provider, outside, plan));
+  const routes = entries.map((entry: unknown) => routeOf(entry, provider, outside, plan, hermes));
   const keys = routes.flatMap((route) => (route === undefined ? [] : [route.key]));
   return new Set(keys).size === keys.length ? routes : undefined;
 }
@@ -218,6 +232,11 @@ export function brokerSettings(
   if (typeof provider !== 'string') return invalid(provider.problem);
   const outside = outsideOf(environment);
   if (outside.kind === 'invalid') return invalid(outside.problem);
+  if ((environment[HERMES_PEOPLE_SETTING] ?? '') !== '') {
+    return invalid(
+      `${HERMES_PEOPLE_SETTING} is for the carried deployment only (MODEL_BROKER_CARRIER)`,
+    );
+  }
   const value = (name: (typeof MODEL_BROKER_SETTINGS)[number]): string => environment[name] ?? '';
   const missing = MODEL_BROKER_SETTINGS.filter((name) => value(name) === '');
   if (missing.length === MODEL_BROKER_SETTINGS.length) {

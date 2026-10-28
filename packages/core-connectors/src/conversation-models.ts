@@ -17,7 +17,10 @@
 // default. The owner's ChatGPT plan's models (#2175) are the route's own admit
 // list (`CHATGPT_PLAN_MODELS`, which the M5 checks a plan call against),
 // offered only to the owner where the carried deployment has the plan's route.
+// Hermes Agent (#2270), the owner's own agent on the M5, is listed for its
+// provider and offered only to a person `OPS_HERMES_PEOPLE` lists.
 
+import { HERMES_CONVERSATION_KEY, HERMES_MODEL, HERMES_PROVIDER } from './hermes.ts';
 import {
   CHATGPT_PLAN_CONVERSATION,
   CHATGPT_PLAN_MODELS,
@@ -92,11 +95,21 @@ export const CONVERSATION_MODELS: readonly ConversationModel[] = [
     ceilingMinor: CHATGPT_PLAN_CONVERSATION.maximumMinor,
     label: `${id} (your ChatGPT plan)`,
   })),
+  {
+    id: HERMES_MODEL,
+    provider: HERMES_PROVIDER,
+    // Custody calls it on the M5's loopback; it is offered only to its listed people.
+    reach: 'local',
+    egressName: null,
+    ceilingMinor: 0,
+    label: 'Hermes Agent',
+  },
 ];
 
-/** The conversation operation a provider's models answer on: OpenRouter's and the plan's own, else the install's. */
+/** The conversation operation a provider's models answer on: OpenRouter's, the plan's and Hermes Agent's own, else the install's. */
 export function conversationOperationOf(provider: string): string {
   if (provider === OPENROUTER_PROVIDER) return OPENROUTER_CONVERSATION_KEY;
+  if (provider === HERMES_PROVIDER) return HERMES_CONVERSATION_KEY;
   return provider === CHATGPT_PLAN_PROVIDER
     ? CHATGPT_PLAN_CONVERSATION.key
     : CONVERSATION_ANSWER.key;
@@ -126,6 +139,16 @@ export function planRouteSet(environment: Readonly<Record<string, string | undef
         (route as Record<string, unknown>)['provider'] === CHATGPT_PLAN_PROVIDER,
     )
   );
+}
+
+/** `OPS_HERMES_PEOPLE` as `businessId:personId` pairs, lower case; otherwise nobody (#2270). */
+export function hermesPeopleOf(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  return (environment['OPS_HERMES_PEOPLE'] ?? '')
+    .split(',')
+    .map((pair) => pair.trim().toLowerCase())
+    .filter((pair) => pair !== '');
 }
 
 /**

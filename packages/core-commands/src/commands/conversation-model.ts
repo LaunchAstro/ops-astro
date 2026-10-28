@@ -28,6 +28,9 @@
 //   client page. Never the default. A plan model whose latest call the plan
 //   refused for this account (`http_403`) is not offered: the picker shows it
 //   unavailable with that reason until a code change says otherwise.
+// - Hermes Agent (#2270) besides, only to a person `OPS_HERMES_PEOPLE` lists
+//   for this business, and only on a conversation with no client page. Never
+//   the default. Custody holds it to that person's own chats again.
 //
 // `conversation.set_model` is the tab row's (`conversation-tabs.ts`); both
 // writes keep the choice through `keepModel`.
@@ -36,6 +39,8 @@ import {
   CHATGPT_PLAN_PROVIDER,
   conversationModelsOf,
   conversationProviderOf,
+  HERMES_PROVIDER,
+  hermesPeopleOf,
   OLLAMA_PROVIDER,
   OPENROUTER_PROVIDER,
   outsidePeopleOf,
@@ -128,11 +133,16 @@ export async function refusedPlanModels(tx: TenantQuery): Promise<ReadonlySet<st
   return new Set(rows.map((row) => row.model_id));
 }
 
+/** Whether the caller is on this install's Hermes Agent list for this business (#2270). */
+export const hermesListed = (tx: TenantQuery, session: Session): boolean =>
+  hermesPeopleOf(process.env).includes(`${tx.businessId}:${session.personId}`.toLowerCase());
+
 /**
  * The models offered on `provider`'s conversation operation, with the paid
- * ones for a listed person (`outside`) and the plan's for the owner (`plan`):
- * all of them, or the client's allowed. A paid or plan model names no client
- * setting, so a client's conversation never gets one.
+ * ones for a listed person (`outside`), the plan's for the owner (`plan`) and
+ * Hermes Agent for one on its own list (`hermes`): all of them, or the
+ * client's allowed. None of these names a client setting, so a client's
+ * conversation never gets one.
  */
 export async function offeredModels(
   tx: TenantQuery,
@@ -140,6 +150,7 @@ export async function offeredModels(
   facts: ModelFacts | null,
   outside = false,
   plan = false,
+  hermes = false,
 ): Promise<readonly ConversationModel[]> {
   const refused = plan ? await refusedPlanModels(tx) : new Set<string>();
   const models = [
@@ -148,6 +159,7 @@ export async function offeredModels(
     ...(plan ? conversationModelsOf(CHATGPT_PLAN_PROVIDER) : []).filter(
       (model) => !refused.has(model.id),
     ),
+    ...(hermes ? conversationModelsOf(HERMES_PROVIDER) : []),
   ];
   if (facts === null) return models;
   if (facts.unseen) return [];
@@ -198,6 +210,7 @@ export async function keepModel(
     facts,
     outsideListed(tx, session),
     planStanding(session) === undefined,
+    hermesListed(tx, session),
   );
   if (model !== null && !offered.some((one) => one.id === model)) return MODEL_NOT_OFFERED;
   await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
@@ -217,10 +230,11 @@ async function modelToAsk(
   tx: TenantQuery,
   provider: string,
   facts: ModelFacts,
-  admitted: { readonly outside: boolean; readonly plan: boolean },
+  admitted: { readonly outside: boolean; readonly plan: boolean; readonly hermes: boolean },
 ): Promise<string | undefined | null> {
   if (facts.model === null) return conversationModelsOf(provider)[0]?.id;
-  const offered = await offeredModels(tx, provider, facts, admitted.outside, admitted.plan);
+  const { outside, plan, hermes } = admitted;
+  const offered = await offeredModels(tx, provider, facts, outside, plan, hermes);
   return offered.some((model) => model.id === facts.model) ? facts.model : null;
 }
 
@@ -236,5 +250,6 @@ export async function askedModel(
   return await modelToAsk(tx, provider, facts, {
     outside: outsideListed(tx, session),
     plan: provider === OLLAMA_PROVIDER && planStanding(session) === undefined,
+    hermes: hermesListed(tx, session),
   });
 }

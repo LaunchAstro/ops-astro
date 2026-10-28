@@ -25,7 +25,8 @@ export type Outside =
   | { readonly kind: 'invalid'; readonly problem: string };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-const PAIR = new RegExp(`^${UUID}:${UUID}$`, 'u');
+/** One `businessId:personId` pair, as a people setting lists them. */
+export const PAIR: RegExp = new RegExp(`^${UUID}:${UUID}$`, 'u');
 
 /** The outside provider's two settings, or why they are refused. */
 export function outsideOf(environment: Readonly<Record<string, string | undefined>>): Outside {
