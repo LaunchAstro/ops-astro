@@ -17,3 +17,6 @@ replacements.txt
 # The quota mutation proofs write a suite and its report here while they run;
 # ones left by a killed run mock the quota and must never be committed.
 tests/api/api-2-quota-mutant-*.test.ts*
+
+# Agent test results files and their saved reviews (apps/agent-tests).
+agent-test-results/
