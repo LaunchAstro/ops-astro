@@ -118,6 +118,7 @@ function ciOnTheCases1() {
     const places = {
       'ci.yml database conformance': images(job(SHARD_JOB)),
       'ci.yml isolation tests': images(job(ISOLATION_SHARDS)),
+      'quarantine-nightly.yml': images(read('.github/workflows/quarantine-nightly.yml')),
       'scripts/local/db-up.sh': assigned('scripts/local/db-up.sh', 'IMAGE'),
       'scripts/local/restart-proof.sh': assigned('scripts/local/restart-proof.sh', 'IMAGE'),
       'scripts/local/auth-up.sh': assigned('scripts/local/auth-up.sh', 'PG_IMAGE'),
@@ -144,7 +145,7 @@ function ciOnTheCases1() {
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
     expect(block).toMatch(
-      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard "\$SHARD" -- pnpm run db:conformance --shard "\$SHARD" --without-isolation$/mu,
+      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard "\$SHARD" -- pnpm run db:conformance --shard "\$SHARD" --without-isolation --timing-rule "\$RUNNER_TEMP\/timing-rule\.json"$/mu,
     );
     expect(block).toContain('          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}\n');
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);

@@ -294,7 +294,8 @@ No sequencing conflict remains between this job and the ticket.
 3. every named suite exists on disk;
 4. more than zero tests executed;
 5. no test was skipped or marked todo;
-6. no test failed;
+6. no test failed (on a merge group, a suite re-run under the timing-failure
+   rule below is judged on its re-run);
 7. the database's own transaction counter moved while **each named suite**
    ran, measured around that suite's own run;
 8. every suite the manifest names appears in vitest's report, matched on the
@@ -344,6 +345,43 @@ counts, printed "2 passed, 0 failed" and itself exited 0. It now reads
 vitest's exit status and signal as well as the report's own error fields, and
 any of them makes the runner exit 1 naming what vitest reported, whatever the
 counts say.
+
+## The timing-failure rule
+
+The owner's ruling of 18 October 2026 (register item 50a, #1857): a
+merge-group failure in a suite the group does not touch, which passes on one
+automatic re-run, is timing, not a defect in the group. Each such failure threw
+a group out and rebuilt every group behind it.
+
+- **One re-run, merge groups only.** `scripts/timing-rule.ts prepare` writes
+  the run's plan in a step of its own, and the runner reads it with
+  `--timing-rule`. A suite that failed only on its tests (vitest exited 1 on a
+  readable report of that suite alone, nothing skipped, nothing raised outside
+  a test, unhandled errors included, which `scripts/vitest-unhandled-errors.mjs`
+  counts because vitest's JSON report leaves them out, and its counter read), and that the group's diff does not reach through
+  `scripts/import-closure.ts`, runs once more in the same job. A pass is logged
+  as timing in the job summary and as a warning: suite, failed tests, run id
+  and the group's pull requests. A second failure blocks. Every rule above
+  judges the re-run. A push, a pull request and the nightly re-run nothing.
+- **Twice is quarantine.** `.github/test-quarantine.json` lists a suite with
+  its reason, owner, ticket, `added`, `expires` (at most 14 days later) and the
+  two runs its timing failures were seen in. While its ticket is open and its
+  entry unexpired, a merge group that does not touch it leaves it out, and
+  `.github/workflows/quarantine-nightly.yml` runs it each night on Postgres 17.
+  A shard whose whole share is left out passes, as there is nothing left to run.
+  A closed ticket or a passed expiry puts it back; the fix's pull request
+  removes the entry.
+- **Fails closed.** A malformed, unticketed, over-14-day, future-dated,
+  duplicate or unnamed entry, an isolation suite, or a ticket that is a pull
+  request or does not exist fails the shard. A ticket that cannot be read keeps
+  its suite in the group. A touched suite is never re-run and never left out.
+  Tickets are read with no token, as this repository is public: no `ci.yml`
+  job but the gate holds one (CQ-16). The `isolation tests` shards only re-run
+  (`--rerun-only`) and read no ticket (CQ-15).
+
+This is the one exception to "no test dropped", and only for listed suites.
+`tests/ci/timing-rule.test.ts` and `tests/ci/db-conformance-timing-rule.test.ts`
+prove it.
 
 ## Credentials
 
