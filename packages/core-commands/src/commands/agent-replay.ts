@@ -6,29 +6,26 @@
 // comes back, not the stored detail, when the rights are gone.
 
 import {
-  checkDelegatedAuthority,
   digestOf,
   resolveDelegation,
-  resolveLiveById,
-  resolveSettledByLease,
   DERIVED_SCHEME,
   LEGACY_SCHEME,
-  isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
-import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
+import { authorise } from './agent-authority.ts';
 import { isOperandRefusal, type AgentOperation, type TypedOperation } from './agent-operations.ts';
 import { isRefused } from './outcome.ts';
 import { workJudged } from './agent-standing.ts';
 import type { AgentCall } from './agent-call.ts';
 import type { IdentifiedRequest } from './requests.ts';
 import type { Replaying } from './envelope.ts';
-import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
+import { pickupStanding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
-import { replayOwnWork, replayRefusal } from './live-correction-agent.ts';
+import { replayRefusal } from './live-correction-agent.ts';
+import { JUDGED_AGAIN, replaySettledHandback } from './agent-replay-again.ts';
 import { presentedCredential } from './tasks-take-launch.ts';
 
 /**
@@ -80,8 +77,8 @@ async function releaseReplay(
 
 /**
  * The agent entry's replay (`Replaying`): a stored success released by the
- * row's `replay`, and an own-site correction request's own-work check asked
- * again last, after the replay's audit-chain wait (#1877).
+ * row's `replay`, and judged again after the replay's audit-chain wait
+ * (`JUDGED_AGAIN`, #2307).
  */
 export function replaying(
   tx: TenantQuery,
@@ -89,14 +86,15 @@ export function replaying(
   operation: AgentOperation,
   presented: VerifiedSubject,
 ): Replaying {
-  const release = async (stored: CommandHandle, request: IdentifiedRequest) =>
-    await releaseReplay(tx, callOf(request), operation, stored, presented);
-  if (operation.replay !== 'correctionRequest') return { release };
-  const lastCheck = async (request: IdentifiedRequest) => {
-    const call = callOf(request);
-    const resolved = await resolveDelegation(tx, call.session.actorId, call.credential ?? '');
-    return resolved.ok ? await replayOwnWork(tx, call.request, resolved.value) : resolved.refusal;
+  let released: CommandHandle | undefined;
+  const release = async (stored: CommandHandle, request: IdentifiedRequest) => {
+    released = stored;
+    return await releaseReplay(tx, callOf(request), operation, stored, presented);
   };
+  const again = JUDGED_AGAIN[operation.replay];
+  if (again === undefined) return { release };
+  const lastCheck = async (request: IdentifiedRequest) =>
+    released && (await again(tx, callOf(request), operation, released));
   return { release, lastCheck };
 }
 
@@ -175,7 +173,8 @@ export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
  * 3. The receipt's lease, reservation, attempt and delegation are still bound
  *    to one another, to this agent, and to the receipt's task and version. The
  *    lease is live and unexpired, the hold is held, and the approval behind it
- *    is still current.
+ *    is still current. Steps 1 to 3 are `pickupStanding`, asked again after
+ *    the replay's last wait (#2307).
  * 4. Only then is the credential derived under the delegation's pinned scheme
  *    and key id, and its digest compared with the one stored at mint.
  *
@@ -187,28 +186,14 @@ export const CREDENTIAL_NOT_REPLAYED = 'CREDENTIAL_NOT_REPLAYED';
  */
 async function replayPickup(
   tx: TenantQuery,
-  { session, declaration }: AgentCall,
+  call: AgentCall,
   stored: CommandHandle,
 ): Promise<CommandResult> {
+  const { session } = call;
   const detail = stored.detail;
-  const named = detail['delegationId'];
-  const held = isUuid(named) ? await resolveLiveById(tx, session.actorId, named) : undefined;
-  if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES);
-
-  const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: held.purposeScope,
-  });
-  if (!decision.ok) return decision.refusal;
-
-  const binding = await pickupReceiptBinding(tx, {
-    holderActorId: session.actorId,
-    delegationId: held.id,
-    receipt: detail,
-  });
-  if ('refusal' in binding) return binding.refusal;
-  const { bound } = binding;
+  const standing = await pickupStanding(tx, call, stored);
+  if ('refusal' in standing) return standing.refusal;
+  const { held, bound } = standing;
 
   // `credential` is read by the spread below and then replaced; the note, if
   // an older row carries one, does not survive into a derived answer.
@@ -250,38 +235,4 @@ async function replayPickup(
     );
   }
   return { ...stored, detail: { ...handles, credential } };
-}
-
-/**
- * Whether a stored handback may be released to the rights held now.
- *
- * Most operations answer to the same check a fresh call does. A pickup has its
- * own path (`replayPickup`). A handback cannot answer to the fresh check
- * either: it settles its own delegation, so the credential that made it no
- * longer resolves as live. Its receipt is released to that same credential,
- * for that delegation's own lease, while the delegation was settled rather
- * than revoked and has not expired, and the person's grants still cover it.
- * With no credential at all, a handback replay is what any bare agent call
- * outside the queue and pickup is (root ruling 6): an exclusion, with nothing
- * of the receipt in it.
- */
-async function replaySettledHandback(
-  tx: TenantQuery,
-  { session, credential, request, declaration }: AgentCall,
-  stored: CommandHandle,
-): Promise<CommandRefusal | undefined> {
-  if (credential === undefined || credential === '') {
-    return refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES);
-  }
-  const leaseId = stored.detail['leaseId'];
-  const held = isUuid(leaseId)
-    ? await resolveSettledByLease(tx, session.actorId, leaseId, credential)
-    : undefined;
-  if (held === undefined) return refuseCommand('DELEGATION_NOT_LIVE', [], NO_DELEGATION_FIXES);
-  const decision = await checkDelegatedAuthority(tx, held, {
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: held.purposeScope,
-  });
-  return decision.ok ? undefined : decision.refusal;
 }

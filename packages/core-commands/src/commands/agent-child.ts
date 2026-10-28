@@ -225,7 +225,7 @@ export async function replayChildPickup(
     `select agent_actor_id, credential_hash, credential_scheme, credential_key_id
        from public.delegations
       where business_id = $1 and id = $2 and parent_delegation_id = $3
-        and settled_at is null and revoked_at is null and expires_at > now()`,
+        and settled_at is null and revoked_at is null and expires_at > clock_timestamp()`,
     [tx.businessId, named, parent.value.id],
   );
   const child = found[0];

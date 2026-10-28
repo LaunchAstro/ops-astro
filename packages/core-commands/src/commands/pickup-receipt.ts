@@ -5,7 +5,14 @@
 // the agent pickup replay (`agent-replay.ts`). It is not in `tasks-pickup.ts`,
 // which claims a reservation and never replays one.
 
+import {
+  checkDelegatedAuthority,
+  isUuid,
+  resolveLiveById,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { AgentCall } from './agent-call.ts';
+import type { CommandHandle } from './register-store.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -27,14 +34,17 @@ export interface PickupReceiptBinding {
 /**
  * Whether a stored pickup receipt is still the caller's claim: one step for
  * the person envelope (`withheldNow`) and the agent pickup replay (step 3 of
- * `replayPickup`), in one statement and one refusal ladder.
+ * `replayPickup`), each at release and after its last wait, in one statement
+ * and one refusal ladder.
  *
  * The receipt's lease, hold and attempt are still bound to one another, to
  * `holderActorId`, to `delegationId` (`null` for a person's own lease, and
  * then the agent's delegation, whose agent must be the holder) and to the
  * receipt's task and version; the lease is live and unexpired, the hold
  * held, and the approval behind it current. A handle that is not an
- * identifier matches no row.
+ * identifier matches no row. The lease's end is judged at the statement's
+ * instant, so a replay that asks again after its last wait (#2307) sees a
+ * lease that ran out while it waited.
  */
 export async function pickupReceiptBinding(
   tx: TenantQuery,
@@ -52,7 +62,7 @@ export async function pickupReceiptBinding(
     PickupReceiptBinding & { readonly lease_live: boolean; readonly approval_current: boolean }
   >(
     `select d.credential_scheme, d.credential_key_id, d.credential_hash,
-            (l.state = 'live' and l.expires_at > now() and res.state = 'held') as lease_live,
+            (l.state = 'live' and l.expires_at > clock_timestamp() and res.state = 'held') as lease_live,
             (g.state = 'approved' and lin.state = 'live' and ver.superseded_at is null)
               as approval_current
        from public.leases l
@@ -91,4 +101,39 @@ export async function pickupReceiptBinding(
   }
   const { lease_live: _live, approval_current: _current, ...credential } = bound;
   return { bound: credential };
+}
+
+/**
+ * Whether a pickup's receipt is still this agent's: its delegation live, its
+ * reach, and the lease, hold and attempt bound to it (`pickupReceiptBinding`).
+ * Asked at release and again after the replay's last wait (#2307).
+ */
+export async function pickupStanding(
+  tx: TenantQuery,
+  { session, declaration }: AgentCall,
+  stored: CommandHandle,
+): Promise<
+  | { readonly refusal: CommandRefusal }
+  | {
+      readonly held: NonNullable<Awaited<ReturnType<typeof resolveLiveById>>>;
+      readonly bound: PickupReceiptBinding;
+    }
+> {
+  const named = stored.detail['delegationId'];
+  const held = isUuid(named) ? await resolveLiveById(tx, session.actorId, named) : undefined;
+  if (held === undefined) {
+    return { refusal: refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES) };
+  }
+  const decision = await checkDelegatedAuthority(tx, held, {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: held.purposeScope,
+  });
+  if (!decision.ok) return { refusal: decision.refusal };
+  const binding = await pickupReceiptBinding(tx, {
+    holderActorId: session.actorId,
+    delegationId: held.id,
+    receipt: stored.detail,
+  });
+  return 'refusal' in binding ? binding : { held, bound: binding.bound };
 }
