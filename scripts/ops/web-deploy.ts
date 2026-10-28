@@ -239,6 +239,12 @@ export async function deployWeb(
 const ROLLED_BACK =
   'production was rolled back since its last deploy, and Vercel gives the page no domain until a deploy is promoted: deploy a version first, which promotes itself';
 
+/** The page's refusal while production's record (`records`) holds a rollback not yet promoted past. */
+function rollbackPending(records: string | undefined): Unrecorded | undefined {
+  const rolled = records === undefined ? false : rolledBack(records);
+  return rolled === false ? undefined : refused(rolled === true ? ROLLED_BACK : rolled.why);
+}
+
 const UNCHECKED =
   'no version was named, so the deploy that takes the page off was not checked; outside an incident, name it with --version and --artefacts';
 
@@ -266,18 +272,19 @@ export async function deployMaintenance(
 ): Promise<MaintenanceOutcome> {
   const settings = settingProblems(options.env);
   if (settings.length > 0) return refused(settings.join('; '));
-  const rolled = options.rolledBackIn === undefined ? false : rolledBack(options.rolledBackIn);
-  if (rolled !== false) return refused(rolled === true ? ROLLED_BACK : rolled.why);
+  const rolled = rollbackPending(options.rolledBackIn);
+  if (rolled !== undefined) return rolled;
   if (planned === undefined) {
     const outcome = await maintenancePage(options.env);
     return outcome.kind === 'deployed' ? { ...outcome, unchecked: UNCHECKED } : outcome;
   }
-  const outcome = await asVersionDeploy(
-    planned.request,
-    planned.options,
-    async () => await maintenancePage(options.env),
-  );
-  if (outcome.kind !== 'refused') return outcome;
+  let late: Unrecorded | undefined;
+  const outcome = await asVersionDeploy(planned.request, planned.options, async () => {
+    // Judged again under the held grant, after the checks' waits (#2299).
+    late = rollbackPending(options.rolledBackIn);
+    return late ?? (await maintenancePage(options.env));
+  });
+  if (outcome.kind !== 'refused' || late !== undefined) return outcome;
   const { version } = planned.request;
   const reason = `the deploy of ${version} that takes the page off would be refused: ${outcome.reason}`;
   return { kind: 'refused', reason };

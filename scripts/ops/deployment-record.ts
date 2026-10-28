@@ -213,7 +213,8 @@ export function recordedProduction(
 /**
  * Whether production's last web act in the record is a rollback, or why the
  * record cannot say. After one, Vercel gives a new production deployment no
- * domain until one is promoted (#2299).
+ * domain until one is promoted (#2299). The M5 unit's `deploy recorded`
+ * (`deploy.ts`) names no deployment and promotes nothing, so it is no web act.
  */
 export function rolledBack(records: string): boolean | { why: string } {
   const read = trustedRecords(records, RECORD);
@@ -221,7 +222,8 @@ export function rolledBack(records: string): boolean | { why: string } {
   const last = read.lines.findLast(
     (record) =>
       (record['action'] === 'deploy recorded' || record['action'] === 'rollback recorded') &&
-      record['environment'] === 'production',
+      record['environment'] === 'production' &&
+      typeof record['deployment'] === 'string',
   );
   return last?.['action'] === 'rollback recorded';
 }
