@@ -47,7 +47,7 @@ import {
   type JudgedLast,
   type Refused,
 } from './outcome.ts';
-import { endedRefusal, standsAfterWaits, type Standing } from './live-correction-standing.ts';
+import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import {
   AGENT_AUDIENCES,
   audiencesOf,
@@ -132,11 +132,21 @@ function liveRefusal(sent: Sent, anchor: Anchor): Refused | undefined {
   return marksOnly ? undefined : refused(LIVE_QUOTE);
 }
 
-/** The key, and an agent's delegation, read after the waits: the refusal, or nothing. */
-const endedAfterWaits = (tx: TenantQuery, standing: Standing) => async () => {
-  const stood = await standsAfterWaits(tx, standing);
-  return stood === 'stands' ? undefined : endedRefusal(stood, standing.delegationId !== undefined);
-};
+/**
+ * The key, and an agent's delegation, read after the last lock wait: the refusal, or nothing.
+ * Asked again as the pin's `lastCheck`, since the agent path waits on its actor, login and
+ * audit chain after the pin returns (its last waits, `agent-standing.ts`).
+ */
+const endedAfterWaits =
+  (tx: TenantQuery, { delegation }: Pinner, covering: Covering, partyId: string | null) =>
+  async () => {
+    const stood = await standsAfterWaits(tx, {
+      covering,
+      partyId,
+      ...(delegation === undefined ? {} : { delegationId: delegation.id }),
+    });
+    return stood === 'stands' ? undefined : endedRefusal(stood, delegation !== undefined);
+  };
 
 async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast> {
   const anchor = anchorOf(sent);
@@ -180,14 +190,8 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast>
     sent['audience'] === 'client' ? 'client' : undefined,
   );
   if (isRefused(written)) return written;
-  const ended = endedAfterWaits(tx, {
-    covering,
-    partyId: locked.review.partyId,
-    ...(by.delegation === undefined ? {} : { delegationId: by.delegation.id }),
-  });
+  const ended = endedAfterWaits(tx, by, covering, locked.review.partyId);
   const first = await ended();
-  // The agent path waits on its actor, login and audit chain after this returns (its last
-  // waits, `agent-standing.ts`), so the key and the delegation are read once more after them.
   return first === undefined ? { ...written, lastCheck: ended } : refused(first);
 }
 
