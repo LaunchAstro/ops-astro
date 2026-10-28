@@ -4,7 +4,7 @@
 // In a file that imports nothing, as `surface-site-names.ts` is.
 
 /**
- * A person or a delegated agent opens a review and asks a capture of a revision; the review
- * is read with its revisions and captures.
+ * A person, or an agent on that person's credential, opens a review and asks a capture of a
+ * revision; the review is read with its revisions and captures.
  */
 export type ReviewCommandName = 'review.open' | 'review.capture' | 'review.read';
