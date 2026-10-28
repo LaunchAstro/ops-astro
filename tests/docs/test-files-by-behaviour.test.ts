@@ -335,10 +335,6 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
-    'apps/web/src/screens/projects/review-live-frame.tsx',
-    "the live view beside a review's capture (#2015 part A); the Review workspace screen places it in #2120, which removes this entry",
-  ],
-  [
     'apps/site-runner/main.ts',
     "the site runner's launchd entry point (deploy/m5/ops-astro-site-runner.plist); nothing imports an entry point but its tests",
   ],
