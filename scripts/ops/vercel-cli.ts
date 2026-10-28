@@ -4,7 +4,9 @@
 // the CLI's environment kept to PATH, HOME, TMPDIR and the two project ids,
 // `vercel deploy --prebuilt --prod` answering the deployment's own address,
 // and `vercel inspect --format json` read back for that address ready on
-// production (only url, target and readyState are read).
+// production (only url, target and readyState are read). Production's
+// rollback (`vercel rollback`) and the promote after it (`vercel promote`) go
+// only to a deployment read back that way (#2299).
 
 import { spawnSync } from 'node:child_process';
 
@@ -72,5 +74,51 @@ export function readBack(
   return {
     kind: 'failed',
     reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live. It is not recorded. Remove it from the dashboard and find out why.`,
+  };
+}
+
+type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
+
+/**
+ * Vercel's instant rollback of production to `deployment` (#2299): the build
+ * Vercel already holds, with the settings it was made with, so settings
+ * changed since never reach it. Refused unless Vercel reports it ready on
+ * production first, since Vercel answers a rollback or promote to any other
+ * deployment by building a new one with today's settings. `vercel rollback`
+ * waits up to 3 minutes for its alias job and exits 0 only once it succeeded.
+ */
+export function rollBack(
+  folder: string,
+  env: Environment,
+  deployment: string,
+): Unrecorded | undefined {
+  const inspected = vercel(['inspect', deployment, '--format', 'json'], env, folder);
+  if (!inspected.ok || !readyOnProduction(inspected.out, deployment)) {
+    return {
+      kind: 'refused',
+      reason: `Vercel's read-back says ${deployment} is not ready on production, so it is not rolled back to: Vercel would build any other deployment again with today's settings. Nothing changed.`,
+    };
+  }
+  if (vercel(['rollback', deployment, '--timeout', '3m'], env, folder).ok) return undefined;
+  return {
+    kind: 'failed',
+    reason: `vercel rollback to ${deployment} did not finish, so production may still serve what it served. Nothing was recorded; read \`vercel rollback status\`.`,
+  };
+}
+
+/**
+ * `deployment`, already read back ready on production, given production's
+ * domain: after a rollback Vercel gives new deployments none until one is
+ * promoted (#2299).
+ */
+export function promote(
+  folder: string,
+  env: Environment,
+  deployment: string,
+): Unrecorded | undefined {
+  if (vercel(['promote', deployment, '--timeout', '3m'], env, folder).ok) return undefined;
+  return {
+    kind: 'failed',
+    reason: `${deployment} is ready on production, but the domain may still serve the rolled-back deployment: vercel promote did not finish. It is not recorded; run vercel promote ${deployment}, then deploy again.`,
   };
 }

@@ -58,17 +58,22 @@
 // the release step recorded for the version stands in for staging's, judged
 // at the same points, and the record says staging's was waived and by which
 // decision. Every other check is the same.
+//
+// After production's rollback (`web-rollback.ts`, #2299) Vercel gives later
+// deployments no domain until one is promoted, so production's next deploy
+// runs `vercel promote` once read back, and the maintenance page on
+// production is refused until then.
 
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
-import { type Authorised, heldFor } from './authorised-act.ts';
-import { notStillStaged, recordName } from './deployment-record.ts';
+import { heldFor } from './authorised-act.ts';
+import { notStillStaged, recordName, rolledBack } from './deployment-record.ts';
 import type { StoredArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
-import { deployPrebuilt, readBack } from './vercel-cli.ts';
+import { deployPrebuilt, promote, readBack } from './vercel-cli.ts';
 import type { DeployEnvironment } from './deploy.ts';
 import {
   recordSource,
@@ -95,7 +100,7 @@ export interface WebDeployRecord {
   readonly waivedBy?: string;
 }
 
-type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
+export type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
 export type WebDeployOutcome = Unrecorded | { kind: 'deployed'; record: WebDeployRecord };
 export type MaintenanceOutcome =
   | Unrecorded
@@ -117,13 +122,13 @@ function runtimeOf(output: string): string | undefined {
   }
 }
 
-const refused = (why: string): Unrecorded => ({
+export const refused = (why: string): Unrecorded => ({
   kind: 'refused',
   reason: `${why}. Nothing was deployed.`,
 });
 
 /** Runs `act` in a folder of its own, removed afterwards, `.vercel` and all. */
-async function inFolder<T>(act: (folder: string) => T | Promise<T>): Promise<T> {
+export async function inFolder<T>(act: (folder: string) => T | Promise<T>): Promise<T> {
   const folder = mkdtempSync(join(tmpdir(), 'ops-astro-web-deploy-'));
   try {
     return await act(folder);
@@ -201,6 +206,8 @@ export async function deployWeb(
     options,
     ({ folder, selected, runtime, authVersion, changed }): WebDeployOutcome => {
       const { digest } = selected;
+      const promoting = environment === 'production' && rolledBack(options.records ?? '');
+      if (typeof promoting === 'object') return refused(promoting.why);
       const deployment = deployPrebuilt(folder, env);
       if (deployment === undefined) return NO_ADDRESS;
       const read = readBack(folder, env, deployment);
@@ -210,6 +217,8 @@ export async function deployWeb(
         const reason = `${deployment} is live on production with ${digest}, but ${name} changed during the deploy: ${after}. It is not recorded; settle ${name}, then deploy again.`;
         return { kind: 'failed', reason };
       }
+      const unpromoted = promoting ? promote(folder, env, deployment) : undefined;
+      if (unpromoted !== undefined) return unpromoted;
       const record = {
         action: 'deploy recorded',
         environment,
@@ -227,13 +236,8 @@ export async function deployWeb(
   );
 }
 
-/** Production back on a deployment its deploy recorded (#2299): not built yet. */
-export function rollBackWeb(
-  deployment: string,
-  _options: { env: Environment; records: string; authorised: Authorised },
-): Promise<WebDeployOutcome> {
-  return Promise.resolve({ kind: 'failed', reason: `no rollback to ${deployment} yet` });
-}
+const ROLLED_BACK =
+  "production's last web act is a rollback, and Vercel gives the page no domain until a deploy is promoted: deploy a version first, which promotes itself";
 
 const UNCHECKED =
   'no version was named, so the deploy that takes the page off was not checked; outside an incident, name it with --version and --artefacts';
@@ -250,7 +254,8 @@ function maintenancePage(env: Environment): Promise<MaintenanceOutcome> {
 
 /**
  * The maintenance page to the main address: its deployment, recorded; no
- * database is asked. Planned, it runs the version deploy that takes it off up
+ * database is asked. On production (`rolledBackIn`, the record folder) it is
+ * refused after a recorded rollback, until a deploy has promoted (#2299). Planned, it runs the version deploy that takes it off up
  * to Vercel (`asVersionDeploy`), and the page, not the version, is what Vercel
  * is then asked to take.
  */
@@ -260,6 +265,8 @@ export async function deployMaintenance(
 ): Promise<MaintenanceOutcome> {
   const settings = settingProblems(options.env);
   if (settings.length > 0) return refused(settings.join('; '));
+  const rolled = options.rolledBackIn === undefined ? false : rolledBack(options.rolledBackIn);
+  if (rolled !== false) return refused(rolled === true ? ROLLED_BACK : rolled.why);
   if (planned === undefined) {
     const outcome = await maintenancePage(options.env);
     return outcome.kind === 'deployed' ? { ...outcome, unchecked: UNCHECKED } : outcome;

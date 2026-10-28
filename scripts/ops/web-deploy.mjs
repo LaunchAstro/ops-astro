@@ -11,6 +11,7 @@
 //   node scripts/ops/web-deploy.mjs --maintenance --version <id> --artefacts <store> [--production]
 //   node scripts/ops/web-deploy.mjs --maintenance [--production]
 //   node scripts/ops/web-deploy.mjs [--maintenance] --version <id> --artefacts <store> --production --staging-off <reference>
+//   node scripts/ops/web-deploy.mjs --rollback <deployment> --production
 //
 // `--production` deploys to production (deploy/production/README.md): its
 // database and sign-in addresses must be production's project, never
@@ -26,6 +27,13 @@
 // version and its store, and the page goes up only if that version's deploy
 // passes its checks now (#1985). Bare, for an incident, it says it checked none.
 //
+// `--rollback <deployment>`, production's alone and with nothing else, puts
+// production back on a deployment its web deploy recorded (`https://<name>.vercel.app`
+// as `deploy recorded` names it) by Vercel's instant rollback, which builds
+// nothing, so the old build keeps its own settings; `rollback recorded`. The
+// next production deploy then promotes itself, and the maintenance page on
+// production waits for it (#2299).
+//
 // The installation's operator gate (`operator.ts`, requireOperatingOperator:
 // the app and the maintenance page serve every business, so only the
 // operating business's `operations:manage` deploys them) answers before any
@@ -39,6 +47,7 @@ import { preflightFor } from './deploy.ts';
 import { authorisedAct } from './authorised-act.ts';
 import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { deployMaintenance, deployWeb } from './web-deploy.ts';
+import { rollBackWeb } from './web-rollback.ts';
 
 const gate = await requireOperatingOperator();
 if (!gate.ok) {
@@ -55,15 +64,22 @@ try {
       maintenance: { type: 'boolean' },
       production: { type: 'boolean' },
       'staging-off': { type: 'string' },
+      rollback: { type: 'string' },
     },
   }));
 } catch (error) {
   console.error(`web-deploy: ${error.message}`);
   process.exit(2);
 }
+const { rollback } = values;
 const both = values.version !== undefined && values.artefacts !== undefined;
 const either = values.version !== undefined || values.artefacts !== undefined;
-if (values.maintenance ? either && !both : !both) {
+if (rollback !== undefined) {
+  if (!values.production || either || values.maintenance || values['staging-off'] !== undefined) {
+    console.error('web-deploy: --rollback <deployment> goes with --production alone');
+    process.exit(2);
+  }
+} else if (values.maintenance ? either && !both : !both) {
   console.error(
     'web-deploy: --version and --artefacts together, or --maintenance with or without them',
   );
@@ -94,9 +110,16 @@ const deploy = {
   authorised,
   stagingOff,
 };
-const outcome = values.maintenance
-  ? await deployMaintenance({ env: process.env }, both ? { request, options: deploy } : undefined)
-  : await deployWeb(request, deploy);
+// Production's page waits, after a recorded rollback, for the deploy that promotes.
+const page = { env: process.env, rolledBackIn: values.production ? gate.records : undefined };
+const versionAct = () =>
+  values.maintenance
+    ? deployMaintenance(page, both ? { request, options: deploy } : undefined)
+    : deployWeb(request, deploy);
+const outcome =
+  rollback === undefined
+    ? await versionAct()
+    : await rollBackWeb(rollback, { env: process.env, records: gate.records, authorised });
 if (outcome.kind !== 'deployed') {
   console.error(`web-deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
   process.exit(1);
@@ -104,4 +127,9 @@ if (outcome.kind !== 'deployed') {
 if (outcome.unchecked !== undefined) console.error(`web-deploy: ${outcome.unchecked}`);
 const serves = values.maintenance ? 'the maintenance page' : outcome.record.version;
 console.log(`web-deploy: ${environment} serves ${serves} at ${outcome.record.deployment}`);
+if (rollback !== undefined) {
+  console.log(
+    "web-deploy: rolled back by Vercel's instant rollback, with that build's own settings; the next production deploy promotes itself",
+  );
+}
 console.log(JSON.stringify(written ?? (await recordDeployment(gate, outcome.record))));

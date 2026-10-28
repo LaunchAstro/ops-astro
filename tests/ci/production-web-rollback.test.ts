@@ -11,7 +11,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { recordedStamp } from '../../scripts/ops/build-output.ts';
 import { artefactName } from '../../scripts/ops/promotion.ts';
-import { deployMaintenance, deployWeb, rollBackWeb } from '../../scripts/ops/web-deploy.ts';
+import { deployMaintenance, deployWeb } from '../../scripts/ops/web-deploy.ts';
+import { rollBackWeb } from '../../scripts/ops/web-rollback.ts';
 import { each, records } from './promotion.fixture.ts';
 import { AUTH_VERSION, CANARY, clean, fakeVercel, INSPECTED } from './web-deploy.fixture.ts';
 import { settings, STAGED, store, URL_MADE } from './web-deploy.fixture.ts';
