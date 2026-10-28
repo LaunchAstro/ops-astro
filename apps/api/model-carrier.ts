@@ -16,8 +16,9 @@
 //
 // With Hermes Agent's people set (`OPS_HERMES_PEOPLE`, #2270), it carries
 // Hermes Agent's conversation on exactly one route, local and an API key,
-// whose key only the agent's custody holds; its people must all be people
-// the agent carries for.
+// since custody calls it on the M5's loopback under a key only the agent's
+// custody holds; its people must all be people the agent carries for. The
+// setting on an install with no carrier stops the server.
 
 import {
   CHATGPT_PLAN_PROVIDER,
@@ -76,14 +77,22 @@ const oneOutsideRoute = (routes: readonly BrokerRoute[], on: boolean): boolean =
   );
 };
 
-/** Each outside pair's person one the agent carries for. */
-const within = (outside: Outside, carrier: Carrier): boolean =>
-  outside.kind !== 'openrouter' ||
-  outside.people.every((pair) => carrier.people.includes(pair.split(':')[1] ?? ''));
+/** One Hermes route with its people set, none without, and only a local API key one. */
+const oneHermesRoute = (routes: readonly BrokerRoute[], on: boolean): boolean => {
+  const hermes = routes.filter((route) => route.provider === HERMES_PROVIDER);
+  return (
+    hermes.length === (on ? 1 : 0) &&
+    hermes.every((route) => route.reach === 'local' && route.credentialKind === 'api_key')
+  );
+};
 
 /** Each pair's person, of `people`, one the agent carries for. */
 const carriesAll = (people: readonly string[], carrier: Carrier): boolean =>
   people.every((pair) => carrier.people.includes(pair.split(':')[1] ?? ''));
+
+/** Each outside pair's person one the agent carries for. */
+const within = (outside: Outside, carrier: Carrier): boolean =>
+  outside.kind !== 'openrouter' || carriesAll(outside.people, carrier);
 
 /** Why the carried deployment is refused, naming settings and never a value; undefined when it will do. */
 // oxlint-disable-next-line max-statements -- one check per setting, in the order a refusal names them
@@ -115,11 +124,10 @@ function problemOf(
   );
   const on = outside.kind === 'openrouter';
   const plans = listed.filter((route) => route.provider === CHATGPT_PLAN_PROVIDER).length;
-  const hermesRoutes = listed.filter((route) => route.provider === HERMES_PROVIDER).length;
   return local &&
     oneOutsideRoute(listed, on) &&
     plans <= 1 &&
-    hermesRoutes === (hermes.kind === 'on' ? 1 : 0) &&
+    oneHermesRoute(listed, hermes.kind === 'on') &&
     set('MODEL_BROKER_INSTALLATION')
     ? undefined
     : 'needs MODEL_BROKER_ROUTES with an Ollama local route, exactly one cloud api_key ' +
@@ -128,7 +136,10 @@ function problemOf(
         `${HERMES_PEOPLE_SETTING} (none without), no two sharing a key, and MODEL_BROKER_INSTALLATION`;
 }
 
-/** The carried deployment, or why it is refused; absent where `MODEL_BROKER_CARRIER` is unset. */
+/**
+ * The carried deployment, or why it is refused; absent where `MODEL_BROKER_CARRIER`
+ * is unset, unless Hermes Agent's people are set, which only it takes.
+ */
 export function carrierSettings(
   environment: Settings,
 ):
@@ -136,6 +147,9 @@ export function carrierSettings(
   | CarriedSettings
   | { readonly kind: 'invalid'; readonly problem: string } {
   const text = environment[CARRIER_SETTING] ?? '';
+  if (text === '' && (environment[HERMES_PEOPLE_SETTING] ?? '') !== '') {
+    return { kind: 'invalid', problem: `${HERMES_PEOPLE_SETTING} needs ${CARRIER_SETTING}` };
+  }
   if (text === '') return { kind: 'absent' };
   const carrier = carrierOf(text);
   const outside = outsideOf(environment);

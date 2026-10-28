@@ -14,7 +14,6 @@
 import { describe, expect, it } from 'vitest';
 import { carriedBroker } from '../../apps/api/model-carriage.ts';
 import { carrierSettings, type CarriedSettings } from '../../apps/api/model-carrier.ts';
-import { brokerSettings } from '../../apps/api/model-broker.ts';
 import {
   HERMES_BODY_LIMIT,
   HERMES_CONVERSATION_KEY,
@@ -112,8 +111,8 @@ describe('Hermes Agent on the carried deployment', () => {
     expect(refused(environment)).toContain('MODEL_BROKER_CARRIER');
   });
 
-  it('an uncarried install refuses the setting', () => {
-    const uncarried = brokerSettings({ OPS_AGENT_PROVIDER: 'api', OPS_HERMES_PEOPLE: PEOPLE });
+  it('an install with no carrier refuses the setting', () => {
+    const uncarried = carrierSettings({ OPS_AGENT_PROVIDER: 'api', OPS_HERMES_PEOPLE: PEOPLE });
     expect(uncarried).toMatchObject({ kind: 'invalid' });
     expect(JSON.stringify(uncarried)).toContain('OPS_HERMES_PEOPLE');
     expect(JSON.stringify(uncarried)).not.toContain(OWNER);

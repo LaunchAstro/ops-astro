@@ -141,16 +141,6 @@ export function planRouteSet(environment: Readonly<Record<string, string | undef
   );
 }
 
-/** `OPS_HERMES_PEOPLE` as `businessId:personId` pairs, lower case; otherwise nobody (#2270). */
-export function hermesPeopleOf(
-  environment: Readonly<Record<string, string | undefined>>,
-): readonly string[] {
-  return (environment['OPS_HERMES_PEOPLE'] ?? '')
-    .split(',')
-    .map((pair) => pair.trim().toLowerCase())
-    .filter((pair) => pair !== '');
-}
-
 /**
  * `OPS_OUTSIDE_MODEL_PEOPLE` as `businessId:personId` pairs, lower case, when
  * `OPS_OUTSIDE_PROVIDER` is `openrouter`; otherwise nobody. The API's

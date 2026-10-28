@@ -79,6 +79,16 @@ export function readHermesAnswer(body: unknown): ModelAnswer | undefined {
   };
 }
 
+/** `OPS_HERMES_PEOPLE` as `businessId:personId` pairs, lower case; otherwise nobody (#2270). */
+export function hermesPeopleOf(
+  environment: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  return (environment['OPS_HERMES_PEOPLE'] ?? '')
+    .split(',')
+    .map((pair) => pair.trim().toLowerCase())
+    .filter((pair) => pair !== '');
+}
+
 /** The price of an answer on the owner's own machine and plan: nothing. */
 export function hermesCostMinor(_answer: ModelAnswer): number {
   return 0;

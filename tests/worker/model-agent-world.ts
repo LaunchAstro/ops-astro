@@ -7,7 +7,7 @@
 // database would, joins the call's line, and seals what the function sends.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -38,6 +38,7 @@ import {
   type ModelAgentOptions,
 } from '../../apps/model-agent/carrier.ts';
 import { ollamaOnLoopback, streamedLines, type LoopbackOllama } from './ollama-on-loopback.ts';
+import { decoded, writeNoneCredential } from './model-agent-credentials.ts';
 import { memoryCarriage, type MemoryCarriage } from '../support/memory-carriage.ts';
 
 export const carryKey = (): string => randomBytes(32).toString('base64url');
@@ -100,10 +101,7 @@ export interface Call {
   until(event: string, n?: number, ms?: number): Promise<readonly Heard[]>;
 }
 
-/** The made-up key custody presents to the stand-in OpenRouter. */
-export const BEARER: string = `or-test-${randomUUID()}`;
-/** The made-up key custody presents to the stand-in Hermes Agent. */
-export const HERMES_BEARER: string = `hermes-test-${randomUUID()}`;
+export { BEARER, HERMES_BEARER } from './model-agent-credentials.ts';
 
 export interface AgentWorld {
   readonly ollama: LoopbackOllama;
@@ -165,34 +163,6 @@ async function untilHeard(heard: readonly Heard[], event: string, n: number, ms:
   return heard.filter((each) => each.event === event);
 }
 
-function writeNoneCredential(folder: string, paid: boolean, hermes: boolean): string {
-  const file = join(folder, 'credentials.json');
-  const entry = {
-    ref: 'ollama_key',
-    kind: 'api_key',
-    account: 'm5-ollama',
-    destination: 'ollama',
-    scheme: 'none',
-  };
-  const bearer = {
-    ref: 'openrouter',
-    kind: 'api_key',
-    account: 'agency-astro-openrouter',
-    destination: 'openrouter',
-    header: 'authorization',
-    scheme: 'bearer',
-    value: BEARER,
-  };
-  const hermesKey = { ...bearer, ref: 'hermes', account: 'm5-hermes', destination: 'hermes' };
-  const entries = [
-    entry,
-    ...(paid ? [bearer] : []),
-    ...(hermes ? [{ ...hermesKey, value: HERMES_BEARER }] : []),
-  ];
-  writeFileSync(file, JSON.stringify(entries), { mode: 0o600 });
-  return file;
-}
-
 // oxlint-disable-next-line max-lines-per-function -- the world and its broker side
 export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentWorld> {
   const folder = mkdtempSync(join(tmpdir(), 'model-agent-'));
@@ -205,12 +175,8 @@ export async function openAgentWorld(options: WorldOptions = {}): Promise<AgentW
     credentialsFile: writeNoneCredential(folder, paid, hermes !== undefined),
     destinations: [
       { key: 'ollama', origin: ollama.origin },
-      ...(openrouter === undefined
-        ? []
-        : [{ key: 'openrouter', origin: openrouter.origin, stream: 'openai_sse' as const }]),
-      ...(hermes === undefined
-        ? []
-        : [{ key: 'hermes', origin: hermes.origin, stream: 'openai_sse' as const }]),
+      ...decoded('openrouter', openrouter),
+      ...decoded('hermes', hermes),
     ],
   });
   if (hermes !== undefined)
