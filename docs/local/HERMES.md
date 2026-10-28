@@ -11,7 +11,14 @@ Owner decision, 28 October 2026: Hermes Agent may act on the M5 with its own
 tools, for the owner's own chats only. The side panel's other models still
 run with tools off ([LOCAL-AGENT.md](LOCAL-AGENT.md)), and Ops Astro never
 acts on any reply: a reply is text the server keeps. Hermes Agent reads and
-changes no Ops Astro data.
+changes no Ops Astro data. Custody holds this itself: it answers only a
+listed person in their own session with no delegation, and refuses a run's
+`model.call` that names Hermes Agent, so no task text or unattended work
+reaches it.
+
+A reply is whatever Hermes Agent writes, so a reply could quote a file it
+read on the M5, a key included. Ops Astro keeps the reply as text, as any
+other.
 
 ## What it sends
 
