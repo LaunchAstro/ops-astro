@@ -22,6 +22,7 @@ import { load, openSide } from '../visual/capture.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
 import { addressOf, report } from '../visual/report.ts';
+import { answerMadeUp } from '../visual/made-up-api.ts';
 import { CARRIED_REVIEW } from '../visual/made-up-review.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'c35-captures-'));
@@ -74,6 +75,9 @@ async function workspaceDrawn(at: At, width: number, theme: string): Promise<voi
   const colorScheme = theme === 'dark' ? 'dark' : 'light';
   const side = await openSide(browser, packet, width, { app, session, colorScheme });
   try {
+    // The made-up reads answer each capture's `review.picture`; the page's own answers go after,
+    // so they are asked first, as `captureBuiltPages` routes them.
+    await answerMadeUp(side.context);
     await answer(side, ANSWERS);
     const address = new URL(addressOf(PAGE, MADE_UP_PARAMS) ?? '/', app).href;
     const shown = await load(side, packet, address);
