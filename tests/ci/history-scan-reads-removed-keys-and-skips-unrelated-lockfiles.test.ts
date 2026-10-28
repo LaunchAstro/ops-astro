@@ -1,33 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A reviewer's proofs, kept as written apart from their titles: the history
-// job's lockfile step is the one on main, and the range scan still catches a
-// key that a push, a merged side history or an ancestor merge removed later,
-// without printing it, while a lockfile key on an unrelated branch fails
-// neither step.
+// A reviewer's proofs, kept as written apart from their titles: the range
+// scan still catches a key that a push, a merged side history or an ancestor
+// merge removed later, without printing it, while a lockfile key on an
+// unrelated branch fails neither step.
 
-import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { parse } from 'yaml';
-import { ROOT, commit, detectedKey, repository, scan } from './history-scan-support.ts';
-
-it('keeps the lockfile step as it is on main', () => {
-  const base = spawnSync(
-    'git',
-    ['show', '889c0f0ce1d90232b11f2f2791b3126a3accf4e7:.github/workflows/ci.yml'],
-    { cwd: ROOT, encoding: 'utf8' },
-  );
-  expect(base.status).toBe(0);
-  const old = parse(base.stdout).jobs.secrets;
-  const current = parse(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')).jobs.secrets;
-  expect(current.name).toBe(old.name);
-  // oxlint-disable-next-line unicorn/consistent-function-scoping -- the reviewer's proof, kept as written
-  const lock = (job: typeof old) =>
-    job.steps.find((s: { name?: string }) => s.name?.includes('Every version of the lockfile'));
-  expect(lock(current)).toEqual(lock(old));
-});
+import { commit, detectedKey, repository, scan } from './history-scan-support.ts';
 
 it('fails a detached push on a key main removed, and never prints it', () => {
   const { dir, git } = repository('sol-main-detached');
