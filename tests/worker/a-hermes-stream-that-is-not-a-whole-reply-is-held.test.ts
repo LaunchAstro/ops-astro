@@ -65,6 +65,8 @@ async function folded(
   chunks: readonly string[],
   to: 'hermes' | 'openrouter' = 'hermes',
 ): Promise<Record<string, unknown>> {
+  // A test may fold twice: the world still open closes first, so none is left behind.
+  await world?.close();
   world = await openAgentWorld(to === 'hermes' ? { hermes: true } : { paid: true });
   const standIn = to === 'hermes' ? world.hermes : world.openrouter;
   if (standIn === undefined) throw new Error('no stand-in');
