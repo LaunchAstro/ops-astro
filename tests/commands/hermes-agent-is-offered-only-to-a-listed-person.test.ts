@@ -77,22 +77,36 @@ describe('who is offered Hermes Agent', () => {
   });
 
   it('the offer holds Hermes Agent for a listed person, and not for anyone else', async () => {
-    const listed = await offeredModels(tx(business), OLLAMA_PROVIDER, null, false, true);
+    const listed = await offeredModels(tx(business), OLLAMA_PROVIDER, null, false, false, true);
     expect(ids(listed)).toContain(HERMES_MODEL);
-    const unlisted = await offeredModels(tx(business), OLLAMA_PROVIDER, null, false, false);
+    const unlisted = await offeredModels(tx(business), OLLAMA_PROVIDER, null, false, false, false);
     expect(ids(unlisted)).not.toContain(HERMES_MODEL);
     expect(ids(unlisted).length).toBeGreaterThan(0);
   });
 
   it('never in a conversation on a client’s task, even for a listed person', async () => {
     const onClient: ModelFacts = { model: null, clientId: randomUUID(), unseen: false };
-    const offered = await offeredModels(tx(business), OLLAMA_PROVIDER, onClient, false, true);
+    const offered = await offeredModels(
+      tx(business),
+      OLLAMA_PROVIDER,
+      onClient,
+      false,
+      false,
+      true,
+    );
     expect(ids(offered)).not.toContain(HERMES_MODEL);
   });
 
   it('on an internal task it is offered as on no task', async () => {
     const internal: ModelFacts = { model: null, clientId: null, unseen: false };
-    const offered = await offeredModels(tx(business), OLLAMA_PROVIDER, internal, false, true);
+    const offered = await offeredModels(
+      tx(business),
+      OLLAMA_PROVIDER,
+      internal,
+      false,
+      false,
+      true,
+    );
     expect(ids(offered)).toContain(HERMES_MODEL);
   });
 });
