@@ -8,7 +8,7 @@
 // reserved is stopped before it dispatches) or it happened differently (the
 // whole hold is spent, the work reopens). An unknown effect not yet known is
 // no fourth outcome: it keeps its stop. A step a person wrote off resumes on
-// no outcome (#2288): the write-off wins.
+// no outcome (#2288): `resume` refuses it.
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
@@ -23,7 +23,6 @@ import { modelCallsOn } from '../model-calls-on.ts';
 import { endLease } from './lease-retirement.ts';
 import { locksOf, resume, settle, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 import { resolveHeldCalls } from './broker-effect.ts';
-import { stepWrittenOff } from '../step-written-off.ts';
 
 export const RECORDED_OUTCOMES = ['nothing_happened', 'happened', 'happened_differently'] as const;
 export type RecordedOutcome = (typeof RECORDED_OUTCOMES)[number];
@@ -137,17 +136,6 @@ export interface OutcomeRecorded {
  * grants held, and `billing:decide` on the task judged again at the locked
  * instant. Only a step still held unknown takes one.
  */
-/** Whether a person wrote off any attempt of this attempt's step. */
-async function stepIsWrittenOff(tx: TenantQuery, attemptId: string): Promise<boolean> {
-  const [found] = await tx.query<{ readonly written_off: boolean }>(
-    `select ${stepWrittenOff('att.business_id', 'att.step_id')} as written_off
-       from public.attempts att
-      where att.business_id = $1 and att.id = $2`,
-    [tx.businessId, attemptId],
-  );
-  return found?.written_off === true;
-}
-
 export async function recordOutcome(
   tx: TenantQuery,
   request: OutcomeRequest,
@@ -204,11 +192,6 @@ export async function recordOutcome(
       'Nothing was recorded. Settle or reconcile the replacement, then record this attempt.',
     );
   }
-  // A step any of whose attempts a person wrote off never runs again (#2277): a replacement
-  // dispatched before the write-off still gives its hold back, but resumes nothing (#2288).
-  // Read under these locks, which take this attempt's as the write-off's do, and before the
-  // outcome below writes anything.
-  const writtenOff = await stepIsWrittenOff(tx, row.attempt_id);
   if (request.outcome === 'happened') {
     for (const one of replacements) {
       // Sequential: each moves the one envelope the step shares.
@@ -225,7 +208,7 @@ export async function recordOutcome(
   if (person !== undefined) {
     await resolveHeldCalls(tx, row.reservation_id, request.outcome, person.id);
   }
-  const resumes = request.outcome !== 'happened' && !row.absence_proved && !writtenOff;
+  const resumes = request.outcome !== 'happened' && !row.absence_proved;
   // Nothing happened: the step resumes on what its model calls left.
   const left =
     request.outcome === 'nothing_happened' && settlement.state === 'settled'

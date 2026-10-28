@@ -33,6 +33,7 @@ import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import type { EffectLookup } from './effect-lookup.ts';
 import { markCameBack } from './outage.ts';
+import { stepWrittenOff } from '../step-written-off.ts';
 
 export type { EffectLookup } from './effect-lookup.ts';
 
@@ -101,6 +102,17 @@ async function discoverUnknown(tx: TenantQuery): Promise<readonly Unknown[]> {
       order by att.id`,
     [tx.businessId],
   );
+}
+
+/** Whether a person wrote off any attempt of this attempt's step. */
+async function stepIsWrittenOff(tx: TenantQuery, attemptId: string): Promise<boolean> {
+  const [found] = await tx.query<{ readonly written_off: boolean }>(
+    `select ${stepWrittenOff('att.business_id', 'att.step_id')} as written_off
+       from public.attempts att
+      where att.business_id = $1 and att.id = $2`,
+    [tx.businessId, attemptId],
+  );
+  return found?.written_off === true;
 }
 
 export function locksOf(rows: readonly Unknown[]): readonly LockRequest[] {
@@ -238,6 +250,12 @@ export const settle = async (
  */
 export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
+  // A step any of whose attempts a person wrote off never runs again (#2277), whether the pass
+  // proved this attempt absent or a person recorded its outcome (#2288). Read under the step's
+  // lock, which the write-off takes too; nothing is written, and the hold waits for a person.
+  if (await stepIsWrittenOff(tx, row.attempt_id)) {
+    return 'not resumed: a person wrote this step off, so it never runs again';
+  }
   const heldMinor = BigInt(row.held_minor) - BigInt(row.spent_minor);
   // AW-05: nothing left to hold stops the run at its budget and asks a person.
   if (heldMinor <= 0n) {

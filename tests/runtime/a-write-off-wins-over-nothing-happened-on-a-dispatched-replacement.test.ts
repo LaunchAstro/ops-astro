@@ -107,7 +107,7 @@ describe.skipIf(url === undefined)(
           await h.outcome(next, 'nothing_happened'),
           'budget.record_outcome',
         );
-        expect(recorded['resumed']).toBeNull();
+        expect(recorded['resumed']).toMatch(/^not resumed: a person wrote this step off/u);
         const before = await h.t3b.snapshot();
         const refused = 'RESERVATION_NOT_CLAIMABLE';
         // The first attempt's hold and the replacement's: none held, each pickup refused.
