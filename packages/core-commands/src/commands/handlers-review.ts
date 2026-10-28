@@ -8,6 +8,7 @@ import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts'
 import { pinComment } from './review-pin.ts';
 import { decideChange, proposeChange } from './review-change.ts';
 import { makeChangeTaskAsPerson } from './review-change-task.ts';
+import { decideReview, recordAstraReview } from './review-decide.ts';
 
 type ReviewWrite =
   | 'review.open'
@@ -17,7 +18,9 @@ type ReviewWrite =
   | 'review.pin_comment'
   | 'review.propose_change'
   | 'review.decide_change'
-  | 'review.make_change_task';
+  | 'review.make_change_task'
+  | 'review.decide'
+  | 'review.record_astra_review';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.open': openReview,
@@ -28,4 +31,6 @@ export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.propose_change': proposeChange,
   'review.decide_change': decideChange,
   'review.make_change_task': makeChangeTaskAsPerson,
+  'review.decide': decideReview,
+  'review.record_astra_review': recordAstraReview,
 };

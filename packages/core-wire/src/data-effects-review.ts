@@ -30,4 +30,6 @@ export const REVIEW_EFFECTS: {
   ]),
   'review.read': writing([]),
   'review.picture': writing([]),
+  'review.decide': writing(client('review_decisions')),
+  'review.record_astra_review': writing(client('review_astra_reviews')),
 };

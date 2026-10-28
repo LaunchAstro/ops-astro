@@ -274,6 +274,8 @@ export const DECLARED: Readonly<
   'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
   'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },
   'review.make_change_task': { carry: 'not carried', plant: 'needs an approved change request' },
+  'review.decide': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.record_astra_review': { carry: 'not carried', plant: 'needs a review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

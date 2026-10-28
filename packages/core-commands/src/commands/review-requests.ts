@@ -60,4 +60,19 @@ export type ReviewRequest =
       readonly leaseId: unknown;
       readonly fence: unknown;
       readonly changeRequestId: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'review.decide';
+      readonly reviewId: unknown;
+      /** The digest of the review's latest revision, as `review.read` shows it. */
+      readonly digest: unknown;
+      readonly response: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'review.record_astra_review';
+      readonly reviewId: unknown;
+      readonly digest: unknown;
+      readonly verdict: unknown;
+      /** Astra's saved review, kept with the digest it read. */
+      readonly review: unknown;
     } & Envelope);
