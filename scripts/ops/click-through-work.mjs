@@ -33,10 +33,13 @@ import {
 } from './click-through-runs.mjs';
 import { chartMap, MAP_ENDED, MAP_TITLE } from './click-through-map.mjs';
 
-/** The cast's first business, and who works in it. */
+/**
+ * The cast's first business, and who works in it, by sign-in address: the
+ * people's names are auth:seed's or local-seed's, whichever ran first (#2298).
+ */
 export const BUSINESS = 'alpha';
-export const ADMIN = 'Ada Alpha';
-export const MEMBER = 'Mia Alpha';
+export const ADMIN = 'ada@alpha.local';
+export const MEMBER = 'mia@alpha.local';
 
 const CLIENTS = ['Example Client North', 'Example Client South', 'Example Client East'];
 const [NORTH, SOUTH, EAST] = CLIENTS;

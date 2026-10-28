@@ -10,7 +10,15 @@
 // service is called, and GOTRUE_URL names a dead local port in case one were.
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect } from 'vitest';
@@ -126,8 +134,11 @@ export async function guardState(db: FreshDatabase): Promise<Snapshot> {
   };
 }
 
-/** A fresh database with local-seed's cast on it, its files under a temporary root. */
-export async function openCast(part: string): Promise<Cast> {
+/**
+ * A fresh database with local-seed's cast on it, its files under a temporary root.
+ * `users`, when given, is the sign-ins file auth:seed would have left before it.
+ */
+export async function openCast(part: string, users?: readonly object[]): Promise<Cast> {
   const db = await createFreshDatabase({ part });
   const root = mkdtempSync(join(tmpdir(), 'sr1-seed-'));
   for (const dir of ['scripts', 'scripts/local', '.local']) mkdirSync(join(root, dir));
@@ -143,6 +154,9 @@ export async function openCast(part: string): Promise<Cast> {
     symlinkSync(join(repo, link), join(root, link));
   }
   const local = join(root, '.local');
+  if (users !== undefined) {
+    writeFileSync(join(local, 'synthetic-users.json'), JSON.stringify(users), { mode: 0o600 });
+  }
   const cast = runSeed(join(root, 'scripts/local-seed.mjs'), { admin: db, local, confirm: true });
   expect(cast.status, cast.out).toBe(0);
   return { db, root, local, business: (await businessOf(db, 'alpha')) as BusinessId };
