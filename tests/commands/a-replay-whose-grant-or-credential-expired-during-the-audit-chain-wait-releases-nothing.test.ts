@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one world: a replay case per standing each envelope judges */
 //
 // A replay is a call, so its stored success goes out only to a caller the door
 // would let in now, judged after the replay's last wait (#2307). A fixture
@@ -314,6 +315,7 @@ it.skipIf(serverUrl === undefined)(
 
 it.skipIf(serverUrl === undefined)(
   "a person's pickup whose lease expired while its replay waited on the audit chain is refused",
+  // oxlint-disable-next-line max-lines-per-function -- the reservation is a person's own, made in place
   async () => {
     const decider = await world.decider('person-picker');
     const task = await world.asPerson(decider, {

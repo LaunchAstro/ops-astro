@@ -5,7 +5,14 @@
 // the agent pickup replay (`agent-replay.ts`). It is not in `tasks-pickup.ts`,
 // which claims a reservation and never replays one.
 
+import {
+  checkDelegatedAuthority,
+  isUuid,
+  resolveLiveById,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { AgentCall } from './agent-call.ts';
+import type { CommandHandle } from './register-store.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -94,4 +101,39 @@ export async function pickupReceiptBinding(
   }
   const { lease_live: _live, approval_current: _current, ...credential } = bound;
   return { bound: credential };
+}
+
+/**
+ * Whether a pickup's receipt is still this agent's: its delegation live, its
+ * reach, and the lease, hold and attempt bound to it (`pickupReceiptBinding`).
+ * Asked at release and again after the replay's last wait (#2307).
+ */
+export async function pickupStanding(
+  tx: TenantQuery,
+  { session, declaration }: AgentCall,
+  stored: CommandHandle,
+): Promise<
+  | { readonly refusal: CommandRefusal }
+  | {
+      readonly held: NonNullable<Awaited<ReturnType<typeof resolveLiveById>>>;
+      readonly bound: PickupReceiptBinding;
+    }
+> {
+  const named = stored.detail['delegationId'];
+  const held = isUuid(named) ? await resolveLiveById(tx, session.actorId, named) : undefined;
+  if (held === undefined) {
+    return { refusal: refuseCommand('DELEGATION_NOT_LIVE', [], PICKUP_REPLAY_FIXES) };
+  }
+  const decision = await checkDelegatedAuthority(tx, held, {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: held.purposeScope,
+  });
+  if (!decision.ok) return { refusal: decision.refusal };
+  const binding = await pickupReceiptBinding(tx, {
+    holderActorId: session.actorId,
+    delegationId: held.id,
+    receipt: stored.detail,
+  });
+  return 'refusal' in binding ? binding : { held, bound: binding.bound };
 }
