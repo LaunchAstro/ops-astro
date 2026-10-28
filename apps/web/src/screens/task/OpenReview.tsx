@@ -6,9 +6,10 @@
 // pages yet, so the person types them; the server refuses a page the site does not bind, in its
 // own words. The site's version is `live`: the page as it is published now. One attempt id per
 // page the person means, kept until that attempt is answered, so a retry after a lost answer
-// opens once.
+// opens once. An answer is for the form and the reader that sent it: once the form is gone, or
+// the business, person or task under it changed, the answer goes nowhere (#2232).
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Button, FormLayout, TextField } from '@launchastro/ui';
 import { isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -23,12 +24,31 @@ export interface OpenReviewProps {
   readonly onOpened: (reviewId: string) => void;
 }
 
+/** Who an answer is for: the reader's client (a new sign-in or business is a new one) and the task. */
+interface Reader {
+  readonly client: OperationsClient;
+  readonly taskId: string;
+}
+
+/** The form's current reader, null once the form unmounts. */
+function useReader(client: OperationsClient, taskId: string) {
+  const reader = useRef<Reader | null>(null);
+  useEffect(() => {
+    reader.current = { client, taskId };
+    return () => {
+      reader.current = null;
+    };
+  }, [client, taskId]);
+  return reader;
+}
+
 /** The typed page and file, and their open: one attempt id per meant page. */
 function useOpenReview(props: OpenReviewProps) {
   const [pageUrl, setPageUrl] = useState('');
   const [path, setPath] = useState('');
-  const { busy, because, run } = useCommand();
-  // Each meant page's attempt id, kept until that attempt is answered.
+  const { busy, because, run, reset } = useCommand();
+  const reader = useReader(props.client, props.taskId);
+  // Each meant page's attempt id in its business, kept until that attempt is answered.
   const held = useRef(new Map<string, string>());
   const submit = (): void => {
     if (busy || pageUrl.trim() === '' || path.trim() === '') return;
@@ -38,7 +58,8 @@ function useOpenReview(props: OpenReviewProps) {
       path: path.trim(),
       sourceRevision: LIVE_SOURCE,
     };
-    const intent = JSON.stringify(command);
+    const intent = JSON.stringify([props.client.businessKey, command]);
+    const { client, taskId } = props;
     const operationId = held.current.get(intent) ?? props.client.newOperationId();
     held.current.set(intent, operationId);
     run(
@@ -48,6 +69,12 @@ function useOpenReview(props: OpenReviewProps) {
         return answer;
       },
       (settlement) => {
+        const now = reader.current;
+        if (now?.client !== client || now.taskId !== taskId) {
+          // Another reader's form, or none: nothing of this answer is theirs.
+          if (now !== null) reset();
+          return;
+        }
         if (settlement.kind === 'ok') props.onOpened(settlement.value.recordId);
       },
     );
