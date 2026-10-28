@@ -16,12 +16,12 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'live_correction_reviews'],
   ['si', 'live_correction_proposals'],
   // C35 (20261028140000): a review, its revisions and its asked captures are written, never
-  // removed; a review moves only its count, and a capture (20261019142500) its claim and land,
+  // removed; a review moves only its count, and a capture (20261028142500) its claim and land,
   // by column.
   ['si', 'reviews'],
   ['si', 'review_revisions'],
   ['si', 'review_captures'],
-  // C35 (20261019142500): a landed picture is written once and removed only through the
+  // C35 (20261028142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
   // C57 (20261019160000): a change request is filed once and decided once, by column.
@@ -64,7 +64,7 @@ export const SITE_UPDATES = [
   // A capture is claimed and landed by these columns; its trigger keeps its revision and width.
   {
     table: 'public.review_captures',
-    from: '20261019142500',
+    from: '20261028142500',
     columns: [
       'fence',
       'landed_at',
