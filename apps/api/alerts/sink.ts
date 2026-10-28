@@ -15,7 +15,15 @@ import { existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import {
+  isDeniedAddress,
+  pinnedTransport,
+  systemResolver,
+  type Resolver,
+  type Transport as PinnedPost,
+} from '../../../packages/core-connectors/src/index.ts';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
+import { withinDeadline } from './deadline.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
 // What a sink off the machine cannot be: the watcher's own rule.
 import { UNREACHABLE } from '../../worker/heartbeat.ts';
@@ -202,11 +210,17 @@ const NOT_A_DSN =
   'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
 
 /**
- * The sink's store endpoint, from its DSN. The key travels in the auth header
- * only, over https, to a public address, and never after a redirect; a
- * malformed or private DSN is refused by the setting's name, never echoed.
+ * The sink's store endpoint, from its DSN. The key travels in the auth header only, over https, to
+ * a public address, and never after a redirect; a malformed or private DSN is refused by the
+ * setting's name, never echoed. The name is resolved once per event and every address must be
+ * public; the event goes to the first, pinned, the name kept for TLS, so a later lookup is never
+ * asked. A hung sink is down: one ten-second deadline covers lookup and post.
  */
-export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transport {
+export function dsnTransport(
+  dsn: string,
+  resolve: Resolver = systemResolver,
+  post: PinnedPost = pinnedTransport(),
+): Transport {
   const url = URL.parse(dsn);
   const project = url?.pathname.replaceAll('/', '') ?? '';
   if (
@@ -218,18 +232,29 @@ export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transp
   ) {
     throw new Error(NOT_A_DSN);
   }
-  const store = `${url.protocol}//${url.host}/api/${project}/store/`;
+  const store = new URL(`${url.protocol}//${url.host}/api/${project}/store/`);
   const auth = `Sentry sentry_version=7, sentry_client=ops-astro/1, sentry_key=${url.username}`;
   return async (event) => {
-    const response = await fetcher(store, {
+    const ends = Date.now() + 10_000;
+    const addresses = await withinDeadline(resolve(store.hostname), 10_000);
+    if (addresses === undefined) throw new Error('the error sink did not answer (timeout)');
+    const [address] = addresses;
+    if (address === undefined || addresses.some((each) => isDeniedAddress(each)))
+      throw new Error(NOT_A_DSN);
+    const answer = await post({
+      url: store,
+      address,
+      family: address.includes(':') ? 6 : 4,
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
-      body: JSON.stringify(event),
-      redirect: 'manual',
-      // A hung sink is a sink that is down: give up, the watcher reports it.
-      signal: AbortSignal.timeout(10_000),
+      body: new TextEncoder().encode(JSON.stringify(event)),
+      timeoutMs: Math.max(0, ends - Date.now()),
+      maxBytes: 64 * 1024,
     });
-    if (!response.ok) throw new Error(`the error sink answered ${response.status}`);
+    if (answer.kind !== 'answer') throw new Error(`the error sink did not answer (${answer.kind})`);
+    if (answer.status < 200 || answer.status > 299) {
+      throw new Error(`the error sink answered ${answer.status}`);
+    }
   };
 }
 

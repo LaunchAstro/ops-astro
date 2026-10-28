@@ -12,7 +12,8 @@
 // secret or a fault's text, and nothing is logged. A refused signature is 401,
 // a malformed verified body 400, a replay 409, an event for no message sent
 // here 404 (so the provider retries one that raced the send's commit), and a
-// fault 503.
+// fault 503. Each refused signature is a webhook-signature-failed signal for
+// the security alerts, naming this source and no business.
 //
 // A replayed event id is refused twice over: by this process for any event
 // it took inside the timestamp window, and by the database for an event that
@@ -28,6 +29,7 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import { landEmailEvent, type EmailHookOutcome } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
+import type { SecuritySignal } from './alerts/detect.ts';
 
 export const MAIL_HOOK_PATH = '/api/hooks/email';
 
@@ -62,6 +64,8 @@ export interface MailHookOptions {
   readonly businesses: () => Promise<readonly BusinessId[]>;
   /** The clock, in milliseconds; a test moves it. */
   readonly now?: () => number;
+  /** The security detections, where the deployment has an alert sink. */
+  readonly observe?: (signal: SecuritySignal) => void;
 }
 
 const STATUS: Readonly<Record<EmailHookOutcome, 200 | 404 | 409>> = {
@@ -71,6 +75,13 @@ const STATUS: Readonly<Record<EmailHookOutcome, 200 | 404 | 409>> = {
   IGNORED: 200,
   REPLAYED: 409,
   UNKNOWN_MESSAGE: 404,
+};
+
+/** A refused signature, as the security detections count it: the source, no business. */
+const REFUSED: SecuritySignal = {
+  kind: 'webhook-signature-failed',
+  business: '',
+  source: 'email-hook',
 };
 
 /** Mount the hook on `server`, the way `composeApi` does. */
@@ -97,6 +108,7 @@ export function mountMailHook(server: Hono, database: Database, options: MailHoo
         Math.floor(now() / 1000),
       );
       if (!verdict.ok) {
+        if (verdict.code !== 'HOOK_MALFORMED') options.observe?.(REFUSED);
         return context.json({ code: verdict.code }, verdict.code === 'HOOK_MALFORMED' ? 400 : 401);
       }
       const at = Math.floor(now() / 1000);

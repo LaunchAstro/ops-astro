@@ -26,6 +26,8 @@
 // into the entry document as a `<meta>`, and, in a build, written into the
 // artefact as `build.json`. The dev server stamps its page too, with the
 // checkout it started from, so a browser run can tell which build served it.
+// The dev and preview servers also send the headers that refuse another site
+// a frame (`framing-headers.ts`), as the hosted build output does.
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +35,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { isLoopback, readIdentity } from '../api/identity.ts';
 import { buildIdentifier, STAMP_FILE, STAMP_META } from './build-stamp.ts';
+import { FRAMING_HEADERS } from './framing-headers.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -172,6 +175,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port,
     strictPort: true,
+    headers: FRAMING_HEADERS,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
     // The dev server serves any file under the workspace root through `/@fs/`,
     // which is how a source import reaches `packages/ui`. Without a deny list
@@ -189,6 +193,7 @@ export default defineConfig({
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.local/**', '**/*.local'],
     },
   },
+  preview: { headers: FRAMING_HEADERS },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

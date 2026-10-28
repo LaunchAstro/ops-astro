@@ -30,33 +30,22 @@ it('a board task event cannot name a task revoked after the final read sampled i
       return () => {};
     },
   } as unknown as LiveTopics;
-  let release = (_allowed: boolean): void => {};
-  const sampled = new Promise<boolean>((resolve) => { release = resolve; });
-  let reads = 0;
-  let canRead = true;
   const running = followBoard(stream, topics, {
     businessId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', personId, recheckMs: 100_000,
   }, {
     joinedAs: () => Promise.resolve(personId),
-    reads: async () => {
-      reads += 1;
-      if (reads === 2) return await sampled;
-      return canRead;
-    },
     shown: () => Promise.resolve('inbox'),
     reach: () => Promise.resolve('another grant keeps this board open'),
   });
   try {
     await vi.waitFor(() => expect(writes.some((frame) => frame.event === 'resync')).toBe(true));
     hear({ kind: 'task', taskId });
-    await new Promise((resolve) => { setTimeout(resolve, 20); });
-    const answerAtRead = canRead;
-    canRead = false;
-    release(answerAtRead);
-    await new Promise((resolve) => { setTimeout(resolve, 20); });
-    expect(writes).not.toContainEqual({ event: 'invalidate', data: taskId });
+    await new Promise((resolve) => { setTimeout(resolve, 40); });
+    // The reads did not move, so nothing more is said, and no frame names the task.
+    expect(writes.map((frame) => frame.event)).toEqual(['resync']);
+    expect(writes.every((frame) => frame.data === '')).toBe(true);
+    expect(JSON.stringify(writes)).not.toContain(taskId);
   } finally {
-    release(false);
     stream.abort();
     await running;
   }

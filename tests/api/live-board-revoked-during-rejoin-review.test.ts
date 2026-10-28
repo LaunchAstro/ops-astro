@@ -33,7 +33,6 @@ it('a board task event cannot name a task whose read grant is revoked during rej
   let release = (): void => {};
   const held = new Promise<void>((resolve) => { release = resolve; });
   let joins = 0;
-  let canRead = true;
   const running = followBoard(stream, topics, {
     businessId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', personId, recheckMs: 100_000,
   }, {
@@ -42,7 +41,6 @@ it('a board task event cannot name a task whose read grant is revoked during rej
       if (joins === 2) await held;
       return personId;
     },
-    reads: () => Promise.resolve(canRead),
     shown: () => Promise.resolve('inbox'),
     reach: () => Promise.resolve('other grant keeps the board open'),
   });
@@ -50,10 +48,12 @@ it('a board task event cannot name a task whose read grant is revoked during rej
     await vi.waitFor(() => expect(writes.some((frame) => frame.event === 'resync')).toBe(true));
     hear({ kind: 'task', taskId });
     await vi.waitFor(() => expect(joins).toBe(2));
-    canRead = false;
     release();
     await new Promise((resolve) => { setTimeout(resolve, 20); });
-    expect(writes).not.toContainEqual({ event: 'invalidate', data: taskId });
+    // The reads did not move, so nothing more is said, and no frame names the task.
+    expect(writes.map((frame) => frame.event)).toEqual(['resync']);
+    expect(writes.every((frame) => frame.data === '')).toBe(true);
+    expect(JSON.stringify(writes)).not.toContain(taskId);
   } finally {
     release();
     stream.abort();
