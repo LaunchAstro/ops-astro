@@ -392,12 +392,24 @@ request waits on the pass in flight until it ends, since an instance may be
 frozen once it answers and a pass frozen in its transaction holds its row locks
 (#2240,
 `tests/api/the-hosted-function-answers-only-once-its-recovery-pass-holds-no-transaction.test.ts`).
-The pass has one deadline, `RECOVERY_WAIT_MS` (2 s) after it starts: a lock
-wait past it rolls that transaction back, and no business starts after it (the
-longest owed starts first on a later request), so a pass stalled on a lock,
-over one business or several, holds no request much past that
+The pass has one deadline, `RECOVERY_WAIT_MS` (2 s) after it starts, over each
+business key's lookup and every phase of every business
+(`apps/api/pass-deadline.ts`). Nothing starts past it: no business, lookup,
+transaction or statement (the longest owed starts first on a later request).
+The statement running at it is cancelled with the driver's own cancel request,
+whatever it waits on, and its transaction rolls back on the same connection,
+which stays in the pool; the session is never ended. Each of those
+transactions also sets `statement_timeout` to the time left plus 250 ms, as a
+backstop for a cancel that never arrives, and runs its commit-time checks as
+its last statement, so the COMMIT has nothing left to wait on
+(`packages/core-records/src/tenancy/deadline.ts`). So a pass stalled on a lock,
+over one business or several, holds no request much past the deadline
 (`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`,
-`tests/api/two-stalled-businesses-share-one-request-bound.test.ts`).
+`tests/api/two-stalled-businesses-share-one-request-bound.test.ts`,
+`tests/api/successive-waits-in-one-transaction-share-the-request-deadline.test.ts`,
+`tests/api/a-multi-row-statement-and-a-discovery-read-share-the-request-deadline.test.ts`,
+`tests/api/business-lookup-shares-the-request-deadline.test.ts`,
+`tests/api/a-cancelled-pass-leaves-the-next-pass-working-on-the-same-pool.test.ts`).
 The function's logins end a transaction left idle 60 s
 (`idle_in_transaction_session_timeout`, set by `scripts/ops/staging-logins.ts`).
 Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a

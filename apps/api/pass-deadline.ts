@@ -1,21 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // One deadline for a whole reconciliation pass (#2240, #1411). The function's
-// request waits the pass out, so the pass, not the request, holds the bound:
-// each of its transactions stops waiting on a lock at the deadline and rolls back.
+// request waits the pass out, so the pass, not the request, holds the bound.
+// Every transaction the pass opens ends by its deadline: each business key's
+// lookup and each phase of each business. None begins once it has passed,
+// and the statement running at it is cancelled, so that transaction rolls back
+// before the pass ends (`core-records/src/tenancy/deadline.ts`).
 
-import type { Database } from '../../packages/core-records/src/index.ts';
+import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import { createBusinessResolver } from './server.ts';
 
-/** The shortest lock wait a transaction begun near or past the deadline still gets. */
-const LOCK_WAIT_FLOOR_MS = 100;
-
-/** `database`, each transaction rolled back once a lock wait runs past `deadline`. */
-export const lockWaitsUntil = (database: Database, deadline: number): Database => ({
-  ...database,
-  withBusiness: async (businessId, run) =>
-    await database.withBusiness(businessId, async (tx) => {
-      const left = Math.max(LOCK_WAIT_FLOOR_MS, deadline - Date.now());
-      await tx.query(`select set_config('lock_timeout', $1, true)`, [`${String(left)}ms`]);
-      return await run(tx);
+/** The pass's view of its connection and of the lookup login, every transaction on them ending by `deadline`. */
+export function passUntil(
+  deadline: number,
+  database: Database,
+  lookup: AdminConnection,
+): {
+  readonly database: Database;
+  readonly resolveBusiness: (businessKey: string) => Promise<string | undefined>;
+} {
+  return {
+    database: {
+      ...database,
+      withBusiness: async (businessId, run) =>
+        await database.withBusiness(businessId, run, { deadline }),
+    },
+    resolveBusiness: createBusinessResolver({
+      ...lookup,
+      transaction: async (body, options) =>
+        await lookup.transaction(body, { ...options, deadline }),
     }),
-});
+  };
+}

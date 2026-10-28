@@ -23,9 +23,10 @@
 // after it succeeds. A request waits on the pass in flight until it ends: an
 // instance may be frozen once it answers, and a pass frozen in a transaction
 // keeps its row locks (#2240). So the pass has one deadline, `RECOVERY_WAIT_MS`
-// from its start: a lock wait past it rolls its transaction back, and no
-// business starts after it, so no request waits much past it (#1411). The pass
-// runs on a connection of its own, and the longest owed goes first.
+// from its start, over its key lookups and every phase: nothing starts past it,
+// and the statement running at it is cancelled and rolled back first, so no
+// request waits much past it (#1411). The pass runs on a connection of its own,
+// and the longest owed goes first.
 // `server.ts` runs the same pass only where there is no function.
 //
 // **Every session closes once idle (#1530).** The runtime pool, the pass's,
@@ -66,6 +67,7 @@ import {
   connectAsAdmin,
   connectOutbox,
   RUNTIME_IDLE_SECONDS,
+  type AdminConnection,
 } from '../../packages/core-records/src/index.ts';
 import {
   crashSeamProblem,
@@ -79,7 +81,7 @@ import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import { carriedOption } from './model-carriage.ts';
-import { lockWaitsUntil } from './pass-deadline.ts';
+import { passUntil } from './pass-deadline.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -111,8 +113,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   const servedHost = required('SERVED_HOST').toLowerCase();
   if (!HOST.test(servedHost)) throw new Error('SERVED_HOST is not a bare host name.');
   const databaseUrl = required('DATABASE_URL');
-  // Without a lookup login the runtime one stands in: it may not take the
-  // lookup identity, so every key read is refused, and health still measures.
+  // Unset, the runtime login stands in: no key resolves on it, and health still measures.
   const lookupUrl = settings['DATABASE_LOOKUP_URL'] || databaseUrl;
   const issuer = required('GOTRUE_URL');
   const keySetUrl = keySetUrlFor(settings['SUPABASE_KEY_SET_URL'] ?? '', issuer);
@@ -128,9 +129,10 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
   const alerts = outboxAlerts(settings, databaseUrl, required);
   const database = connect(databaseUrl, { source: 'runtime' });
-  const { app, resolveBusiness } = composeApi({
+  const lookup = connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS });
+  const { app } = composeApi({
     database,
-    admin: connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS }),
+    admin: lookup,
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
@@ -139,7 +141,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
     ...carriedOption(settings),
   });
-  const pass = recoveryPass(settings, databaseUrl, resolveBusiness, keys);
+  const pass = recoveryPass(settings, databaseUrl, lookup, keys);
 
   return async (request) => {
     const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
@@ -161,7 +163,7 @@ async function answered(
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
-/** How long after it starts the reconciliation pass stops waiting on locks. */
+/** How long after it starts the reconciliation pass is over, its running statement cancelled. */
 export const RECOVERY_WAIT_MS = 2_000;
 
 /** The most instances the limits split across with at least one of each. */
@@ -203,17 +205,18 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request to its end, its lock waits ending `RECOVERY_WAIT_MS` after it starts.
+ * awaited by every request to its end, `RECOVERY_WAIT_MS` after it starts at most.
  * It opens its own connection at its first statement, so a pass waiting on a
- * lock leaves the runtime one to the requests. A business passes on its own, so a key
- * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
+ * lock leaves the runtime one to the requests; it reads keys on `lookup`. A
+ * business passes on its own, so a key that does not resolve, or a pass that
+ * rolls back, holds up no other (#287 A8).
  * `none` does nothing; unset does nothing only where no environment is named,
  * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
   databaseUrl: string,
-  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  lookup: AdminConnection,
   keys: RuntimeKeys,
 ): () => Promise<void> {
   const raw = settings[RECOVERY_SCOPE_SETTING];
@@ -226,7 +229,7 @@ function recoveryPass(
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
     const deadline = Date.now() + RECOVERY_WAIT_MS;
-    const database = lockWaitsUntil(connected, deadline);
+    const { database, resolveBusiness } = passUntil(deadline, connected, lookup);
     for (const key of owed) {
       // One business at a time, as `passDeployment` runs them, and none begun past the deadline.
       if (Date.now() >= deadline) break;

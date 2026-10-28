@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240: a transaction cancelled at its deadline, by the driver's cancel or by the statement_timeout backstop on its COMMIT, is applied whole or not at all as reported, and its connection goes on serving"
+}
