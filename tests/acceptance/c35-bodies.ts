@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- every C35 command's body, person and agent, read in one place */
 //
 // C35's positive bodies for the role-case matrix (#2011), answered from `role-case-setup.ts`'s
 // `tableBody`: a review is opened by the admin on a task under a client of its own, for that
@@ -21,6 +22,7 @@ export const C35_NAMES: ReadonlySet<string> = new Set([
   'review.read',
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.picture',
 ]);
 
@@ -96,10 +98,11 @@ export async function seedForeignReview(
   return { reviewId, revisionId };
 }
 
-/** The worker's claim and land, and the picture read a land leaves behind. */
+/** The worker's claim, land and carry, and the picture read a land leaves behind. */
 const WORKER_NAMES: ReadonlySet<string> = new Set([
   'review.capture_claim',
   'review.capture_land',
+  'review.carry_pins',
   'review.picture',
 ]);
 
@@ -133,9 +136,12 @@ const detailOf = (answer: Answer, what: string): Fields => {
  * both widths' captures asked: what a person working their own pickup claims and lands under.
  * The proposal locks the client, so the client is set and its page bound first (P26 low 4).
  */
-async function leasedCapture(
-  context: BodyContext,
-): Promise<{ readonly leaseId: string; readonly fence: number; readonly revisionId: string }> {
+async function leasedCapture(context: BodyContext): Promise<{
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly revisionId: string;
+  readonly opened: Fields;
+}> {
   const open = await openBody(context);
   if (!('body' in open)) throw new Error(`matrix: ${open.exception}`);
   const taskId = String(open.body['taskId']);
@@ -164,15 +170,70 @@ async function leasedCapture(
   const opened = detailOf(await context.asPerson('review.open', open.body), 'review.open');
   const revisionId = String(opened['revisionId']);
   detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture');
-  return { leaseId: String(picked['leaseId']), fence: Number(picked['fence']), revisionId };
+  return {
+    leaseId: String(picked['leaseId']),
+    fence: Number(picked['fence']),
+    revisionId,
+    opened: open.body,
+  };
 }
 
-/** The claim under the admin's own lease, a land of what it claimed, and the landed picture. */
+/** Claim a revision under `lease` and land it at both widths. */
+async function landBoth(context: BodyContext, lease: Fields): Promise<void> {
+  detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await context.asPerson('review.capture_land', { ...lease, ...LANDING, width });
+    detailOf(landed, 'review.capture_land');
+  }
+}
+
+/**
+ * A carry with a pin to carry: the first revision landed and pinned, the next one opened and
+ * landed; the body carries onto the next.
+ */
+async function carryBody(context: BodyContext): Promise<Prepared> {
+  const { opened, ...lease } = await leasedCapture(context);
+  await landBoth(context, lease);
+  const pin = await context.asPerson('review.pin_comment', {
+    revisionId: lease.revisionId,
+    width: 1480,
+    selector: [
+      {
+        type: 'FragmentSelector',
+        conformsTo: 'http://www.w3.org/TR/media-frags/',
+        value: 'xywh=0,0,40,40',
+      },
+    ],
+    body: 'a pin the carry takes onward',
+    audience: 'internal',
+  });
+  detailOf(pin, 'review.pin_comment');
+  const next = detailOf(
+    await context.asPerson('review.open', {
+      ...opened,
+      sourceRevision: `${String(opened['sourceRevision'])}-next`,
+    }),
+    'review.open next',
+  );
+  const revisionId = String(next['revisionId']);
+  detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture next');
+  const onto = { leaseId: lease.leaseId, fence: lease.fence, revisionId };
+  await landBoth(context, onto);
+  return { body: onto };
+}
+
+/**
+ * The claim under the admin's own lease, a land of what it claimed, the carry of a pin onto a
+ * landed next revision, and the landed picture.
+ */
 async function workerBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (context.bindClientSite === undefined) {
     return { exception: 'this harness binds no client site (C35)' };
   }
-  const lease = await leasedCapture(context);
+  if (name === 'review.carry_pins') return await carryBody(context);
+  const { opened: _opened, ...lease } = await leasedCapture(context);
   if (name === 'review.capture_claim') return { body: { ...lease } };
   detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
   if (name === 'review.capture_land') return { body: { ...lease, ...LANDING } };
@@ -248,11 +309,23 @@ export async function c35AgentBody(
   held: { readonly taskId: string; readonly leaseId: string; readonly fence: number },
   credential: string,
 ): Promise<Fields | undefined> {
-  if (name !== 'review.capture_claim' && name !== 'review.capture_land') return undefined;
+  const worker = ['review.capture_claim', 'review.capture_land', 'review.carry_pins'];
+  if (!worker.includes(name)) return undefined;
   const { world } = harness;
   const revisionId = await seedAskedRevision(world.db.admin, world.alpha, held.taskId, world.ada);
   const lease = { leaseId: held.leaseId, fence: held.fence, revisionId };
   if (name === 'review.capture_claim') return lease;
   detailOf(await harness.asAgent('review.capture_claim', lease, credential), 'agent claim');
-  return { ...lease, ...LANDING };
+  if (name === 'review.capture_land') return { ...lease, ...LANDING };
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await harness.asAgent(
+      'review.capture_land',
+      { ...lease, ...LANDING, width },
+      credential,
+    );
+    detailOf(landed, 'agent land');
+  }
+  return lease;
 }

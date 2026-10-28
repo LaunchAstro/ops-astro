@@ -24,6 +24,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35 (20261028142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
+  // C35-X (20261028174900): a pin's carry onto a revision is written once and never changed.
+  ['si', 'review_pin_carries'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */

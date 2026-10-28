@@ -429,6 +429,33 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.storage_objects': `insert into public.storage_objects
        (business_id, id, digest, byte_count, body)
      values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
+  // C35-X: the journey carries no pin. A next revision of the seeded review, and one lost
+  // carry onto it of the business's first record under the lease the journey picked up, so
+  // Alpha's own insert meets its keys; Bravo holds no lease, so its row names one that keys
+  // nothing, as the check's row does.
+  'public.review_pin_carries': `with first as (
+       select business_id, id, review_id, created_by_actor_id, created_by_person_id
+         from public.review_revisions where business_id = $1 order by id limit 1),
+     next as (
+       insert into public.review_revisions
+              (business_id, id, review_id, number, digest, created_by_actor_id,
+               created_by_person_id)
+       select business_id, gen_random_uuid(), review_id, 1000, 'sha256:carried',
+              created_by_actor_id, created_by_person_id
+         from first
+       returning id)
+     insert into public.review_pin_carries
+       (business_id, id, review_id, comment_id, from_revision_id, to_revision_id, state,
+        lease_id, fence, operation_id, carried_by_actor_id)
+     select f.business_id, gen_random_uuid(), f.review_id,
+            (select r.id from public.records r where r.business_id = $1 order by r.id limit 1),
+            f.id, n.id, 'lost',
+            coalesce(
+              (select l.id from public.leases l where l.business_id = $1 order by l.id limit 1),
+              gen_random_uuid()),
+            1, gen_random_uuid(), f.created_by_actor_id
+       from first f cross join next n
+     returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

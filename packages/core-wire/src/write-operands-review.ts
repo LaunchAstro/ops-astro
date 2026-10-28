@@ -16,6 +16,7 @@ export const REVIEW_OPERANDS = {
     picture: 'any',
     observation: 'any',
   },
+  'review.carry_pins': { leaseId: 'any', fence: 'any', revisionId: 'any' },
   'review.pin_comment': {
     revisionId: 'any',
     width: 'any',

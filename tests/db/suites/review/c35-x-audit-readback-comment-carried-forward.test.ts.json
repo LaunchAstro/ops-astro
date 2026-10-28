@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X audit readback: a carry leaves its applied row and one per carried comment in the chain under its operation, a refused carry its refusal; the carry row names the same operation and the lost state; no comment text reaches the chain."
+}

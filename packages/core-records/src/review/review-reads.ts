@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35's reads (#2011): one review with its revisions and their captures, the latest paired
-// with the one before it, and its pins (#2012); and one landed picture's bytes. Each filters
-// by the caller's grant at the review's holder inside the query (`covering.ts`), so a party
-// grant reads no other client's review and a picture of another business or out of reach is
-// one answer with a picture that is not there. The revisions, captures and pins, and a
-// picture's bytes, are read in statements of their own, so the grant is judged again after the
-// last of them (`stillCovered`, `pictureCovered`): a grant revoked or run out meanwhile reads
-// nothing written since, and no bytes (S2061-1, S2276-1, S2147-3).
+// with the one before it, its pins (#2012) and their carry onto the latest (#2075); and one
+// landed picture's bytes. Each filters by the caller's grant at the review's holder inside the
+// query (`covering.ts`), so a party grant reads no other client's review and a picture of
+// another business or out of reach is one answer with a picture that is not there. The
+// revisions, captures and pins, and a picture's bytes, are read in statements of their own, so
+// the grant is judged again after the last of them (`stillCovered`, `pictureCovered`): a grant
+// revoked or run out meanwhile reads nothing written since, and no bytes (S2061-1, S2276-1,
+// S2147-3).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
 import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
+import { readCarried, type CarriedPinView } from './carries.ts';
 import { DATABASE_STORAGE } from './storage.ts';
 
 export interface CaptureView {
@@ -38,6 +40,10 @@ export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
   /** The revision before it, to compare at each width; null for a first revision. */
   readonly before: RevisionView | null;
   readonly pins: readonly PinView[];
+  /** The pins carried onto `after`, the lost ones first with no anchor (#2075). */
+  readonly carried: readonly CarriedPinView[];
+  /** `after` has landed at every width and a pin before it is not yet carried onto it. */
+  readonly carryDue: boolean;
 }
 
 /** One review the caller's grant covers, its revisions in number order, captures by width. */
@@ -75,7 +81,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
-  const pins = await readPins(tx, { reviewId, taskId: review.task_id });
+  const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views.at(-1) ?? null);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
@@ -87,8 +93,17 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins,
+    ...notes,
   };
+}
+
+/** The review's pins and their carry onto the latest revision. */
+async function notesOf(
+  tx: TenantQuery,
+  held: { readonly reviewId: string; readonly taskId: string },
+  latest: RevisionView | null,
+): Promise<Pick<ReviewView, 'pins' | 'carried' | 'carryDue'>> {
+  return { pins: await readPins(tx, held), ...(await readCarried(tx, held, latest)) };
 }
 
 /** Every capture of the review's revisions, widest first, by the revision it is of. */

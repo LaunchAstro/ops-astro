@@ -247,9 +247,10 @@ const byLease = (agentActorId: string): readonly [CommandName, Body][] => [
   ['run.delegate_child', childProbe(agentActorId)],
   // A code it may end on, so the lease is what is compared (#1623 R1).
   ['run.end', { endCode: 'TOOL_REFUSED' }],
-  // C35's claim and land: the lease is compared, the revision one no form reaches.
+  // C35's claim, land and carry: the lease is compared, the revision one no form reaches.
   ['review.capture_claim', { revisionId: randomUUID() }],
   ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
+  ['review.carry_pins', { revisionId: randomUUID() }],
 ];
 
 /** C35's claim and land under the agent's own lease, `own`. */
@@ -272,6 +273,7 @@ async function capturesUnderOwnLease(
   for (const [op, extra] of [
     ['review.capture_claim', {}],
     ['review.capture_land', LANDING],
+    ['review.carry_pins', {}],
   ] as const) {
     // eslint-disable-next-line no-await-in-loop
     await refuses(op, 'revisionId', agent, 'NOT_FOUND', {
