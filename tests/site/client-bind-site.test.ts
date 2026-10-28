@@ -213,6 +213,8 @@ const MALFORMED: readonly (readonly [string, Readonly<Record<string, unknown>>])
   ['pages', { pages: 'https://site.example/about' }],
   ['pages', { pages: [{ pageUrl: 'http://site.example/about', path: 'src/pages/about.astro' }] }],
   ['pages', { pages: [{ pageUrl: 'https://site.example/a#b', path: 'src/pages/about.astro' }] }],
+  // S2333-1: an empty fragment, which the parsed address does not show.
+  ['pages', { pages: [{ pageUrl: 'https://site.example/about#', path: 'src/pages/about.astro' }] }],
   [
     'pages',
     { pages: [{ pageUrl: 'https://user:pw@example.com/a', path: 'src/pages/about.astro' }] },

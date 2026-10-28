@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "S2333-2 (#2316): two client.bind_site calls naming the same two pages in crossing order, on two connections, end with one applied and one refused PAGE_BOUND_ELSEWHERE, never a fault; in the store a deadlock victim's error stays the server's, which the envelope's retry knows."
+}
