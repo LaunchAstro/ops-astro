@@ -1,25 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A new pin on the spot marked on the revision under review (C35, #2105): its words and
-// who sees it, sent as `review.pin_comment` with the spot as a media fragment on that
-// width's capture. One attempt id per pin the person means, kept until that attempt is
+// A new pin on the spot marked on the revision under review (C35, #2105): its words, sent
+// as `review.pin_comment` with the spot as a media fragment on that width's capture. Client
+// review is switched off (DECISIONS 43), so every pin is the team's. One attempt id per pin the person means, kept until that attempt is
 // answered, so a retry after a lost answer pins once. The server's refusal is shown in its
 // own words.
 
 import { useRef, useState, type ReactElement } from 'react';
-import { Button, FormLayout, Segmented, TextField } from '@launchastro/ui';
+import { Button, FormLayout, TextField } from '@launchastro/ui';
 import { isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { xywh, type Spot } from './review-geometry.ts';
 
 const MEDIA_FRAGMENTS = 'http://www.w3.org/TR/media-frags/';
 
-type Audience = 'internal' | 'client';
-
-const AUDIENCES = [
-  { value: 'internal', label: 'The team only' },
-  { value: 'client', label: 'The client too' },
-] as const;
+/** Who sees a pin: the team alone while client review is off. */
+const AUDIENCE = 'internal';
 
 export interface PinFormProps {
   readonly client: OperationsClient;
@@ -31,10 +27,9 @@ export interface PinFormProps {
   readonly onCancel: () => void;
 }
 
-/** The pin's words and audience, and its send: one attempt id per meant pin. */
+/** The pin's words and its send: one attempt id per meant pin. */
 function usePin(props: PinFormProps) {
   const [body, setBody] = useState('');
-  const [audience, setAudience] = useState<Audience>('internal');
   const { busy, because, run } = useCommand();
   // Each meant pin's attempt id, kept until that attempt is answered.
   const held = useRef(new Map<string, string>());
@@ -48,7 +43,7 @@ function usePin(props: PinFormProps) {
         { type: 'FragmentSelector', conformsTo: MEDIA_FRAGMENTS, value: xywh(props.spot) },
       ],
       body: words,
-      audience,
+      audience: AUDIENCE,
     };
     const intent = JSON.stringify(command);
     const { spot } = props;
@@ -67,11 +62,11 @@ function usePin(props: PinFormProps) {
       },
     );
   };
-  return { body, setBody, audience, setAudience, busy, because, submit };
+  return { body, setBody, busy, because, submit };
 }
 
 export function PinForm(props: PinFormProps): ReactElement {
-  const { body, setBody, audience, setAudience, busy, because, submit } = usePin(props);
+  const { body, setBody, busy, because, submit } = usePin(props);
   return (
     <FormLayout
       label="Pin a comment on the marked spot"
@@ -93,14 +88,6 @@ export function PinForm(props: PinFormProps): ReactElement {
         value={body}
         onChange={setBody}
         error={because ?? undefined}
-      />
-      <Segmented
-        label="Who sees this pin"
-        value={audience}
-        options={AUDIENCES}
-        onChange={(value) => {
-          setAudience(value === 'client' ? 'client' : 'internal');
-        }}
       />
     </FormLayout>
   );
