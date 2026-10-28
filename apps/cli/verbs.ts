@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the verb table and its shared operation-body parser */
 //
 // The agent CLI's verbs (API-3, CS-15.18): one row per verb onto its owning command, posted
 // once; the CLI holds no rule of its own and a refusal is the server's (docs/local/CLI.md).
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
 import { createCli, isRefusal, type CliOptions } from './client.ts';
 import { pageText, refusalLine, select, text, writeLine } from './render.ts';
 import { COMMAND_SURFACE, type CommandName } from '../../packages/core-wire/src/index.ts';
@@ -29,7 +32,41 @@ const REPLAY = '; send the same line with --operation <that id> to replay';
 const DETAILS = new Set(['brief', 'standard', 'full']);
 const SWITCHES = new Set(['json']);
 
-class UsageError extends Error {}
+export class UsageError extends Error {}
+
+export function operationBody(flags: Flags): Record<string, unknown> {
+  const inline = maybe(flags, 'json');
+  const file = maybe(flags, 'body-file');
+  if (inline !== undefined && file !== undefined) {
+    throw new UsageError('pass --json or --body-file, not both');
+  }
+  let source = '{}';
+  if (inline !== undefined) source = inline;
+  else if (file !== undefined) {
+    try {
+      source = readFileSync(file, 'utf8');
+    } catch {
+      throw new UsageError(`cannot read --body-file ${file}`);
+    }
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    throw new UsageError('the body is not valid JSON');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new UsageError('the body must be a JSON object');
+  }
+  // The door's own check. JSON.stringify would send a number too large for a
+  // double, such as 1e400, as null, and the API would take null as meant.
+  try {
+    canonicalPayload(parsed);
+  } catch (cause) {
+    throw new UsageError(`the body has no canonical form: ${(cause as Error).message}`);
+  }
+  return parsed as Record<string, unknown>;
+}
 
 const need = (flags: Flags, name: string): string => {
   const value = flags[name];
@@ -124,6 +161,53 @@ export const VERB_TABLE: readonly VerbRow[] = [
       body: need(flags, 'text'),
       audience: maybe(flags, 'audience') ?? 'internal',
     }),
+  },
+  {
+    verb: 'task block',
+    command: 'task.set_blocking',
+    usage: '<id> --revision n --blocked-by a,b',
+    body: (id, flags) => {
+      const blockedBy = maybe(flags, 'blocked-by');
+      if (blockedBy === undefined) throw new UsageError('--blocked-by is needed');
+      return { ...revised(id, flags), blockedBy: blockedBy === '' ? [] : blockedBy.split(',') };
+    },
+  },
+  {
+    verb: 'task claim',
+    command: 'task.claim',
+    usage: '<id> --revision n',
+    body: revised,
+  },
+  {
+    verb: 'task resolve',
+    command: 'task.resolve',
+    usage: '<id> --revision n --answer <t> --gist <t>',
+    body: (id, flags) => ({
+      ...revised(id, flags),
+      answer: need(flags, 'answer'),
+      gist: need(flags, 'gist'),
+    }),
+  },
+  {
+    verb: 'task close',
+    command: 'task.close_out_of_scope',
+    usage: '<id> --revision n --reason <t>',
+    body: (id, flags) => ({ ...revised(id, flags), reason: need(flags, 'reason') }),
+  },
+  {
+    verb: 'map chart',
+    command: 'map.chart',
+    usage: '--body-file <path>',
+    body: (_id, flags) => operationBody({ 'body-file': need(flags, 'body-file') }),
+  },
+  {
+    verb: 'map graduate',
+    command: 'map.graduate',
+    usage: '<id> --revision n --patch <id> --body-file <path>',
+    body: (id, flags) => {
+      const line = { ...revised(id, flags), patchId: need(flags, 'patch') };
+      return { ...operationBody({ 'body-file': need(flags, 'body-file') }), ...line };
+    },
   },
   {
     verb: 'map view',
@@ -244,9 +328,10 @@ export interface Prepared {
 }
 
 /**
- * A verb line made ready to send, or its usage refusal. It reads no file and
- * sends nothing, so `verbLine` (`apps/cli/main.ts`) gives every refusal here
- * before it reads a credential.
+ * A verb line made ready to send, or its usage refusal. It reads no file but a
+ * verb's `--body-file`, after the line's other checks, and sends nothing, so
+ * `verbLine` (`apps/cli/main.ts`) gives every refusal here before it reads a
+ * credential. The operation id is the line's, never one the body file holds.
  */
 export function prepare(argv: readonly string[], agent: boolean): Prepared | VerbAnswer {
   try {
@@ -256,7 +341,8 @@ export function prepare(argv: readonly string[], agent: boolean): Prepared | Ver
     const row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
     if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
     if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
-    return { row, flags, request: { ...operationOf(row, flags, agent), ...row.body(id, flags) } };
+    const operation = operationOf(row, flags, agent);
+    return { row, flags, request: { ...row.body(id, flags), ...operation } };
   } catch (cause) {
     if (!(cause instanceof UsageError)) throw cause;
     return { exit: EXIT.usage, out: `usage: ${cause.message}` };

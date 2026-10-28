@@ -354,6 +354,12 @@ pnpm cli task list [--board <id> | --mode aggregate] [--person <id>] [--client <
 pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
 pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
 pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
+pnpm cli task block <id> --revision n --blocked-by a,b
+pnpm cli task claim <id> --revision n
+pnpm cli task resolve <id> --revision n --answer <t> --gist <t>
+pnpm cli task close <id> --revision n --reason <t>
+pnpm cli map chart --body-file <path>
+pnpm cli map graduate <id> --revision n --patch <id> --body-file <path>
 pnpm cli map view|frontier <id>
 pnpm cli map list
 ```
@@ -367,6 +373,10 @@ pnpm cli map list
   Every refusal that needs no credential comes before one is read. A write
   prints `ok <operation> <id> r<revision>`; on no answer or a fault it prints
   its `operationId`, and the same line with `--operation <id>` replays it.
+- `task block --blocked-by ''` clears every blocker. `map chart` sends its body
+  file as the `map.chart` body; `map graduate` sends its body file (the
+  `tickets`) with the id, `--revision` and `--patch`, which win over the same
+  keys in the file. The operation id is always the line's.
 - `brief` is id, title and state; `standard` (default) adds the summary,
   description, blockers and latest five comments; `full` is everything. An
   external party gets the same levels of its shared view. Unreadable blockers

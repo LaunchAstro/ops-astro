@@ -9,6 +9,9 @@
 // theirs (`api-3-budget.test.ts`).
 
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { countTokens } from '../support/token-count.ts';
@@ -646,15 +649,40 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
 
   it('API-3 each call is one HTTP round trip', async () => {
     const id = await create(cli, 'round trips');
+    const scratch = mkdtempSync(join(tmpdir(), 'api3-round-trip-'));
+    const chartFile = join(scratch, 'chart.json');
+    const graduateFile = join(scratch, 'graduate.json');
+    writeFileSync(chartFile, JSON.stringify({ title: 'round trip map', tickets: [] }));
+    writeFileSync(graduateFile, JSON.stringify({ tickets: [{ title: 'from fog', type: 'task' }] }));
     const verbs: string[][] = [
       ['task', 'get', id],
       ['task', 'list', '--detail', 'brief'],
       ['task', 'comment', id, '--revision', await rev(id), '--text', 'one trip'],
+      ['task', 'block', id, '--revision', await rev(id), '--blocked-by', ''],
+      ['task', 'claim', id, '--revision', await rev(id)],
+      ['task', 'resolve', id, '--revision', await rev(id), '--answer', 'done', '--gist', 'done'],
+      ['task', 'close', id, '--revision', await rev(id), '--reason', 'outside'],
+      ['map', 'chart', '--body-file', chartFile],
+      [
+        'map',
+        'graduate',
+        id,
+        '--revision',
+        await rev(id),
+        '--patch',
+        randomUUID(),
+        '--body-file',
+        graduateFile,
+      ],
     ];
-    for (const argv of verbs) {
-      const before = cli.requests();
-      await cli.run(...argv);
-      expect(cli.requests() - before, argv.join(' ')).toBe(1);
+    try {
+      for (const argv of verbs) {
+        const before = cli.requests();
+        await cli.run(...argv);
+        expect(cli.requests() - before, argv.join(' ')).toBe(1);
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
     }
   });
 
@@ -674,12 +702,21 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     }
   });
 
-  it('API-3 owner check flow: a task with two subtasks, one blocked by the other, a comment', async () => {
+  it('API-3 owner check flow: a map with two tickets, blocking, a comment and resolution through the CLI', async () => {
     // The staging recording waits on SL01 U01; this is the same flow, locally.
-    const parent = await create(cli, `owner check ${randomUUID().slice(0, 4)}`);
+    const parent = await create(cli, `owner check ${randomUUID().slice(0, 4)}`, '--type', 'map');
     const one = await create(cli, 'first subtask', '--parent', parent);
     const two = await create(cli, 'second subtask', '--parent', parent);
-    await w.blocks(one, two);
+    const blocked = await cli.run(
+      'task',
+      'block',
+      two,
+      '--revision',
+      await rev(two),
+      '--blocked-by',
+      one,
+    );
+    expect(blocked.exit, blocked.out).toBe(0);
     expect(
       (
         await cli.run(
@@ -697,5 +734,24 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     expect(JSON.stringify(app)).toContain('starting on it');
     const got = json((await cli.run('task', 'get', two, '--detail', 'full', '--json')).out);
     expect(JSON.stringify(got)).toContain(one);
+    const resolved = await cli.run(
+      'task',
+      'resolve',
+      one,
+      '--revision',
+      await rev(one),
+      '--answer',
+      'Finished the first ticket',
+      '--gist',
+      'First ticket finished',
+    );
+    expect(resolved.exit, resolved.out).toBe(0);
+    const finished = json((await cli.run('task', 'get', one, '--detail', 'full', '--json')).out);
+    expect(finished).toMatchObject({
+      state: { machineCategory: 'completed' },
+      comments: expect.arrayContaining([
+        expect.objectContaining({ body: 'Finished the first ticket' }),
+      ]),
+    });
   });
 });
