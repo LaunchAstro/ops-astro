@@ -30,23 +30,46 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 /** The sign-in server's health answer, as Supabase's Auth gives it, each read counted. */
 let healthReads = 0;
 export const authReads = (): number => healthReads;
+// Each answer closes its connection: a kept-alive socket the server is closing
+// as fetch reuses it fails the read with ECONNRESET.
 const auth = createServer((request, response) => {
   const health = request.url === '/auth/v1/health';
   if (health) healthReads += 1;
-  response.writeHead(health ? 200 : 404, { 'content-type': 'application/json' });
+  response.writeHead(health ? 200 : 404, {
+    'content-type': 'application/json',
+    connection: 'close',
+  });
   response.end(health ? JSON.stringify({ version: AUTH_VERSION, name: 'GoTrue' }) : '{}');
 });
 let authUrl = '';
-beforeAll(
-  () =>
-    new Promise<void>((resolve) => {
-      auth.listen(0, '127.0.0.1', () => {
-        const address = auth.address();
-        authUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/auth/v1`;
-        resolve();
-      });
-    }),
-);
+const listening = (): Promise<string> =>
+  new Promise((resolve) => {
+    auth.listen(0, '127.0.0.1', () => {
+      const address = auth.address();
+      resolve(
+        `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/auth/v1`,
+      );
+    });
+  });
+// fetch refuses a port on its bad-ports list ("bad port"), and the OS can hand
+// one out, so a port fetch will not reach is given back for another.
+beforeAll(async () => {
+  for (let tries = 0; tries < 10; tries += 1) {
+    // oxlint-disable-next-line no-await-in-loop -- one port at a time
+    authUrl = await listening();
+    // oxlint-disable-next-line no-await-in-loop -- one port at a time
+    const reached = await fetch(`${authUrl}/probe`).then(
+      () => true,
+      () => false,
+    );
+    if (reached) return;
+    // oxlint-disable-next-line no-await-in-loop -- one port at a time
+    await new Promise<void>((resolve) => {
+      auth.close(() => resolve());
+    });
+  }
+  throw new Error('the sign-in stand-in found no port fetch reaches');
+});
 afterAll(
   () =>
     new Promise<void>((resolve) => {
