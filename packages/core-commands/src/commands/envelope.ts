@@ -176,18 +176,24 @@ export async function runCommand(
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
   const standing: Standing = { presented, credentialLapsed };
-  // What the replay's door asked, asked again after the replay's audit wait.
+  // What the replay's door asked and released, asked again after its audit wait.
   let replayAsked: ScopeRequest | undefined;
+  let replayStored: CommandHandle | undefined;
   return await enter(tx, session, request, {
     release: async (stored) => {
       const withheld = await withheldNow(tx, session, entryPoint, request, declaration, stored);
       replayAsked = withheld.asked;
+      replayStored = stored;
       return withheld.released;
     },
     // A replay is a call (#2307): its stored success goes out only to a caller
-    // the door would let in after its last wait, judged as a fresh write is.
+    // the door would let in after its last wait, judged as a fresh write is,
+    // and a pickup's receipt only while its lease is still the caller's.
     lastCheck: async (identified) =>
-      await standsNow(tx, session, identified, declaration, standing, replayAsked),
+      (await standsNow(tx, session, identified, declaration, standing, replayAsked)) ??
+      (declaration.name === 'task.pickup' && replayStored !== undefined
+        ? (await unboundPickup(tx, session, replayStored))?.refusal
+        : undefined),
     attempt: async (identified, digest) => {
       if (declaration.targetsExistingRecord && typeof expectedRevisionOf(identified) !== 'number') {
         const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
@@ -495,7 +501,7 @@ function keptApart(result: unknown): { stored: CommandResult; subject: string | 
  *
  * A pickup's receipt is its lease, so it is released only while that lease is
  * still the caller's claim, as the agent pickup replay asks (`agent-replay.ts`,
- * step 3).
+ * step 3), at release and again after the replay's last wait (`lastCheck`).
  */
 async function withheldNow(
   tx: TenantQuery,
