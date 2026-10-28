@@ -15,7 +15,7 @@ PG_IMAGE=postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb3
 CLONE=${NIGHTLY_CLONE:-$HOME/Desktop/Agents/repos/ops-astro/main}
 LOGS=${NIGHTLY_LOGS:-$HOME/Library/Logs/ops-astro-nightly-parts}
 SLOTS=$HOME/.oa-gate-slots
-MAX_SLOTS=3 MAX_LOAD=27
+MAX_SLOTS=3 MAX_LOAD=${NIGHTLY_MAX_LOAD:-27}
 SUITE_LIMIT=${NIGHTLY_SUITE_LIMIT:-14400}
 # The bot login a standing schedule posts as; the plist names it, never the repo.
 GH_USER=${NIGHTLY_GH_USER:-}
@@ -113,8 +113,8 @@ while :; do
   if [ "$(load)" -lt $MAX_LOAD ]; then
     for i in $(seq 1 $MAX_SLOTS); do
       s=$SLOTS/slot-$i
-      # A slot whose holder is gone is free again.
-      if [ -d "$s" ] && ! kill -0 "$(cat "$s/pid" 2>/dev/null || echo 0)" 2>/dev/null; then rm -rf "$s"; fi
+      # A slot whose holder is gone is free again: removed only under its reclaim lock, holder re-read there (S2324-1).
+      if [ -d "$s" ] && ! kill -0 "$(cat "$s/pid" 2>/dev/null || echo 0)" 2>/dev/null && mkdir "$s.reclaim" 2>/dev/null; then kill -0 "$(cat "$s/pid" 2>/dev/null || echo 0)" 2>/dev/null || rm -rf "$s"; rmdir "$s.reclaim"; fi
       if mkdir "$s" 2>/dev/null; then echo $$ >"$s/pid"; SLOT=$s; break 2; fi
     done
   fi

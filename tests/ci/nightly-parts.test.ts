@@ -143,6 +143,58 @@ describe('a red suite files one issue', () => {
   });
 });
 
+// S2324-1: runs the real slot loop against a scratch HOME; the missing clone ends
+// the run right after it takes a slot, before any fetch, database or issue.
+const withSlots = (plant: (slots: string) => void, check: (slots: string, log: string) => void) => {
+  const home = mkdtempSync(join(tmpdir(), 'nightly-parts-slots-'));
+  try {
+    const slots = join(home, '.oa-gate-slots');
+    mkdirSync(slots);
+    plant(slots);
+    const logs = join(home, 'logs');
+    run([], {
+      HOME: home,
+      NIGHTLY_LOGS: logs,
+      NIGHTLY_CLONE: join(home, 'no-clone'),
+      NIGHTLY_MAX_LOAD: '100000',
+      NIGHTLY_GH_USER: '',
+    });
+    const [day] = spawnSync('ls', [logs], { encoding: 'utf8' }).stdout.trim().split('\n');
+    check(slots, readFileSync(join(logs, day ?? ''), 'utf8'));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+};
+const deadSlot = (slot: string) => {
+  mkdirSync(slot);
+  writeFileSync(join(slot, 'pid'), '99999999\n');
+};
+
+describe('the gate slot', () => {
+  it('reclaims a slot whose holder is gone, and lets go of the reclaim', () => {
+    withSlots(
+      (slots) => deadSlot(join(slots, 'slot-1')),
+      (slots, log) => {
+        expect(log).toContain('nightly-parts: slot slot-1,');
+        expect(existsSync(join(slots, 'slot-1.reclaim'))).toBe(false);
+      },
+    );
+  });
+
+  it('leaves a stale slot another runner is reclaiming, and takes the next', () => {
+    withSlots(
+      (slots) => {
+        deadSlot(join(slots, 'slot-1'));
+        mkdirSync(join(slots, 'slot-1.reclaim'));
+      },
+      (slots, log) => {
+        expect(log).toContain('nightly-parts: slot slot-2,');
+        expect(readFileSync(join(slots, 'slot-1/pid'), 'utf8')).toBe('99999999\n');
+      },
+    );
+  });
+});
+
 describe('the LaunchAgent template', () => {
   it('starts the runner at 02:00 on the M5 (Australia/Brisbane, AEST)', () => {
     const plist = readFileSync(join(repo, 'deploy/m5/ops-astro-nightly-parts.plist'), 'utf8');
