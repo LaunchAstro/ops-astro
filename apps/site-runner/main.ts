@@ -25,6 +25,8 @@ import { connect, type BusinessId, type Database } from '../../packages/core-rec
 import { QueueUnread, queueClaims, type AgentCall } from './claims.ts';
 import { holderRefuses } from './configured.ts';
 import { locatePass } from './locate.ts';
+import { chromiumAt } from './picture-browser.ts';
+import { reviewCaptures, reviewPool, type Captured } from './review-captures.ts';
 import { createSiteRunner, FOLLOW_EVERY_MS, type Claim, type Passed } from './runner.ts';
 import { HOSTING_ORIGIN, readSettings, SOURCE_ORIGIN, type Settings } from './settings.ts';
 import { custodySites, siteDestinations, type RunnerSites } from './sites.ts';
@@ -125,9 +127,19 @@ async function hosted(settings: Settings, db: Database, call: AgentCall | undefi
     settings.site,
   );
   const ports = sites.locate();
+  const capture = {
+    pool: reviewPool(settings.site, business),
+    resolve: systemResolver,
+    transport: pinnedTransport(),
+  };
   const pass = passFor(settings.locateOnly, {
     locate: async () => await locatePass({ db, business, site: settings.site, ports }),
-    ...(call === undefined ? {} : { claims: claimsRunner(settings, db, call, sites) }),
+    ...(call === undefined
+      ? {}
+      : {
+          claims: claimsRunner(settings, db, call, sites),
+          captures: reviewCaptures({ call, db, business, capture, browserAt: chromiumAt }),
+        }),
   });
   const stop = async () => {
     await custody.stop();
@@ -140,23 +152,27 @@ export interface Parts {
   readonly locate: () => Promise<readonly Passed[]>;
   /** Absent while locating only: no claim is taken. */
   readonly claims?: () => Promise<readonly Passed[]>;
+  /** The review captures (`review-captures.ts`), after the corrections; absent while locating only. */
+  readonly captures?: () => Promise<readonly Captured[]>;
 }
 
-/** The pass the host runs: locating only, the claims are never taken. */
+/** The pass the host runs: locating only, neither the claims nor the captures are taken. */
 export const passFor =
   (locateOnly: boolean, parts: Parts) => async (): Promise<readonly Passed[]> =>
-    await bothParts(locateOnly ? { locate: parts.locate } : parts);
+    await everyPart(locateOnly ? { locate: parts.locate } : parts);
 
 /**
- * One pass: the locate, then the claims, each on its own. A part that fails logs its fault's name
- * and the other still runs; only when every part failed does the pass fail, so the heartbeat
- * goes quiet. A queue the claims could not read fails the pass whatever the locate did: a
- * runner that can no longer read its work never reads as healthy.
+ * One pass: the locate, then the claims, then the captures, each on its own. A part that fails
+ * logs its fault's name and the others still run; when the locate and the claims both failed
+ * the pass fails, so the heartbeat goes quiet. A queue the claims or the captures could not
+ * read fails the pass whatever the rest did: a runner that can no longer read its work never
+ * reads as healthy. The captures are spare work: they never keep a pass healthy, and any
+ * fault of theirs (an unclaimed capture included) fails it.
  */
-export async function bothParts({ locate, claims }: Parts): Promise<readonly Passed[]> {
+export async function everyPart({ locate, claims, captures }: Parts): Promise<readonly Passed[]> {
   const faults: unknown[] = [];
   let unread: QueueUnread | undefined;
-  const run = async (part: string, work: () => Promise<readonly Passed[]>) =>
+  const run = async <T>(part: string, work: () => Promise<readonly T[]>) =>
     await work().catch((fault: unknown) => {
       faults.push(fault);
       // `passes` prints it, with the refusal's code.
@@ -169,8 +185,12 @@ export async function bothParts({ locate, claims }: Parts): Promise<readonly Pas
     });
   const located = await run('locate', locate);
   const claimed = claims === undefined ? [] : await run('claims', claims);
+  const workFaults = faults.length;
+  // A queue the corrections could not read is not asked again for the captures.
+  if (captures !== undefined && unread === undefined) await run('captures', captures);
   if (unread !== undefined) throw unread;
-  if (faults.length === (claims === undefined ? 1 : 2)) throw faults[0];
+  if (workFaults === (claims === undefined ? 1 : 2)) throw faults[0];
+  if (faults.length > workFaults) throw faults[workFaults];
   return [...located, ...claimed];
 }
 
