@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a replacement dispatched before its step was written off, then held unknown, takes a person's nothing_happened without resuming the step: no fresh hold is reserved and every pickup of the step's holds is refused with nothing written; with no write-off the same outcome resumes the step"
+}
