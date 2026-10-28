@@ -77,6 +77,7 @@ export interface Database extends Connection {
 
 /** How one `withBusiness` transaction runs: when it must end, and what it reads (`isolation.ts`). */
 export interface BusinessTransaction extends TransactionDeadline {
+  /** Read committed unless set. Repeatable read carries the caller's duties in `isolation.ts`. */
   readonly isolation?: Isolation;
 }
 
