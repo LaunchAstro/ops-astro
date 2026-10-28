@@ -2,7 +2,9 @@
 //
 // C35's read (#2011): one review with its revisions and their captures. It
 // filters by the caller's grant at the review's holder inside the query
-// (`covering.ts`), so a party grant reads no other client's review.
+// (`covering.ts`), so a party grant reads no other client's review. The revisions and captures
+// are read in statements of their own, so the grant is judged again after the last of them
+// (`stillCovered`): a grant revoked or run out meanwhile reads nothing written since (S2061-1).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
@@ -54,6 +56,7 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
+  if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
     taskId: review.task_id,
@@ -97,4 +100,22 @@ async function capturesOf(
     byRevision.set(row.revision_id, captures);
   }
   return byRevision;
+}
+
+/**
+ * Whether the caller's grant still covers the review at its holder, in a statement of its own.
+ * Asked after the read's last part, so a grant revoked or expired meanwhile reads nothing.
+ */
+async function stillCovered(
+  tx: TenantQuery,
+  covering: Covering,
+  reviewId: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `${EFFECTIVE_AT}
+     select c.id from public.reviews c
+      where c.business_id = $1 and c.id = $6::uuid and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), reviewId],
+  );
+  return rows.length > 0;
 }
