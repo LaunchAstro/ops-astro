@@ -178,6 +178,29 @@ form, `--maintenance --version <id> --artefacts <store> --production`: the
 page goes up only if that version passes production's deploy checks now. The
 bare form is for an incident.
 
+### Rolling the web back
+
+```sh
+node scripts/ops/web-deploy.mjs --rollback <deployment> --production
+```
+
+`<deployment>` is the `https://<name>.vercel.app` address a `deploy recorded`
+line with `environment: "production"` names in `OPS_ASTRO_DEPLOYMENTS`; any
+other is refused. The same operator gate and settings apply. It uses Vercel's
+instant rollback, which builds nothing, so the old build keeps the settings it
+was made with. A fresh deploy of an old version would read today's settings,
+which may hold something its API refuses, and with staging off it would need a
+release record the old version may not have. Vercel must read the deployment
+back as ready on production first: it answers a rollback to any other
+deployment by building a new one with today's settings. Once Vercel's rollback
+finishes, `rollback recorded` is written with the version and the deployment.
+
+After a rollback Vercel gives new deployments no domain until one is promoted.
+So production's next deploy runs `vercel promote` once it is read back, and
+the maintenance page on production is refused until that deploy is recorded. A
+rollback made outside this command, in the dashboard or by hand, is not in the
+record: run `vercel promote <deployment>` after the next deploy yourself.
+
 ## The M5 unit
 
 `compose.json` here is production's unit on the M5: the forwarder, the

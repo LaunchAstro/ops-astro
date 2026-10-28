@@ -63,19 +63,13 @@ function trustedText(file: string, uid: number | undefined): string | { why: str
   }
 }
 
-/** The digests `source`'s lines for `version` in `text` record, or why the text is refused. */
-function countedDigests(
-  text: string,
-  file: string,
-  version: string,
-  source: RecordSource,
-): Set<string> | { why: string } {
-  const digests = new Set<string>();
+/** The record file's lines as records, or why the text is refused: a line that is not one stops the read. */
+function parsedLines(text: string, file: string): Record<string, unknown>[] | { why: string } {
+  const parsed: Record<string, unknown>[] = [];
   const lines = text.split('\n');
   for (const [at, line] of lines.entries()) {
     // The newline that ends the last record.
     if (line === '' && at === lines.length - 1) continue;
-    const where = `${file} line ${String(at + 1)}`;
     let entry: unknown;
     try {
       entry = JSON.parse(line);
@@ -83,9 +77,43 @@ function countedDigests(
       entry = undefined;
     }
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      return { why: `${where} is not a record; nothing is read past it` };
+      return { why: `${file} line ${String(at + 1)} is not a record; nothing is read past it` };
     }
-    const record = entry as Record<string, unknown>;
+    parsed.push(entry as Record<string, unknown>);
+  }
+  return parsed;
+}
+
+/** The record folder's lines, read whole from a trusted folder and file, or why none can be trusted. */
+function trustedRecords(
+  records: string,
+  name: string,
+): { file: string; lines: Record<string, unknown>[] } | { why: string } {
+  if (records === '') {
+    return {
+      why: "staging's record folder is not named: set OPS_ASTRO_DEPLOYMENTS to the folder staging's web deploy records in",
+    };
+  }
+  const folder = resolve(records);
+  const uid = process.getuid?.();
+  const untrusted = untrustedChain(folder, uid);
+  if (untrusted !== undefined) return { why: `${name} folder: ${untrusted}` };
+  const file = join(folder, RECORD_FILE);
+  const text = trustedText(file, uid);
+  if (typeof text !== 'string') return { why: `${name}: ${text.why}` };
+  const lines = parsedLines(text, file);
+  return 'why' in lines ? lines : { file, lines };
+}
+
+/** The digests `source`'s lines for `version` record, or why one is refused. */
+function countedDigests(
+  lines: readonly Record<string, unknown>[],
+  file: string,
+  version: string,
+  source: RecordSource,
+): Set<string> | { why: string } {
+  const digests = new Set<string>();
+  for (const [at, record] of lines.entries()) {
     const counted =
       (source === 'staging'
         ? record['action'] === 'deploy recorded' && record['environment'] === 'staging'
@@ -95,6 +123,7 @@ function countedDigests(
     if (!counted) continue;
     const digest = record['digest'];
     if (typeof digest !== 'string' || !DIGEST.test(digest)) {
+      const where = `${file} line ${String(at + 1)}`;
       return { why: `${where} records a digest that is not sha256 and 64 hex digits` };
     }
     digests.add(digest);
@@ -113,20 +142,11 @@ export function stagedDigest(
   version: string,
   source: RecordSource = 'staging',
 ): { digest: string } | { why: string } {
-  if (records === '') {
-    return {
-      why: "staging's record folder is not named: set OPS_ASTRO_DEPLOYMENTS to the folder staging's web deploy records in",
-    };
-  }
-  const folder = resolve(records);
-  const uid = process.getuid?.();
-  const untrusted = untrustedChain(folder, uid);
   const name = recordName(source);
-  if (untrusted !== undefined) return { why: `${name} folder: ${untrusted}` };
-  const file = join(folder, RECORD_FILE);
-  const text = trustedText(file, uid);
-  if (typeof text !== 'string') return { why: `${name}: ${text.why}` };
-  const digests = countedDigests(text, file, version, source);
+  const read = trustedRecords(records, name);
+  if ('why' in read) return read;
+  const { file } = read;
+  const digests = countedDigests(read.lines, file, version, source);
   if ('why' in digests) return digests;
   const [only, ...others] = digests;
   const staging = source === 'staging';
@@ -161,4 +181,49 @@ export function notStillStaged(
   return staged.digest === digest
     ? undefined
     : `${recordName(source)} of ${version} now holds ${staged.digest}, not ${digest}`;
+}
+
+/** The record's name in a rollback's refusals. */
+const RECORD = 'the deployment record';
+
+/**
+ * The version production's web deploy recorded at `deployment`, or why it is
+ * not one to roll back to (#2299): only a deployment Vercel read back ready on
+ * production, and so recorded, counts.
+ */
+export function recordedProduction(
+  records: string,
+  deployment: string,
+): { version: string } | { why: string } {
+  const read = trustedRecords(records, RECORD);
+  if ('why' in read) return read;
+  const version = read.lines.findLast(
+    (record) =>
+      record['action'] === 'deploy recorded' &&
+      record['environment'] === 'production' &&
+      record['deployment'] === deployment,
+  )?.['version'];
+  return typeof version === 'string'
+    ? { version }
+    : {
+        why: `${read.file} records no production deploy at ${deployment}; a rollback goes only to one`,
+      };
+}
+
+/**
+ * Whether production's last web act in the record is a rollback, or why the
+ * record cannot say. After one, Vercel gives a new production deployment no
+ * domain until one is promoted (#2299). The M5 unit's `deploy recorded`
+ * (`deploy.ts`) names no deployment and promotes nothing, so it is no web act.
+ */
+export function rolledBack(records: string): boolean | { why: string } {
+  const read = trustedRecords(records, RECORD);
+  if ('why' in read) return read;
+  const last = read.lines.findLast(
+    (record) =>
+      (record['action'] === 'deploy recorded' || record['action'] === 'rollback recorded') &&
+      record['environment'] === 'production' &&
+      typeof record['deployment'] === 'string',
+  );
+  return last?.['action'] === 'rollback recorded';
 }
