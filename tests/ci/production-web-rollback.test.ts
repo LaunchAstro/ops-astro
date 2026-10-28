@@ -16,6 +16,7 @@ import { rollBackWeb } from '../../scripts/ops/web-rollback.ts';
 import { each, records } from './promotion.fixture.ts';
 import { AUTH_VERSION, CANARY, clean, fakeVercel, INSPECTED } from './web-deploy.fixture.ts';
 import { settings, STAGED, store, URL_MADE } from './web-deploy.fixture.ts';
+import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DECISION = 'DECISIONS 33, owner 2026-10-28';
@@ -48,6 +49,12 @@ const rolledBack = (version: string, deployment: string): object => ({
   environment: 'production',
   version,
   deployment,
+});
+/** The M5 unit's own line (`deploy.ts`): production's, with no web deployment. */
+const unitDeployed = (version: string): object => ({
+  action: 'deploy recorded',
+  environment: 'production',
+  version,
 });
 /** Vercel's read-back of `deployment`, as `vercel inspect --format json` prints it. */
 const inspected = (deployment: string, more: object = {}) => ({
@@ -225,4 +232,55 @@ it('the maintenance page waits for the deploy that promotes after a recorded rol
   expect(await deployMaintenance({ env, rolledBackIn: settled })).toMatchObject({
     kind: 'deployed',
   });
+}, 30_000);
+
+it("the M5 unit's deploy after a rollback leaves it pending: the web deploy still promotes, the page still waits", async () => {
+  const back = [
+    deployed('production', STAGED, URL_MADE),
+    rolledBack(OLDER, EARLIER),
+    unitDeployed(STAGED),
+  ];
+  const after = await deployAfter(back);
+  expect(after.outcome).toMatchObject({ kind: 'deployed', record: { deployment: URL_MADE } });
+  expect(after.argv.at(-1)).toBe(`promote ${URL_MADE} --timeout 3m`);
+  const vercel = fakeVercel();
+  const page = await deployMaintenance({
+    env: production(vercel.path),
+    rolledBackIn: records(back),
+  });
+  expect(page).toMatchObject(refused('rolled back'));
+  expect(vercel.lines('argv')).toStrictEqual([]);
+}, 30_000);
+
+it("a rollback recorded during planned maintenance's checks refuses the page before Vercel deploys it", async () => {
+  const root = store();
+  const digest = String(recordedStamp(join(root, artefactName(STAGED))).digest);
+  const at = records([
+    { action: 'release recorded', version: STAGED, digest },
+    deployed('production', OLDER, EARLIER),
+  ]);
+  const vercel = fakeVercel();
+  const env = production(vercel.path);
+  // The rollback lands while the version deploy that takes the page off is checked.
+  const preflight = async (): Promise<string[]> => {
+    appendFileSync(
+      join(at, 'deployments.jsonl'),
+      `${JSON.stringify(rolledBack(OLDER, EARLIER))}\n`,
+    );
+    return await clean();
+  };
+  const options = {
+    env,
+    preflight,
+    environment: 'production' as const,
+    records: at,
+    authorised: held,
+    stagingOff: DECISION,
+  };
+  const page = await deployMaintenance(
+    { env, rolledBackIn: at },
+    { request: { version: STAGED, store: root }, options },
+  );
+  expect(page).toMatchObject(refused('production was rolled back'));
+  expect(vercel.lines('argv').filter((line) => line.startsWith('deploy'))).toStrictEqual([]);
 }, 30_000);
