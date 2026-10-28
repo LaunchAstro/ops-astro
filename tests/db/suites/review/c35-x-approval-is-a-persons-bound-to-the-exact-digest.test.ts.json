@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X a person approves the review's latest revision on its exact digest; an earlier digest is refused, a new revision is undecided, and the approval writes only its record and audit row."
+}

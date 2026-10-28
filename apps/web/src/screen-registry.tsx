@@ -17,6 +17,7 @@ import {
   type OpenRouteId,
   type ParamsOf,
   type RouteMatch,
+  pathTo,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
 import { tabRollupFloor } from './data/rollup-floor.ts';
@@ -39,6 +40,7 @@ import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
 import { TodosScreen } from './screens/todos/Todos.tsx';
+import { REVIEW_SCREENS } from './screens/review/review-screens.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
@@ -75,6 +77,7 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
 export const SCREENS: {
   readonly [Id in AuthenticatedRouteId]: (context: ScreenContext<Id>) => ReactElement;
 } = {
+  ...REVIEW_SCREENS,
   'agency:projects-board': (context) => (
     <>
       {context.notice === null ? null : (
@@ -189,6 +192,9 @@ export const SCREENS: {
       client={context.client}
       grantKey={context.grantKey}
       taskKey={context.params.key}
+      onOpenReview={(review: string) => {
+        context.navigate(pathTo('agency:review-workspace', { review }));
+      }}
       {...(context.taskPanel === undefined
         ? {}
         : {

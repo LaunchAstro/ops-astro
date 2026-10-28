@@ -5,7 +5,8 @@
 // The agent's own operations are `AGENT_SURFACE`, and each has a real positive
 // control here: the queue before any pickup, a pickup of a freshly approved
 // reservation, and a read, a comment, a heartbeat, a check, the capabilities read, a
-// handback and the worker's own stop under the credential that pickup handed out. Each is sent once
+// handback, a capture's claim and land (C35) and the worker's own stop under the credential that
+// pickup handed out. Each is sent once
 // valid, then again with every classified system-owned field, and the contract
 // outcome is asserted: `FIELD_NOT_WRITABLE` naming the field, every other table
 // unchanged, one refused audit row. Authority review finding 2 found the agent
@@ -43,6 +44,7 @@ import { agentHold, ofThisPart } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
+import { c35AgentBody } from './c35-bodies.ts';
 import { stepResultBody } from './d06-agent-step.ts';
 import { AGENT_OPERATIONS, success } from './d06-agent-operations.ts';
 import type { Answer } from './world.ts';
@@ -56,14 +58,14 @@ if (serverUrl === undefined) {
 /** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
-
-// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the launch's take.
+// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the take, C35 (no
+// `review`), C57's filing (no `proposal`, refused CLIENT_MODEL_USE_OFF inside one) and its task
+// making, which needs an approved request on the leased task (tests/review, #2117).
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
-  'task.decide',
-  'task.create',
-  'task.take_launch',
+  ...(['task.decide', 'task.create', 'task.take_launch'] as const),
+  ...(['review.open', 'review.capture', 'review.pin_comment', 'review.propose_change'] as const),
+  'review.make_change_task',
 ]);
-
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
 );
@@ -123,6 +125,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
+    const capture = await c35AgentBody(harness, name, held, credential);
+    if (capture !== undefined) return { body: { operationId, ...capture }, credential };
     if (name === 'task.comment') {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
       return { body: { operationId, ...body }, credential };

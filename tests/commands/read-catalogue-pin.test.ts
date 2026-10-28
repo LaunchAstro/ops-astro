@@ -9,69 +9,16 @@
 // read off the read's row, with the row's spine, subject and authority mode pinned beside them.
 // The refusal order is pinned by `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
-// This suite moves the database counter by zero, so it is a unit suite and
-// must not be named in `tests/db/named-suites.json`.
+// It moves the database counter by zero: a unit suite, never in `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
-import { PINNED_SHAPE } from './read-catalogue-shape.ts';
+import { PINNED_IDENTIFIERS, PINNED_SHAPE } from './read-catalogue-shape.ts';
 
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
 const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
 const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
-
-const PINNED_IDENTIFIERS = {
-  'access.read': [],
-  'agent.mine': [],
-  'automation.history': ['activationId'],
-  'automation.registry': [],
-  'chat.conversations': [],
-  'chat.messages': ['conversationId'],
-  'client.list': [],
-  'connection.fleet': [],
-  'connection.graduation': [],
-  'connection.signal': [],
-  'conversation.allowance': ['conversationId'],
-  'conversation.list': [],
-  'conversation.models': ['conversationId'],
-  'conversation.read': ['conversationId'],
-  'definition.attribution': [],
-  'finance.agent_costs': [],
-  'finance.skill_costs': [],
-  'gate.pending': [],
-  'inbox.count': [],
-  'inbox.read': [],
-  'inbox.unattended': [],
-  'invitation.list': [],
-  'live_correction.list': [],
-  'live_correction.read': ['correctionId'],
-  'live_correction.receipts': ['correctionId'],
-  'map.frontier': ['recordId'],
-  'map.list': [],
-  'map.view': ['recordId'],
-  'operations.read': [],
-  'person.list': [],
-  'preference.read': [],
-  'preset.plan': [],
-  'privacy.draft_breach_notices': ['incidentId'],
-  'secret.list': [],
-  'session.capabilities': [],
-  'session.person': [],
-  'settings.read': [],
-  'tag.list': [],
-  'task.board': ['board', 'person', 'client'],
-  'task.execution': ['recordId'],
-  'task.ledger': [],
-  'task.queue': [],
-  'task.read': ['recordId'],
-  'task.receipt': ['attemptId'],
-  'task.search': [],
-  // A teammate or a client (MP-7-2), one at a time.
-  'task.todos': ['person', 'client'],
-  'team.list': [],
-  'trace.read': ['recordId'],
-};
 
 // MP-7-10: `team.list` is staff only; a client is told NOT_FOUND. So are
 // C71-D's two conversation reads.
@@ -245,6 +192,11 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // #1694: the list takes nothing; the receipts read takes the correction.
   'live_correction.list': BODIES.map(() => null),
   'live_correction.receipts': unsent('correctionId', 'Send correctionId as the correction.'),
+  // C35's review, which none of these bodies carries.
+  'review.read': unsent('reviewId', 'Send reviewId as the review.'),
+  'review.list': BODIES.map(() => null),
+  'review.picture': unsent('pictureId', 'Send pictureId as the landed picture.'),
+  'review.client_list': BODIES.map(() => null),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
@@ -260,7 +212,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-six reads', () => {
+  it('names the same forty-eight reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

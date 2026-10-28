@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35-X (#2166): the site runner lands a review's second revision at both widths against the replay site and, after the land that answers carryDue, calls review.carry_pins once under the same lease in the same pass; the pin is carried once by the carry's own operation, never a land's; client B's review and the beta business carry nothing."
+}

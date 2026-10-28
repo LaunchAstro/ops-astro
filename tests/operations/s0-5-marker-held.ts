@@ -52,6 +52,23 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'live_correction.revert',
   // R5: a review files a row naming a correction, which names the task.
   'live_correction.record_review',
+  // C35: a review names the task, its revisions and captures lead back to it; the task keeps its revision.
+  // A worker's claim and land act on a lease the task already holds, and on the review's captures.
+  'review.capture_claim',
+  'review.capture_land',
+  'review.open',
+  'review.capture',
+  // A pin is a comment on the review's task (#2012).
+  'review.pin_comment',
+  // C57: a change request names its pin's task (#2016).
+  'review.propose_change',
+  'review.decide_change',
+  'review.make_change_task',
+  // A decision and Astra's review name the review's revision (#2014).
+  'review.decide',
+  'review.record_astra_review',
+  // A pin's carry names the review's revision, which leads back to the task (#2075).
+  'review.carry_pins',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
 ]);

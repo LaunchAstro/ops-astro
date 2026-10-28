@@ -25,6 +25,10 @@ export const CASE = {
   duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
   liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
+  review: 'refuses a foreign and a fabricated task, revision, review or picture alike (C35)',
+  changeRequest: 'refuses a foreign and a fabricated pin or change request alike (C57)',
+  reviewDecision:
+    'refuses a foreign and a fabricated review alike on the decision commands (C35-X)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
@@ -67,6 +71,20 @@ export const IDENTIFIER_BEARING: Readonly<
   'live_correction.receipts': ['correctionId', 'liveCorrection'],
   'live_correction.revert': ['correctionId', 'liveCorrection'],
   'live_correction.record_review': ['correctionId', 'liveCorrection'],
+  'review.open': ['taskId', 'review'],
+  'review.capture': ['revisionId', 'review'],
+  'review.pin_comment': ['revisionId', 'review'],
+  'review.read': ['reviewId', 'review'],
+  // C35's worker writes go by the lease, as a check does; the landed picture by its id.
+  'review.capture_claim': ['leaseId and revisionId', 'agent'],
+  'review.capture_land': ['leaseId and revisionId', 'agent'],
+  'review.carry_pins': ['leaseId and revisionId', 'agent'],
+  'review.picture': ['pictureId', 'review'],
+  'review.propose_change': ['commentId', 'changeRequest'],
+  'review.decide_change': ['changeRequestId', 'changeRequest'],
+  'review.make_change_task': ['changeRequestId', 'changeRequest'],
+  'review.decide': ['reviewId', 'reviewDecision'],
+  'review.record_astra_review': ['reviewId', 'reviewDecision'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

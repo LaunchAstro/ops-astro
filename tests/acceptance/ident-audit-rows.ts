@@ -106,11 +106,11 @@ export interface AuditExpectation {
 }
 
 /**
- * The applied commands that also write one event per record they create
+ * The applied commands that also write one event per record they create or carry
  * (`Applied.carried`): `onboarding.start` names the client, then each step task
- * it lays out.
+ * it lays out; `review.carry_pins` names the revision, then each comment it carried (#2075).
  */
-const CARRIES_CREATIONS: ReadonlySet<string> = new Set(['onboarding.start']);
+const CARRIES_CREATIONS: ReadonlySet<string> = new Set(['onboarding.start', 'review.carry_pins']);
 
 /**
  * Exactly one row for this attempt, in the caller's own business and nowhere

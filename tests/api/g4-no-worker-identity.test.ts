@@ -36,6 +36,8 @@ const OTHERS = [
   'GET /api/health',
   // C81: the published legal documents, public by design.
   'GET /api/public/b/:businessKey/legal/:document',
+  // C35-X: the review embed a client's site loads for the live view, public by design.
+  'GET /api/public/review-embed.js',
   'GET /api/sign-in',
   // C59 and C58: the person's own factor and sessions, each admitted as that person.
   'POST /api/b/:businessKey/account/factor/enrol',

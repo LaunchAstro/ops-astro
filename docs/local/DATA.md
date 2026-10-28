@@ -1151,3 +1151,42 @@ plan version, so a second request on the same plan, from a later attempt or
 at the same moment, stores nothing and is answered the first correction: the
 second insert waits on the first's index entry, then reads the stored row.
 The column never changes once written (`live_corrections_plan_kept`).
+
+## The review decision (20261019170000, #2014)
+
+`review_decisions` holds a person's approval of a review revision. Its foreign
+keys hold the revision, the review, the exact digest and the author person to
+the revision row (`review_revisions_digest_key`, `review_revisions_author_key`),
+so a decision names only a real revision's own digest and the person who wrote
+it, or for whom an agent wrote it. One approval per revision
+(`review_decisions_one_approval`); a new revision has none until a person
+decides it. `review.decide` locks the review's row, the lock a new revision is
+numbered under, and refuses a digest other than the latest revision's
+(`VERSION_STALE`). `review_decisions_no_self_approval` admits the author as
+decider only on a row carrying `single_operator_self_approval`, and
+`review_decisions_self_approval_marked` admits the mark only on such a row. The
+trigger `review_decisions_decider_and_mark` refuses a decider whose actor is not
+that person's own (an agent never decides) and admits the mark only while
+single-operator mode is on and Astra's latest review of this digest approves.
+Unlike the live correction, every self-approved revision needs its own review.
+
+`review_astra_reviews` holds Astra's review of a revision, recorded by a person
+with `review.record_astra_review` under `gate:decide`, bound by foreign key to
+the revision's digest; a digest other than the latest revision's is refused
+(`VERSION_STALE`). Both tables are insert and select only, tenancy-keyed with
+the restrictive policy.
+
+## The revision's correction (20261019180000, #2120)
+
+`review_revisions.correction_id` names the live correction whose published page
+a revision captures, so the review workspace can show that publish's Receipt.
+It is review metadata, written once with the revision by `review.open`, which
+takes `correctionId` only for a correction on the review's own task, page and
+file whose receipts the opener reads through `live_correction.receipts`' own
+query (`run:write` at the correction's party and `task:read` on its task, a
+person on the team, never an agent credential), read again after the last
+lock wait with both keys' grants held, so a grant revoked or expired while the
+open waited links nothing; anything else is one `NOT_FOUND`. The foreign key
+holds it to a correction of the same business. `review.read` returns it on each
+revision; the Receipt itself is read through `live_correction.receipts`
+unchanged, so a reader that read does not reach sees none.

@@ -141,6 +141,7 @@ import { Outages } from './task/Outages.tsx';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
+import { OpenReview } from './task/OpenReview.tsx';
 
 import type { Draft, DraftBase, LoadedProps } from './task/loaded-props.ts';
 export type { LoadedProps } from './task/loaded-props.ts';
@@ -152,6 +153,8 @@ export interface TaskDetailProps {
   /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
   readonly onOpenPanel?: PanelOpener;
   readonly onOpenTask?: ((key: string, origin?: HTMLElement) => void) | undefined;
+  /** Goes to a review's workspace once the page opens one; absent, the page offers no open. */
+  readonly onOpenReview?: (reviewId: string) => void;
   /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
   readonly changes?: number;
 }
@@ -272,6 +275,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
                   onStepTitle={setStepTitle}
                   onOpenPanel={props.onOpenPanel}
                   onOpenTask={props.onOpenTask}
+                  onOpenReview={props.onOpenReview}
                   {...draftCallbacks(identity, setDraft)}
                   onDiscard={() => {
                     setDraft(null);
@@ -684,6 +688,14 @@ function TeamSide(side: Pick<TeamSideProps, 'props'>): ReactElement {
   return (
     <>
       <DescriptionSection description={task.description} />
+
+      {side.props.onOpenReview === undefined ? null : (
+        <OpenReview
+          client={side.props.client}
+          taskId={task.id}
+          onOpened={side.props.onOpenReview}
+        />
+      )}
 
       <StepTitleHeld value={[side.props.stepTitle ?? '', side.props.onStepTitle]}>
         <TeamSubtasks {...side.props} />

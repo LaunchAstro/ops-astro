@@ -253,6 +253,8 @@ export {
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)
 export * from './data-effects.ts';
+// the live view's embed script, its hello and the site's onboarding snippet (C35-X, LF-2)
+export * from './review-embed.ts';
 // the operations whose value is visual, and the command line's hand-off to them (AW-09)
 export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';
 // What agent runs cost: skill costing and the agents' cost log (MP-14-9, MP-14-6)
@@ -280,3 +282,5 @@ export {
   type WorkerEndCode,
 } from './run-outcomes.ts';
 export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';
+export type * from './views-review.ts';
+export type * from './views-review-client.ts';

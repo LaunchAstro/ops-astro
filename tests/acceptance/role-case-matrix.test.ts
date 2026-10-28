@@ -32,6 +32,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { C80_REQUEST } from './c80-bodies.ts';
+import { LANDING } from './c35-bodies.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
@@ -57,6 +58,17 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'run.child_handback',
   'run.end',
   'task.take_launch',
+]);
+
+/**
+ * C35's worker writes: a capture is claimed and landed, and its pins carried, under the lease
+ * on its review's task, which the admin's own pickup holds in case (a); a member's grant
+ * names no such lease.
+ */
+const ADMIN_LEASE_WORK: ReadonlySet<string> = new Set([
+  'review.capture_claim',
+  'review.capture_land',
+  'review.carry_pins',
 ]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
@@ -475,6 +487,36 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (declaration === undefined) throw new Error(`matrix: no declaration ${name}`);
       return harness.pairFor(declaration);
     };
+    /**
+     * C57 part B (#2117): the request is made a task under a lease of the sender's own, one per
+     * task. The admin's recipe lease on the review's task is handed back, and the member picks
+     * up fresh approved work on that task and makes the request under it.
+     */
+    async function memberMakesChangeTask(
+      caller: (typeof harness.otherCallers)[number],
+      declaration: (typeof COMMAND_SURFACE)[number],
+    ): Promise<void> {
+      const prepared = await harness.positiveBody(declaration);
+      if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
+      const { leaseId, fence, changeRequestId } = prepared.body;
+      await harness.asPerson('task.handback', { leaseId, fence, outcome: 'completed' });
+      const [task] = await harness.world.db.admin.execute<{ readonly task_id: string }>(
+        'select task_id from public.review_change_requests where id = $1',
+        [changeRequestId],
+      );
+      const decided = await harness.reserve(
+        { id: String(task?.task_id), revision: 0 },
+        `draft_${randomUUID().slice(0, 8)}`,
+      );
+      const { reservationId } =
+        (decided.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const picked = await harness.asPerson('task.pickup', { reservationId }, 'alpha', caller);
+      const lease = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const body = { leaseId: lease['leaseId'], fence: lease['fence'], changeRequestId };
+      const answer = await harness.asPerson(declaration.name, body, 'alpha', caller);
+      observe(caller.name, 'e-member-positive', declaration.name, answer, SUCCESS);
+    }
+
     async function driveOwnLease(
       caller: (typeof harness.otherCallers)[number],
       grants: ReadonlySet<string>,
@@ -564,6 +606,20 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         if (personWork.has(declaration.name)) {
           // eslint-disable-next-line no-await-in-loop
           await driveOwnLease(caller, grants);
+          continue;
+        }
+        if (ADMIN_LEASE_WORK.has(declaration.name)) {
+          except(
+            caller.name,
+            'e-member-positive',
+            declaration.name,
+            'executed alternative: claimed and landed under the admin’s own lease, case (a)',
+          );
+          continue;
+        }
+        if (declaration.name === 'review.make_change_task') {
+          // eslint-disable-next-line no-await-in-loop
+          await memberMakesChangeTask(caller, declaration);
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
@@ -806,6 +862,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too, and so does the worker's own stop
       // (#1623 R1), with a code it may end on; the helper's handback by its credential.
+      // C35's claim, land and carry go by the lease, a revision named beside it. C57's task
+      // making (#2117) names its task through the lease as well.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -815,9 +873,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'model.call',
         'run.delegate_child',
         'run.end',
+        'review.capture_claim',
+        'review.capture_land',
+        'review.carry_pins',
+        'review.make_change_task',
       ].includes(declaration.name)
         ? {
             ...probe,
+            ...(['review.capture_claim', 'review.capture_land', 'review.carry_pins'].includes(
+              declaration.name,
+            )
+              ? { revisionId: randomUUID() }
+              : {}),
+            ...(declaration.name === 'review.capture_land' ? LANDING : {}),
             ...(declaration.name === 'task.check'
               ? { name: 'a check on the sibling', outcome: 'passed' }
               : {}),

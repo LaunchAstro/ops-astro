@@ -242,6 +242,7 @@ export type CommandRequest =
       readonly expiresInSeconds?: number;
     } & Envelope)
   | import('./live-correction-requests.ts').LiveCorrectionRequest
+  | import('./review-requests.ts').ReviewRequest
   | ({
       readonly command: 'task.heartbeat';
       readonly leaseId: string;

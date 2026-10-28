@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C57 part C parity: review.propose_change, review.decide_change and review.make_change_task through the CLI and the person API give the same answers, repeats included; a member without the keys and bravo's person are refused the same on both, and no refusal carries the pin's client words"
+}

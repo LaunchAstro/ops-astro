@@ -104,6 +104,15 @@ export const GRANTS_BY_ROLE: Readonly<
     // Settings ▸ Workflow triggers (C33): releasing a definition version is
     // `automation:manage`, the owner's and administrators' and never an agent's.
     ['automation', 'manage'],
+    // The review workspace (C35, #2011): opening a review, asking its captures and
+    // reading them are `review:write` and `review:read`, the owner's and administrators'.
+    ['review', 'write'],
+    ['review', 'read'],
+    ['review', 'comment'],
+    // A client pin filed as a change request and decided (C57, #2016): `proposal:write`
+    // and `proposal:decide`, the owner's and administrators'.
+    ['proposal', 'write'],
+    ['proposal', 'decide'],
   ],
   member: [
     ['task', 'read'],

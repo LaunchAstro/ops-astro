@@ -98,8 +98,11 @@ async function pickedUp(w: C80World) {
   return { taskId: task.recordId, leaseId: String(picked['leaseId']) };
 }
 
-/** A correction on a task Cal holds, approved by Ben, then observed live with `observations`. */
-async function published(w: C80World, observations: Readonly<Record<string, unknown>>) {
+/** A correction on a task Cal holds, approved by Ben, then observed live with `observations`; C35-X's Receipt proof publishes one too. */
+export async function published(
+  w: C80World,
+  observations: Readonly<Record<string, unknown>>,
+): Promise<ReadsWorld['live']> {
   const { taskId, leaseId } = await pickedUp(w);
   const [lease] = await w.world.db.admin.execute<{ fence: string; holder: string }>(
     'select fence::text as fence, holder_actor_id as holder from public.leases where id = $1',

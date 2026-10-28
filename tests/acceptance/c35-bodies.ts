@@ -1,0 +1,369 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- every C35 command's body, person and agent, read in one place */
+//
+// C35's and C57's positive bodies for the role-case matrix (#2011, #2016, #2117), answered from `role-case-setup.ts`'s
+// `tableBody`: a review is opened by the admin on a task under a client of its own, for that
+// client's bound about page, so the capture and the read each name one the admin reaches.
+
+import { randomUUID } from 'node:crypto';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { ABOUT_FILE } from '../site/party-site-fixture.ts';
+import { madeClient } from './role-case-access-bodies.ts';
+import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import type { Caller } from './cast.ts';
+import type { Answer } from './world.ts';
+import { PROPOSAL } from './role-case-bodies.ts';
+import { makeTaskBody } from './c57b-bodies.ts';
+import { decisionBody } from './c35-x-seeds.ts';
+
+export const C35_NAMES: ReadonlySet<string> = new Set([
+  'review.open',
+  'review.capture',
+  'review.pin_comment',
+  'review.read',
+  'review.capture_claim',
+  'review.capture_land',
+  'review.carry_pins',
+  'review.picture',
+  'review.propose_change',
+  'review.decide_change',
+  'review.make_change_task',
+  'review.decide',
+  'review.record_astra_review',
+]);
+
+/** An open's body: a fresh task under a client of the admin's, and that client's bound page. */
+async function openBody(context: BodyContext): Promise<Prepared> {
+  if (context.bindClientSite === undefined) {
+    return { exception: 'this harness binds no client site (C35)' };
+  }
+  const task = await context.freshTask('a task a page review is opened on');
+  const partyId = await madeClient(context);
+  const set = await context.asPerson('task.set_party', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    fields: { client: partyId },
+  });
+  if (set.code !== 'ok') throw new Error(`matrix: task.set_party refused ${set.code}`);
+  const pageUrl = await context.bindClientSite(partyId);
+  return {
+    body: { taskId: task.id, pageUrl, path: ABOUT_FILE, sourceRevision: `rev-${randomUUID()}` },
+  };
+}
+
+/** A pin's body (#2012): the revision's captures asked first, then a spot on the desktop one. */
+async function pinBody(context: BodyContext, revisionId: unknown): Promise<Prepared> {
+  const asked = await context.asPerson('review.capture', { revisionId });
+  if (asked.code !== 'ok') throw new Error(`matrix: review.capture refused ${asked.code}`);
+  const spot = {
+    type: 'FragmentSelector',
+    conformsTo: 'http://www.w3.org/TR/media-frags/',
+    value: 'xywh=0,0,9,9',
+  };
+  return {
+    body: { revisionId, width: 1480, selector: [spot], body: 'a pin', audience: 'internal' },
+  };
+}
+
+/**
+ * C57's bodies (#2016): a client pin on the revision, filed as a change request for a decision.
+ */
+async function changeBody(
+  context: BodyContext,
+  name: CommandName,
+  revisionId: unknown,
+): Promise<Prepared> {
+  const pin = await pinBody(context, revisionId);
+  if (!('body' in pin)) return pin;
+  const pinned = await context.asPerson('review.pin_comment', { ...pin.body, audience: 'client' });
+  if (pinned.code !== 'ok') throw new Error(`matrix: review.pin_comment refused ${pinned.code}`);
+  const { commentId } = pinned.body['detail'] as Readonly<Record<string, unknown>>;
+  const filing = { commentId, text: 'a change asked for' };
+  if (name === 'review.propose_change') return { body: filing };
+  const filed = await context.asPerson('review.propose_change', filing);
+  if (filed.code !== 'ok') throw new Error(`matrix: review.propose_change refused ${filed.code}`);
+  const { changeRequestId } = filed.body['detail'] as Readonly<Record<string, unknown>>;
+  return { body: { changeRequestId, decision: 'approve' } };
+}
+
+export async function c35PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
+  if (WORKER_NAMES.has(name)) return await workerBody(name, context);
+  const open = await openBody(context);
+  if (name === 'review.open' || !('body' in open)) return open;
+  const opened = await context.asPerson('review.open', open.body);
+  if (opened.code !== 'ok') throw new Error(`matrix: review.open refused ${opened.code}`);
+  const detail = opened.body['detail'] as Readonly<Record<string, unknown>>;
+  if (name === 'review.pin_comment') return await pinBody(context, detail['revisionId']);
+  if (name === 'review.make_change_task') {
+    const decision = await changeBody(context, 'review.decide_change', detail['revisionId']);
+    return await makeTaskBody(context, open.body['taskId'], decision);
+  }
+  if (name === 'review.propose_change' || name === 'review.decide_change') {
+    return await changeBody(context, name, detail['revisionId']);
+  }
+  if (name === 'review.decide' || name === 'review.record_astra_review') {
+    return await decisionBody(name, context, open.body, detail);
+  }
+  return name === 'review.capture'
+    ? { body: { revisionId: detail['revisionId'] } }
+    : { body: { reviewId: detail['reviewId'] } };
+}
+
+/**
+ * A review of another business's with its first revision, written as its open writes it, for
+ * the identifier cases. A media review names no page, so no site of that business is needed.
+ */
+export async function seedForeignReview(
+  admin: Pick<AdminConnection, 'execute'>,
+  business: string,
+  taskId: string,
+  by: Pick<Caller, 'actorId' | 'personId'>,
+): Promise<{ readonly reviewId: string; readonly revisionId: string }> {
+  const [reviewId, revisionId] = [randomUUID(), randomUUID()];
+  await admin.execute(
+    `insert into public.reviews
+       (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
+     values ($1, $2, $3, 'media', $4, $5)`,
+    [business, reviewId, taskId, by.actorId, by.personId],
+  );
+  await admin.execute(
+    `insert into public.review_revisions
+       (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
+     values ($1, $2, $3, 1, 'sha256:0', $4, $5)`,
+    [business, revisionId, reviewId, by.actorId, by.personId],
+  );
+  return { reviewId, revisionId };
+}
+
+/** The worker's claim, land and carry, and the picture read a land leaves behind. */
+const WORKER_NAMES: ReadonlySet<string> = new Set([
+  'review.capture_claim',
+  'review.capture_land',
+  'review.carry_pins',
+  'review.picture',
+]);
+
+/** What a land carries at one width: the picture's bytes, base64, and the page observation. */
+export const LANDING: {
+  readonly width: number;
+  readonly picture: string;
+  readonly observation: Readonly<Record<string, unknown>>;
+} = {
+  width: 1480,
+  picture: Buffer.from('a page capture').toString('base64'),
+  observation: {
+    url: 'https://agency.example/about/',
+    status: 200,
+    documentDigest: 'sha256:0',
+    text: 'About',
+    html: '<h1>About</h1>',
+    stylesheets: {},
+  },
+};
+
+type Fields = Readonly<Record<string, unknown>>;
+
+const detailOf = (answer: Answer, what: string): Fields => {
+  if (answer.code !== 'ok') throw new Error(`matrix: ${what} refused ${answer.code}`);
+  return answer.body['detail'] as Fields;
+};
+
+/**
+ * The admin's own lease on a task under a client of its own, with a page review open on it and
+ * both widths' captures asked: what a person working their own pickup claims and lands under.
+ * The proposal locks the client, so the client is set and its page bound first (P26 low 4).
+ */
+async function leasedCapture(context: BodyContext): Promise<{
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly revisionId: string;
+  readonly opened: Fields;
+}> {
+  const open = await openBody(context);
+  if (!('body' in open)) throw new Error(`matrix: ${open.exception}`);
+  const taskId = String(open.body['taskId']);
+  const read = await context.asPerson('task.read', { recordId: taskId });
+  const proposed = detailOf(
+    await context.asPerson('task.propose', {
+      recordId: taskId,
+      expectedRevision: (read.body['task'] as { revision: number }).revision,
+      ...PROPOSAL,
+    }),
+    'task.propose',
+  );
+  const decided = detailOf(
+    await context.asPerson('task.decide', {
+      gateId: proposed['gateId'],
+      versionId: proposed['versionId'],
+      decision: 'approve',
+      note: 'approved so its page capture is worked',
+    }),
+    'task.decide',
+  );
+  const picked = detailOf(
+    await context.asPerson('task.pickup', { reservationId: decided['reservationId'] }),
+    'task.pickup',
+  );
+  const opened = detailOf(await context.asPerson('review.open', open.body), 'review.open');
+  const revisionId = String(opened['revisionId']);
+  detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture');
+  return {
+    leaseId: String(picked['leaseId']),
+    fence: Number(picked['fence']),
+    revisionId,
+    opened: open.body,
+  };
+}
+
+/** Claim a revision under `lease` and land it at both widths. */
+async function landBoth(context: BodyContext, lease: Fields): Promise<void> {
+  detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await context.asPerson('review.capture_land', { ...lease, ...LANDING, width });
+    detailOf(landed, 'review.capture_land');
+  }
+}
+
+/**
+ * A carry with a pin to carry: the first revision landed and pinned, the next one opened and
+ * landed; the body carries onto the next.
+ */
+async function carryBody(context: BodyContext): Promise<Prepared> {
+  const { opened, ...lease } = await leasedCapture(context);
+  await landBoth(context, lease);
+  const pin = await context.asPerson('review.pin_comment', {
+    revisionId: lease.revisionId,
+    width: 1480,
+    selector: [
+      {
+        type: 'FragmentSelector',
+        conformsTo: 'http://www.w3.org/TR/media-frags/',
+        value: 'xywh=0,0,40,40',
+      },
+    ],
+    body: 'a pin the carry takes onward',
+    audience: 'internal',
+  });
+  detailOf(pin, 'review.pin_comment');
+  const next = detailOf(
+    await context.asPerson('review.open', {
+      ...opened,
+      sourceRevision: `${String(opened['sourceRevision'])}-next`,
+    }),
+    'review.open next',
+  );
+  const revisionId = String(next['revisionId']);
+  detailOf(await context.asPerson('review.capture', { revisionId }), 'review.capture next');
+  const onto = { leaseId: lease.leaseId, fence: lease.fence, revisionId };
+  await landBoth(context, onto);
+  return { body: onto };
+}
+
+/**
+ * The claim under the admin's own lease, a land of what it claimed, the carry of a pin onto a
+ * landed next revision, and the landed picture.
+ */
+async function workerBody(name: CommandName, context: BodyContext): Promise<Prepared> {
+  if (context.bindClientSite === undefined) {
+    return { exception: 'this harness binds no client site (C35)' };
+  }
+  if (name === 'review.carry_pins') return await carryBody(context);
+  const { opened: _opened, ...lease } = await leasedCapture(context);
+  if (name === 'review.capture_claim') return { body: { ...lease } };
+  detailOf(await context.asPerson('review.capture_claim', lease), 'review.capture_claim');
+  if (name === 'review.capture_land') return { body: { ...lease, ...LANDING } };
+  const landed = detailOf(
+    await context.asPerson('review.capture_land', { ...lease, ...LANDING }),
+    'review.capture_land',
+  );
+  return { body: { pictureId: landed['pictureId'] } };
+}
+
+/** A media review on `taskId` with both widths asked, as the ask writes them; its revision. */
+export async function seedAskedRevision(
+  admin: Pick<AdminConnection, 'execute'>,
+  business: string,
+  taskId: string,
+  by: Pick<Caller, 'actorId' | 'personId'>,
+): Promise<string> {
+  const { revisionId } = await seedForeignReview(admin, business, taskId, by);
+  await admin.execute(
+    `insert into public.review_captures
+       (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
+     select $1, gen_random_uuid(), $2, w.width, $3, $4 from unnest($5::int[]) as w (width)`,
+    [business, revisionId, by.actorId, by.personId, [1480, 390]],
+  );
+  return revisionId;
+}
+
+/**
+ * A picture of another business's, landed on a capture of `revisionId` under `lease`, as a land
+ * writes it, for the identifier cases: the stored object and the capture row that names it.
+ */
+export async function seedForeignPicture(
+  admin: Pick<AdminConnection, 'execute'>,
+  business: string,
+  revisionId: string,
+  lease: { readonly leaseId: string; readonly fence: number },
+  by: Pick<Caller, 'actorId' | 'personId'>,
+): Promise<string> {
+  const pictureId = randomUUID();
+  await admin.execute(
+    `insert into public.storage_objects (business_id, id, digest, byte_count, body)
+     values ($1, $2, 'sha256:0', 4, 'seed'::bytea)`,
+    [business, pictureId],
+  );
+  await admin.execute(
+    `insert into public.review_captures
+       (business_id, id, revision_id, width, state, asked_by_actor_id, asked_by_person_id,
+        lease_id, fence, observation, picture_id, picture_digest, landed_at)
+     values ($1, gen_random_uuid(), $2, 1480, 'landed', $3, $4, $5, $6, '{}'::jsonb, $7,
+             'sha256:0', now())`,
+    [business, revisionId, by.actorId, by.personId, lease.leaseId, lease.fence, pictureId],
+  );
+  return pictureId;
+}
+
+/** What D06's agent cells ask of their harness: the owner's connection and the agent prefix. */
+interface AgentWorker {
+  readonly world: {
+    readonly db: { readonly admin: Pick<AdminConnection, 'execute'> };
+    readonly alpha: string;
+    readonly ada: Pick<Caller, 'actorId' | 'personId'>;
+  };
+  asAgent(name: CommandName, body: Fields, credential?: string): Promise<Answer>;
+}
+
+/**
+ * D06's positive agent body for the claim and the land: a revision asked on the held lease's task,
+ * owner-seeded, claimed first by the agent for a land. Undefined for every other operation.
+ */
+export async function c35AgentBody(
+  harness: AgentWorker,
+  name: CommandName,
+  held: { readonly taskId: string; readonly leaseId: string; readonly fence: number },
+  credential: string,
+): Promise<Fields | undefined> {
+  const worker = ['review.capture_claim', 'review.capture_land', 'review.carry_pins'];
+  if (!worker.includes(name)) return undefined;
+  const { world } = harness;
+  const revisionId = await seedAskedRevision(world.db.admin, world.alpha, held.taskId, world.ada);
+  const lease = { leaseId: held.leaseId, fence: held.fence, revisionId };
+  if (name === 'review.capture_claim') return lease;
+  detailOf(await harness.asAgent('review.capture_claim', lease, credential), 'agent claim');
+  if (name === 'review.capture_land') return { ...lease, ...LANDING };
+  for (const width of [1480, 390]) {
+    // The two widths land one after the other under the lease.
+    // eslint-disable-next-line no-await-in-loop
+    const landed = await harness.asAgent(
+      'review.capture_land',
+      { ...lease, ...LANDING, width },
+      credential,
+    );
+    detailOf(landed, 'agent land');
+  }
+  return lease;
+}

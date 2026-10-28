@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X first-client gate: a new revision, its decision and Astra's review are client-data and are refused GATE_SHUT, writing no review row, on a real-data installation with an item open."
+}

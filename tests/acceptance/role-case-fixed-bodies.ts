@@ -48,6 +48,10 @@ const EMPTY: readonly CommandName[] = [
   'agent.mine',
   // The corrections the admin's run:write and task:read reach (#1694): no operand.
   'live_correction.list',
+  // A client's own reviews under review:read: no operand.
+  'review.client_list',
+  // The reviews the reader's review:read covers: no operand.
+  'review.list',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
@@ -97,6 +101,8 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
 export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name) || name === 'agent.create') return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
+  if (name === 'review.read') return { reviewId: randomUUID() };
+  if (name === 'review.picture') return { pictureId: randomUUID() };
   if (name === 'live_correction.read' || name === 'live_correction.receipts') {
     return { correctionId: randomUUID() };
   }

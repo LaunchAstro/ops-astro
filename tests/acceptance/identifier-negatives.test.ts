@@ -18,6 +18,9 @@
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { LANDING, seedAskedRevision, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
+import { seedForeignChangeRequest } from './c57-bodies.ts';
+import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -27,9 +30,15 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateEvidence, gateRecordBody } from './role-case-gate-bodies.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
+import { enrolAgent } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
-import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
+import {
+  createIdentWorld,
+  type IdentWorld,
+  type Picked,
+  type RawAnswer,
+} from './ident-audit-cases.ts';
 import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -217,6 +226,76 @@ async function drillReady(w: IdentWorld, caller: Caller, listed: Body): Promise<
 
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
+
+/** `refuses` below, as the module-level cases are handed it. */
+type Refuses = (
+  op: CommandName,
+  operand: string,
+  by: Presenter,
+  code: string,
+  forms: Readonly<Record<string, Body>>,
+  apart?: Readonly<Record<string, string>>,
+) => Promise<void>;
+
+/** The agent case's lease-bearing operations, each with the rest of its body. */
+const byLease = (agentActorId: string): readonly [CommandName, Body][] => [
+  ['task.heartbeat', {}],
+  ['task.dispatch', {}],
+  // The attempt token is one no form holds, so the lease is what is compared.
+  ['task.observe', { attemptId: randomUUID() }],
+  ['task.check', { name: NOBODY, outcome: 'passed' }],
+  ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+  ['run.delegate_child', childProbe(agentActorId)],
+  // A code it may end on, so the lease is what is compared (#1623 R1).
+  ['run.end', { endCode: 'TOOL_REFUSED' }],
+  // C35's claim, land and carry: the lease is compared, the revision one no form reaches.
+  ['review.capture_claim', { revisionId: randomUUID() }],
+  ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
+  ['review.carry_pins', { revisionId: randomUUID() }],
+];
+
+/** C35's claim and land under the agent's own lease, `own`. */
+async function capturesUnderOwnLease(
+  w: IdentWorld,
+  refuses: Refuses,
+  agent: Presenter,
+  own: Picked,
+): Promise<void> {
+  const f = w.foreign;
+  // Under the agent's own lease, a revision of bravo's and a fabricated one answer alike;
+  // a revision asked on the agent's own task is the control the claim reaches.
+  const { revisionId } = await seedForeignReview(
+    w.h.world.db.admin,
+    w.h.world.bravo,
+    f.task.id,
+    f.admin,
+  );
+  const held = { leaseId: own.leaseId, fence: own.fence };
+  for (const [op, extra] of [
+    ['review.capture_claim', {}],
+    ['review.capture_land', LANDING],
+    ['review.carry_pins', {}],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop
+    await refuses(op, 'revisionId', agent, 'NOT_FOUND', {
+      foreign: { ...held, revisionId, ...extra },
+      fabricated: { ...held, revisionId: randomUUID(), ...extra },
+    });
+  }
+  const asked = await seedAskedRevision(
+    w.h.world.db.admin,
+    w.h.world.alpha,
+    own.taskId,
+    w.h.world.ada,
+  );
+  const claimed = await w.agent(
+    w.h.world.agent,
+    'review.capture_claim',
+    { operationId: randomUUID(), ...held, revisionId: asked },
+    own.credential,
+  );
+  expect(claimed.code, 'the claim under the agent’s own lease').toBe('ok');
+}
 
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
@@ -674,6 +753,123 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   );
 
   it(
+    CASE.review,
+    async () => {
+      // A review of bravo's and fabricated ids: each pair answers alike.
+      const { reviewId, revisionId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      await refuses('review.capture', 'revisionId', ada, 'NOT_FOUND', {
+        foreign: { revisionId },
+        fabricated: { revisionId: randomUUID() },
+      });
+      await refuses('review.read', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { reviewId },
+        fabricated: { reviewId: randomUUID() },
+      });
+      const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
+      await refuses('review.open', 'taskId', ada, 'NOT_FOUND', {
+        foreign: { ...page, taskId: w.foreign.task.id },
+        fabricated: { ...page, taskId: randomUUID() },
+      });
+      // A picture bravo's worker landed on that revision, under bravo's lease.
+      const pictureId = await seedForeignPicture(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        revisionId,
+        w.foreign.picked,
+        w.foreign.admin,
+      );
+      await refuses('review.picture', 'pictureId', ada, 'NOT_FOUND', {
+        foreign: { pictureId },
+        fabricated: { pictureId: randomUUID() },
+      });
+      const spot = {
+        type: 'FragmentSelector',
+        conformsTo: 'http://www.w3.org/TR/media-frags/',
+        value: 'xywh=0,0,9,9',
+      };
+      const pin = { width: 1480, selector: [spot], body: 'b', audience: 'internal' };
+      await refuses('review.pin_comment', 'revisionId', ada, 'NOT_FOUND', {
+        foreign: { ...pin, revisionId },
+        fabricated: { ...pin, revisionId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.changeRequest,
+    async () => {
+      // A change request of bravo's, and a record of bravo's named as the pin.
+      const taskId = w.foreign.task.id;
+      const review = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        taskId,
+        w.foreign.admin,
+      );
+      const changeRequestId = await seedForeignChangeRequest(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        { reviewId: review.reviewId, taskId },
+        w.foreign.admin,
+      );
+      await refuses('review.propose_change', 'commentId', ada, 'NOT_FOUND', {
+        foreign: { commentId: taskId, text: 't' },
+        fabricated: { commentId: randomUUID(), text: 't' },
+      });
+      await refuses('review.decide_change', 'changeRequestId', ada, 'NOT_FOUND', {
+        foreign: { changeRequestId, decision: 'approve' },
+        fabricated: { changeRequestId: randomUUID(), decision: 'approve' },
+      });
+      // #2117: a fresh worker's own live lease (the world's agent holds one delegation per
+      // purpose, which the agent case takes), naming bravo's request or a made-up one.
+      const worker = await enrolAgent(
+        w.h.world.db,
+        w.h.world.alpha,
+        w.h.world.ada.actorId as string,
+      );
+      const own = await w.pickUp(worker, 'an agent lease a change request is named under');
+      const agent: Presenter = { kind: 'agent', identity: worker, credential: own.credential };
+      const lease = { leaseId: own.leaseId, fence: own.fence };
+      await refuses('review.make_change_task', 'changeRequestId', agent, 'NOT_FOUND', {
+        foreign: { ...lease, changeRequestId },
+        fabricated: { ...lease, changeRequestId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.reviewDecision,
+    async () => {
+      // A review of bravo's and fabricated ids: each pair answers alike.
+      const { reviewId } = await seedForeignReview(
+        w.h.world.db.admin,
+        w.h.world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      // The foreign review's digest, so only the id differs between the pair.
+      const decision = { digest: 'sha256:0', response: 'approve' };
+      await refuses('review.decide', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { ...decision, reviewId },
+        fabricated: { ...decision, reviewId: randomUUID() },
+      });
+      const astra = { digest: 'sha256:0', verdict: 'approve', review: 'r' };
+      await refuses('review.record_astra_review', 'reviewId', ada, 'NOT_FOUND', {
+        foreign: { ...astra, reviewId },
+        fabricated: { ...astra, reviewId: randomUUID() },
+      });
+    },
+    120_000,
+  );
+
+  it(
     CASE.board,
     async () => {
       // Green at 2507a31. RED at 4757d72: `task.board` takes a board identifier
@@ -717,18 +913,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'same business': { recordId: sibling.id, ...extra },
         });
       }
-      const byLease: readonly [CommandName, Body][] = [
-        ['task.heartbeat', {}],
-        ['task.dispatch', {}],
-        // The attempt token is one no form holds, so the lease is what is compared.
-        ['task.observe', { attemptId: randomUUID() }],
-        ['task.check', { name: NOBODY, outcome: 'passed' }],
-        ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
-        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
-        // A code it may end on, so the lease is what is compared (#1623 R1).
-        ['run.end', { endCode: 'TOOL_REFUSED' }],
-      ];
-      for (const [op, extra] of byLease) {
+      for (const [op, extra] of byLease(w.h.world.agent.actorId)) {
         const forms = {
           foreign: { leaseId: f.picked.leaseId, fence: f.picked.fence, ...extra },
           fabricated: { leaseId: randomUUID(), fence: 1, ...extra },
@@ -738,6 +923,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, 'leaseId', agent, 'LEASE_NOT_OWNED', forms, apart);
       }
+      await capturesUnderOwnLease(w, refuses, agent, own);
     },
     300_000,
   );

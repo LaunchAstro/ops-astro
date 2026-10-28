@@ -106,6 +106,7 @@ import { liveStream } from './live-stream.ts';
 import { recordsIn } from './records-in.ts';
 import { settleAfterCommit } from './settle-after-commit.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
+import { mountReviewEmbed } from './review-embed.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
@@ -648,6 +649,8 @@ export function createApi(options: ApiOptions): Hono {
     });
   }
   mountPublicLegal(api, options);
+  // C35-X: the review embed a site loads for the live view, read with no sign-in.
+  mountReviewEmbed(api);
 
   // MP-7-10: the person's own availability, on the person prefix alone (their
   // own account; no agent holds it), audited with its row.

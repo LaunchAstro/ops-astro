@@ -107,6 +107,14 @@ export const READ_NAMES = [
   // The business's corrections and one correction's receipts, for the card after a reload (#1694).
   'live_correction.list',
   'live_correction.receipts',
+  // One review with its revisions and captures (C35), under any grant on the server.
+  'review.read',
+  // The business's reviews the reader's grant covers, for Projects > Reviews (MP-8-1).
+  'review.list',
+  // One landed capture's picture bytes (C35), under the same grant as its review.
+  'review.picture',
+  // A client's own reviews in the client projection (PROTO-GAPS row 7), under `review:read`.
+  'review.client_list',
   // The business's team invitations (C39-T), under `access:share` on the server.
   'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.

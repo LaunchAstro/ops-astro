@@ -29,6 +29,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isLive, type FieldDefinition } from '../records/fields.ts';
 import { conversationClock } from '../team/conversation-clock.ts';
+import type { Anchor } from '../review/pins.ts';
 
 export { COMMENT_SPINE } from './comment-spine.ts';
 
@@ -62,6 +63,8 @@ export interface StoredComment {
   readonly parentId: string | null;
   /** The person an agent wrote it for; null when a person wrote their own. */
   readonly onBehalfOfPersonId: string | null;
+  /** A pin's spot on a review's capture (C35), or null for a comment that is no pin. */
+  readonly anchor: Anchor | null;
   /**
    * Written by a person outside the business (no active membership): one of
    * the client's people. Read from the author's actor at read time, never
@@ -84,6 +87,8 @@ export interface NewComment {
   readonly parentId?: string | null;
   /** The person an agent writes it for; absent or null for a person. */
   readonly onBehalfOfPersonId?: string | null;
+  /** A pin's spot, written by `review.pin_comment` alone; absent on every other comment. */
+  readonly anchor?: Anchor;
 }
 
 /** The server's now, as the ISO text a comment's times are stored in. */
@@ -118,7 +123,7 @@ export async function writeComment(
      values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text, 'on_behalf_of', $12::text)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text, 'on_behalf_of', $12::text, 'anchor', $13::text::jsonb)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
     [
       tx.businessId,
       id,
@@ -132,6 +137,7 @@ export async function writeComment(
       comment.parentId ?? null,
       comment.conversationId ?? null,
       comment.onBehalfOfPersonId ?? null,
+      comment.anchor === undefined ? null : JSON.stringify(comment.anchor),
     ],
   );
   return id;
@@ -149,6 +155,7 @@ const VALUE_OF: Readonly<Record<string, (comment: StoredComment) => unknown>> = 
   source: (comment) => comment.source,
   parent: (comment) => comment.parentId,
   on_behalf_of: (comment) => comment.onBehalfOfPersonId,
+  anchor: (comment) => comment.anchor ?? undefined,
 };
 
 /**
@@ -173,8 +180,12 @@ export function externalCommentProjection(
     .map((comment) => {
       const projected: Record<string, unknown> = { id: comment.id };
       for (const field of shared) {
-        const read = VALUE_OF[field.key];
-        if (read !== undefined) projected[field.key] = read(comment);
+        // A field a comment does not carry (a pin's anchor on a plain comment) is absent, and
+        // so is a key the table does not hold itself (`constructor`, `__proto__`).
+        const value = Object.hasOwn(VALUE_OF, field.key)
+          ? VALUE_OF[field.key]?.(comment)
+          : undefined;
+        if (value !== undefined) projected[field.key] = value;
       }
       return projected;
     });

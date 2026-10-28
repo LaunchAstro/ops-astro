@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2076: an Astra review holding a NUL or an unpaired surrogate is refused FIELD_VALUE_INVALID naming review at the door, never a 22021 raise, and stores no Astra review."
+}

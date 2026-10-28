@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "Concurrent calls, a lost response, an expired lease and a failed link each leave one change-request task or none, with no request text in audit or refusals"
+}

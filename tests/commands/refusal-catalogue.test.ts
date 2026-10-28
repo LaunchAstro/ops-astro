@@ -219,6 +219,15 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CORRECTION_NOT_OWN_WORK', 409, 'caller'],
   ['VERSION_NOT_READY', 409, 'caller'],
   ['VERSION_UNVERIFIED', 409, 'caller'],
+  ['PAGE_OUTSIDE_HOLDER_SITE', 409, 'caller'],
+  ['CAPTURE_ALREADY_ASKED', 409, 'caller'],
+  ['CAPTURE_NOT_CLAIMABLE', 409, 'caller'],
+  ['CAPTURE_NOT_CLAIMED', 409, 'caller'],
+  ['PICTURE_TOO_LARGE', 422, 'caller'],
+  ['CARRY_NOT_READY', 409, 'caller'],
+  ['CHANGE_REQUEST_ALREADY_FILED', 409, 'caller'],
+  ['CHANGE_REQUEST_ALREADY_DECIDED', 409, 'caller'],
+  ['REVIEW_ALREADY_DECIDED', 409, 'caller'],
 ];
 
 /**

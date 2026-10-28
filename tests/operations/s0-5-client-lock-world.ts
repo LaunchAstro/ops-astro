@@ -120,6 +120,8 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
     ['time_entries', 'task_id'],
     ['task_tags', 'task_id'],
     ['live_corrections', 'task_id'],
+    ['reviews', 'task_id'],
+    ['review_change_requests', 'task_id'],
   ]
     .map(
       ([table, column]) =>
@@ -135,6 +137,17 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
         from public.live_correction_reviews t
         join public.live_corrections c on c.business_id = t.business_id and c.id = t.correction_id
         group by c.task_id`,
+      `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
+        from public.review_captures t
+        join public.review_revisions v on v.business_id = t.business_id and v.id = t.revision_id
+        join public.reviews r on r.business_id = v.business_id and r.id = v.review_id
+        group by r.task_id`,
+      ...['review_revisions', 'review_decisions', 'review_astra_reviews'].map(
+        (table) => `select r.task_id::text as task, md5(string_agg(t::text, '|' order by t::text))
+          from public.${table} t
+          join public.reviews r on r.business_id = t.business_id and r.id = t.review_id
+          group by r.task_id`,
+      ),
       `select uuid_4::text, md5(string_agg(t::text, '|' order by t.id)) from public.records t
         where uuid_4 is not null group by uuid_4`,
     )
@@ -145,12 +158,24 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
   return new Map(rows.map((row) => [row.task, row.digest]));
 }
 
-/** The task a body names: itself, through its lease, or through its trash batch. */
+/**
+ * The task a body names: itself, through its lease, its trash batch, its review revision, its
+ * pin (a comment naming its task) or its change request.
+ */
 async function taskNamedBy(body: Record<string, unknown>): Promise<string | undefined> {
   const ids = Object.values(body).filter((value): value is string => typeof value === 'string');
   const [row] = await admin<{ task: string }>(
-    `select id::text as task from records where id = any($1::uuid[]) or trash_batch_id = any($1::uuid[])
-     union all select task_id::text from leases where id = any($1::uuid[]) limit 1`,
+    `select id::text as task from records
+      where (id = any($1::uuid[]) and not data ? 'anchor') or trash_batch_id = any($1::uuid[])
+     union all select task_id::text from leases where id = any($1::uuid[])
+     union all select r.task_id::text from review_revisions v
+       join reviews r on r.business_id = v.business_id and r.id = v.review_id
+      where v.id = any($1::uuid[])
+     union all select data->>'task' from records
+      where id = any($1::uuid[]) and data ? 'anchor'
+     union all select task_id::text from review_change_requests
+      where id = any($1::uuid[])
+     union all select task_id::text from reviews where id = any($1::uuid[]) limit 1`,
     [ids.filter((id) => /^[\da-f-]{36}$/u.test(id))],
   );
   return row?.task;

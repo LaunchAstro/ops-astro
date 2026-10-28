@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// C35's and C57's rows of the refusal register (`../register.ts`, #2011), beside its records so the
+// register stays under the per-file size cap; the register reads them with its own table.
+
+export const REVIEW_ROWS = [
+  {
+    code: 'PAGE_OUTSIDE_HOLDER_SITE',
+    status: 409,
+    meaning: "The review's page and file are not one pair its task's own site binds",
+    source: 'C35, the bound pages (R6-S2)',
+  },
+  {
+    code: 'CAPTURE_ALREADY_ASKED',
+    status: 409,
+    meaning: "The revision's capture is asked already",
+    source: 'C35, the review record',
+  },
+  {
+    code: 'CAPTURE_NOT_CLAIMABLE',
+    status: 409,
+    meaning: 'Another live lease holds the capture, or it has landed',
+    source: 'C35, the capture claim',
+  },
+  {
+    code: 'CAPTURE_NOT_CLAIMED',
+    status: 409,
+    meaning: 'The capture is not claimed by the lease and fence that land it',
+    source: 'C35, the capture land',
+  },
+  {
+    code: 'PICTURE_TOO_LARGE',
+    status: 422,
+    meaning: 'The picture is past the storage cap',
+    source: 'C35, the storage seam',
+  },
+  {
+    code: 'CHANGE_REQUEST_ALREADY_FILED',
+    status: 409,
+    meaning: 'The pin is filed as a change request already',
+    source: 'C57, the change-request record',
+  },
+  {
+    code: 'CHANGE_REQUEST_ALREADY_DECIDED',
+    status: 409,
+    meaning: 'The change request is approved or refused already',
+    source: 'C57, the change-request record',
+  },
+  {
+    code: 'REVIEW_ALREADY_DECIDED',
+    status: 409,
+    meaning: "The review's latest revision is approved already",
+    source: 'C35-X, the review decision',
+  },
+  {
+    code: 'CARRY_NOT_READY',
+    status: 409,
+    meaning: 'The revision has not landed at every width, so its pins cannot be carried yet',
+    source: 'C35-X, the pin carry',
+  },
+] as const;

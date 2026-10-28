@@ -214,6 +214,68 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'live',
     observations: {},
   },
+  // C35: the journey opens no review; a media review names no page.
+  'public.reviews': {
+    task_id: randomUUID(),
+    kind: 'media',
+    opened_by_actor_id: randomUUID(),
+    opened_by_person_id: randomUUID(),
+  },
+  'public.review_revisions': {
+    review_id: randomUUID(),
+    number: 1,
+    digest: 'sha256:seed',
+    created_by_actor_id: randomUUID(),
+    created_by_person_id: randomUUID(),
+  },
+  'public.review_captures': {
+    revision_id: randomUUID(),
+    width: 1480,
+    asked_by_actor_id: randomUUID(),
+    asked_by_person_id: randomUUID(),
+  },
+  // C35: the journey lands no picture; one stored object of four bytes.
+  'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
+  // C57: the journey files no change request.
+  'public.review_change_requests': {
+    review_id: randomUUID(),
+    comment_id: randomUUID(),
+    task_id: randomUUID(),
+    request_text: 'seed',
+    proposed_by_actor_id: randomUUID(),
+    proposed_by_person_id: randomUUID(),
+  },
+  // C35-X: the journey decides no review and records no Astra review of one.
+  'public.review_astra_reviews': {
+    review_id: randomUUID(),
+    revision_id: randomUUID(),
+    digest: 'sha256:seed',
+    verdict: 'approve',
+    review: 'seed',
+    recorded_by_actor_id: randomUUID(),
+    recorded_by_person_id: randomUUID(),
+  },
+  'public.review_decisions': {
+    review_id: randomUUID(),
+    revision_id: randomUUID(),
+    digest: 'sha256:seed',
+    response: 'approve',
+    author_person_id: randomUUID(),
+    decided_by_actor_id: randomUUID(),
+    decided_by_person_id: randomUUID(),
+  },
+  // C35-X: the journey carries no pin; one lost carry between made-up revisions.
+  'public.review_pin_carries': {
+    review_id: randomUUID(),
+    comment_id: randomUUID(),
+    from_revision_id: randomUUID(),
+    to_revision_id: randomUUID(),
+    state: 'lost',
+    lease_id: randomUUID(),
+    fence: 1,
+    operation_id: randomUUID(),
+    carried_by_actor_id: randomUUID(),
+  },
   // C80: nothing the journey does asks a revert.
   'public.live_correction_revert_asks': {
     correction_id: randomUUID(),

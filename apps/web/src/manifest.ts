@@ -66,7 +66,8 @@ agency | Inbox
   inbox | Inbox | @agency:inbox | MP-7-3
 agency | Projects
   projects | Projects | @agency:projects-board | MP-5-8 | /agency/projects/
-  reviews | Reviews | projects/reviews/ | MP-8-1
+  reviews | Reviews | @agency:reviews | MP-8-1
+  ~review-workspace | Review workspace | @agency:review-workspace | C35-2105
 agency | Clients
   clients | Clients | @agency:clients | MP-8-5 | /agency/clients/
   forms | Forms | clients/forms/ | MP-12-6
@@ -141,7 +142,7 @@ portal | Reports
 portal | Projects
   projects | All projects | projects/ | MP-11-4
   roadmap | Growth roadmap | projects/roadmap/ | MP-11-6
-  reviews | Reviews | projects/reviews/ | MP-11-6
+  reviews | Reviews | @portal:reviews | MP-11-6
 portal | Library
   brand | Brand | library/brand/ | MP-12-1
   voice | Voice | library/voice/ | MP-12-3

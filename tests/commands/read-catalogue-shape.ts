@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `read-catalogue-pin.test.ts`'s pinned shape of each read, moved whole from
-// that file to keep it under the line limit.
+// `read-catalogue-pin.test.ts`'s pinned shape and identifiers of each read, moved whole
+// from that file to keep it under the line limit.
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 export const PINNED_SHAPE = {
@@ -38,6 +38,10 @@ export const PINNED_SHAPE = {
   'preference.read': { spine: false, subject: false, authority: 'self' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
+  'review.client_list': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'review.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'review.picture': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'review.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.person': { spine: false, subject: false, authority: 'self' },
@@ -53,4 +57,61 @@ export const PINNED_SHAPE = {
   'task.ledger': { spine: true, subject: false, authority: 'declared' },
   'team.list': { spine: false, subject: false, authority: 'declared' },
   'trace.read': { spine: true, subject: true, authority: 'declared' },
+};
+
+/** Each read's identifiers, as the catalogue lists them. */
+export const PINNED_IDENTIFIERS: Readonly<Record<string, readonly string[]>> = {
+  'access.read': [],
+  'agent.mine': [],
+  'automation.history': ['activationId'],
+  'automation.registry': [],
+  'chat.conversations': [],
+  'chat.messages': ['conversationId'],
+  'client.list': [],
+  'connection.fleet': [],
+  'connection.graduation': [],
+  'connection.signal': [],
+  'conversation.allowance': ['conversationId'],
+  'conversation.list': [],
+  'conversation.models': ['conversationId'],
+  'conversation.read': ['conversationId'],
+  'definition.attribution': [],
+  'finance.agent_costs': [],
+  'finance.skill_costs': [],
+  'gate.pending': [],
+  'inbox.count': [],
+  'inbox.read': [],
+  'inbox.unattended': [],
+  'invitation.list': [],
+  'live_correction.list': [],
+  'live_correction.read': ['correctionId'],
+  'live_correction.receipts': ['correctionId'],
+  'map.frontier': ['recordId'],
+  'map.list': [],
+  'map.view': ['recordId'],
+  'operations.read': [],
+  'person.list': [],
+  'preference.read': [],
+  'preset.plan': [],
+  'privacy.draft_breach_notices': ['incidentId'],
+  'review.client_list': [],
+  'review.list': [],
+  'review.picture': ['pictureId'],
+  'review.read': ['reviewId'],
+  'secret.list': [],
+  'session.capabilities': [],
+  'session.person': [],
+  'settings.read': [],
+  'tag.list': [],
+  'task.board': ['board', 'person', 'client'],
+  'task.execution': ['recordId'],
+  'task.ledger': [],
+  'task.queue': [],
+  'task.read': ['recordId'],
+  'task.receipt': ['attemptId'],
+  'task.search': [],
+  // A teammate or a client (MP-7-2), one at a time.
+  'task.todos': ['person', 'client'],
+  'team.list': [],
+  'trace.read': ['recordId'],
 };

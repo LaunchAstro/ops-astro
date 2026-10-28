@@ -15,6 +15,22 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // R5 (20261018050000): Astra's review of a correction, written once.
   ['si', 'live_correction_reviews'],
   ['si', 'live_correction_proposals'],
+  // C35 (20261019140000): a review, its revisions and its asked captures are written, never
+  // removed; a review moves only its count, and a capture (20261019142500) its claim and land,
+  // by column.
+  ['si', 'reviews'],
+  ['si', 'review_revisions'],
+  ['si', 'review_captures'],
+  // C35 (20261019142500): a landed picture is written once and removed only through the
+  // storage seam, never changed.
+  ['sid', 'storage_objects'],
+  // C57 (20261019160000): a change request is filed once and decided once, by column.
+  ['si', 'review_change_requests'],
+  // C35-X (20261019170000): a decision and Astra's review of a revision, written once.
+  ['si', 'review_decisions'],
+  ['si', 'review_astra_reviews'],
+  // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
+  ['si', 'review_pin_carries'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -43,5 +59,33 @@ export const SITE_UPDATES = [
     table: 'public.live_correction_proposals',
     from: '20261013110100',
     columns: ['head_commit', 'request_number', 'settled_at', 'state'],
+  },
+  { table: 'public.reviews', from: '20261019140000', columns: ['revision_count', 'updated_at'] },
+  // A capture is claimed and landed by these columns; its trigger keeps its revision and width.
+  {
+    table: 'public.review_captures',
+    from: '20261019142500',
+    columns: [
+      'fence',
+      'landed_at',
+      'lease_id',
+      'observation',
+      'picture_digest',
+      'picture_id',
+      'state',
+      'updated_at',
+    ],
+  },
+  {
+    table: 'public.review_change_requests',
+    from: '20261019160000',
+    columns: [
+      'state',
+      'decided_by_actor_id',
+      'decided_by_person_id',
+      'decided_at',
+      'created_task_id',
+      'updated_at',
+    ],
   },
 ] as const;

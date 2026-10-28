@@ -151,7 +151,7 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), and a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, and Astra's saved `review` of a page revision, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -3492,6 +3492,53 @@ drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
 register's order, and `dataClasses`: the data-class register's classes in use
 when it was drafted, each `{ dataClass, purpose, disclosures, retention,
 deletion }`, in the register's order.
+
+### The review embed for the live view (C35-X, LF-2)
+
+`GET /api/public/review-embed.js` needs no sign-in. It answers the embed
+script as `text/javascript; charset=utf-8` with `nosniff` and
+`cross-origin-resource-policy: cross-origin`; nothing else is served there.
+A site the agency builds or hosts loads it and lets the product frame it, as
+`reviewEmbedSnippet(<product origin>)` gives them (`packages/core-wire/src/review-embed.ts`):
+
+```html
+<script src="https://<product origin>/api/public/review-embed.js" async></script>
+```
+
+```text
+Content-Security-Policy: frame-ancestors 'self' https://<product origin>
+```
+
+The live view (`apps/web/src/screens/projects/review-live-frame.tsx`) frames
+the review's bound https page with `sandbox="allow-scripts allow-same-origin"`
+and camera, microphone, geolocation and payment denied, then pings the frame,
+to the site origin only, with a fresh nonce for that load. The embed answers
+a ping only from the product origin it was loaded from, and only from the
+window framing the page, with a hello echoing the nonce. The view shows the
+page only on a hello from the selected frame's own window, the site origin
+and that nonce within 3 seconds, after the frame has loaded. The ping repeats
+while the page shows: a later load, or three unanswered pings, hides it again
+until a hello for a fresh nonce, and a revision switched back to waits anew. Otherwise the frame is removed and the
+capture stands with "Live view isn't set up for this site" and a link to the
+staged page. The product never fetches, rewrites or proxies the page, the
+live view stores nothing, and no pin or approval binds to it.
+
+A pin made on the live view (#2120) is still `review.pin_comment` on the
+captured revision and width, with `liveViewport`, the frame's width. It is
+kept on that capture only when `liveViewport` is the capture's width, the
+revision is the review's newest with that width's capture landed (read after
+the review's lock), and the selector is a media fragment alone: a quote would
+be the live page's text, not the capture's. Otherwise it is refused
+`FIELD_VALUE_INVALID` naming `liveViewport`, `selector` or `revisionId`, the
+last with the ask for a fresh capture, and keeps nothing. `review.decide`
+takes only the review, the recorded digest and the response; any other field
+is `COMMAND_BODY_INVALID`.
+
+`review.open` may name `correctionId`, the live correction whose published
+page the new revision captures: one on the review's own task, page and file
+whose receipts the opener reads, else `NOT_FOUND` naming `correctionId`.
+`review.read` returns each revision's `correctionId` (null for none); the
+workspace reads that correction's Receipt through `live_correction.receipts`.
 
 ### The client record and grants on Settings ▸ Access (C32)
 

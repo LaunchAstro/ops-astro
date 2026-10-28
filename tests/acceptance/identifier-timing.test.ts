@@ -19,6 +19,9 @@
 // database lookups the two forms would differ in. It is not network timing.
 
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { LANDING, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
+import { seedForeignChangeRequest } from './c57-bodies.ts';
+import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -377,6 +380,56 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ correctionId: randomUUID(), ...REVIEW_BODY }),
       },
     );
+    // C35: a review of bravo's and its revision, and a page open on bravo's task.
+    const review = await seedForeignReview(w.h.world.db.admin, w.h.world.bravo, f.task.id, f.admin);
+    byAda('review.read', 'reviewId', review.reviewId, (reviewId) => ({ reviewId }));
+    byAda('review.capture', 'revisionId', review.revisionId, (revisionId) => ({ revisionId }));
+    const approval = { digest: 'sha256:0', response: 'approve' };
+    byAda('review.decide', 'reviewId', review.reviewId, (reviewId) => ({ ...approval, reviewId }));
+    const astra = { digest: 'sha256:0', verdict: 'approve', review: 'r' };
+    byAda('review.record_astra_review', 'reviewId', review.reviewId, (reviewId) => ({
+      ...astra,
+      reviewId,
+    }));
+    const page = { pageUrl: PAGE, path: ABOUT, sourceRevision: 'r' };
+    byAda('review.open', 'taskId', f.task.id, (taskId) => ({ ...page, taskId }));
+    // A picture bravo's worker landed on that revision, under bravo's lease.
+    const db = w.h.world.db.admin;
+    const picture = await seedForeignPicture(
+      db,
+      w.h.world.bravo,
+      review.revisionId,
+      f.picked,
+      f.admin,
+    );
+    byAda('review.picture', 'pictureId', picture, (pictureId) => ({ pictureId }));
+    const spot = {
+      type: 'FragmentSelector',
+      conformsTo: 'http://www.w3.org/TR/media-frags/',
+      value: 'xywh=0,0,9,9',
+    };
+    byAda('review.pin_comment', 'revisionId', review.revisionId, (revisionId) => ({
+      revisionId,
+      width: 1480,
+      selector: [spot],
+      body: 'b',
+      audience: 'internal',
+    }));
+    // C57: bravo's task named as the pin, and a change request of bravo's.
+    const change = await seedForeignChangeRequest(
+      w.h.world.db.admin,
+      w.h.world.bravo,
+      { reviewId: review.reviewId, taskId: f.task.id },
+      f.admin,
+    );
+    byAda('review.propose_change', 'commentId', f.task.id, (commentId) => ({
+      commentId,
+      text: 't',
+    }));
+    byAda('review.decide_change', 'changeRequestId', change, (changeRequestId) => ({
+      changeRequestId,
+      decision: 'approve',
+    }));
     const request = C80_REQUEST;
     out.push({
       op: 'live_correction.request',
@@ -651,6 +704,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ],
       ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ['run.end', { endCode: 'TOOL_REFUSED' }],
+      // C35's claim, land and carry: the lease is compared, the revision one no form reaches.
+      ['review.capture_claim', { revisionId: randomUUID() }],
+      ['review.capture_land', { revisionId: randomUUID(), ...LANDING }],
+      ['review.carry_pins', { revisionId: randomUUID() }],
     ];
     // The helper's handback: another business's real credential, and a made-up one.
     out.push({
@@ -672,14 +729,27 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ leaseId: randomUUID(), fence: 1, ...extra }),
       });
     }
+    // #2117: the worker's own lease, naming bravo's change request or a made-up one.
+    out.push({
+      op: 'review.make_change_task',
+      operand: 'changeRequestId',
+      by: agent,
+      code: 'NOT_FOUND',
+      foreign: () => ({ leaseId: picked.leaseId, fence: picked.fence, changeRequestId: change }),
+      fabricated: () => ({
+        leaseId: picked.leaseId,
+        fence: picked.fence,
+        changeRequestId: randomUUID(),
+      }),
+    });
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 119 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 132 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(119);
-    expect(names).toHaveLength(119);
+    expect(new Set(names).size, 'distinct operations').toBe(132);
+    expect(names).toHaveLength(132);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

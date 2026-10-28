@@ -49,6 +49,7 @@ import {
   writeComment,
 } from '../../../core-records/src/index.ts';
 import type {
+  Anchor,
   TenantQuery,
   CommentAudience,
   CommentType,
@@ -105,7 +106,7 @@ export function representedPerson(session: CommandContext['session']): string | 
  * agent and writes team notes only, as the agent row does (#420); an external
  * party writes to the client; a member writes either.
  */
-function audiencesOf(session: CommandContext['session']): ReadonlySet<string> {
+export function audiencesOf(session: CommandContext['session']): ReadonlySet<string> {
   if (session.credentialScope === undefined) {
     return session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES;
   }
@@ -169,6 +170,8 @@ export interface CommentTarget {
   readonly delegationId: string | null;
   /** The person an agent acts for (its delegation's, or its credential's), stored on the comment; `null` for a person. */
   readonly onBehalfOfPersonId: string | null;
+  /** A pin's spot (C35), from `review.pin_comment` alone. */
+  readonly anchor?: Anchor;
 }
 
 /**
@@ -257,6 +260,7 @@ export async function writeTaskComment(
     source: on.entryPoint,
     parentId: parent,
     onBehalfOfPersonId: on.onBehalfOfPersonId,
+    ...(on.anchor === undefined ? {} : { anchor: on.anchor }),
   });
   await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 

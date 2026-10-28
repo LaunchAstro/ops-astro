@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 first-client gate: review.open and review.capture are client-data and are refused GATE_SHUT, writing nothing, on a real-data installation with an item open."
+}

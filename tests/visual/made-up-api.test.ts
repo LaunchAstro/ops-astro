@@ -28,6 +28,8 @@ const NOT_DRAWN = new Set([
   // #1694: the card's list and receipts, drawn once the live app's card reads them.
   'live_correction.list',
   'live_correction.receipts',
+  // The client Reviews page: a portal address refuses until client grants are wired (MP-10-1).
+  'review.client_list',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

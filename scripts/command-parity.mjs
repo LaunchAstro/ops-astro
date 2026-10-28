@@ -199,6 +199,10 @@ const OPERANDS = {
   'live_correction.read': { correctionId: 'c' },
   'live_correction.list': {},
   'live_correction.receipts': { correctionId: 'c' },
+  'review.read': { reviewId: 'r' },
+  'review.list': {},
+  'review.picture': { pictureId: 'r' },
+  'review.client_list': {},
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },

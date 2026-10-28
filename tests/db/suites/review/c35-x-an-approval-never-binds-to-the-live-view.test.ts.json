@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X approval and the live view: review.decide refuses any field beyond review, digest and response, and a digest the review never recorded is stale; neither writes a decision."
+}

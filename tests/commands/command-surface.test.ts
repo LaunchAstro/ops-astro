@@ -8,9 +8,8 @@
 // The names are in `field_defs`, written per business at install time, so the check reads the
 // installed model and not a list in a module, which is why T1e put the classification in the data.
 //
-// It is also what settles the count. The contract names nine commands and the split is titled
-// after them; the seeded task type names ten owning operations. Nine is not enough for the model
-// that landed, and this is where that stops being an argument and becomes a failing test.
+// It also settles the count: the contract names nine commands, the seeded task type ten owning
+// operations. Nine is not enough for the model that landed; here that becomes a failing test.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -29,15 +28,15 @@ import {
   pathOf,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
+import { DECLARED_READS } from './declared-reads.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
-
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:agent|task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction|finance)\/[a-z_]+$/u;
+  /^\/(?:agent|task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction|finance|review)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -82,65 +81,13 @@ describe('the surface as a table', () => {
     // `credential` is API-2's agent credential. `time` is MP-4-6's (time entries, rows beside a
     // task); `mandate`, `graduation` MP-14-10a. By piece: `tag` MP-4-11; `chat` C71-D; `invitation`
     // C39-T; `map` WF-1; `automation`, `activation` C33; `approval` C52-A; `record`, `onboarding`
-    // C41-A; `live_correction` C80; `finance` MP-14-9 and MP-14-6; `agent`, a person's own agents.
+    // C41-A; `live_correction` C80; `finance` MP-14-9, MP-14-6; `review` C35; `agent`, own agents.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 
-/** The reads the surface declares, sorted. */
-const DECLARED_READS = [
-  'access.read',
-  'agent.mine',
-  'automation.history',
-  'automation.registry',
-  'chat.conversations',
-  'chat.messages',
-  'client.list',
-  'connection.fleet',
-  'connection.graduation',
-  'connection.signal',
-  'conversation.allowance',
-  'conversation.list',
-  'conversation.models',
-  'conversation.read',
-  'definition.attribution',
-  'finance.agent_costs',
-  'finance.skill_costs',
-  'gate.pending',
-  'inbox.count',
-  'inbox.read',
-  'inbox.unattended',
-  'invitation.list',
-  'live_correction.list',
-  'live_correction.read',
-  'live_correction.receipts',
-  'map.frontier',
-  'map.list',
-  'map.view',
-  'operations.read',
-  'person.list',
-  'preference.read',
-  'preset.plan',
-  'privacy.draft_breach_notices',
-  'secret.list',
-  'session.capabilities',
-  'session.person',
-  'settings.read',
-  'tag.list',
-  'task.board',
-  'task.execution',
-  'task.ledger',
-  'task.queue',
-  'task.read',
-  'task.receipt',
-  'task.search',
-  'task.todos',
-  'team.list',
-  'trace.read',
-];
-
 describe('the surface as a table', () => {
-  it('declares the forty-six reads as reads, and everything else as a write', () => {
+  it('declares the forty-eight reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

@@ -401,6 +401,82 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, party_id, holder, page_url, path)
      select business_id, party_id, holder, 'https://agency.example/about/', 'src/pages/about.md'
        from public.party_sites where business_id = $1 order by party_id limit 1 returning 1`,
+  // C35: the journey opens no review. A media review on the business's first record, one
+  // revision of it and one capture asked of that.
+  'public.reviews': `insert into public.reviews
+       (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
+     select p.business_id, gen_random_uuid(), r.id, 'media', a.id, p.id
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
+  'public.review_revisions': `insert into public.review_revisions
+       (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
+     select business_id, gen_random_uuid(), id, 1, 'sha256:seed', opened_by_actor_id,
+            opened_by_person_id
+       from public.reviews where business_id = $1 order by id limit 1 returning 1`,
+  'public.review_captures': `insert into public.review_captures
+       (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
+     select business_id, gen_random_uuid(), id, 1480, created_by_actor_id, created_by_person_id
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  // C35: the journey lands no picture. One stored object of four bytes, as the storage seam
+  // writes one.
+  'public.storage_objects': `insert into public.storage_objects
+       (business_id, id, digest, byte_count, body)
+     values ($1, gen_random_uuid(), 'sha256:seed', 4, 'seed'::bytea) returning 1`,
+  // C57: the journey files no change request. One on the seeded review, its task standing in
+  // for the pin.
+  'public.review_change_requests': `insert into public.review_change_requests
+       (business_id, id, review_id, comment_id, task_id, request_text, proposed_by_actor_id,
+        proposed_by_person_id)
+     select business_id, gen_random_uuid(), id, task_id, task_id, 'seed', opened_by_actor_id,
+            opened_by_person_id
+       from public.reviews where business_id = $1 order by id limit 1 returning 1`,
+  // C35-X: the journey decides no review. Astra's review of the seeded revision, and its
+  // approval by another person of the business (the author, marked, only if there is none).
+  'public.review_astra_reviews': `insert into public.review_astra_reviews
+       (business_id, id, review_id, revision_id, digest, verdict, review, recorded_by_actor_id,
+        recorded_by_person_id)
+     select business_id, gen_random_uuid(), review_id, id, digest, 'approve', 'seed',
+            created_by_actor_id, created_by_person_id
+       from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  'public.review_decisions': `insert into public.review_decisions
+       (business_id, id, review_id, revision_id, digest, response, author_person_id,
+        decided_by_actor_id, decided_by_person_id, single_operator_self_approval)
+     select v.business_id, gen_random_uuid(), v.review_id, v.id, v.digest, 'approve',
+            v.created_by_person_id, a.id, a.person_id, a.person_id = v.created_by_person_id
+       from public.review_revisions v
+       join public.actors a
+         on a.business_id = v.business_id and a.kind = 'person' and a.person_id is not null
+      where v.business_id = $1
+      order by v.id, a.person_id = v.created_by_person_id, a.id limit 1 returning 1`,
+  // C35-X: the journey carries no pin. A next revision of the seeded review, and one lost
+  // carry onto it of the business's first record under the lease the journey picked up, so
+  // Alpha's own insert meets its keys; Bravo holds no lease, so its row names one that keys
+  // nothing, as the check's row does.
+  'public.review_pin_carries': `with first as (
+       select business_id, id, review_id, created_by_actor_id, created_by_person_id
+         from public.review_revisions where business_id = $1 order by id limit 1),
+     next as (
+       insert into public.review_revisions
+              (business_id, id, review_id, number, digest, created_by_actor_id,
+               created_by_person_id)
+       select business_id, gen_random_uuid(), review_id, 1000, 'sha256:carried',
+              created_by_actor_id, created_by_person_id
+         from first
+       returning id)
+     insert into public.review_pin_carries
+       (business_id, id, review_id, comment_id, from_revision_id, to_revision_id, state,
+        lease_id, fence, operation_id, carried_by_actor_id)
+     select f.business_id, gen_random_uuid(), f.review_id,
+            (select r.id from public.records r where r.business_id = $1 order by r.id limit 1),
+            f.id, n.id, 'lost',
+            coalesce(
+              (select l.id from public.leases l where l.business_id = $1 order by l.id limit 1),
+              gen_random_uuid()),
+            1, gen_random_uuid(), f.created_by_actor_id
+       from first f cross join next n
+     returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X the carry is refused CARRY_NOT_READY before both widths land, LEASE_EXPIRED under an expired lease or one that ran out while it waited on the capture lock, NOT_FOUND under another task's lease, each writing nothing; a second, a replayed and two competing carries on separate connections leave one carry per pin."
+}

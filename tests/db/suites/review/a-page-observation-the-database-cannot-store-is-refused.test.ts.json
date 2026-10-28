@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 an observation Postgres cannot store as jsonb is refused FIELD_VALUE_INVALID before any write, never a database fault."
+}

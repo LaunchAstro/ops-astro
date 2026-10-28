@@ -64,6 +64,8 @@ import { parseBreachNotices, readBreachNotices, readOperations } from './operati
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { listInvitations } from './invitations.ts';
 import { CORRECTION_READS } from './live-correction.ts';
+import { REVIEW_READS } from './review.ts';
+import { CLIENT_REVIEW_READS } from './review-client.ts';
 import {
   parseHistoryOperands,
   readAutomationHistory,
@@ -946,6 +948,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // C80 and #1694: a correction's decision, the list and a correction's receipts.
   ...CORRECTION_READS,
+  // C35 (#2011): a review with its revisions and captures, and a landed picture.
+  ...REVIEW_READS,
+  // PROTO-GAPS row 7: a client's own reviews, in the client projection.
+  ...CLIENT_REVIEW_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {

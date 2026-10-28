@@ -258,6 +258,26 @@ export const DECLARED: Readonly<
   'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
   'settings.set_single_operator': { carry: 'not carried', plant: 'a business setting' },
   'live_correction.record_review': { carry: 'not carried', plant: 'needs a requested correction' },
+  // C35: a review is opened at the old task's client and its bound page; a duplicate carries none.
+  'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
+  'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.capture_claim': {
+    carry: 'not carried',
+    plant: 'needs a capture asked under a live lease',
+  },
+  'review.capture_land': {
+    carry: 'not carried',
+    plant: 'needs a capture claimed under a live lease',
+  },
+  'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
+  // C35-X: a pin's carry is history of the old task's review; a duplicate carries none.
+  'review.carry_pins': { carry: 'not carried', plant: 'needs a landed revision under a lease' },
+  // C57: a change request is filed from a client pin and decided; a duplicate carries none.
+  'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
+  'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },
+  'review.make_change_task': { carry: 'not carried', plant: 'needs an approved change request' },
+  'review.decide': { carry: 'not carried', plant: 'needs a review revision' },
+  'review.record_astra_review': { carry: 'not carried', plant: 'needs a review revision' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

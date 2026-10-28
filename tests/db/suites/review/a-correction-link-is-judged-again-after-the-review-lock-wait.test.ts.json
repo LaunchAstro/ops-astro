@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35-X correction link: review.open names a correction only where the receipts read reaches it across business, client and person, judged again after the review lock wait so an expired task read links nothing."
+}

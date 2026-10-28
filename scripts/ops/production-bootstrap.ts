@@ -69,6 +69,11 @@ export const OWNER_GRANTS: readonly (readonly [string, Action])[] = [
   ['chat', 'comment'],
   ['chat', 'manage'],
   ['automation', 'manage'],
+  ['review', 'write'],
+  ['review', 'read'],
+  ['review', 'comment'],
+  ['proposal', 'write'],
+  ['proposal', 'decide'],
   ['operations', 'manage'],
 ];
 

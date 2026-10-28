@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 183 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 198 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 183; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 198; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -141,9 +141,18 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   /** Propose and approve as `approver`, answering the reservation it holds. */
   async function reservationBy(approver: Caller, title: string): Promise<string> {
     const made = await w.person(approver, 'task.create', { fields: { title } });
+    return await reservationOn(approver, made.body['recordId'], made.body['revision']);
+  }
+
+  /** Propose and approve work on a task that already exists, answering its reservation. */
+  async function reservationOn(
+    approver: Caller,
+    recordId: unknown,
+    expectedRevision: unknown,
+  ): Promise<string> {
     const proposed = await w.person(approver, 'task.propose', {
-      recordId: made.body['recordId'],
-      expectedRevision: made.body['revision'],
+      recordId,
+      expectedRevision,
       ...PROPOSAL,
     });
     const gate = proposed.body['detail'] as Record<string, unknown>;
@@ -250,6 +259,34 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
+  /**
+   * C57 part B (#2117): ada approves a client pin's change request, and a fresh agent makes it a
+   * task under its live lease on the review's own task.
+   */
+  async function changeTaskCell(): Promise<Cell> {
+    const ada = w.h.world.ada;
+    const prepared = await w.h.positiveBody(declarationOf('review.decide_change'));
+    if ('exception' in prepared) throw new Error('audit: no body for review.decide_change');
+    const decided = await w.person(ada, 'review.decide_change', prepared.body);
+    if (decided.code !== 'ok') throw new Error(`audit: decide_change refused ${decided.code}`);
+    const changeRequestId = prepared.body['changeRequestId'];
+    const rows = await w.h.world.db.admin.execute<{
+      readonly id: string;
+      readonly revision: string;
+    }>(
+      `select r.id, r.revision::text as revision
+         from public.review_change_requests c join public.records r on r.id = c.task_id
+        where c.id = $1`,
+      [changeRequestId],
+    );
+    const task = rows[0];
+    if (task === undefined) throw new Error('audit: no review task for the change request');
+    const agent = await freshAgent();
+    const p = await claimAs(agent, await reservationOn(ada, task.id, Number(task.revision)));
+    const body = { leaseId: p.leaseId, fence: p.fence, changeRequestId };
+    return agentCell(agent, 'review.make_change_task', body, p.credential, null);
+  }
+
   async function applied(declaration: CommandDeclaration): Promise<Cell> {
     const { name } = declaration;
     const ada = w.h.world.ada;
@@ -336,7 +373,10 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     return { ...agentCell(agent, 'run.end', body, p.credential, 'RUN_ENDED'), retained: true };
   }
 
-  /** AW-11's two, the take and the stop on an agent's own login; every other operation as `applied` builds it. */
+  /**
+   * AW-11's two, the take and the stop on an agent's own login, and C57's task making on a
+   * review's task; every other operation as `applied` builds it.
+   */
   const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
     declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
       ? await childCell(declaration.name)
@@ -344,7 +384,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         ? await ownTake()
         : declaration.name === 'run.end'
           ? await endedCell()
-          : await applied(declaration);
+          : declaration.name === 'review.make_change_task'
+            ? await changeTaskCell()
+            : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
@@ -471,6 +513,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
                   : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
+      case 'review.make_change_task': {
+        // C57 part B: ada's live lease, so the refusal is authority's and not a stranger's lease.
+        const lease = await adaLease(`ada's lease noah may not ${name}`);
+        const body = { leaseId: lease.leaseId, fence: lease.fence, changeRequestId: randomUUID() };
+        return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
+      }
       default: {
         // `session.capabilities` included: contract 8.2 case 3 names every
         // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
@@ -587,12 +635,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 183 exported operations both ways', () => {
+  it('covered all 198 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(183);
+    expect(names).toHaveLength(198);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 183.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 197.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
