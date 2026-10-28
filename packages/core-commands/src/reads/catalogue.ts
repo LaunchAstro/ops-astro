@@ -291,6 +291,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
+    // The comments, pins among them, are read after the task row (S2114-3).
+    judgedLast: true,
     async serve(tx, session, operands, { spine, recordId }) {
       if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
