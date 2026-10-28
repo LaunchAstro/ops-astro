@@ -398,18 +398,24 @@ business key's lookup and every phase of every business
 transaction or statement (the longest owed starts first on a later request).
 The statement running at it is cancelled with the driver's own cancel request,
 whatever it waits on, and its transaction rolls back on the same connection,
-which stays in the pool; the session is never ended. Each of those
-transactions also sets `statement_timeout` to the time left plus 250 ms, as a
-backstop for a cancel that never arrives, and runs its commit-time checks as
-its last statement, so the COMMIT has nothing left to wait on
-(`packages/core-records/src/tenancy/deadline.ts`). So a pass stalled on a lock,
-over one business or several, holds no request much past the deadline
+which stays in the pool; the server never ends the session. A cancel the
+server has not taken within 500 ms could still land on the next transaction,
+so that connection is closed from the client side and the pool opens a fresh
+one. Before each statement, those transactions also set `statement_timeout`
+and `lock_timeout` to the time left plus 250 ms, as a backstop for a cancel
+that never arrives, and run their commit-time checks as their last statement,
+so the COMMIT has nothing left to wait on
+(`packages/core-records/src/tenancy/deadline.ts`,
+`tests/tenancy/a-cancel-the-server-has-not-taken-closes-its-connection.test.ts`).
+So a pass stalled on a lock, over one business or several, holds no request
+much past the deadline
 (`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`,
 `tests/api/two-stalled-businesses-share-one-request-bound.test.ts`,
 `tests/api/successive-waits-in-one-transaction-share-the-request-deadline.test.ts`,
 `tests/api/a-multi-row-statement-and-a-discovery-read-share-the-request-deadline.test.ts`,
 `tests/api/business-lookup-shares-the-request-deadline.test.ts`,
-`tests/api/a-cancelled-pass-leaves-the-next-pass-working-on-the-same-pool.test.ts`).
+`tests/api/a-cancelled-pass-leaves-the-next-pass-working-on-the-same-pool.test.ts`,
+`tests/api/a-lost-cancel-cannot-hold-hosted-health-past-the-shared-request-bound.test.ts`).
 The function's logins end a transaction left idle 60 s
 (`idle_in_transaction_session_timeout`, set by `scripts/ops/staging-logins.ts`).
 Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a

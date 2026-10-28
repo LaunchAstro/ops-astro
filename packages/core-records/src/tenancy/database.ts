@@ -17,7 +17,7 @@ import type postgres from 'postgres';
 import { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 import type { StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
-import { checkDeferred, limitStatements, timeLeft, untilDeadline } from './deadline.ts';
+import { checkDeferred, deadlineOn, timeLeft, untilDeadline, type Deadline } from './deadline.ts';
 import {
   handleOn,
   type BusinessId,
@@ -123,9 +123,9 @@ async function sendUnsafe<Row>(
   text: string,
   parameters: readonly unknown[],
   oneCommand = false,
-  deadline?: number,
+  deadline?: Deadline,
 ): Promise<readonly Row[]> {
-  const rows = await untilDeadline(deadline, () =>
+  const rows = await untilDeadline(handle, deadline, () =>
     oneCommand
       ? handle.unsafe(text, parameters as never[], EXTENDED_PROTOCOL)
       : handle.unsafe(text, parameters as never[]),
@@ -159,9 +159,8 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
       await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
-      const handle = handleOn(tx, business, deadline);
-      if (deadline === undefined) return await run(handle);
-      await limitStatements(handle.query, deadline);
+      if (deadline === undefined) return await run(handleOn(tx, business));
+      const handle = handleOn(tx, business, await deadlineOn(tx, deadline));
       const result = await run(handle);
       await checkDeferred(handle.query);
       return result;
@@ -273,10 +272,11 @@ export function connectAsAdmin(url: string, options: DatabaseOptions = {}): Admi
       const { deadline } = transactionOptions;
       if (deadline !== undefined) timeLeft(deadline);
       return (await sql.begin(async (tx) => {
-        const execute = async <Row>(text: string, parameters: readonly unknown[] = []) =>
-          await sendUnsafe<Row>(tx, text, parameters, oneCommand, deadline);
-        if (deadline !== undefined) await limitStatements(execute, deadline);
-        return await body(execute);
+        const limited = deadline === undefined ? undefined : await deadlineOn(tx, deadline);
+        return await body(
+          async <Row>(text: string, parameters: readonly unknown[] = []) =>
+            await sendUnsafe<Row>(tx, text, parameters, oneCommand, limited),
+        );
       })) as T;
     },
     async close(): Promise<void> {

@@ -7,7 +7,7 @@
 // (`deadline.ts`).
 
 import postgres from 'postgres';
-import { untilDeadline } from './deadline.ts';
+import { untilDeadline, type Deadline } from './deadline.ts';
 
 /** A business identifier. Checked before it reaches the server, never interpolated. */
 export type BusinessId = string;
@@ -35,12 +35,12 @@ export interface TransactionQuery extends TenantQuery {
 export function handleOn(
   tx: postgres.TransactionSql,
   businessId: BusinessId,
-  deadline?: number,
+  deadline?: Deadline,
 ): TransactionQuery {
   return {
     businessId,
     async query<Row>(text: string, parameters: readonly unknown[] = []): Promise<readonly Row[]> {
-      const rows = await untilDeadline(deadline, () => tx.unsafe(text, parameters as never[]));
+      const rows = await untilDeadline(tx, deadline, () => tx.unsafe(text, parameters as never[]));
       return rows as unknown as readonly Row[];
     },
     async savepoint(work: (inner: TransactionQuery) => Promise<void>): Promise<boolean> {
