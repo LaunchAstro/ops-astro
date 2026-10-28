@@ -261,14 +261,8 @@ export const DECLARED: Readonly<
   // C35: a review is opened at the old task's client and its bound page; a duplicate carries none.
   'review.open': { carry: 'not carried', plant: 'needs a bound site page' },
   'review.capture': { carry: 'not carried', plant: 'needs a review revision' },
-  'review.capture_claim': {
-    carry: 'not carried',
-    plant: 'needs a capture asked under a live lease',
-  },
-  'review.capture_land': {
-    carry: 'not carried',
-    plant: 'needs a capture claimed under a live lease',
-  },
+  'review.capture_claim': { carry: 'not carried', plant: 'needs a capture asked under a lease' },
+  'review.capture_land': { carry: 'not carried', plant: 'needs a capture claimed under a lease' },
   'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
   // C35-X: a pin's carry is history of the old task's review; a duplicate carries none.
   'review.carry_pins': { carry: 'not carried', plant: 'needs a landed revision under a lease' },
