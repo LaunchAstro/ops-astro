@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X (Sol S2165-4) a carry under a text operation id the agent envelope accepts writes its one carry and stores that id as given, never a database error."
+}
