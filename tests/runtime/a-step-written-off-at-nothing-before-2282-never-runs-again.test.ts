@@ -199,28 +199,6 @@ describe.skipIf(serverUrl === undefined)('a step written off at nothing before #
     }).toEqual({ picked: 'RESERVATION_NOT_CLAIMABLE', held: [], money });
   });
 
-  it('refuses the replacement the pass reserved before the write-off, with nothing written or moved', async () => {
-    const template = await aRealWriteOff();
-    // Held unknown after spending 300; the pass proves its effect absent and reserves a
-    // replacement on its own hold. Then the old write-off at nothing closes the first hold.
-    const w = await h.unknownStep({ applied: false, room: true });
-    await spend(s, w.decision['reservationId'], 300);
-    await h.reconcile();
-    const replacement = await h.replacement(w);
-    expect(replacement).toBeDefined();
-    await writtenOffBefore2282(
-      { reservationId: w.decision['reservationId'], attemptId: w.attemptId, taskId: w.taskId },
-      template,
-    );
-    const before = await h.t3b.snapshot();
-
-    const picked = await pickupOf(s, replacement);
-    expect({ picked: codeOf(picked), after: await h.t3b.snapshot() }).toStrictEqual({
-      picked: 'RESERVATION_NOT_CLAIMABLE',
-      after: before,
-    });
-  });
-
   it("never reads one business's write-off onto another business's step", async () => {
     const template = await aRealWriteOff();
     // Another business's step, its worker stopped after spending 300: the classifier closed
@@ -239,3 +217,30 @@ describe.skipIf(serverUrl === undefined)('a step written off at nothing before #
     expect(held.map((hold) => hold.held)).toEqual(['200']);
   });
 });
+
+describe.skipIf(serverUrl === undefined)(
+  'a replacement reserved before a step written off at nothing before #2282',
+  () => {
+    it('is refused at pickup, with nothing written or moved', async () => {
+      const template = await aRealWriteOff();
+      // Held unknown after spending 300; the pass proves its effect absent and reserves a
+      // replacement on its own hold. Then the old write-off at nothing closes the first hold.
+      const w = await h.unknownStep({ applied: false, room: true });
+      await spend(s, w.decision['reservationId'], 300);
+      await h.reconcile();
+      const replacement = await h.replacement(w);
+      expect(replacement).toBeDefined();
+      await writtenOffBefore2282(
+        { reservationId: w.decision['reservationId'], attemptId: w.attemptId, taskId: w.taskId },
+        template,
+      );
+      const before = await h.t3b.snapshot();
+
+      const picked = await pickupOf(s, replacement);
+      expect({ picked: codeOf(picked), after: await h.t3b.snapshot() }).toStrictEqual({
+        picked: 'RESERVATION_NOT_CLAIMABLE',
+        after: before,
+      });
+    });
+  },
+);
