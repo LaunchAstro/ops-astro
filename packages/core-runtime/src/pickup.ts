@@ -43,6 +43,7 @@ import { checkAuthorityAt, classifyUnderLocks, loseLease, holdCoveringGrants } f
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
+import { stepWrittenOff } from './step-written-off.ts';
 import { callsSpentOf, remainingOf, stopAtSpentHold, toppedUpHeld } from './budget-stop.ts';
 import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/index.ts';
 
@@ -426,12 +427,7 @@ async function recheckClaim(
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
-            exists (select 1 from public.attempts w
-                      join public.reservations wr
-                        on wr.business_id = w.business_id and wr.id = w.reservation_id
-                     where w.business_id = $1 and w.step_id = att.step_id
-                       and ((w.outcome = 'unknown' and w.state <> 'quarantined')
-                            or wr.classified_cause = 'written_off')) as written_off,
+            ${stepWrittenOff('att.business_id', 'att.step_id')} as written_off,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
             (bound.expires_at <= $3::timestamptz) as bound_lease_expired
@@ -830,11 +826,7 @@ interface ClaimState {
   readonly superseded: boolean;
   readonly attempt_id: string;
   readonly attempt_state: string;
-  /**
-   * One of the step's attempts was written off, so the step never runs again (#2277): the
-   * write-off leaves outcome `unknown` on the attempt (quarantine's is not one), or, where a
-   * marked attempt written off at nothing cannot carry it, cause `written_off` on its hold.
-   */
+  /** One of the step's attempts was written off, so the step never runs again (#2277). */
   readonly written_off: boolean;
   readonly marked: boolean;
   readonly bound_lease_state: string | null;

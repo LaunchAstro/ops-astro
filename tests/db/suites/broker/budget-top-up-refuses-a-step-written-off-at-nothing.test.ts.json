@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a top-up on a stop whose step was written off at nothing is refused with nothing written, as after a write-off above nothing, and the end still answers the stop"
+}

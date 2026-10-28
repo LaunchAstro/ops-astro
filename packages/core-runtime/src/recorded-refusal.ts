@@ -7,9 +7,10 @@
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { stepWrittenOff } from './step-written-off.ts';
 
 /**
- * A step written off with its effect unknown, at any time: a top-up cannot apply; the end does.
+ * A step written off, at any time and any figure: a top-up cannot apply; the end does.
  *
  * A step settled `completed` in any transaction but the ask's own (a person's `happened` or
  * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
@@ -21,12 +22,13 @@ export async function recordedRefusal(
   tx: TenantQuery,
   stop: { readonly reservation_id: string; readonly ask_id: string },
 ): Promise<RuntimeResult<never> | null> {
-  // A positive write-off settles the step at an unknown outcome (`write-off.ts`),
-  // and nothing else does. Its effect may have happened, so a top-up must not
-  // run it again, whenever the write-off landed: no stamp comparison here.
+  // A step written off at any figure never runs again (#2277), as a pickup reads it: its
+  // effect may have happened, so a top-up must not run it again, whenever the write-off
+  // landed: no stamp comparison here.
   const writtenOff = await tx.query(
-    `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and state = 'settled' and outcome = 'unknown'`,
+    `select 1 from public.attempts a
+      where a.business_id = $1 and a.reservation_id = $2
+        and ${stepWrittenOff('a.business_id', 'a.step_id')}`,
     [tx.businessId, stop.reservation_id],
   );
   if (writtenOff.length > 0) {
