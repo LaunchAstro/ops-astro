@@ -18,6 +18,7 @@ import type { BodyContext, Prepared } from './role-case-bodies.ts';
 type AccessCommand =
   | 'client.create'
   | 'client.set_privacy'
+  | 'client.bind_site'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
@@ -66,6 +67,17 @@ export async function madeClient(context: BodyContext): Promise<string> {
   return String((made.body['detail'] as Record<string, unknown>)['clientId']);
 }
 
+/** #2316: a site of its own each time, so no bind meets another's repository, project or page. */
+export function siteBody(): Record<string, unknown> {
+  const tag = randomUUID().slice(0, 8);
+  return {
+    repository: `client-sites/site-${tag}`,
+    defaultBranch: 'main',
+    project: `prj_${tag}`,
+    pages: [{ pageUrl: `https://site-${tag}.example/about`, path: 'src/pages/about.astro' }],
+  };
+}
+
 export async function accessBody(name: AccessCommand, context: BodyContext): Promise<Prepared> {
   switch (name) {
     // C32: `record:write`, a name no other call has used.
@@ -83,6 +95,9 @@ export async function accessBody(name: AccessCommand, context: BodyContext): Pro
           noAgentEdits: true,
         },
       };
+    // #2316: `operations:manage`, the operator's: a client made for the case, its site bound.
+    case 'client.bind_site':
+      return { body: { clientId: await madeClient(context), ...siteBody() } };
     // C32: `access:manage`. The key is one the member already holds over
     // the whole business, so the answer is that grant and no caller's
     // holdings change under the cases that read them.

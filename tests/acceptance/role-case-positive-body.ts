@@ -190,6 +190,7 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
       case 'client.set_privacy':
+      case 'client.bind_site':
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':

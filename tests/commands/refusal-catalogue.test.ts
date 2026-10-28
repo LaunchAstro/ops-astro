@@ -219,6 +219,11 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CORRECTION_NOT_OWN_WORK', 409, 'caller'],
   ['VERSION_NOT_READY', 409, 'caller'],
   ['VERSION_UNVERIFIED', 409, 'caller'],
+  // #2316: the party-site store's, as client.bind_site answers them.
+  ['SITE_BOUND_ELSEWHERE', 409, 'caller'],
+  ['PAGE_BOUND_ELSEWHERE', 409, 'caller'],
+  ['SITE_UNDER_CORRECTION', 409, 'caller'],
+  ['PAGE_UNDER_CORRECTION', 409, 'caller'],
   ['PAGE_OUTSIDE_HOLDER_SITE', 409, 'caller'],
   ['CAPTURE_ALREADY_ASKED', 409, 'caller'],
 ];

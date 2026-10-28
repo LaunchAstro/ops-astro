@@ -495,6 +495,11 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
     'clientId',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
+  // #2316: a client's site is bound under the key asked of that client, at party scope.
+  'client.bind_site': [
+    'clientId',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>

@@ -5,8 +5,9 @@
 // source file. The one place a site's holder is mapped to its pages, read by a
 // correction's request in its insert and by the runner for its binding. A
 // site's holder is its client, or the business itself where its party is null:
-// no client is the business, so the two never meet. No command writes it: the operator's own script
-// binds a site, under the business's tenancy, as an actor of that business.
+// no client is the business, so the two never meet. A client's site is bound by `client.bind_site`
+// (#2316, core-commands `site-bind-write.ts`), the business's own by the operator's own script,
+// each under the business's tenancy, as an actor of that business.
 //
 // A site is bound once in the installation (its repository, in lower case,
 // and its project id are unique across businesses), and a page names one

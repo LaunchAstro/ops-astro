@@ -173,6 +173,13 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     requestedOn: 'any?',
     requestLink: 'any?',
   },
+  'client.bind_site': {
+    clientId: 'id',
+    repository: 'any',
+    defaultBranch: 'any',
+    project: 'any',
+    pages: 'any',
+  },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
   'access.end': { holderId: 'id' },

@@ -18,6 +18,7 @@ import {
 
 const RUN_COLLECTION = 'run';
 const SETTINGS_COLLECTION = 'settings';
+const OPERATIONS_COLLECTION = 'operations';
 
 export const SITE_SURFACE: readonly CommandDeclaration[] = [
   read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
@@ -33,6 +34,14 @@ export const SITE_SURFACE: readonly CommandDeclaration[] = [
   declare('live_correction.decide', 'decide', DECIDE_AT_CORRECTION),
   declare('live_correction.revert', 'decide', REVERT_AT_CORRECTION),
   declare('live_correction.record_review', 'decide', REVIEW_AT_CORRECTION),
+  // #2316: a client's site and pages, bound under `operations:manage` on that
+  // client (`prepare.ts`), never an agent's (`site-bind-write.ts`).
+  declare('client.bind_site', 'manage', {
+    collection: OPERATIONS_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['clientId'],
+  }),
   declare('settings.set_live_correction_approver', 'manage', {
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,

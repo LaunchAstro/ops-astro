@@ -98,6 +98,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.reset_factor': ['holderId', 'control'],
   // C60: a client's privacy settings, by its client.
   'client.set_privacy': ['clientId', 'control'],
+  // #2316: a client's site and pages, by its client.
+  'client.bind_site': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
   // C33: a version and an activation, and a definition to release on.

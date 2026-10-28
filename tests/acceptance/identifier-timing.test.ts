@@ -29,6 +29,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { siteBody } from './role-case-access-bodies.ts';
 import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
@@ -495,6 +496,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       handlesHealth: false,
       noAgentEdits: true,
     }));
+    // #2316: bravo's client named in an alpha site binding.
+    byAda('client.bind_site', 'clientId', f.clientId, (clientId) => ({ clientId, ...siteBody() }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
