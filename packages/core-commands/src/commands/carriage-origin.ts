@@ -12,7 +12,9 @@
 // contention refuses, nothing sent), then their ending keys, shared. Each task
 // the earlier exchanges sent may carry (#1666) is held and judged as the page
 // is. It judges at the instant read after them, the page's task read and a
-// paid call's outside standing with the rest (`standsOutside`). A revocation,
+// paid call's outside standing with the rest (`standsOutside`), and a call on
+// the owner's ChatGPT plan his owner membership and the tasks' provenance
+// again, last (`planHolds`, #2175). A revocation, role change,
 // client link, membership leave, deactivation, purge or session ending takes
 // one of those locks, so it commits before the judgement, which sees it, or
 // waits.
@@ -25,7 +27,8 @@
 // nothing needs a second.
 
 import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
-import { SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
+import { planHolds, SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
+import { CHATGPT_PLAN_CONVERSATION } from '../../../core-connectors/src/index.ts';
 import {
   advisoryLock,
   sessionEnded,
@@ -161,7 +164,10 @@ async function judgeCarriage(
     return LOST;
   }
   const own = await holdsOwnConversations(tx, session, { at, held: grants.conversation });
-  return own ? { ok: true } : LOST;
+  if (!own) return LOST;
+  if (call.operation !== CHATGPT_PLAN_CONVERSATION.key) return { ok: true };
+  const lost = await planHolds(tx, session.personId, asked);
+  return lost === undefined ? { ok: true } : { ok: false, code: lost };
 }
 
 /** The offer judgement; passing, `offered_at` is set and its trigger rings the doorbell, ids only. */

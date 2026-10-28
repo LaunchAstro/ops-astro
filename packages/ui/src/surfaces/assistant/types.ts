@@ -126,6 +126,8 @@ export interface AssistantChat {
 export interface AssistantModel {
   readonly id: string;
   readonly label: string;
+  /** Why the model cannot be chosen now, in words; absent, it is on offer. */
+  readonly unavailable?: string;
 }
 
 export interface AssistantOffer {

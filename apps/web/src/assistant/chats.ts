@@ -22,7 +22,7 @@ import type {
   AssistantPage,
   PlanCardState,
 } from '@launchastro/ui';
-import { noted, told, type Noted } from './page-note.ts';
+import { noted, switched, told, type Noted } from './page-note.ts';
 import type { ScopeInput } from './subject.ts';
 
 export type StandingScope = Pick<ScopeInput, 'client' | 'task'>;
@@ -137,8 +137,16 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
   return selecting({ ...state, chats }, chats[Math.max(0, at - 1)]?.key ?? '');
 }
 
-export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
+export const chooseModel = (state: AssistantState, key: string, model: Chat['model']) =>
   change(state, key, (chat) => ({ ...chat, model }));
+
+/** Whether choosing `model` changes the model of a tab that has asked already (#2175). */
+export const switching = (chat: Chat | undefined, model: string): boolean =>
+  chat !== undefined && chat.model !== model && chat.messages.some((one) => one.role === 'user');
+
+/** A kept change of model after the first question, marked before any asked since (#2175). */
+export const markSwitch = (state: AssistantState, key: string, model: string, since: string[]) =>
+  change(state, key, (chat) => switched(chat, model, since));
 
 /** The page in scope; a second one replaces the first, and its note with it (`page-note.ts`). */
 export const addPage = (state: AssistantState, key: string, page: AssistantPage): AssistantState =>

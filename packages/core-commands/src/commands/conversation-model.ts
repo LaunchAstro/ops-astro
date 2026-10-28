@@ -22,15 +22,24 @@
 // - OpenRouter's paid models (#1508) besides, only to a person on the outside
 //   people list for this business (`OPS_OUTSIDE_MODEL_PEOPLE`), and only on a
 //   conversation with no client page. Never the default.
+// - The owner's ChatGPT plan's models (#2175, money rule P4) besides, only to
+//   a session holding the owner role, only where the carried deployment has
+//   the plan's route (`planRouteSet`), and only on a conversation with no
+//   client page. Never the default. A plan model whose latest call the plan
+//   refused for this account (`http_403`) is not offered: the picker shows it
+//   unavailable with that reason until a code change says otherwise.
 //
 // `conversation.set_model` is the tab row's (`conversation-tabs.ts`); both
 // writes keep the choice through `keepModel`.
 
 import {
+  CHATGPT_PLAN_PROVIDER,
   conversationModelsOf,
   conversationProviderOf,
+  OLLAMA_PROVIDER,
   OPENROUTER_PROVIDER,
   outsidePeopleOf,
+  planRouteSet,
   type ConversationModel,
 } from '../../../core-connectors/src/index.ts';
 import {
@@ -95,20 +104,50 @@ export async function modelFacts(
 export const outsideListed = (tx: TenantQuery, session: Session): boolean =>
   outsidePeopleOf(process.env).includes(`${tx.businessId}:${session.personId}`.toLowerCase());
 
+/** Why a plan model is not offered to this caller, or undefined when it may be. */
+export type PlanStanding = 'PLAN_ROUTE_NOT_SET' | 'SUBSCRIPTION_NOT_OWNER_STARTED' | undefined;
+
+/** The plan's standing for this caller: the carried plan route, and the owner role held. */
+export const planStanding = (session: Session): PlanStanding => {
+  if (!planRouteSet(process.env)) return 'PLAN_ROUTE_NOT_SET';
+  return session.roleKey === 'owner' ? undefined : 'SUBSCRIPTION_NOT_OWNER_STARTED';
+};
+
+/** The plan models whose latest call the plan refused for this account: `http_403`. */
+export async function refusedPlanModels(tx: TenantQuery): Promise<ReadonlySet<string>> {
+  const rows = await tx.query<{ readonly model_id: string }>(
+    `select model_id from (
+       select distinct on (model_id) model_id, provider_code
+         from public.model_calls
+        where business_id = $1 and provider = $2 and model_id is not null
+          and state in ('settled', 'liability_unknown')
+        order by model_id, started_at desc) latest
+      where provider_code = 'http_403'`,
+    [tx.businessId, CHATGPT_PLAN_PROVIDER],
+  );
+  return new Set(rows.map((row) => row.model_id));
+}
+
 /**
  * The models offered on `provider`'s conversation operation, with the paid
- * ones for a listed person (`outside`): all of them, or the client's allowed.
- * A paid model names no client setting, so a client's conversation never gets one.
+ * ones for a listed person (`outside`) and the plan's for the owner (`plan`):
+ * all of them, or the client's allowed. A paid or plan model names no client
+ * setting, so a client's conversation never gets one.
  */
 export async function offeredModels(
   tx: TenantQuery,
   provider: string,
   facts: ModelFacts | null,
   outside = false,
+  plan = false,
 ): Promise<readonly ConversationModel[]> {
+  const refused = plan ? await refusedPlanModels(tx) : new Set<string>();
   const models = [
     ...conversationModelsOf(provider),
     ...(outside ? conversationModelsOf(OPENROUTER_PROVIDER) : []),
+    ...(plan ? conversationModelsOf(CHATGPT_PLAN_PROVIDER) : []).filter(
+      (model) => !refused.has(model.id),
+    ),
   ];
   if (facts === null) return models;
   if (facts.unseen) return [];
@@ -153,7 +192,13 @@ export async function keepModel(
   // What is offered turns on the conversation's own task and client, read here, never the body.
   const facts = await modelFacts(tx, session, conversationId);
   if (facts === undefined) return refuseNotFound();
-  const offered = await offeredModels(tx, installProvider(), facts, outsideListed(tx, session));
+  const offered = await offeredModels(
+    tx,
+    installProvider(),
+    facts,
+    outsideListed(tx, session),
+    planStanding(session) === undefined,
+  );
   if (model !== null && !offered.some((one) => one.id === model)) return MODEL_NOT_OFFERED;
   await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
     tx.businessId,
@@ -172,10 +217,10 @@ async function modelToAsk(
   tx: TenantQuery,
   provider: string,
   facts: ModelFacts,
-  outside: boolean,
+  admitted: { readonly outside: boolean; readonly plan: boolean },
 ): Promise<string | undefined | null> {
   if (facts.model === null) return conversationModelsOf(provider)[0]?.id;
-  const offered = await offeredModels(tx, provider, facts, outside);
+  const offered = await offeredModels(tx, provider, facts, admitted.outside, admitted.plan);
   return offered.some((model) => model.id === facts.model) ? facts.model : null;
 }
 
@@ -188,5 +233,8 @@ export async function askedModel(
 ): Promise<string | undefined | null> {
   const facts = await modelFacts(tx, session, conversationId);
   if (facts === undefined) return null;
-  return await modelToAsk(tx, provider, facts, outsideListed(tx, session));
+  return await modelToAsk(tx, provider, facts, {
+    outside: outsideListed(tx, session),
+    plan: provider === OLLAMA_PROVIDER && planStanding(session) === undefined,
+  });
 }

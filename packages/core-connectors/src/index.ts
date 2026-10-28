@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Provider operations: what a model call is, what it may carry and to where
-// (AW-01); the catalogue's registration rule, the one guarded provider call
-// over the pinned transport, the fenced page capture, and the live
-// correction's catalogued operations, envelope check, receipts, publish
-// and revert executable, and the binding and proposal that reach its
-// providers (C80).
+// Provider operations: what a model call is, what it may carry and to where (AW-01); the
+// catalogue's registration rule, the one guarded provider call over the pinned transport, the
+// fenced page capture, and the live correction's catalogued operations, envelope check, receipts,
+// publish and revert executable, and the binding and proposal that reach its providers (C80).
 //
 // Nothing here holds a credential: custody does (`core-custody`), and adapter
 // code never runs in its process; a connector borrows through a port the
@@ -250,6 +248,7 @@ export {
   conversationOperationOf,
   conversationProviderOf,
   outsidePeopleOf,
+  planRouteSet,
   type ConversationModel,
 } from './conversation-models.ts';
 export {
