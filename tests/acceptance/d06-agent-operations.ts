@@ -35,6 +35,9 @@ export const AGENT_OPERATIONS: readonly CommandName[] = [
   'model.call',
   'run.delegate_child',
   'run.child_handback',
+  // C35's worker writes: a capture claimed on the held lease's task, then landed under it.
+  'review.capture_claim',
+  'review.capture_land',
   'task.pickup',
   'task.handback',
   // The worker's own stop (#1623 R1): its success is the retained `RUN_ENDED`.

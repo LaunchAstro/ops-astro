@@ -32,6 +32,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { C80_REQUEST } from './c80-bodies.ts';
+import { LANDING } from './c35-bodies.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
@@ -57,6 +58,15 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
   'run.child_handback',
   'run.end',
   'task.take_launch',
+]);
+
+/**
+ * C35's worker writes: a capture is claimed and landed under the lease on its review's task,
+ * which the admin's own pickup holds in case (a); a member's grant names no such lease.
+ */
+const ADMIN_LEASE_WORK: ReadonlySet<string> = new Set([
+  'review.capture_claim',
+  'review.capture_land',
 ]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
@@ -566,6 +576,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           await driveOwnLease(caller, grants);
           continue;
         }
+        if (ADMIN_LEASE_WORK.has(declaration.name)) {
+          except(
+            caller.name,
+            'e-member-positive',
+            declaration.name,
+            'executed alternative: claimed and landed under the admin’s own lease, case (a)',
+          );
+          continue;
+        }
         // eslint-disable-next-line no-await-in-loop
         const prepared = await harness.positiveBody(declaration, caller);
         if ('exception' in prepared && AGENT_ONLY.has(declaration.name)) {
@@ -806,6 +825,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too, and so does the worker's own stop
       // (#1623 R1), with a code it may end on; the helper's handback by its credential.
+      // C35's claim and land go by the lease, a revision named beside it.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -815,9 +835,16 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         'model.call',
         'run.delegate_child',
         'run.end',
+        'review.capture_claim',
+        'review.capture_land',
       ].includes(declaration.name)
         ? {
             ...probe,
+            ...(declaration.name === 'review.capture_claim' ||
+            declaration.name === 'review.capture_land'
+              ? { revisionId: randomUUID() }
+              : {}),
+            ...(declaration.name === 'review.capture_land' ? LANDING : {}),
             ...(declaration.name === 'task.check'
               ? { name: 'a check on the sibling', outcome: 'passed' }
               : {}),

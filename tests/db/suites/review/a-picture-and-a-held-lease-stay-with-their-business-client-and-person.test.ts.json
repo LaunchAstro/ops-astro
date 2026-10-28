@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 storage and leases across crossings: the storage seam answers only its business, another person cannot use a held lease, and another client cannot read a landed picture."
+}

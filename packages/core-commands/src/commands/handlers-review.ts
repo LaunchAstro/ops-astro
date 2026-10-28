@@ -4,10 +4,14 @@
 
 import type { Handler } from './handler-types.ts';
 import { askReviewCapture, openReview } from './review-commands.ts';
+import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts';
 
-type ReviewWrite = 'review.open' | 'review.capture';
+type ReviewWrite =
+  'review.open' | 'review.capture' | 'review.capture_claim' | 'review.capture_land';
 
 export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.open': openReview,
   'review.capture': askReviewCapture,
+  'review.capture_claim': claimCaptureAsPerson,
+  'review.capture_land': landCaptureAsPerson,
 };
