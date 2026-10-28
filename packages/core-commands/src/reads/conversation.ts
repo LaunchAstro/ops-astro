@@ -26,6 +26,7 @@
 
 import {
   askedFor,
+  coveredOwnSitePages,
   EFFECTIVE_GRANTS,
   isUuid,
   readableScope,
@@ -38,6 +39,7 @@ import type {
   ConversationTargetsView,
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
+import { SITE_PAGE_LIMIT } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import {
   conversationAddress,
@@ -183,6 +185,7 @@ async function served(
   );
   const current = wrapUps[0];
   const reads = addressReader(await readableScope(tx, subjectsOf(session), 'task', 'read'));
+  const sitePages = await coveredOwnSitePages(tx, subjectsOf(session), SITE_PAGE_LIMIT);
   return {
     ok: true,
     conversation: conversationView(row, reads),
@@ -192,6 +195,7 @@ async function served(
       version: wrapUp.version,
       writtenAt: wrapUp.created_at.toISOString(),
     })),
+    ...(sitePages.length === 0 ? {} : { sitePages }),
   };
 }
 

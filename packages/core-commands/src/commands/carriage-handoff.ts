@@ -6,7 +6,7 @@
 // and the model the conversation was asked on (#1508).
 
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
-import type { Handoff } from '../../../core-custody/src/index.ts';
+import type { Handoff, PlanAsk } from '../../../core-custody/src/index.ts';
 import { carriageHandoff } from './carriage-origin.ts';
 import type { ModelBroker } from './model-call.ts';
 
@@ -28,6 +28,8 @@ export function carriedBy(
     readonly page: string | null;
     /** The tasks the earlier exchanges sent may carry (#1666), judged with the page. */
     readonly sources?: readonly string[];
+    /** The bound site pages the page field lists (#1988), judged again on the plan. */
+    readonly sites?: PlanAsk['sites'];
   },
 ): { readonly carry?: (callId: string) => Handoff } {
   const { carrier } = broker;
@@ -42,6 +44,7 @@ export function carriedBy(
       outside,
       page: asking.page,
       sources: asking.sources ?? [],
+      sites: asking.sites ?? [],
     }),
   };
 }

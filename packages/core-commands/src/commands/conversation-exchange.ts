@@ -53,11 +53,12 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import { isUuid, withSession } from '../../../core-records/src/index.ts';
+import { isUuid, subjectsOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
   Session,
+  Subject,
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
@@ -110,6 +111,8 @@ interface Question {
   readonly authors: readonly string[];
   /** The tasks the earlier exchanges sent may carry (#1666): judged again at a handoff. */
   readonly sources: readonly string[];
+  /** The caller's subjects, whose grants the context was read under: a plan call's are asked again. */
+  readonly subjects: readonly Subject[];
   /** The answer kept as the reply, with this question's snapshot (#1666). */
   readonly keep: (
     tx: TenantQuery,
@@ -161,12 +164,18 @@ async function questionOf(
     page,
     authors: [found.author, ...context.authors],
     sources: context.created.sources,
+    subjects: subjectsOf(session),
     keep: async (on, now, ask, text) => await keep(on, now, ask, text, context.created.snapshot),
   };
 }
 
-/** What a handoff judges again: the question's model, its page task and its history sources. */
-const judgedAgain = ({ model, page, sources }: Question) => ({ model, page, sources });
+/** What a handoff judges again: the question's model, its page task, its history sources and its sites. */
+const judgedAgain = ({ model, page, sources, context }: Question) => ({
+  model,
+  page,
+  sources,
+  sites: context.sites,
+});
 
 /** The model asked for one message, and the answer kept as its reply. */
 async function answerOnce(
@@ -206,7 +215,7 @@ async function answerOnce(
   );
   await pieces?.drained();
   if (!result.ok) return await unanswered(result, reread, operation);
-  if (paid !== undefined) return paid.replied(question.context.cites);
+  if (paid !== undefined) return paid.replied(question.context.cites, question.context.sites);
   // A model's words pass no command's door: what a message may not hold, a reply may not either.
   if (!usableReply(result.text)) return refusedWith('ANSWER_UNUSABLE');
   const kept = await withSession(
@@ -217,7 +226,7 @@ async function answerOnce(
   ).catch(heldElsewhere);
   if (kept === undefined || isCommandRefusal(kept)) return null;
   // The cites are what this call read, even where a twin request's answer was kept first.
-  return answered(kept, question.context.cites);
+  return answered(kept, question.context.cites, question.context.sites);
 }
 
 /**

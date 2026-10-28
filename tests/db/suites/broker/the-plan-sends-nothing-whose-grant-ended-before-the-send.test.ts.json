@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "S2100-1: a plan call whose context was read under the owner's run:write or conversation grant sends nothing once that grant ends before the send; the broker judges the bound pages and the conversation again under its locks, and with every grant standing the call goes out naming the page."
+}

@@ -72,6 +72,8 @@ export interface Script {
     readonly messageId?: string;
     /** The reply's targets as the server gives them its owner; absent, none. */
     readonly targets?: unknown;
+    /** The bound pages the read gives (#1988); absent, none. */
+    readonly sitePages?: unknown;
   };
   /** What `task.read` gives for each task id named here; any other, `TASK` at `revision`. */
   readonly tasks?: Readonly<Record<string, Answer>>;
@@ -106,6 +108,7 @@ const keptRead = (kept: NonNullable<Script['kept']>): Answer =>
     ],
     wrapUp: null,
     wrapUpHistory: [],
+    ...(kept.sitePages === undefined ? {} : { sitePages: kept.sitePages }),
   });
 
 // eslint-disable-next-line max-lines-per-function -- one stand-in client, each read and write it answers

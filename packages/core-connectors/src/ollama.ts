@@ -15,7 +15,7 @@
 // The model runs on hardware already paid for, so every answer costs nothing
 // and the operation is unpriced, as the conversation seam requires (#1508, option B).
 
-import { conversationInstructions, promptPage } from './conversation-prompt.ts';
+import { conversationInstructions, promptPage, promptSites } from './conversation-prompt.ts';
 import {
   readModelId,
   type AdapterRequest,
@@ -76,7 +76,10 @@ export function ollamaAdapter(
   streamed = false,
 ): AdapterRequest {
   const messages: readonly Turn[] = [
-    { role: 'system', content: conversationInstructions(promptPage(values['page'])) },
+    {
+      role: 'system',
+      content: conversationInstructions(promptPage(values['page']), promptSites(values['page'])),
+    },
     ...earlierTurns(values['earlier']),
     { role: 'user', content: values['message'] ?? '' },
   ];

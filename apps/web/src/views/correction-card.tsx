@@ -12,7 +12,9 @@
 // still waiting for one. Launch is drawn only while the version's check holds
 // (`use-launch-clock.ts`). A publish follows that decision on the server,
 // never a press here. A published or reverted card opens its receipts. Every
-// value is drawn as text.
+// value is drawn as text. While Launch is drawn and not held for a review
+// (#1781), the card asks the second approval in the owner's words (#1988):
+// the change is ready to go live, with the located text before and after.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { CorrectionReceiptView } from '../../../../packages/core-wire/src/index.ts';
@@ -76,6 +78,17 @@ function Receipts(props: {
   );
 }
 
+/** The second approval's question, with the text the locate found and what it becomes. */
+function Ready(props: { readonly ask: CorrectionAsk }): ReactElement {
+  return (
+    <div data-correction-ready="">
+      <p className="aip__plan-words">Your change is ready to go live. Accept?</p>
+      <p className="aip__plan-meta">{`Before: “${props.ask.word}”`}</p>
+      <p className="aip__plan-meta">{`After: “${props.ask.replacement}”`}</p>
+    </div>
+  );
+}
+
 /** Waiting for a decision on a version a read named: Launch and Decline are drawn. */
 const isDecidable = (each: Correction): boolean =>
   each.state === 'requested' && each.versionId !== null;
@@ -111,6 +124,7 @@ export function CorrectionCard(props: {
         {correction.approver === null ? '' : ` Decided by ${correction.approver}.`}
       </p>
       <Notes checking={checking} correction={correction} />
+      {decidable && launchable && !reviewHeld(correction) ? <Ready ask={ask} /> : null}
       {decidable ? (
         <Decisions
           busy={busy}

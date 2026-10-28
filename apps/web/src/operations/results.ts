@@ -39,6 +39,8 @@ export type ConversationReply =
       readonly cites?: unknown;
       /** #1666: the tasks an edit may apply to, unchecked until `targetsOf` reads them. */
       readonly targets?: unknown;
+      /** #1988: the bound pages the call gave the model, unchecked until `sitePagesOf` reads them. */
+      readonly sitePages?: unknown;
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 

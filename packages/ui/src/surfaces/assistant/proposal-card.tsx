@@ -9,18 +9,22 @@
 // (`proposal-pick.tsx`), the click disabled until then. The one click is "Create task" or "Apply to this task";
 // after it the card links the task, or quotes the server's refusal and offers
 // the click again; an edit whose task changed since says so and offers none.
+// A site change (#1988) plays its plan back instead of the description: the
+// site, the page, the text before and after, who it is for and the estimate;
+// its one click is the same Create task.
 // Nothing is written by the card being drawn, and every word on it is text:
 // nothing a model wrote is markup.
 
 import type { ReactElement } from 'react';
 import { dayWords, timeWords } from '../../board/project-words.ts';
 import { picked, ProposalPick } from './proposal-pick.tsx';
-import type { AssistantPickMove, AssistantProposal } from './types.ts';
+import type { AssistantPickMove, AssistantProposal, AssistantSitePlan } from './types.ts';
 
 const SEND = { create: 'Create task', edit: 'Apply to this task' } as const;
 const KEPT = { create: 'Task created', edit: 'Task updated' } as const;
 const HEAD = { create: 'Proposed task', edit: 'Proposed change to this task' } as const;
 const PICK_HEAD = 'Proposed change to a task this chat created';
+const SITE_HEAD = 'Proposed site change';
 /** Said until the click lands: a reply's words saying it was done never made it so. */
 const PENDING = {
   create: 'Only proposed: no task exists until you click Create task.',
@@ -40,6 +44,28 @@ function Done(props: { readonly proposal: AssistantProposal }): ReactElement | n
   );
 }
 
+/** The plan played back, each line as text. */
+function SitePlayback(props: { readonly site: AssistantSitePlan }): ReactElement {
+  const { site } = props;
+  const lines = [
+    ['site', 'Site', site.repository],
+    ['page', 'Page', site.page],
+    ['before', 'Before', site.before],
+    ['after', 'After', site.after],
+    ['client', 'For', site.client === 'internal' ? 'Internal' : site.client],
+  ] as const;
+  return (
+    <>
+      {lines.map(([key, label, value]) => (
+        <p className="aip__plan-words" key={key}>
+          <span className="aip__plan-meta">{`${label}: `}</span>
+          <span data-proposal-site={key}>{value}</span>
+        </p>
+      ))}
+    </>
+  );
+}
+
 /** What the click sends, each as text: the words, the due day and the estimate. */
 function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement {
   const { proposal } = props;
@@ -52,7 +78,8 @@ function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement
           <strong data-proposal="title">{proposal.title}</strong>
         </p>
       )}
-      {proposal.description === null ? null : (
+      {proposal.site === undefined ? null : <SitePlayback site={proposal.site} />}
+      {proposal.description === null || proposal.site !== undefined ? null : (
         <p className="aip__plan-words">
           {edit ? <span className="aip__plan-meta">Description: </span> : null}
           <span data-proposal="description">{proposal.description}</span>
@@ -68,7 +95,7 @@ function Proposed(props: { readonly proposal: AssistantProposal }): ReactElement
           Estimate {timeWords(proposal.estimate)}
         </p>
       )}
-      {edit ? null : (
+      {edit || proposal.site !== undefined ? null : (
         <p className="aip__plan-meta" data-proposal="assignee">
           Assigned to you
         </p>
@@ -86,7 +113,13 @@ export function ProposalCard(props: {
   const { pick } = proposal;
   return (
     <div className="aip__plan" data-proposal="card" data-action={proposal.action}>
-      <span className="aip__plan-k">{pick === undefined ? HEAD[proposal.action] : PICK_HEAD}</span>
+      <span className="aip__plan-k">
+        {pick === undefined
+          ? proposal.site === undefined
+            ? HEAD[proposal.action]
+            : SITE_HEAD
+          : PICK_HEAD}
+      </span>
       {pick === undefined ? null : <ProposalPick pick={pick} onPick={props.onPick} />}
       <Proposed proposal={proposal} />
       {proposal.state === 'made' ? null : (

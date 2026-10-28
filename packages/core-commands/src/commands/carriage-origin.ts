@@ -13,8 +13,9 @@
 // the earlier exchanges sent may carry (#1666) is held and judged as the page
 // is. It judges at the instant read after them, the page's task read and a
 // paid call's outside standing with the rest (`standsOutside`), and a call on
-// the owner's ChatGPT plan his owner membership and the tasks' provenance
-// again, last (`planHolds`, #2175). A revocation, role change,
+// the owner's ChatGPT plan his owner membership, the tasks' provenance and
+// the grants its context was read under, the listed site pages' among them,
+// again, last (`planHolds`, #2175, S2100-1). A revocation, role change,
 // client link, membership leave, deactivation, purge or session ending takes
 // one of those locks, so it commits before the judgement, which sees it, or
 // waits.
@@ -26,7 +27,7 @@
 // accept was heard (`carriage-fence.ts`), on the pool's one connection:
 // nothing needs a second.
 
-import type { Carrier, Handoff, Judged } from '../../../core-custody/src/index.ts';
+import type { Carrier, Handoff, Judged, PlanAsk } from '../../../core-custody/src/index.ts';
 import { planHolds, SEND_WINDOW_MS, standsOutside } from '../../../core-custody/src/index.ts';
 import { CHATGPT_PLAN_CONVERSATION } from '../../../core-connectors/src/index.ts';
 import {
@@ -34,6 +35,7 @@ import {
   sessionEnded,
   sessionKey,
   subjectKey,
+  subjectsOf,
   withSession,
   type BusinessId,
   type Database,
@@ -58,6 +60,8 @@ interface Asked {
   readonly page: string | null;
   /** The tasks the earlier exchanges sent may carry (#1666), judged with the page. */
   readonly sources: readonly string[];
+  /** The bound site pages the call's page field lists (#1988), judged again on the plan. */
+  readonly sites: PlanAsk['sites'];
   /** What a paid call's outside standing is judged against: the broker's live settings, the model asked. */
   readonly outside: {
     readonly broker: Parameters<typeof standsOutside>[0];
@@ -166,7 +170,7 @@ async function judgeCarriage(
   const own = await holdsOwnConversations(tx, session, { at, held: grants.conversation });
   if (!own) return LOST;
   if (call.operation !== CHATGPT_PLAN_CONVERSATION.key) return { ok: true };
-  const lost = await planHolds(tx, session.personId, asked);
+  const lost = await planHolds(tx, session.personId, { ...asked, subjects: subjectsOf(session) });
   return lost === undefined ? { ok: true } : { ok: false, code: lost };
 }
 
@@ -225,13 +229,13 @@ export function carriageHandoff(
   businessId: BusinessId,
   presented: VerifiedSubject,
   accessToken: string,
-  carried: Pick<Asked, 'carrier' | 'outside' | 'page' | 'sources'> & {
+  carried: Pick<Asked, 'carrier' | 'outside' | 'page' | 'sources' | 'sites'> & {
     readonly timeoutMs: number;
   },
 ): (callId: string) => Handoff {
-  const { carrier, timeoutMs, outside, page, sources } = carried;
+  const { carrier, timeoutMs, outside, page, sources, sites } = carried;
   return (callId) => {
-    const asked: Asked = { presented, accessToken, callId, carrier, outside, page, sources };
+    const asked: Asked = { presented, accessToken, callId, carrier, outside, page, sources, sites };
     return {
       businessId,
       callId,
