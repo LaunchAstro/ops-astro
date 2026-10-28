@@ -853,7 +853,8 @@ type ClaimPlan =
 
 /**
  * The claims refused before any branch below is asked: an attempt carrying a
- * marker, or a run waiting on a person at its budget stop. Null when neither.
+ * marker, a step a person wrote off, or a run waiting on a person at its
+ * budget stop. Null when none.
  */
 function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
   if (state.marked) {
@@ -863,6 +864,19 @@ function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
         'RESERVATION_NOT_CLAIMABLE',
         `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
         'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
+      ),
+    };
+  }
+  // A step any of whose attempts a person wrote off, at nothing or above, never
+  // runs again (#2277), through this hold or any other of it: a replacement
+  // already held for it included (S2313-1).
+  if (state.written_off) {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `a person wrote off the step attempt ${state.attempt_id} runs`,
+        'A written-off step never runs again. New work for it is a new proposal.',
       ),
     };
   }
@@ -947,14 +961,12 @@ function approvalNotCurrent(): RuntimeResult<never> {
 }
 
 /**
- * An abandoned hold whose work was never settled and whose run is still open. A step any of
- * whose attempts a person wrote off, at nothing or above, never runs again (#2277), through
- * this hold or any other of it; a person's `nothing_happened` abandons it, and it does.
+ * An abandoned hold whose work was never settled and whose run is still open. A written-off
+ * step was refused before this is asked; a person's `nothing_happened` abandons it, and it runs.
  */
 function replaceable(state: {
   readonly state: string;
   readonly attempt_state: string;
-  readonly written_off: boolean;
   readonly run_state: string;
   readonly settled: boolean;
   readonly marked: boolean;
@@ -971,7 +983,6 @@ function replaceable(state: {
   // older one's remainder ignores the spend on every hold after it, passing the version's ceiling.
   return (
     ended &&
-    !state.written_off &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&
