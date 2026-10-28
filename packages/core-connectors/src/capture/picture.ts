@@ -53,6 +53,7 @@ import {
   type Fetched,
 } from './fence.ts';
 import { importsOf } from './css.ts';
+import { metaMayDropSheet } from './meta.ts';
 import { named, readDocument, resolved, type CaptureOptions } from './page.ts';
 import { admittedTree } from './tree.ts';
 
@@ -151,40 +152,11 @@ function readsAsUtf8(css: string): boolean {
 
 const lower = (text: string): string =>
   text.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
-// The `http-equiv` values that leave the picture as the observation read the page: the fence
-// holds the charset, a language or compatibility mode moves no sheet, the picture's browser has
-// no network to prefetch on, and a browser ignores a report-only policy and cache headers in
-// markup. A policy is judged by its directives (STYLE_DIRECTIVES). Any other is refused: a
-// default set chooses among titled sheets, a refresh navigates away from the page pictured, and
-// an unknown one is not guessed at.
-const PICTURED_EQUIV = new Set([
-  '',
-  'content-type',
-  'content-language',
-  'x-ua-compatible',
-  'content-security-policy-report-only',
-  'x-dns-prefetch-control',
-  'cache-control',
-  'pragma',
-  'expires',
-]);
-
-// The directives under which a policy can block an inline sheet or a style attribute, which no
-// request shows; `default-src` stands in for each that is absent. A sheet any other directive
-// blocks never reaches the route, so it is left unasked and the picture fails.
-const STYLE_DIRECTIVES = new Set(['default-src', 'style-src', 'style-src-elem', 'style-src-attr']);
-
-/** Whether a markup policy names a style source: any directive, in any policy of a list. */
-const namesStyleSource = (policy: string): boolean =>
-  policy
-    .split(/[;,]/u)
-    .some((directive) => STYLE_DIRECTIVES.has(lower(directive.trim().split(/\s/u)[0] ?? '')));
-
 /**
  * Whether a browser could leave out a sheet the observation reads, with no request to show it:
- * a policy naming a style source, an `http-equiv` other than those, a style of a type other
- * than CSS, or a titled or alternate sheet (of titled sets a browser applies only the preferred
- * one). Only the forms a browser always applies pass.
+ * a meta tag that may (`metaMayDropSheet`), a style of a type other than CSS, or a titled or
+ * alternate sheet (of titled sets a browser applies only the preferred one). Only the forms a
+ * browser always applies pass.
  */
 function mayDropSheet(document: Tree.Document): boolean {
   const stack: Tree.Node[] = [document];
@@ -195,13 +167,7 @@ function mayDropSheet(document: Tree.Document): boolean {
     const attribute = (name: string) => node.attrs.find((one) => one.name === name)?.value;
     const titled = (attribute('title') ?? '') !== '';
     const rel = lower(attribute('rel') ?? '').split(/[\t\n\f\r ]+/u);
-    const equiv = lower(attribute('http-equiv') ?? '').trim();
-    if (
-      node.tagName === 'meta' &&
-      (equiv === 'content-security-policy'
-        ? namesStyleSource(attribute('content') ?? '')
-        : !PICTURED_EQUIV.has(equiv))
-    )
+    if (node.tagName === 'meta' && metaMayDropSheet(attribute('http-equiv'), attribute('content')))
       return true;
     if (
       node.tagName === 'style' &&
