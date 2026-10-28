@@ -28,6 +28,16 @@ that exact head stays the merge condition; an update onto main whose
 approval. The merge rule in the 28 September amendment is unchanged: the
 required checks named here are the ones it means.
 
+## Hermes Agent in the side panel, 28 October 2026
+
+Owner decision, 28 October 2026 (LaunchAstro/hermes-agent#3, #2270). Hermes
+Agent, the owner's own agent on the M5, is a model the side panel offers to
+the people `OPS_HERMES_PEOPLE` lists, never on a client's task. It may act on
+the M5 with its own tools, for the owner's own chats only. This is an
+exception to the panel's tools-off rule for this one provider; every other
+model keeps it. Ops Astro never acts on a reply, and Hermes Agent is sent
+only the conversation's own words ([HERMES.md](local/HERMES.md)).
+
 ## Run outcome contract, 18 October 2026
 
 Decision `B2-1623`. Accepted by the owner, 18 Oct 2026, REGISTER 9, with
