@@ -33,74 +33,85 @@ if (url === undefined) {
   );
 }
 
+let s: Schedules;
+const h = t3d1Harness(() => s);
+
+beforeAll(async () => {
+  if (url === undefined) return;
+  s = await openSchedules('replacement_written_off', 1_000_000);
+  await openBilling(s);
+}, 180_000);
+
+afterAll(async () => {
+  await s?.db.drop();
+});
+
+/** A step held unknown, its effect proved absent by the pass, and the replacement it reserved. */
+async function absentWithReplacement() {
+  const w = await h.unknownStep({ applied: false, room: true });
+  expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
+  const replacement = await h.replacement(w);
+  expect(replacement).toBeDefined();
+  return { w, replacement };
+}
+
+/** Every attempt on the work's step, oldest first, by state. */
+async function stepStates(w: Work) {
+  const found = await rows<{ readonly state: string }>(
+    s,
+    `select att.state from public.attempts att
+      where att.business_id = $1
+        and att.step_id = (select step_id from public.attempts where business_id = $1 and id = $2)
+      order by att.created_at, att.id`,
+    [s.business, w.attemptId],
+  );
+  return found.map((one) => one.state);
+}
+
+/** The replacement picked up and dispatched: the step runs again. */
+async function runsAgain(w: Work, replacement: string | undefined) {
+  const picked = await pickup(s, replacement);
+  await h.t2d.dispatched({
+    ...w,
+    picked,
+    credential: String(picked['credential']),
+    attemptId: String(picked['attemptId']),
+  });
+  return await stepStates(w);
+}
+
+/** Written off at `amount`, then a pickup of its replacement: the answer and what it changed. */
+async function writtenOffThenReplacementPickedUp(amount: number) {
+  const { w, replacement } = await absentWithReplacement();
+  appliedDetail(await asPerson(s, writeOffBody(w, amount)), 'budget.write_off');
+  const before = await h.t3b.snapshot();
+  const picked = await asAgent(s, {
+    command: 'task.pickup',
+    operationId: randomUUID(),
+    reservationId: replacement,
+    leaseSeconds: 600,
+  });
+  return {
+    picked: codeOf(picked),
+    after: await h.t3b.snapshot(),
+    before,
+    dispatched: (await stepStates(w)).filter((state) => state === 'dispatched'),
+  };
+}
+
 describe.skipIf(url === undefined)(
   'a replacement reserved before its step was written off',
   { timeout: 60_000 },
   () => {
-    let s: Schedules;
-    const h = t3d1Harness(() => s);
-
-    beforeAll(async () => {
-      s = await openSchedules('replacement_written_off', 1_000_000);
-      await openBilling(s);
-    }, 180_000);
-
-    afterAll(async () => {
-      await s?.db.drop();
-    });
-
-    /** A step held unknown, its effect proved absent by the pass, and the replacement it reserved. */
-    const absentWithReplacement = async () => {
-      const w = await h.unknownStep({ applied: false, room: true });
-      expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
-      const replacement = await h.replacement(w);
-      expect(replacement).toBeDefined();
-      return { w, replacement };
-    };
-
-    /** Every attempt on the work's step, oldest first, by state. */
-    const stepStates = async (w: Work) =>
-      (
-        await rows<{ readonly state: string }>(
-          s,
-          `select att.state from public.attempts att
-            where att.business_id = $1
-              and att.step_id = (select step_id from public.attempts
-                                  where business_id = $1 and id = $2)
-            order by att.created_at, att.id`,
-          [s.business, w.attemptId],
-        )
-      ).map((one) => one.state);
-
-    /** The replacement picked up and dispatched: the step runs again. */
-    const runsAgain = async (w: Work, replacement: string | undefined) => {
-      const picked = await pickup(s, replacement);
-      await h.t2d.dispatched({
-        ...w,
-        picked,
-        credential: String(picked['credential']),
-        attemptId: String(picked['attemptId']),
-      });
-      return await stepStates(w);
-    };
-
     it.each([0, 700])(
       'written off at %i, its replacement is refused at pickup with nothing written and no money moved',
       async (amount) => {
-        const { w, replacement } = await absentWithReplacement();
-        appliedDetail(await asPerson(s, writeOffBody(w, amount)), 'budget.write_off');
-        const before = await h.t3b.snapshot();
-        const picked = await asAgent(s, {
-          command: 'task.pickup',
-          operationId: randomUUID(),
-          reservationId: replacement,
-          leaseSeconds: 600,
+        const { before, ...seen } = await writtenOffThenReplacementPickedUp(amount);
+        expect(seen).toStrictEqual({
+          picked: 'RESERVATION_NOT_CLAIMABLE',
+          after: before,
+          dispatched: [],
         });
-        expect({
-          picked: codeOf(picked),
-          after: await h.t3b.snapshot(),
-          dispatched: (await stepStates(w)).filter((state) => state === 'dispatched'),
-        }).toStrictEqual({ picked: 'RESERVATION_NOT_CLAIMABLE', after: before, dispatched: [] });
       },
     );
 
