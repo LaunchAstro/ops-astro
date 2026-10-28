@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { checkSealedFile, openSealedFile } from './archive-seal.mjs';
 import { docker, must } from './drill-docker.mjs';
@@ -20,6 +21,14 @@ const DB = 'drill';
 const AS = ['-U', 'postgres', '-d', DB];
 // Its own path, not the image's volume, so every major takes it.
 const PGDATA = '/var/lib/postgresql/drill';
+// The container's own command, under the init: the server in the background,
+// and the container stops unless the drill's lifeline checks in within 15
+// seconds, so a drill killed between `docker run` answering and its line
+// starting leaves nothing running. Once in, the line's TERM to PID 1 reaches
+// this shell, and the container stops with it.
+const HELD = '/tmp/drill-lifeline';
+const HOLD = `docker-entrypoint.sh postgres & sleep 15; [ -e ${HELD} ] && wait`;
+const LIFELINE = `touch ${HELD}; cat > /dev/null; kill -TERM 1`;
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -78,6 +87,7 @@ export async function restoreDrill({
     }
   };
   let started = false;
+  const lifeline = new PassThrough();
   const folder = mkdtempSync(join(tmpdir(), 'ops-astro-drill-'));
   const sealed = join(folder, 'archive.sealed');
   try {
@@ -101,11 +111,21 @@ export async function restoreDrill({
       // directory is memory only, so restored rows never reach the disk, and
       // the server's own messages (a failed restore's can quote a row) go
       // to no log driver, so Docker keeps none of them either.
-      const container = `-d --rm --network none --log-driver none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
+      const container = `-d --rm --network none --log-driver none --init --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
-      await must(run(['run', ...`${container} ${env}`.split(' '), image]));
+      await must(
+        run(['run', ...`${container} ${env} --entrypoint sh`.split(' '), image, '-c', HOLD]),
+      );
       // Only once Docker made it: a name another drill holds is not this one's to remove.
       started = true;
+      // The container's lifeline: a shell in it reading this drill's pipe, in
+      // a process group of its own, so a signal to the drill's group leaves it
+      // standing. However the drill ends, killed outright included, the pipe
+      // closes, or docker closes it when its own client dies; the shell then
+      // stops PID 1's child, and --rm removes the stopped container. A drill
+      // killed before the line checks in leaves a container that stops itself
+      // (HOLD).
+      run(['exec', '-i', name, 'sh', '-c', LIFELINE], lifeline, { detached: true });
       let ready = false;
       for (let i = 0; i < 120 && !ready; i += 1) {
         // Over TCP, not the socket: the image's init server listens on the socket only.
@@ -195,6 +215,8 @@ export async function restoreDrill({
         `restore-drill: remove the drill's container: docker rm -f -v ${name}\n`,
       );
     }
+    // After the removal, or the line's own stop would race it.
+    lifeline.end();
     rmSync(folder, { recursive: true, force: true });
   }
   return record;
