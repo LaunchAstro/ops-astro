@@ -16,6 +16,7 @@ import {
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
 import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
+import { HERMES_PROVIDER_KEY } from './hermes-standing.ts';
 import { registerPromptCopy } from './broker-copy.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
@@ -135,7 +136,9 @@ export async function reserveModelCall(
     return refusing(code, callId, words === undefined ? {} : { words });
   };
   if (await heldUnknown(tx, facts.reservationId)) return await refused('LIABILITY_UNKNOWN');
-  if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
+  // #2270: Hermes Agent answers a listed person's own conversation only, never a run.
+  if (operation === undefined || operation.provider === HERMES_PROVIDER_KEY)
+    return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
     return await refused('EFFECT_NOT_RECONCILABLE');
   // C60, before any route is chosen: a client's model use is off and cannot be

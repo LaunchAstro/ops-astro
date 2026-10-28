@@ -15,6 +15,7 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { carriesLocally, carriesOnPlan, mayCarry } from './carry-rule.ts';
 import { planHolds, planRoute } from './broker-conversation-plan.ts';
+import { HERMES_PROVIDER_KEY, hermesStanding } from './hermes-standing.ts';
 import { sendingCarrier } from './broker-carrier.ts';
 import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
@@ -163,6 +164,10 @@ export async function callModelUnpriced(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
+  // #2270: Hermes Agent answers only a person its list names, whatever the command layer offered.
+  if (operation.provider === HERMES_PROVIDER_KEY && !hermesStanding(broker, businessId, caller)) {
+    return refused('AUTHORITY_LOST');
+  }
   const chosen = routeFor(operation, request, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { fields } = chosen;

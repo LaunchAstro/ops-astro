@@ -108,6 +108,11 @@ export interface Broker {
    * empty, nobody's do.
    */
   readonly outsidePeople?: readonly string[];
+  /**
+   * `OPS_HERMES_PEOPLE` (#2270): the `businessId:personId` pairs Hermes Agent
+   * answers (`hermesStanding`). Absent or empty, it answers nobody.
+   */
+  readonly hermesPeople?: readonly string[];
   /** `MODEL_BROKER_CARRIER`'s agent (#1531): each call carried by it, from a conversation it is in. */
   readonly carrier?: Carrier;
   /** Written by the command layer inside the settling transaction. */

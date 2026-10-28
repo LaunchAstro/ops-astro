@@ -50,6 +50,7 @@ export const carriedBroker = (carried: CarriedSettings, custody: Custody): Model
   installation: carried.installation,
   carrier: carried.carrier,
   outsidePeople: carried.outsidePeople,
+  hermesPeople: carried.hermesPeople,
 });
 
 /** The carried exchange and executor, or a throw naming the setting that is missing or malformed. */

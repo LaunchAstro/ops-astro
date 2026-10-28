@@ -29,7 +29,7 @@ export const HERMES_CONVERSATION_KEY: string = 'model.conversation_answer_hermes
 /** The one model Hermes Agent answers as. */
 export const HERMES_MODEL = 'hermes-agent';
 export const HERMES_PATH = '/v1/chat/completions';
-/** The request body's most, in bytes: the context is trimmed to fit it. */
+/** The request body's most, in bytes: a larger one is refused before it is sent. */
 export const HERMES_BODY_LIMIT: number = 48 * 1024;
 
 /** The conversation's own turns and the typed message, streamed, and nothing else. */
