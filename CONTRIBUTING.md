@@ -133,8 +133,10 @@ ran in the merge queue, which tested each pull request on top of `main` and
 was the only way into it. Since then `main` has no merge queue and full CI
 gates nothing: the fast gate on the exact head does (see above), and this
 section describes those workflows for when they run.
-A green pull request is therefore not a full run: builders run the full
-`pnpm check` locally before declaring a change ready.
+A green pull request is therefore not a full run. Before declaring a change
+ready, builders run the tests their change reaches, with the commit hook's
+lint and typecheck; the landing tool then runs the fast gate's five steps on
+the exact head it merges. The full `pnpm check` is not a step before ready.
 
 Those pull request checks run in full only on a pull request next in line
 (owner, 12 October 2026). The orchestrator adds the `ci-next` label when a
