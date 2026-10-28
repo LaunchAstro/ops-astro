@@ -11,7 +11,16 @@
 // an outage that takes the forms off the page gives them back as they were.
 
 import { useRef, type ReactElement, type RefObject } from 'react';
-import type { MandateDraft, MandateEdit, Promotion, PromotionEdit } from './graduation-drafts.ts';
+import type {
+  Filing,
+  MandateDraft,
+  MandateEdit,
+  MandateFiling,
+  Promotion,
+  PromotionEdit,
+} from './graduation-drafts.ts';
+
+export type { Filing, MandateFiling } from './graduation-drafts.ts';
 
 /** The business currency record is not built; ceilings are Australian dollars. */
 export const CURRENCY = 'AUD';
@@ -32,11 +41,6 @@ export function expiryOf(typed: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(typed)) return null;
   const at = new Date(`${typed}T23:59:59`);
   return Number.isNaN(at.getTime()) ? null : at.toISOString();
-}
-
-export interface Filing {
-  readonly ceiling: { readonly amountMinor: number; readonly currency: string } | null;
-  readonly expiresAt: string;
 }
 
 /** Focus the first field whose value did not parse; true when all did. */
@@ -158,12 +162,6 @@ export function PromoteForm(props: {
       </button>
     </div>
   );
-}
-
-export interface MandateFiling extends Filing {
-  readonly classes: readonly string[];
-  readonly refuses: boolean;
-  readonly label: string;
 }
 
 function ScopePicker(props: {

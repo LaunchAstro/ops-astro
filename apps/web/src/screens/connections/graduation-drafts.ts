@@ -16,8 +16,20 @@
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { Settlement } from '../../records/use-command.ts';
-import type { MandateFiling } from './graduation-forms.tsx';
 import type { Send } from './graduation-send.ts';
+
+/** A promotion's parsed ceiling and expiry, as the forms file them. */
+export interface Filing {
+  readonly ceiling: { readonly amountMinor: number; readonly currency: string } | null;
+  readonly expiresAt: string;
+}
+
+/** A standing approval's parsed filing. */
+export interface MandateFiling extends Filing {
+  readonly classes: readonly string[];
+  readonly refuses: boolean;
+  readonly label: string;
+}
 
 /** The open promotion form: its class and what is typed in it. */
 export interface Promotion {
