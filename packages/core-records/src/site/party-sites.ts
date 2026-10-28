@@ -17,7 +17,7 @@
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { TransactionQuery } from '../tenancy/transaction.ts';
-import { COVERED, EFFECTIVE_AT, coveringParameters, holdCoveringGrants } from './covering.ts';
+import { COVERED, EFFECTIVE_AT, coveringParameters } from './covering.ts';
 
 /** One site as the runner binds it: the shape `core-connectors` takes. */
 export interface PartySiteRecord {
@@ -251,10 +251,9 @@ export async function coveredOwnSitePages(
 
 /**
  * Whether the caller's `run:write` still reaches every one of these own pages,
- * judged as `coveredOwnSitePages` lists them: the grants held for share first,
- * so a revocation commits before the read, which sees it, or waits for the
- * caller to commit. A plan call's listed pages are asked here under the
- * broker's locks before anything is sent (S2100-1). None listed, yes.
+ * judged as `coveredOwnSitePages` lists them, at the statement's instant. The
+ * caller holds those grants first (`holdCoveringGrants`), as the plan's check
+ * does before any of its grant reads (S2100-1). None listed, yes.
  */
 export async function coversOwnSitePages(
   tx: TenantQuery,
@@ -263,7 +262,6 @@ export async function coversOwnSitePages(
 ): Promise<boolean> {
   if (sites.length === 0) return true;
   const covering = { subjects, collection: 'run', action: 'write' };
-  await holdCoveringGrants(tx, covering);
   const [row] = await tx.query<{ readonly covered: number }>(
     `${EFFECTIVE_AT}
      select count(*)::int as covered

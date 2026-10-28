@@ -21,6 +21,7 @@ import {
   checkAuthority,
   coversOwnSitePages,
   heldScopes,
+  holdCoveringGrants,
   type Subject,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
@@ -120,12 +121,18 @@ export function planRoute(
   return carry.ok ? { ok: true, route, fields } : { ok: false, code: carry.code };
 }
 
-/** Whether each grant the context was read under still stands, asked after the plan's waits. */
+/**
+ * Whether each grant the context was read under still stands: the last wait first (the run
+ * grants the listed pages rest on, held for share), then every grant read after it, so one
+ * ended during any of the plan's waits is seen (S2100-1).
+ */
 async function grantsStand(
   tx: TenantQuery,
   tasks: readonly string[],
   { subjects, sites }: Pick<PlanAsk, 'sites' | 'subjects'>,
 ): Promise<boolean> {
+  if (sites.length > 0)
+    await holdCoveringGrants(tx, { subjects, collection: 'run', action: 'write' });
   const reads = await heldScopes(tx, subjects, { collection: 'task', action: 'read' });
   const readable = (task: string) =>
     reads.some(
