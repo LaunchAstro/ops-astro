@@ -28,8 +28,9 @@ const NOT_DRAWN = new Set([
   // #1694: the card's list and receipts, drawn once the live app's card reads them.
   'live_correction.list',
   'live_correction.receipts',
-  // C35 (#2011): the review workspace screen draws it (#2105).
+  // C35 (#2011): the review workspace screen draws them (#2105).
   'review.read',
+  'review.picture',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;
