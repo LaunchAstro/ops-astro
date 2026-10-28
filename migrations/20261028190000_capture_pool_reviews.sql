@@ -50,3 +50,18 @@ create table ops.capture_pool_reviews (
 
 grant insert on ops.capture_pool_reviews to ops_astro_app;
 grant select (review, pool_version) on ops.capture_pool_reviews to ops_astro_app;
+
+-- Row security, so a business other than the installation's operator never
+-- adds a review past the command: a row is the operator's alone, recorded
+-- from the operator's own session. Every business reads the identity and the
+-- version alike, as the runner does wherever it captures.
+alter table ops.capture_pool_reviews enable row level security;
+alter table ops.capture_pool_reviews force row level security;
+create policy read_capture_pool_reviews on ops.capture_pool_reviews
+  as permissive for select using (true);
+create policy record_capture_pool_reviews on ops.capture_pool_reviews
+  as permissive for insert
+  with check (
+    operator_business_id = (select public.app_business_id())
+      and operator_business_id = (select i.operator_business_id from ops.installation i)
+  );
