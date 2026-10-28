@@ -18,6 +18,7 @@ import { planHolds, planRoute } from './broker-conversation-plan.ts';
 import { HERMES_PROVIDER_KEY, hermesStanding } from './hermes-standing.ts';
 import { sendingCarrier } from './broker-carrier.ts';
 import { atCeiling, WAIT_SECONDS } from './broker-reserve.ts';
+import { oversized } from './broker-size.ts';
 import { sendAndSettle } from './broker-conversation-send.ts';
 import { carriedIn } from './broker-carriage.ts';
 import { insertStarted, messageCall } from './broker-message-call.ts';
@@ -176,6 +177,8 @@ export async function callModelUnpriced(
   const { fields } = chosen;
   // #1508, option B: this seam holds nothing, so it sends only an unpriced operation.
   if (operation.maximumMinor > 0) return refused('BUDGET_UNAVAILABLE');
+  // Sized against its adapter's limit (Hermes Agent's) before any row or send.
+  if (oversized(broker, operation, fields, request.model)) return refused('PROMPT_TOO_LARGE');
   const { route } = chosen;
   const { account, presentsNothing } = await sendingCarrier(broker, route, operation.destination);
   const streamed = presentsNothing && operation.fold !== undefined;
