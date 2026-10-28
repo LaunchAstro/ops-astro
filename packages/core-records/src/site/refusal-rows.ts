@@ -80,4 +80,29 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: "The site runner has not checked the correction's page in the last 60 seconds",
     source: '#1693, register 65',
   },
+  // #2316: the party-site store's refusals, as `client.bind_site` answers them.
+  {
+    code: 'SITE_BOUND_ELSEWHERE',
+    status: 409,
+    meaning: 'The repository or hosting project is bound to another site in this installation',
+    source: '#2316, the party-site store',
+  },
+  {
+    code: 'PAGE_BOUND_ELSEWHERE',
+    status: 409,
+    meaning: 'The page is bound to another site of this business',
+    source: '#2316, the party-site store',
+  },
+  {
+    code: 'SITE_UNDER_CORRECTION',
+    status: 409,
+    meaning: "An open correction holds the client's site, so its providers do not change",
+    source: '#2316, the party-site store',
+  },
+  {
+    code: 'PAGE_UNDER_CORRECTION',
+    status: 409,
+    meaning: 'An open correction holds the page, so it stays bound',
+    source: '#2316, the party-site store',
+  },
 ] as const;

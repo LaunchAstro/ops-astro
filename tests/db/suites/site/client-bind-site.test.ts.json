@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#2316: client.bind_site binds a client's site only for a person holding operations:manage on that client; another client of the same business, another business's client, another business's person, a member without the key, a client's person and a delegated agent are refused and write nothing, no refusal names another client's id, and a repository, project or page bound elsewhere stays its holder's."
+}

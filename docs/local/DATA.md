@@ -1061,8 +1061,10 @@ While a correction of the client is open (`locating` to `live`, or
 its site is deleted and its providers do not change (`party_site_pages_held`,
 `party_sites_held`, each share-locking the corrections first); a page is
 never updated (`party_site_pages_fixed`). The application may select and
-insert both, delete pages, and update the site's provider columns; no command
-writes them: the operator binds a site with `bindPartySite`. Tenancy-keyed
+insert both, delete pages, and update the site's provider columns. One command
+writes a client's site, `client.bind_site` (#2316, API.md), through
+`bindPartySite`; the business's own site is bound by the operator's step
+(`scripts/ops/bind-own-site.ts`). Tenancy-keyed
 with the restrictive policy.
 
 ## The business's own site (20261018020000, R6 part 1)

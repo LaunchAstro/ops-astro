@@ -100,6 +100,16 @@ export type PrivacyRequest<E> =
       readonly requestedOn?: unknown;
       readonly requestLink?: unknown;
     } & E)
+  // #2316: a client's site and pages, every field checked by the handler
+  // (`site-bind-write.ts`).
+  | ({
+      readonly command: 'client.bind_site';
+      readonly clientId: string;
+      readonly repository: unknown;
+      readonly defaultBranch: unknown;
+      readonly project: unknown;
+      readonly pages: unknown;
+    } & E)
   // C58: end a person's access in one act (`access-end.ts`).
   | ({ readonly command: 'access.end'; readonly holderId: unknown } & E)
   // C39-T: a team invitation's three acts (`invitations.ts`).

@@ -29,6 +29,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { siteBody } from './role-case-access-bodies.ts';
 import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
@@ -495,6 +496,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       handlesHealth: false,
       noAgentEdits: true,
     }));
+    // #2316: bravo's client named in an alpha site binding.
+    byAda('client.bind_site', 'clientId', f.clientId, (clientId) => ({ clientId, ...siteBody() }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
@@ -684,11 +687,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 122 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 123 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(122);
-    expect(names).toHaveLength(122);
+    expect(new Set(names).size, 'distinct operations').toBe(123);
+    expect(names).toHaveLength(123);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

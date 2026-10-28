@@ -346,6 +346,10 @@ vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', asy
   ...(await original<object>()),
   setClientPrivacy: recorder('setClientPrivacy'),
 }));
+vi.mock('../../packages/core-commands/src/commands/site-bind-write.ts', async (original) => ({
+  ...(await original<object>()),
+  bindClientSite: recorder('bindClientSite'),
+}));
 vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
   ...(await original<object>()),
   endAccessOnSettings: recorder('endAccessOnSettings'),
@@ -492,6 +496,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'onboarding.start': ['clientId'],
   'onboarding.step_result': ['recordId'],
   'client.set_privacy': ['clientId'],
+  'client.bind_site': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
   'conversation.set_model': ['conversationId'],
@@ -609,6 +614,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'chat.send_direct',
   'chat.send_group',
   'chat.start_group',
+  'client.bind_site',
   'client.create',
   'client.list',
   'client.set_privacy',
@@ -935,6 +941,15 @@ const REQUESTS: readonly CommandRequest[] = [
     noAgentEdits: false,
   },
   {
+    command: 'client.bind_site',
+    operationId: 'op',
+    clientId: 'client',
+    repository: 'owner/name',
+    defaultBranch: 'main',
+    project: 'project',
+    pages: [],
+  },
+  {
     command: 'access.grant',
     operationId: 'op',
     holderId: 'person',
@@ -1207,6 +1222,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'onboarding.start': ['startOnboarding', 'request'],
   'onboarding.step_result': ['recordStepResult', 'request'],
   'client.set_privacy': ['setClientPrivacy', 'request'],
+  'client.bind_site': ['bindClientSite', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
@@ -1334,7 +1350,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-nine from an expected revision', () => {
+  it('exempts the same one hundred and forty from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

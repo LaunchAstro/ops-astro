@@ -190,6 +190,7 @@ export const DECLARED: Readonly<
   'onboarding.start': { carry: 'not carried', plant: 'lays new tasks out, not task content' },
   'onboarding.step_result': { carry: 'not carried', plant: 'needs an onboarding step task' },
   'client.set_privacy': { carry: 'not carried', plant: "a client's settings, not task content" },
+  'client.bind_site': { carry: 'not carried', plant: "a client's site, not task content" },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },

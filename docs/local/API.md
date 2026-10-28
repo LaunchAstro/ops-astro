@@ -3683,6 +3683,28 @@ handlesHealth, noAgentEdits }`, and never the written requests.
 C78): `CLIENT_NO_AGENT_EDITS` while "no agent edits" is on, else
 `checkClientModelUse`'s answer for the run's provider.
 
+### A client's site and pages (#2316)
+
+`client.bind_site` takes `{ operationId, clientId, repository, defaultBranch,
+project, pages }` under `operations:manage` on that client (a grant over the
+whole business or over that client), never an agent's, and answers
+`{ clientId }`. It binds the client's site through `bindPartySite`
+(docs/local/DATA.md): `repository` is `owner/name`, stored in lower case;
+`defaultBranch` and `project` are one plain name each (letters, digits, `.`,
+`_` or `-`); `pages` is 1 to 50 `{ pageUrl, path }`, each address once, an
+exact `https` address with no sign-in details or fragment, and the page source
+under `src/pages/`, an `.astro` or `.md` file, as the site runner reads its
+configured site. A malformed field is `FIELD_VALUE_INVALID` 422 naming it. A
+page the site holds already stays as it is, and a page not named stays bound,
+so the same bind again changes nothing. A repository or project bound to
+another site in the installation is `SITE_BOUND_ELSEWHERE` 409, a page bound to
+another site of the business `PAGE_BOUND_ELSEWHERE` 409, and new providers while an
+open correction holds the site `SITE_UNDER_CORRECTION` 409; none names the
+other holder. A client of another business answers as a made-up one, as
+`client.set_privacy`'s does. Nothing reaches a client: the site runner acts
+only on the site it is configured for, and captures no client page until the
+capture pool's reviews are recorded.
+
 ### Ending a person's access (C58)
 
 `access.end` takes `{ operationId, holderId }` under `access:manage`, never an

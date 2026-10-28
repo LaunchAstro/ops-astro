@@ -29,6 +29,7 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateEvidence, gateRecordBody } from './role-case-gate-bodies.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
+import { siteBody } from './role-case-access-bodies.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
@@ -427,6 +428,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         'client.set_privacy',
         pair('clientId', client, (clientId) => ({ clientId, ...PRIVACY_OFF, noAgentEdits: true })),
       ],
+      // #2316: bravo's client named in an alpha site binding.
+      ['client.bind_site', pair('clientId', client, (clientId) => ({ clientId, ...siteBody() }))],
     ];
   };
 

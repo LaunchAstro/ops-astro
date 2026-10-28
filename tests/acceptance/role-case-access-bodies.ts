@@ -66,6 +66,17 @@ export async function madeClient(context: BodyContext): Promise<string> {
   return String((made.body['detail'] as Record<string, unknown>)['clientId']);
 }
 
+/** #2316: a site of its own each time, so no bind meets another's repository, project or page. */
+export function siteBody(): Record<string, unknown> {
+  const tag = randomUUID().slice(0, 8);
+  return {
+    repository: `client-sites/site-${tag}`,
+    defaultBranch: 'main',
+    project: `prj_${tag}`,
+    pages: [{ pageUrl: `https://site-${tag}.example/about`, path: 'src/pages/about.astro' }],
+  };
+}
+
 export async function accessBody(name: AccessCommand, context: BodyContext): Promise<Prepared> {
   switch (name) {
     // C32: `record:write`, a name no other call has used.

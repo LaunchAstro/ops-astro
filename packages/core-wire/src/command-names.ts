@@ -137,6 +137,8 @@ export type CommandName =
   | 'onboarding.step_result'
   // C60: a client's privacy settings, on its record.
   | 'client.set_privacy'
+  // #2316: a client's site and its pages, bound by an operator.
+  | 'client.bind_site'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'

@@ -24,7 +24,7 @@ import { tagRecipes } from './tag-recipes.ts';
 import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
-import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { accessBody, madeClient, siteBody } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, isConversationCommand, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
@@ -195,6 +195,9 @@ export function createPositiveBody(
       case 'access.end':
       case 'access.reset_factor':
         return await accessBody(declaration.name, context);
+      // #2316: `operations:manage`, the operator's: a client made for the case, its site bound.
+      case 'client.bind_site':
+        return { body: { clientId: await madeClient(context), ...siteBody() } };
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.

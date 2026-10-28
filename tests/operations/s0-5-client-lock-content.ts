@@ -24,6 +24,7 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'record.create': 'writes a client, not a task',
   'onboarding.start': "lays a template out as new tasks on the client, each one's creation",
   'client.set_privacy': "a client's privacy settings, not a task",
+  'client.bind_site': "a client's site and its pages, not a task",
   'secret.set': 'a key held for a client or the business, not a task (C31)',
   // MP-14-10a: a client's standing mandates and graduation rows, not a task.
   'mandate.file': "a client's standing mandate, not a task",

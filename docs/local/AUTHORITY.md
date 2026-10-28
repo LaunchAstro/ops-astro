@@ -906,7 +906,9 @@ active membership, over the whole business or over one client of it
 (`scope_kind = 'party'`, `scope_id` the client). Making a client
 (`client.create`) is `record:write`, never an agent's. Changing a client's
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
-client's party scope, never an agent's.
+client's party scope, never an agent's. Binding a client's site and pages
+(`client.bind_site`, #2316) is `operations:manage`, the operator's key, asked
+at that client's party scope the same way, never an agent's.
 
 Settings ▸ Access also makes an agent credential (API-2, owner check U18) for a
 session holding `credential:write`: `credential.issue` with task access only,
