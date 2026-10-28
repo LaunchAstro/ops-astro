@@ -36,6 +36,7 @@
 //   reaches, each by repository and address (`{"sites":[…]}` in the page
 //   field), so a site change the model plays back names one of them. Catalogue
 //   data only: never a page's file, content or a client's site.
+//   On the plan the broker asks each page's `run:write` again (`planHolds`).
 // - Cites: the page task, by its own key, when the page is sent. Never a
 //   string the model wrote.
 

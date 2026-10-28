@@ -13,11 +13,19 @@
 // (`carriage-origin.ts`), the broker judges it under its locks: each task held
 // `for share` and read after its wait, then the caller's own owner membership
 // held `for share`, so a role ended or a task written meanwhile commits first
-// and is seen, or waits. Like `carry-rule.ts`, nothing here is a background
+// and is seen, or waits, and then each grant its context was read under (S2100-1).
+// Like `carry-rule.ts`, nothing here is a background
 // path: one call per typed message, asked only by the exchange.
 
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  coversOwnSitePages,
+  heldScopes,
+  type Subject,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
+import type { SitePageView } from '../../core-wire/src/index.ts';
 import { readPage } from './broker-task.ts';
 import { ownersOwn } from './broker-sources.ts';
 import { carriesOnPlan, mayCarry } from './carry-rule.ts';
@@ -38,6 +46,10 @@ export interface PlanAsk {
   readonly page: string | null;
   /** The tasks the earlier exchanges sent may carry (#1666). */
   readonly sources: readonly string[];
+  /** The bound pages the page field lists (#1988), by repository and address. */
+  readonly sites: readonly SitePageView[];
+  /** The caller's session's subjects, whose grants the context was read under. */
+  readonly subjects: readonly Subject[];
 }
 
 /** The fields the side chat sends; `message` always among them. */
@@ -108,17 +120,38 @@ export function planRoute(
   return carry.ok ? { ok: true, route, fields } : { ok: false, code: carry.code };
 }
 
+/** Whether each grant the context was read under still stands, asked after the plan's waits. */
+async function grantsStand(
+  tx: TenantQuery,
+  tasks: readonly string[],
+  { subjects, sites }: Pick<PlanAsk, 'sites' | 'subjects'>,
+): Promise<boolean> {
+  const reads = await heldScopes(tx, subjects, { collection: 'task', action: 'read' });
+  const readable = (task: string) =>
+    reads.some(
+      (scope) => scope.kind === 'business' || (scope.kind === 'record' && scope.id === task),
+    );
+  if (!tasks.every(readable)) return false;
+  const own = await checkAuthority(tx, subjects, {
+    collection: 'conversation',
+    action: 'write',
+    scope: { kind: 'business', id: null },
+  });
+  return own.ok && (await coversOwnSitePages(tx, subjects, sites));
+}
+
 /**
  * The plan's standing again, under its locks, in the transaction that writes
  * or sends the call: each task held `for share` in id order and read after the
  * wait (a statement that waits keeps its earlier view of the operations), then
  * the person's open owner membership held `for share`, its row read again once
- * any change to it commits. Undefined when it stands.
+ * any change to it commits, then the context's grants (`grantsStand`).
+ * Undefined when it stands.
  */
 export async function planHolds(
   tx: TenantQuery,
   personId: string | null,
-  plan: Pick<PlanAsk, 'page' | 'sources'>,
+  plan: Omit<PlanAsk, 'authors'>,
 ): Promise<BrokerRefusal | undefined> {
   const tasks = [...new Set([plan.page, ...plan.sources].filter((id) => id !== null))].toSorted();
   for (const task of tasks) {
@@ -140,5 +173,6 @@ export async function planHolds(
       for share`,
     [tx.businessId, personId],
   );
-  return owner.length > 0 ? undefined : 'SUBSCRIPTION_NOT_OWNER_STARTED';
+  if (owner.length === 0) return 'SUBSCRIPTION_NOT_OWNER_STARTED';
+  return (await grantsStand(tx, tasks, plan)) ? undefined : 'AUTHORITY_LOST';
 }

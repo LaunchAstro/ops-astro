@@ -302,7 +302,7 @@ describe.skipIf(serverUrl === undefined)("the owner's typed message on his plan"
         operation: CHATGPT_PLAN_CONVERSATION.key,
         model: LUNA,
         fields: [{ name: 'message', source: 'outside', value: 'Due?' }],
-        plan: { authors: [w.owner.actorId], page: null, sources: [] },
+        plan: { authors: [w.owner.actorId], page: null, sources: [], sites: [], subjects: [] },
       },
       { ...broker, audit: async () => {} },
     );
@@ -348,7 +348,7 @@ describe.skipIf(serverUrl === undefined)("the owner's typed message on his plan"
         operation: CHATGPT_PLAN_CONVERSATION.key,
         model: LUNA,
         fields: [{ name: 'message', source: 'outside', value: 'Due now?' }],
-        plan: { authors: [w.owner.actorId], page: null, sources: [] },
+        plan: { authors: [w.owner.actorId], page: null, sources: [], sites: [], subjects: [] },
       },
       { ...broker, audit: async () => {} },
     );

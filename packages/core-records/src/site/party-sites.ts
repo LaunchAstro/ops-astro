@@ -17,7 +17,7 @@
 import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { TransactionQuery } from '../tenancy/transaction.ts';
-import { COVERED, EFFECTIVE_AT, coveringParameters } from './covering.ts';
+import { COVERED, EFFECTIVE_AT, coveringParameters, holdCoveringGrants } from './covering.ts';
 
 /** One site as the runner binds it: the shape `core-connectors` takes. */
 export interface PartySiteRecord {
@@ -247,4 +247,37 @@ export async function coveredOwnSitePages(
       limit $6`,
     [tx.businessId, ...coveringParameters({ subjects, collection: 'run', action: 'write' }), limit],
   );
+}
+
+/**
+ * Whether the caller's `run:write` still reaches every one of these own pages,
+ * judged as `coveredOwnSitePages` lists them: the grants held for share first,
+ * so a revocation commits before the read, which sees it, or waits for the
+ * caller to commit. A plan call's listed pages are asked here under the
+ * broker's locks before anything is sent (S2100-1). None listed, yes.
+ */
+export async function coversOwnSitePages(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  sites: readonly { readonly repository: string; readonly page: string }[],
+): Promise<boolean> {
+  if (sites.length === 0) return true;
+  const covering = { subjects, collection: 'run', action: 'write' };
+  await holdCoveringGrants(tx, covering);
+  const [row] = await tx.query<{ readonly covered: number }>(
+    `${EFFECTIVE_AT}
+     select count(*)::int as covered
+       from public.party_site_pages c
+       join public.party_sites s on s.business_id = c.business_id and s.holder = c.holder
+       join unnest($6::text[], $7::text[]) as asked (repository, page)
+         on asked.repository = s.repository and asked.page = c.page_url
+      where c.business_id = $1 and c.party_id is null and s.party_id is null and ${COVERED}`,
+    [
+      tx.businessId,
+      ...coveringParameters(covering),
+      sites.map((site) => site.repository),
+      sites.map((site) => site.page),
+    ],
+  );
+  return row?.covered === sites.length;
 }
