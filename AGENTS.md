@@ -41,6 +41,10 @@ and Nathan's acceptance; the production deploy is the one other human gate.
 Run `/security-review` before a pull request touching auth, tenancy, tool
 execution, egress, custody, or the audit chain.
 
+Code Factory builds here run the **production** variant
+([production.md](https://github.com/LaunchAstro/code-factory/blob/main/docs/variants/production.md)),
+Nathan's pick on 28 October 2026.
+
 ## References
 
 For naming or public copy, read [Product identity](docs/product-identity.md).
