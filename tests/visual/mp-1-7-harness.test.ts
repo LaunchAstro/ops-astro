@@ -172,7 +172,8 @@ function everyPageAtItsAddress(): void {
 // with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
 // MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1),
 // MP-7-10's Team, SL06's Clients book, a conversation's own address (C36),
-// a Wayfinder map (WF-3), the Executive page, the onboarding look and /enrol (C39-T).
+// a Wayfinder map (WF-3), the Maps list (#1552), the Executive page, the onboarding
+// look and /enrol (C39-T).
 const BUILT_PAGES = [
   'agency:sign-in',
   'agency:legal',
@@ -181,6 +182,7 @@ const BUILT_PAGES = [
   'agency:task-unnamed',
   'agency:map',
   'agency:connections',
+  'agency:maps',
   'agency:executive',
   'agency:onboarding',
   'agency:enrol',
