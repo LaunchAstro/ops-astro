@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a step written off at nothing has an unknown effect, as after any write-off: its attempt records outcome unknown and a pickup of its hold is refused with no money moved, so the step never runs again; a person's nothing_happened outcome still lets it run again on a fresh hold"
+}

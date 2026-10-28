@@ -2,10 +2,10 @@
 //
 // A person's write-off closes a hold whose call was sent and never answered:
 // the call stays unknown, its outcome recorded, and nothing resolves it again.
-// A stop raised on that closed hold takes no top-up, since a top-up would
-// mark the hold as one that counted its open calls: the version room would
-// count the written-off call again, and a late settle of it would give back
-// money the envelope never carried. The end at the stop still applies.
+// A write-off at 0 leaves the step's effect unknown as any write-off does
+// (#2277), so a pickup of that closed hold is refused and the step never runs
+// again: no replacement holds what is left, no stop is raised on the hold for
+// a top-up to answer, and a late settle of the call moves no money.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,7 +18,6 @@ import {
   asPerson,
   codeOf,
   openSchedules,
-  pickup,
   type Schedules,
 } from './schedules-harness.ts';
 import { writeOffBody } from './t3c-harness.ts';
@@ -32,10 +31,8 @@ import {
   moneyOf,
   roomyWork,
   spend,
-  stampBefore,
   stopWorker,
   sweep,
-  topUp,
 } from './version-room-world.ts';
 import { answerLate, answersOn, attemptOf, counted, priced } from './written-off-world.ts';
 
@@ -66,11 +63,12 @@ afterAll(async () => {
 
 /**
  * A person writes off the first hold at 0 while its dispatched call is held
- * unknown, so it closes at its settled 300 with the call still open. The
- * replacement holds the 200 left, spends it and stops, stamped before the
- * first hold, so picking the first hold up stops the run for room.
+ * unknown, so it closes at its settled 300 with the call still open and the
+ * step's effect unknown (#2277). The pickup that would hold the 200 left and
+ * stop the run for room on the first hold is refused: the step never runs
+ * again, so no stop is raised on the written-off hold for a top-up to answer.
  */
-async function stopOnWrittenOff() {
+async function pickedUpAfterWriteOff() {
   const { work, versionId, first } = await roomyWork(s);
   await spend(s, first, 300);
   const c2 = await dispatchedCall(s, first, 200);
@@ -83,93 +81,66 @@ async function stopOnWrittenOff() {
     writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(s, first) }, 0),
   );
   appliedDetail(writtenOff, 'budget.write_off');
+  const before = await moneyOf(s, work, versionId);
 
-  const second = await pickup(s, first);
-  await spend(s, second['reservationId'], 200);
-  await stopWorker(s, second);
-  await stampBefore(s, first, second['reservationId']);
-  const stopped = await asAgent(s, {
+  const picked = await asAgent(s, {
     command: 'task.pickup',
     operationId: randomUUID(),
     reservationId: first,
     leaseSeconds: 600,
   });
-  return { work, versionId, first, c2, stopped, ...(await askOf(s, first)) };
+  return { work, versionId, first, c2, picked, before, ...(await askOf(s, first)) };
 }
 
-describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written-off hold', () => {
-  it('refuses a top-up on a written-off hold whose call is still unknown, moving nothing, and lets the end apply', async () => {
-    const { work, versionId, first, c2, stopped, runId, askId } = await stopOnWrittenOff();
-    const before = await moneyOf(s, work, versionId);
-
-    const topped = await topUp(s, work, first, 100);
+describe.skipIf(serverUrl === undefined)('a pickup of a written-off hold', () => {
+  it('refuses a pickup of a hold written off at 0 whose call is still unknown, moving nothing and raising no stop to top up', async () => {
+    const { work, versionId, first, c2, picked, before, runId, askId } =
+      await pickedUpAfterWriteOff();
     expect({
-      stopped: codeOf(stopped),
+      picked: codeOf(picked),
       call: await callState(s, c2),
-      code: codeOf(topped),
+      ask: askId,
       answers: await answersOn(s, runId),
       money: await moneyOf(s, work, versionId),
       counted: await counted(s, first),
     }).toEqual({
-      stopped: 'BUDGET_UNAVAILABLE',
+      picked: 'RESERVATION_NOT_CLAIMABLE',
       call: 'liability_unknown',
-      code: 'TRANSITION_NOT_PERMITTED',
+      ask: undefined,
       answers: 0,
       money: before,
       counted: false,
     });
-
-    const ended = await asPerson(s, {
-      command: 'run.end_at_budget_stop',
-      operationId: randomUUID(),
-      recordId: work.taskId,
-      runId,
-      askId,
-    });
-    expect({
-      code: codeOf(ended),
-      money: await moneyOf(s, work, versionId),
-      counted: await counted(s, first),
-    }).toEqual({ code: 'applied', money: before, counted: false });
   });
 });
 
-describe.skipIf(serverUrl === undefined)('a top-up after the written-off call settles late', () => {
-  it("refuses the top-up's replacement for room once the written-off call settles late, the room counting the hold at its calls' 450 until #992, money unmoved", async () => {
-    const { work, versionId, first, c2, stopped } = await stopOnWrittenOff();
+describe.skipIf(serverUrl === undefined)('a pickup after the written-off call settles late', () => {
+  it('refuses a pickup of the written-off hold once its call settles late, the version committing only its 300, money unmoved', async () => {
+    const { work, versionId, first, c2, picked } = await pickedUpAfterWriteOff();
     const before = await envelopeOf(s, work);
     await answerLate(s, work.picked, c2, priced(150));
     const settled = { call: await callState(s, c2), envelope: await envelopeOf(s, work) };
-    const topped = await topUp(s, work, first, 100);
-    // The top-up's fresh hold, picked up and stopped unspent. The room counts
-    // the written-off hold at its calls (300 + 150), so 600 less 450 and
-    // R1's 200 leaves none: the safe side, until #992 says what a write-off's
-    // charge means for a call that prices later.
-    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
-    await stopWorker(s, await pickup(s, fresh?.id));
     const unmoved = await moneyOf(s, work, versionId);
     const again = await asAgent(s, {
       command: 'task.pickup',
       operationId: randomUUID(),
-      reservationId: fresh?.id,
+      reservationId: first,
       leaseSeconds: 600,
     });
     const holds = await holdsOf(s, versionId);
     expect({
-      stopped: codeOf(stopped),
+      picked: codeOf(picked),
       settled,
-      topped: codeOf(topped),
       again: codeOf(again),
       live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       committed: committed(holds),
       money: await moneyOf(s, work, versionId),
     }).toEqual({
-      stopped: 'BUDGET_UNAVAILABLE',
+      picked: 'RESERVATION_NOT_CLAIMABLE',
       settled: { call: 'settled', envelope: before },
-      topped: 'applied',
-      again: 'BUDGET_UNAVAILABLE',
+      again: 'RESERVATION_NOT_CLAIMABLE',
       live: [],
-      committed: 500,
+      committed: 300,
       money: unmoved,
     });
   });
