@@ -68,7 +68,6 @@ describe.skipIf(serverUrl === undefined)('C35-X pins carried to a new revision',
       selector: [spot('xywh=40,20,300,40'), quote('Harbour Physio')],
     });
     const inContext = await pinOn(w, first, {
-      audience: 'client',
       width: 390,
       body: 'Is this the right booking line?',
       selector: [
@@ -133,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('C35-X pins carried to a new revision',
       [inContext, false, narrow],
     ]);
     expect(review.carried.at(-1)).toMatchObject({
-      audience: 'client',
+      audience: 'internal',
       body: 'Is this the right booking line?',
       fromRevisionId: first,
     });

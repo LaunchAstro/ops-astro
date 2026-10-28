@@ -5,7 +5,8 @@
 // another client's review, named under this lease, is not found; the same call in another
 // business is refused; neither writes a carry anywhere. A carry takes only its own review's
 // pins, a reader granted another client's reviews reads none of it, and the client's
-// projection of the task shows its own pin and never an internal one or its carry.
+// projection of the task shows none of its pins (client review is off, DECISIONS 43) and never
+// its carry.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -48,8 +49,7 @@ describe.skipIf(serverUrl === undefined)('C35-X isolation of the carry', () => {
     const atB = { partyId: w.partyB, pageUrl: B_PAGE, path: B_FILE };
     const a = await landedReview(w, 'client A review', PAGE_ONE);
     const b = await landedReview(w, 'client B review', PAGE_ONE, atB);
-    const clientPin = await pinOn(w, a.reviewed.revisionId, {
-      audience: 'client',
+    const teamPin = await pinOn(w, a.reviewed.revisionId, {
       body: 'Is this the booking line you wanted?',
       selector: [spot(), quote('Book a visit today')],
     });
@@ -94,7 +94,7 @@ describe.skipIf(serverUrl === undefined)('C35-X isolation of the carry', () => {
     // dee holds review keys on client B only: client A's review is not found.
     expect(codeOf((await w.read(w.dee, a.reviewed.reviewId)) as never)).toBe('NOT_FOUND');
 
-    // The client's projection of the task: its own pin, never the internal one or a carry.
+    // The client's projection of the task: none of the review's pins, and never a carry.
     const client: Member = await shareWithClient(
       w.world.db.app,
       w.world.business,
@@ -109,7 +109,7 @@ describe.skipIf(serverUrl === undefined)('C35-X isolation of the carry', () => {
     const ids = (read.sharedTask.comments as readonly Readonly<Record<string, unknown>>[]).map(
       (comment) => comment['id'],
     );
-    expect(ids).toContain(clientPin);
+    expect(ids).not.toContain(teamPin);
     const text = JSON.stringify(read);
     expect(text).not.toContain(INTERNAL_MARKER);
     expect(text).not.toContain(secondA);
