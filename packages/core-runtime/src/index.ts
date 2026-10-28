@@ -167,6 +167,7 @@ export {
   type RecordedOutcome,
 } from './recovery/outcome.ts';
 export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
+export { stopWrittenOffReplacements } from './recovery/written-off-replacements.ts';
 export {
   readCallDrops,
   recordPlanningOutcome,

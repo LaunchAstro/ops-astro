@@ -1394,8 +1394,11 @@ direct SQL.
   held for a person, marked `absence_proved_at` (0037), the old worker's
   delegation is revoked, and the step resumes on a new hold and attempt that
   dispatches through T2c1's recheck (dispatch marks the step again for it,
-  once the prior attempt is fenced). No answer: nothing moves. Each phase is
-  one transaction per business.
+  once the prior attempt is fenced). No answer: nothing moves. Last, the pass
+  stops a replacement still held for a step a person wrote off, as the
+  write-off stops one (#2321, `recovery/written-off-replacements.ts`): one at
+  nothing recorded before #2282 stopped none. The queue never offers it. Each
+  phase is one transaction per business.
   T3e1 names drops (`recovery/drop.ts`, 0038). A drop is never a person's
   cancellation, and each keeps its cause on the attempt: `provider_unavailable`
   (the provider's fault) and `connection_lost` (the network's), which a worker
