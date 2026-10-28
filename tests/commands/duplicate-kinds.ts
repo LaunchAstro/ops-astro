@@ -270,6 +270,8 @@ export const DECLARED: Readonly<
     plant: 'needs a capture claimed under a live lease',
   },
   'review.pin_comment': { carry: 'not carried', plant: 'needs a captured review revision' },
+  // C35-X: a pin's carry is history of the old task's review; a duplicate carries none.
+  'review.carry_pins': { carry: 'not carried', plant: 'needs a landed revision under a lease' },
   // C57: a change request is filed from a client pin and decided; a duplicate carries none.
   'review.propose_change': { carry: 'not carried', plant: 'needs a client pin' },
   'review.decide_change': { carry: 'not carried', plant: 'needs a proposed change request' },

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X a pin found again moves (unchanged document carries every selector; a unique quote with its context carries the quote and no coordinate); repeated text, a changed region or a missing quote is carried lost with no anchor, stays open and reads first; the comments and first anchors are unchanged."
+}

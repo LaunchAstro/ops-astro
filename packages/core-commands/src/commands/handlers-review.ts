@@ -5,6 +5,7 @@
 import type { Handler } from './handler-types.ts';
 import { askReviewCapture, openReview } from './review-commands.ts';
 import { claimCaptureAsPerson, landCaptureAsPerson } from './review-captures.ts';
+import { carryPinsAsPerson } from './review-carry.ts';
 import { pinComment } from './review-pin.ts';
 import { decideChange, proposeChange } from './review-change.ts';
 import { makeChangeTaskAsPerson } from './review-change-task.ts';
@@ -15,6 +16,7 @@ type ReviewWrite =
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.carry_pins'
   | 'review.pin_comment'
   | 'review.propose_change'
   | 'review.decide_change'
@@ -27,6 +29,7 @@ export const REVIEW_HANDLERS: { readonly [K in ReviewWrite]: Handler<K> } = {
   'review.capture': askReviewCapture,
   'review.capture_claim': claimCaptureAsPerson,
   'review.capture_land': landCaptureAsPerson,
+  'review.carry_pins': carryPinsAsPerson,
   'review.pin_comment': pinComment,
   'review.propose_change': proposeChange,
   'review.decide_change': decideChange,

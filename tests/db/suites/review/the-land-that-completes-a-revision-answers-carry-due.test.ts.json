@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35-X the land that completes a revision's last width answers carryDue true while a pin before it is not carried, every other land false."
+}
