@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 picture read under revocation: a review:read grant revoked between the covered picture query and the storage read of its bytes answers NOT_FOUND and never carries the bytes, id or digest (S2147-3)."
+}
