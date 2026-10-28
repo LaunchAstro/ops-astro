@@ -3,9 +3,10 @@
 // The owner's plan as a production setting (#2091): only the carried
 // deployment, whose custody is the model agent on the M5, takes a
 // `chatgpt_plan` route, at most one, cloud and a subscription. With it, its
-// broker serves the agent's turn (`model.agent_turn`) on the plan, under the
-// plan's own provider key, so the route stays the plan's and the
-// owner-started rule (`carriesOnPlan`) still names it. Without one, the turn
+// broker serves the agent's turn (`model.agent_turn`) and the owner's typed
+// message (`model.chatgpt_plan_answer`, #2175's spec) on the plan and nothing
+// else, under the plan's own provider key, so the route stays the plan's and
+// the owner-started rule (`carriesOnPlan`) still names it. Without one, the turn
 // is not catalogued there at all, and no uncarried install takes the route.
 
 import { describe, expect, it } from 'vitest';
@@ -14,6 +15,7 @@ import { carrierSettings, type CarriedSettings } from '../../apps/api/model-carr
 import { routesOf } from '../../apps/api/model-broker.ts';
 import {
   AGENT_TURN_KEY,
+  CHATGPT_PLAN_CONVERSATION,
   CHATGPT_PLAN_PROVIDER,
   CHATGPT_PLAN_TURN,
 } from '../../packages/core-connectors/src/index.ts';
@@ -64,14 +66,16 @@ function refused(routes: readonly unknown[]): string {
 }
 
 describe('the plan route in production settings', () => {
-  it('the carried deployment takes one plan route and serves the turn on it', () => {
+  it('the carried deployment takes one plan route and serves the turn and the typed message on it', () => {
     const carried = carriedOf([ollama, plan]);
     expect(carried.routes).toStrictEqual([ollama, plan]);
     const broker = carriedBroker(carried, {} as Custody);
     expect(broker.operations.get(AGENT_TURN_KEY)?.provider).toBe(PLAN_PROVIDER);
     expect(broker.providers.has(PLAN_PROVIDER)).toBe(true);
     const onPlan = [...broker.operations.values()].filter((op) => op.provider === PLAN_PROVIDER);
-    expect(onPlan.map((op) => op.key)).toStrictEqual([AGENT_TURN_KEY]);
+    expect(onPlan.map((op) => op.key).toSorted()).toStrictEqual(
+      [AGENT_TURN_KEY, CHATGPT_PLAN_CONVERSATION.key].toSorted(),
+    );
   });
 
   it('keeps the plan provider key, so the owner-started rule names the route', () => {
