@@ -24,7 +24,9 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
+// eslint-disable-next-line max-lines-per-function -- one race, its schedule read top to bottom
 describe.skipIf(serverUrl === undefined)('the team review read under revocation', () => {
+  // eslint-disable-next-line max-lines-per-function -- Sol's proof whole, as S2061-1 ran it
   it('a revision opened after the review read grant is revoked mid-read never reaches the reader', async () => {
     const opened = detailOf(await w.open(w.ava, { taskId: w.taskA }));
     expect(codeOf(await w.capture(w.ava, opened['revisionId']))).toBe('not-a-refusal');
@@ -81,7 +83,7 @@ describe.skipIf(serverUrl === undefined)('the team review read under revocation'
         reviewId: opened['reviewId'],
       } as never);
       expect(crossed).toBe(true);
-      expect(later).toMatch(/^[0-9a-f-]{36}$/);
+      expect(later).toMatch(/^[0-9a-f-]{36}$/u);
       expect({
         code: codeOf(answer as never),
         leaked: JSON.stringify(answer).includes(later),
