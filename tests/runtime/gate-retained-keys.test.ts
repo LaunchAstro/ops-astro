@@ -10,7 +10,10 @@
 // and the reason never carries a secret. The chain read itself is proved in
 // `tests/reads/verified-decisions.test.ts`.
 
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createFunctionHandler } from '../../apps/api/function.ts';
 import {
   gateSigningKey,
   gateVerifyingKeys,
@@ -18,6 +21,9 @@ import {
   runtimeKeysProblem,
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
+import { TEST_ISSUER } from '../support/sign-in.ts';
+
+const ROOT = join(import.meta.dirname, '..', '..');
 
 const MARKER = 'retained-secret-marker-7f3a';
 const signing = { GATE_SIGNING_KEY_ID: 'gate@2', GATE_SIGNING_SECRET: 'current-secret' };
@@ -109,18 +115,48 @@ describe('retained gate keys in a composition', () => {
 });
 
 describe('a composition root with a refused retained gate key setting', () => {
-  it('does not start: the problem names the setting and never the secret', () => {
-    const keys = runtimeKeys({
-      ...signing,
-      DELEGATION_CREDENTIAL_KEY_ID: 'd@1',
-      DELEGATION_CREDENTIAL_KEYS: `d@1:${'A'.repeat(43)}`,
-      GATE_RETAINED_KEYS: JSON.stringify([{ id: 'gate@2', secret: MARKER }]),
-    });
+  const REFUSED = JSON.stringify([{ id: 'gate@2', secret: MARKER }]);
+  const PROBLEM = 'gate keys: GATE_RETAINED_KEYS repeats the signing key id';
+  /** Nothing listens here: neither entry reads a database before its keys. */
+  const NOWHERE = 'postgres://app:retained@127.0.0.1:1/none';
+  const START = {
+    ...signing,
+    DELEGATION_CREDENTIAL_KEY_ID: 'd@1',
+    DELEGATION_CREDENTIAL_KEYS: `d@1:${'A'.repeat(43)}`,
+    GATE_RETAINED_KEYS: REFUSED,
+    DATABASE_URL: NOWHERE,
+    DATABASE_ADMIN_URL: NOWHERE,
+    GOTRUE_URL: TEST_ISSUER,
+    SERVED_HOST: 'ops.example.test',
+  };
+
+  it('names the setting and never the secret, and only for the retained keys', () => {
+    const keys = runtimeKeys(START);
     expect(keys.delegation.ok).toBe(true);
-    const problem = runtimeKeysProblem(keys);
-    expect(problem).toBe('gate keys: GATE_RETAINED_KEYS repeats the signing key id');
+    expect(runtimeKeysProblem(keys)).toBe(PROBLEM);
     expect(
       runtimeKeysProblem({ ...keys, gateVerifying: { ok: true, keys: null } }),
     ).toBeUndefined();
+  });
+
+  it('the function does not start', () => {
+    expect(() => createFunctionHandler(START)).toThrow(PROBLEM);
+    expect(() => createFunctionHandler(START)).not.toThrow(MARKER);
+  });
+
+  it('the server exits at boot, before it reads its database', () => {
+    // Were the check gone, the server would go on to its database, which nothing serves here,
+    // and on port 0 never take a lane's port.
+    const run = spawnSync(process.execPath, ['apps/api/server.ts'], {
+      cwd: ROOT,
+      env: { PATH: process.env['PATH'], ...START, API_PORT: '0' },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    expect({ status: run.status, stderr: run.stderr }).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(`api: ${PROBLEM}`),
+    });
+    expect(`${run.stdout}${run.stderr}`).not.toContain(MARKER);
   });
 });
