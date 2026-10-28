@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a replacement the reconciliation pass reserved before a write-off at nothing recorded before #2282 is off the agent queue, and the next pass stops it as a write-off does today: its lease ends, its delegation is revoked and its hold goes back once; another business's replacement for a step not written off there stays held and offered"
+}
