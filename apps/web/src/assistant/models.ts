@@ -160,13 +160,14 @@ export function useModelChoice(client: OperationsClient, store: Store) {
         settled(key, model, { model, since: outcome === 'held' ? null : since }, latest);
     });
   };
-  // Whether tab `key`'s model is known, reading it back first while unread (S2194-10).
+  // Whether tab `key`'s model is known, reading it back first while unread (S2194-10); the read is
+  // shown only if no model was chosen while it waited (S2194-11).
   const confirm: Confirm = async (key, conversationId) => {
     const tab = tabs.get(key);
     if (tab === undefined || tab.kept !== undefined) return true;
     const read = await keptOn(client, conversationId);
     if (read === undefined) return false;
-    settled(key, read, tab?.unread, true);
+    settled(key, read, tab.unread, tabs.get(key)?.last === tab.last);
     return true;
   };
   return { choose, confirm };
