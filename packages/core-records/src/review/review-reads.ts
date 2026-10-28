@@ -7,7 +7,7 @@
 // one answer with a picture that is not there. The revisions, captures and pins, and a
 // picture's bytes, are read in statements of their own, so the grant is judged again after the
 // last of them (`stillCovered`, `pictureCovered`): a grant revoked or run out meanwhile reads
-// nothing written since, and no bytes (S2061-1, S2147-3).
+// nothing written since, and no bytes (S2061-1, S2276-1, S2147-3).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
