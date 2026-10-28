@@ -392,10 +392,12 @@ request waits on the pass in flight until it ends, since an instance may be
 frozen once it answers and a pass frozen in its transaction holds its row locks
 (#2240,
 `tests/api/the-hosted-function-answers-only-once-its-recovery-pass-holds-no-transaction.test.ts`).
-Each of the pass's statements waits at most `RECOVERY_WAIT_MS` (2 s) on a lock
-and then rolls its transaction back, so a pass stalled on a lock holds no
-request much past that
-(`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`).
+The pass has one deadline, `RECOVERY_WAIT_MS` (2 s) after it starts: a lock
+wait past it rolls that transaction back, and no business starts after it (the
+longest owed starts first on a later request), so a pass stalled on a lock,
+over one business or several, holds no request much past that
+(`tests/api/a-stalled-recovery-query-does-not-hold-health-past-the-request-bound.test.ts`,
+`tests/api/two-stalled-businesses-share-one-request-bound.test.ts`).
 The function's logins end a transaction left idle 60 s
 (`idle_in_transaction_session_timeout`, set by `scripts/ops/staging-logins.ts`).
 Each of its connections closes after `RUNTIME_IDLE_SECONDS` (20 s) idle, so a

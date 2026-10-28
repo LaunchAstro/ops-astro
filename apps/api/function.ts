@@ -22,8 +22,10 @@
 // `none`. Each business passes on its own, again each `SWEEP_INTERVAL_MS`
 // after it succeeds. A request waits on the pass in flight until it ends: an
 // instance may be frozen once it answers, and a pass frozen in a transaction
-// keeps its row locks (#2240). So a lock wait past `RECOVERY_WAIT_MS` rolls the
-// pass's transaction back, and the pass runs on a connection of its own (#1411).
+// keeps its row locks (#2240). So the pass has one deadline, `RECOVERY_WAIT_MS`
+// from its start: a lock wait past it rolls its transaction back, and no
+// business starts after it, so no request waits much past it (#1411). The pass
+// runs on a connection of its own, and the longest owed goes first.
 // `server.ts` runs the same pass only where there is no function.
 //
 // **Every session closes once idle (#1530).** The runtime pool, the pass's,
@@ -63,7 +65,6 @@ import {
   connect,
   connectAsAdmin,
   connectOutbox,
-  type Database,
   RUNTIME_IDLE_SECONDS,
 } from '../../packages/core-records/src/index.ts';
 import {
@@ -78,6 +79,7 @@ import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import { carriedOption } from './model-carriage.ts';
+import { lockWaitsUntil } from './pass-deadline.ts';
 import {
   parseRecoveryScope,
   passDeployment,
@@ -159,18 +161,8 @@ async function answered(
   return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
-/** The longest one statement of the reconciliation pass waits on a lock. */
+/** How long after it starts the reconciliation pass stops waiting on locks. */
 export const RECOVERY_WAIT_MS = 2_000;
-
-/** `database`, its transactions rolled back once a lock wait passes `ms`. */
-const lockWaitsWithin = (database: Database, ms: number): Database => ({
-  ...database,
-  withBusiness: async (businessId, run) =>
-    await database.withBusiness(businessId, async (tx) => {
-      await tx.query(`select set_config('lock_timeout', $1, true)`, [`${String(ms)}ms`]);
-      return await run(tx);
-    }),
-});
 
 /** The most instances the limits split across with at least one of each. */
 const INSTANCES_MOST = Math.min(
@@ -211,7 +203,7 @@ function perInstance(setting: string | undefined): AgentLimits {
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
  * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
- * awaited by every request to its end, each lock wait bounded by `RECOVERY_WAIT_MS`.
+ * awaited by every request to its end, its lock waits ending `RECOVERY_WAIT_MS` after it starts.
  * It opens its own connection at its first statement, so a pass waiting on a
  * lock leaves the runtime one to the requests. A business passes on its own, so a key
  * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
@@ -229,12 +221,15 @@ function recoveryPass(
   const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  const database = lockWaitsWithin(connect(databaseUrl, { source: 'runtime' }), RECOVERY_WAIT_MS);
+  const connected = connect(databaseUrl, { source: 'runtime' });
   const due = new Map<string, number>();
   let running: Promise<void> | undefined;
   const run = async (owed: readonly string[]): Promise<void> => {
+    const deadline = Date.now() + RECOVERY_WAIT_MS;
+    const database = lockWaitsUntil(connected, deadline);
     for (const key of owed) {
-      // One business at a time, as `passDeployment` runs them.
+      // One business at a time, as `passDeployment` runs them, and none begun past the deadline.
+      if (Date.now() >= deadline) break;
       // eslint-disable-next-line no-await-in-loop
       const outcome = await withRuntimeKeys(
         keys,
@@ -243,13 +238,14 @@ function recoveryPass(
         ok: false as const,
         problem: cause instanceof Error ? cause.message : 'unknown',
       }));
-      // Only a pass that finished marks its interval done; a failed one runs again.
-      if (outcome.ok) due.set(key, Date.now() + SWEEP_INTERVAL_MS);
-      else console.error(`api: reconciliation pass: ${outcome.problem}`);
+      // Only a pass that finished marks its interval done; a failed one runs again, after the others owed.
+      due.set(key, Date.now() + (outcome.ok ? SWEEP_INTERVAL_MS : 0));
+      if (!outcome.ok) console.error(`api: reconciliation pass: ${outcome.problem}`);
     }
   };
   return async (): Promise<void> => {
     const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
+    owed.sort((one, other) => (due.get(one) ?? 0) - (due.get(other) ?? 0));
     if (running === undefined && owed.length > 0) {
       running = run(owed).finally(() => {
         running = undefined;
