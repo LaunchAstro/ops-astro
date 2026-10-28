@@ -34,6 +34,7 @@ import {
 } from '../support/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
+import { hold, waiterOf } from '../support/lock-wait-race.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -97,7 +98,7 @@ function recording(sent: OutboundRequest[]): Custody {
   return { describe: () => Promise.resolve(null), dispatch } as unknown as Custody;
 }
 
-/** A new owner with business-wide `conversation:write` and `run:write`, and those grants. */
+/** A new owner with business-wide `conversation:write` and `run:write`, and their typed message. */
 async function anOwner() {
   const owner = await enrol(db.app, business, 'owner');
   await db.admin.execute(
@@ -108,12 +109,6 @@ async function anOwner() {
     conversation: await grantTo(tx, owner, 'write', undefined, false, 'conversation'),
     run: await grantTo(tx, owner, 'write', undefined, false, 'run'),
   }));
-  return { owner, grants };
-}
-
-/** A new owner's typed message on the plan, with `ended` revoked once the context transaction returns. */
-async function ask(ended: 'run' | 'conversation' | null) {
-  const { owner, grants } = await anOwner();
   const asked = { conversationId: randomUUID(), messageId: randomUUID() };
   await db.app.withBusiness(business, async (tx) => {
     await tx.query(
@@ -125,6 +120,31 @@ async function ask(ended: 'run' | 'conversation' | null) {
       [business, asked.messageId, asked.conversationId, owner.actorId],
     );
   });
+  return { owner, grants, asked };
+}
+
+/** Sol's round 2 schedule: another connection holds the run grant, then revokes the conversation's. */
+async function holdingRun(grants: { readonly run: string; readonly conversation: string }) {
+  const lock = 'select 1 from public.grants where business_id = $1 and id = $2 for update';
+  const revoke =
+    'update public.grants set revoked_at = clock_timestamp() where business_id = $1 and id = $2';
+  return await hold(
+    db,
+    async (execute) => {
+      await execute(lock, [business, grants.run]);
+    },
+    async (execute) => {
+      await execute(revoke, [business, grants.conversation]);
+    },
+  );
+}
+
+/**
+ * A new owner's typed message on the plan, with `ended` revoked once the context transaction
+ * returns; `waited`: revoked while the broker waits on the run grant (`holdingRun`).
+ */
+async function ask(ended: 'run' | 'conversation' | 'waited' | null) {
+  const { owner, grants, asked } = await anOwner();
   let read = false;
   const database: Database = {
     ...db.app,
@@ -135,7 +155,7 @@ async function ask(ended: 'run' | 'conversation' | null) {
       if (!read && context !== undefined) {
         read = true;
         expect(JSON.stringify(context)).toContain(PAGE);
-        const grant = ended === null ? undefined : grants[ended];
+        const grant = ended === 'run' || ended === 'conversation' ? grants[ended] : undefined;
         if (grant !== undefined)
           await db.app.withBusiness(business, (tx) => revokeGrant(tx, grant));
       }
@@ -153,7 +173,13 @@ async function ask(ended: 'run' | 'conversation' | null) {
     routes: [LOCAL, PLAN],
     installation: 'here',
   });
-  const reply = await exchange(database, business, owner.presented, asked);
+  const blocker = ended === 'waited' ? await holdingRun(grants) : undefined;
+  const flight = exchange(database, business, owner.presented, asked);
+  if (blocker !== undefined) {
+    await waiterOf(db, blocker);
+    await blocker.letGo();
+  }
+  const reply = await flight;
   expect(read).toBe(true);
   return { reply, sent };
 }
@@ -166,7 +192,7 @@ describe.skipIf(serverUrl === undefined)('a plan call whose grant ended before t
     expect(reply?.answered).toBe(true);
   });
 
-  it.each(['run', 'conversation'] as const)(
+  it.each(['run', 'conversation', 'waited'] as const)(
     'sends nothing once the %s grant the context was read under ends',
     async (ended) => {
       const { reply, sent } = await ask(ended);
