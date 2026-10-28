@@ -10,6 +10,9 @@
 //
 // The comment itself is `task.comment`'s (`writeTaskComment`): body, audience and storability
 // are judged there. The task is locked before the review, the order `review.open` takes.
+// Client review is switched off in this cut (DECISIONS 43, ORCH-S2158-7), the server's half
+// of the web's `NO_CLIENT_GRANTS`: a pin for the client, from a caller who may write one, is
+// refused before anything is read; anyone else's stays `task.comment`'s audience refusal.
 
 import {
   delegatingSubjects,
@@ -67,6 +70,14 @@ const OUT_OF_PURPOSE = refuseCommand(
   ['A delegation reaches only the task it was minted for.'],
 );
 
+/** Off until client review opens: a pin for the client is refused and writes nothing. */
+const CLIENT_REVIEW_OPEN = false;
+const CLIENT_REVIEW_OFF = refuseCommand(
+  'CLIENT_REVIEW_OFF',
+  ['audience'],
+  ['Client review is not open yet; pin this as a team note.'],
+);
+
 /** Who pins, and under which authority, from either entry. */
 interface Pinner {
   readonly subjects: readonly Subject[];
@@ -116,6 +127,9 @@ const endedAfterWaits =
   };
 
 async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast> {
+  if (!CLIENT_REVIEW_OPEN && sent['audience'] === 'client' && by.audiences.has('client')) {
+    return refused(CLIENT_REVIEW_OFF);
+  }
   const anchor = anchorOf(sent);
   if (!('source' in anchor)) return anchor;
   const named = await taskOfRevision(tx, anchor.source);
