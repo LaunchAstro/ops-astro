@@ -53,6 +53,11 @@
 // sign-ins would fail: first DATABASE_ADMIN_URL and GOTRUE_URL must be
 // production's project, never staging's, and its preflight is production's own
 // (`deploy.ts`). The record names the environment.
+//
+// With staging off by the owner's decision (`stagingOff`, #2285), the digest
+// the release step recorded for the version stands in for staging's, judged
+// at the same points, and the record says staging's was waived and by which
+// decision. Every other check is the same.
 
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,12 +65,13 @@ import { join } from 'node:path';
 import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
 import { heldFor } from './authorised-act.ts';
-import { notStillStaged } from './deployment-record.ts';
+import { notStillStaged, recordName } from './deployment-record.ts';
 import type { StoredArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
 import { deployPrebuilt, readBack } from './vercel-cli.ts';
 import type { DeployEnvironment } from './deploy.ts';
 import {
+  recordSource,
   settingProblems,
   type VersionDeployOptions,
   type VersionRequest,
@@ -84,6 +90,9 @@ export interface WebDeployRecord {
   readonly region: 'syd1';
   readonly runtime: string;
   readonly authVersion: string;
+  /** Set with staging off: staging's record was waived by the owner's decision named. */
+  readonly stagingRecord?: 'waived';
+  readonly waivedBy?: string;
 }
 
 type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
@@ -152,9 +161,10 @@ async function asVersionDeploy<T>(
   const ready = await versionReady(request, options);
   if (typeof ready === 'string') return refused(ready);
   const { selected, authVersion } = ready;
+  const source = recordSource(options);
   const changed = (): string | undefined =>
     options.environment === 'production'
-      ? notStillStaged(options.records ?? '', request.version, selected.digest)
+      ? notStillStaged(options.records ?? '', request.version, selected.digest, source)
       : undefined;
   const authorised = options.authorised ?? (async (work) => await work());
   return await inFolder(async (folder) => {
@@ -170,7 +180,7 @@ async function asVersionDeploy<T>(
       // Judged again after every wait, as the last step before Vercel is asked (#970).
       const before = changed();
       if (before !== undefined)
-        return refused(`staging's record changed before the deploy: ${before}`);
+        return refused(`${recordName(source)} changed before the deploy: ${before}`);
       return await act({ folder, selected, runtime, authVersion, changed });
     });
     return 'refused' in answer ? refused(answer.refused) : answer.ran;
@@ -182,7 +192,10 @@ export async function deployWeb(
   options: VersionDeployOptions,
 ): Promise<WebDeployOutcome> {
   const environment = options.environment ?? 'staging';
-  const { env } = options;
+  const { env, stagingOff } = options;
+  const waived =
+    stagingOff === undefined ? {} : ({ stagingRecord: 'waived', waivedBy: stagingOff } as const);
+  const name = recordName(recordSource(options));
   return await asVersionDeploy(
     request,
     options,
@@ -194,7 +207,7 @@ export async function deployWeb(
       if (read !== undefined) return read;
       const after = changed();
       if (after !== undefined) {
-        const reason = `${deployment} is live on production with ${digest}, but staging's record changed during the deploy: ${after}. It is not recorded; settle staging's record, then deploy again.`;
+        const reason = `${deployment} is live on production with ${digest}, but ${name} changed during the deploy: ${after}. It is not recorded; settle ${name}, then deploy again.`;
         return { kind: 'failed', reason };
       }
       const record = {
@@ -207,6 +220,7 @@ export async function deployWeb(
         region: 'syd1',
         runtime,
         authVersion,
+        ...waived,
       } as const;
       return { kind: 'deployed', record };
     },

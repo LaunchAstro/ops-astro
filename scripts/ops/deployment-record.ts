@@ -17,6 +17,11 @@
 // deploys, which record no digest because the M5's unit runs no artefact
 // bytes. Staging lines for the version that disagree refuse: staging then
 // ran more than one tree under one build.
+//
+// With staging off by the owner's decision (#2285), production reads the
+// release step's line in its place (`release recorded`, release.ts): the
+// version and the digest of the output it wrote, judged by the same rules, so
+// a version released twice with different bytes refuses as well.
 
 import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -24,6 +29,13 @@ import { untrustedChain } from './served-copy.ts';
 
 /** The file in the record folder, one JSON line per act. */
 export const RECORD_FILE = 'deployments.jsonl';
+
+/** Whose lines a read counts: staging's web deploys, or the release step's (#2285). */
+export type RecordSource = 'staging' | 'release';
+
+/** The record a refusal names. */
+export const recordName = (source: RecordSource): string =>
+  source === 'staging' ? "staging's record" : 'the release record';
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 
@@ -51,11 +63,12 @@ function trustedText(file: string, uid: number | undefined): string | { why: str
   }
 }
 
-/** The digests staging's lines for `version` in `text` record, or why the text is refused. */
+/** The digests `source`'s lines for `version` in `text` record, or why the text is refused. */
 function countedDigests(
   text: string,
   file: string,
   version: string,
+  source: RecordSource,
 ): Set<string> | { why: string } {
   const digests = new Set<string>();
   const lines = text.split('\n');
@@ -74,8 +87,9 @@ function countedDigests(
     }
     const record = entry as Record<string, unknown>;
     const counted =
-      record['action'] === 'deploy recorded' &&
-      record['environment'] === 'staging' &&
+      (source === 'staging'
+        ? record['action'] === 'deploy recorded' && record['environment'] === 'staging'
+        : record['action'] === 'release recorded') &&
       record['version'] === version &&
       'digest' in record;
     if (!counted) continue;
@@ -89,13 +103,15 @@ function countedDigests(
 }
 
 /**
- * The digest staging's web deploy recorded for `version` in the record folder
- * `records`, or why there is none to trust. Read whole each time it is asked,
- * so a caller that waited asks again (#970).
+ * The digest staging's web deploy (or, with `source` 'release', the release
+ * step) recorded for `version` in the record folder `records`, or why there is
+ * none to trust. Read whole each time it is asked, so a caller that waited
+ * asks again (#970).
  */
 export function stagedDigest(
   records: string,
   version: string,
+  source: RecordSource = 'staging',
 ): { digest: string } | { why: string } {
   if (records === '') {
     return {
@@ -105,38 +121,44 @@ export function stagedDigest(
   const folder = resolve(records);
   const uid = process.getuid?.();
   const untrusted = untrustedChain(folder, uid);
-  if (untrusted !== undefined) return { why: `staging's record folder: ${untrusted}` };
+  const name = recordName(source);
+  if (untrusted !== undefined) return { why: `${name} folder: ${untrusted}` };
   const file = join(folder, RECORD_FILE);
   const text = trustedText(file, uid);
-  if (typeof text !== 'string') return { why: `staging's record: ${text.why}` };
-  const digests = countedDigests(text, file, version);
+  if (typeof text !== 'string') return { why: `${name}: ${text.why}` };
+  const digests = countedDigests(text, file, version, source);
   if ('why' in digests) return digests;
   const [only, ...others] = digests;
+  const staging = source === 'staging';
   if (only === undefined) {
     return {
-      why: `staging has no record of deploying ${version} in ${file}; production gets only the bytes a staging web deploy handed Vercel`,
+      why: staging
+        ? `staging has no record of deploying ${version} in ${file}; production gets only the bytes a staging web deploy handed Vercel`
+        : `the release step has no record of ${version} in ${file}; with staging off, production gets only the bytes a release recorded there`,
     };
   }
   if (others.length > 0) {
+    const ran = staging ? 'staging ran' : 'the release step wrote';
     return {
-      why: `staging's records of ${version} in ${file} disagree on its digest: staging ran more than one tree under that build, so neither is promoted`,
+      why: `${staging ? "staging's" : 'the release'} records of ${version} in ${file} disagree on its digest: ${ran} more than one tree under that build, so neither is promoted`,
     };
   }
   return { digest: only };
 }
 
 /**
- * Why staging's record no longer holds `digest` for `version`, or undefined
+ * Why `source`'s record no longer holds `digest` for `version`, or undefined
  * while it does: the record read and judged again in full after a wait (#970).
  */
 export function notStillStaged(
   records: string,
   version: string,
   digest: string,
+  source: RecordSource = 'staging',
 ): string | undefined {
-  const staged = stagedDigest(records, version);
+  const staged = stagedDigest(records, version, source);
   if ('why' in staged) return staged.why;
   return staged.digest === digest
     ? undefined
-    : `staging's record of ${version} now holds ${staged.digest}, not ${digest}`;
+    : `${recordName(source)} of ${version} now holds ${staged.digest}, not ${digest}`;
 }

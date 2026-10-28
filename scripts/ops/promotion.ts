@@ -36,7 +36,7 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
 import { type Authorised, heldFor } from './authorised-act.ts';
-import { notStillStaged, stagedDigest } from './deployment-record.ts';
+import { notStillStaged, type RecordSource, stagedDigest } from './deployment-record.ts';
 import { frozenCopy, holds } from './served-copy.ts';
 
 /** A service as the service manager names it. */
@@ -174,20 +174,20 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
  * ran: its digest is the one staging's web deploy recorded for that version in
  * the record folder `records` (#970). Production's selections read it this
  * way; staging's own deploys read `storedArtefact`, since they make the record.
+ * `source` 'release' reads the release step's line instead (staging off, #2285).
  */
 export function stagedArtefact(
   version: string,
   store: string,
   records: string,
+  source: RecordSource = 'staging',
 ): StoredArtefact | string {
   const selected = storedArtefact(version, store);
   if (typeof selected === 'string') return selected;
-  const staged = stagedDigest(records, version);
+  const staged = stagedDigest(records, version, source);
   if ('why' in staged) return staged.why;
-  if (staged.digest !== selected.digest) {
-    return `${selected.name} is not the bytes staging ran: it holds ${selected.digest}, staging recorded ${staged.digest}`;
-  }
-  return selected;
+  if (staged.digest === selected.digest) return selected;
+  return `${selected.name} is not the bytes ${source === 'staging' ? 'staging ran' : 'the release step recorded'}: it holds ${selected.digest}, ${source} recorded ${staged.digest}`;
 }
 
 export async function promote(
