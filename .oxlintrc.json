@@ -395,6 +395,18 @@
         "tests/identity/login-subject-fixed-during-ban-proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "require-await": "off" }
+    },
+    {
+      "files": [
+        "tests/web/c57-change-request-panel.test.tsx",
+        "tests/web/c57-change-request-dock-hook.test.tsx",
+        "tests/cli/c57-change-request-cli-parity.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/web/a-dock-switch-keeps-no-earlier-persons-words-or-writes-proof.test.tsx"],
+      "rules": { "unicorn/consistent-function-scoping": "off" }
     }
   ]
 }
