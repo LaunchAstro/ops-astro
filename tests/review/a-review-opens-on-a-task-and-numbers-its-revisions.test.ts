@@ -127,14 +127,14 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         pageUrl: PAGE,
         path: ABOUT,
         revisions: [shown(one, 1, []), shown(two, 2, [])],
-        // The latest beside the one before it, no pins or change requests yet (#2012, #2117),
-        // and none to carry (#2075).
+        // Latest beside the one before; no pins, requests, carries or differences yet (#2158).
         after: shown(two, 2, []),
         before: shown(one, 1, []),
         pins: [],
         carried: [],
         carryDue: false,
         changeRequests: [],
+        differences: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);
