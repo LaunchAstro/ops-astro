@@ -96,13 +96,16 @@ export const replacementLocks = (replacements: readonly Replacement[]): readonly
  * `happened` says the work is finished, so
  * a replacement not yet dispatched is stopped under the outcome's locks: its
  * lease ends, its delegation is revoked and its hold goes back, by amount,
- * under the recorded outcome. It never dispatches.
+ * under the recorded outcome. It never dispatches. One whose model call is out
+ * keeps its hold, which carries the call's answer into the envelope and cap
+ * (S2282-2, #2289), read under its locks: a call starts under them too.
  */
 export async function stopReplacement(
   tx: TenantQuery,
   one: Replacement,
   causeId: string,
 ): Promise<void> {
+  if ((await modelCallsOn(tx, one.reservation_id)).open) return;
   if (one.lease_id !== null) await endLease(tx, one.lease_id, 'released');
   if (one.delegation_id !== null) {
     await revokeDelegation(tx, one.delegation_id, 'work_retired');

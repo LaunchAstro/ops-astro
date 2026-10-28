@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a person's happened on a step never stops a replacement whose broker model call is in flight: the replacement keeps its hold and lease, so the call's answer is charged once inside the envelope; with no call out the replacement is stopped and its hold goes back"
+}
