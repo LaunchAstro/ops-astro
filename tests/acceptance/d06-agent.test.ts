@@ -56,14 +56,14 @@ if (serverUrl === undefined) {
 /** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
-
-// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the launch's take.
+// In `AGENT_SURFACE`, not the pickup agent's: decide (j), create (API-2), the take, C35 (no `review`).
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
   'task.decide',
   'task.create',
   'task.take_launch',
+  'review.open',
+  'review.capture',
 ]);
-
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
 );

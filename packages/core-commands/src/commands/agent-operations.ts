@@ -21,13 +21,13 @@ import { readTaskDetail } from '../reads/tasks.ts';
 import { historyEventOperand } from '../reads/task-history.ts';
 import { blockersFor, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
 import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
-import type { Capability } from '../../../core-wire/src/index.ts';
+import type { Capability, CommandName } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { CORRECTION_REQUEST } from './live-correction-agent.ts';
 import { RUN_END } from './run-end-agent.ts';
+import { reviewAgentRows } from './review-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
-import type { CommandName } from '../../../core-wire/src/index.ts';
 import { handbackLease } from './tasks-handback.ts';
 import { pickupReservation } from './tasks-pickup.ts';
 import { heartbeatLease } from './tasks-lease.ts';
@@ -496,7 +496,6 @@ const serveOwnedWrite =
     const session = { personId: delegation.delegatePersonId };
     return await write(tx, { spine, target, session }, fields);
   };
-
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
@@ -901,6 +900,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
   ],
   ['live_correction.request', row(CORRECTION_REQUEST)],
   ['run.end', row(RUN_END)],
+  ...reviewAgentRows(row),
   [
     'model.call',
     modelCallRow(() =>
