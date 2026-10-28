@@ -26,7 +26,32 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C35-X (20261028174900): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
+  // C35 (#2018, 20261028190000): a closed capture pool review, installation-wide, written once
+  // and never changed or removed; its column grants are in `SITE_GRANTS`.
+  ['si', 'ops.capture_pool_reviews'],
 ];
+
+/** Column grants: the application reads a pool review's identity and pool version alone. */
+export const SITE_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  'pool_version',
+  'review',
+].map((column) => ({
+  from: '20261028190000',
+  line: `ops_astro_app SELECT ops.capture_pool_reviews.${column}`,
+}));
+
+/** Installation-wide tables under row security. C35 (#2018, 20261028190000). */
+const SITE_ROW_SECURED: ReadonlySet<string> = new Set(['ops.capture_pool_reviews']);
+
+/**
+ * A granted call on an installation-wide table (0047's outbox, SL09's gate tables): a read sees
+ * every row, and a write passes privilege and then meets the table's own constraints or
+ * triggers, the permitted path. An insert into one under row security meets the policy first.
+ */
+export function installationWide(qualified: string, operation: string, own: number): string {
+  if (operation === 'select') return `rows ${String(own)}`;
+  return operation === 'insert' && SITE_ROW_SECURED.has(qualified) ? 'rls' : 'past privilege';
+}
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
 export const SITE_EXECUTES: readonly string[] = ['public.party_site_under_correction'];

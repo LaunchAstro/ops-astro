@@ -228,6 +228,10 @@ vi.mock('../../packages/core-commands/src/commands/gate-write.ts', async (origin
   recordGateItem: recorder('recordGateItem'),
   changeInstallationMode: recorder('changeInstallationMode'),
 }));
+vi.mock('../../packages/core-commands/src/commands/pool-review-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordCapturePoolReview: recorder('recordCapturePoolReview'),
+}));
 vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (original) => ({
   ...(await original<object>()),
   draftVersion: recorder('draftVersion'),
@@ -544,6 +548,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
   'operations.record_gate_item': [],
+  'operations.record_capture_pool_review': [],
   'privacy.record_incident': [],
   'privacy.set_data_class': [],
   'privacy.set_overseas_service': [],
@@ -686,6 +691,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'onboarding.step_result',
   'operations.change_installation_mode',
   'operations.read',
+  'operations.record_capture_pool_review',
   'operations.record_gate_item',
   'person.list',
   'preference.dismiss_tip',
@@ -950,6 +956,14 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'credential.revoke', operationId: 'op', credentialId: 'credential' },
   { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
   { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
+  {
+    command: 'operations.record_capture_pool_review',
+    operationId: 'op',
+    review: 'r',
+    poolVersion: 'v',
+    evidence: 'e',
+    company: 'c',
+  },
   { command: 'client.create', operationId: 'op', name: 'n' },
   { command: 'record.create', operationId: 'op', type: 'client', fields: { name: 'n' } },
   { command: 'onboarding.start', operationId: 'op', clientId: 'c', templateKey: 'standard' },
@@ -1252,6 +1266,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'credential.revoke': ['revokeCredential', 'request'],
   'operations.record_gate_item': ['recordGateItem', 'request'],
   'operations.change_installation_mode': ['changeInstallationMode', 'request'],
+  'operations.record_capture_pool_review': ['recordCapturePoolReview', 'request'],
   'client.create': ['createClientRecord', 'request'],
   'record.create': ['createRecord', 'request'],
   'onboarding.start': ['startOnboarding', 'request'],

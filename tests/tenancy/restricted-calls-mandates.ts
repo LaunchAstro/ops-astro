@@ -10,7 +10,7 @@ import {
   CARRIAGE_GROUPS,
   CARRIAGE_UPDATES,
 } from './restricted-calls-carriage.ts';
-import { SITE_EXECUTES, SITE_GROUPS, SITE_UPDATES } from './restricted-calls-sites.ts';
+import { SITE_EXECUTES, SITE_GRANTS, SITE_GROUPS, SITE_UPDATES } from './restricted-calls-sites.ts';
 import { TRACE_GRANTS } from './restricted-calls-trace.ts';
 
 /**
@@ -72,6 +72,7 @@ export const MANDATE_GRANTS: readonly { readonly from: string; readonly line: st
 export const PART_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   ...MANDATE_GRANTS,
   ...TRACE_GRANTS,
+  ...SITE_GRANTS,
 ];
 
 /**

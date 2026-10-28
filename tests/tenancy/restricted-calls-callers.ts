@@ -27,6 +27,7 @@ import {
 import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
 import { CARRIAGE_BARE_FROM, CARRIAGE_BEFORE_ROW } from './restricted-calls-carriage.ts';
 import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
+import { installationWide } from './restricted-calls-sites.ts';
 
 /**
  * The callers. Every refusal position commits, so a write that should have
@@ -189,10 +190,8 @@ export function expectedOutcome(
   const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
-  // A write granted on an installation-wide table (0047's outbox, SL09's gate
-  // tables) passes privilege and then meets the table's own constraints or
-  // triggers: the permitted path.
-  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past privilege';
+  // An installation-wide table: `installationWide` (restricted-calls-sites.ts).
+  if (!table.tenant) return installationWide(table.qualified, operation, own);
   // The own tenant's writes pass privilege and tenancy and then meet the
   // table's own constraints or triggers; getting that far is the permitted path.
   if (caller === 'login in the wrapper, own tenant') {

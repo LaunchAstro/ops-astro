@@ -125,6 +125,8 @@ export type CommandName =
   // `installation mode changed`.
   | 'operations.record_gate_item'
   | 'operations.change_installation_mode'
+  // C35 (#2018): a closed review of the capture pool, recorded by the operator.
+  | 'operations.record_capture_pool_review'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,

@@ -46,4 +46,10 @@ export const REVIEW_ROWS = [
     meaning: 'The revision has not landed at every width, so its pins cannot be carried yet',
     source: 'C35-X, the pin carry',
   },
+  {
+    code: 'POOL_REVIEW_ALREADY_RECORDED',
+    status: 409,
+    meaning: 'This capture pool review is already recorded; its evidence stays as first recorded',
+    source: 'C35, the capture pool reviews (#2018, D17-14)',
+  },
 ] as const;

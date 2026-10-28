@@ -135,6 +135,7 @@ export {
   type TransportRequest,
 } from './capture/transport.ts';
 export {
+  CAPTURE_POOL_VERSION,
   POOL_REVIEWS_REQUIRED,
   checkPageAllowed,
   fencedFetch,

@@ -74,6 +74,14 @@ export type PrivacyRequest<E> =
       readonly statement?: unknown;
     } & E)
   | ({ readonly command: 'operations.change_installation_mode'; readonly mode: unknown } & E)
+  // C35 (#2018): a closed review of the capture pool (`pool-review-write.ts`).
+  | ({
+      readonly command: 'operations.record_capture_pool_review';
+      readonly review: unknown;
+      readonly poolVersion: unknown;
+      readonly evidence: unknown;
+      readonly company: unknown;
+    } & E)
   // C32: the client record and Settings ▸ Access, each field checked by the
   // handler in its own words (`access-write.ts`).
   | ({ readonly command: 'client.create'; readonly name: unknown } & E)

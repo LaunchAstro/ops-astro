@@ -3895,7 +3895,8 @@ so item 3 done does not close it. The table holds the same rules. The mode
 moves from made-up to real only while every item and line is done, and never
 back; the row cannot be deleted.
 
-Two commands move the gate (migration 0059), each a person's under
+Two commands move the gate (migration 0059), and a third records the capture
+pool's reviews beside it (#2018), each a person's under
 `operations:manage` in the business that operates the installation
 (`ops.installation.operator_business_id`, set at provisioning), never an
 agent's or a delegation's; any other caller, and every caller while no business
@@ -3927,6 +3928,18 @@ statement? }`: one of the eight items, three closing lines or the procedure
   them; `mode: 'made-up'` is refused `INSTALLATION_MODE_ONE_WAY` 409; an
   installation already real is refused `TRANSITION_NOT_PERMITTED` 409 naming
   `mode=real`, writes nothing and audits only the refusal.
+- `operations.record_capture_pool_review` (C35, #2018) takes `{ operationId,
+review, poolVersion, evidence, company }`: one closed other-company
+  adversarial review of the capture pool. `review` is its identity, lower-case
+  letters, digits, `.`, `_` or `-`, at most 64, with no spaces; `poolVersion`
+  is the pool the fence runs now (`CAPTURE_POOL_VERSION`); `evidence` one
+  `https` link of at most 2000 characters with no spaces, sign-in details, port
+  or fragment; `company` the reviewer's company, at most 200 characters with no
+  surrounding spaces. Each is refused `FIELD_VALUE_INVALID` 422 naming the
+  field. A review is recorded once, with the recording person, actor and
+  operation; a second record is refused `POOL_REVIEW_ALREADY_RECORDED` 409 and
+  the first evidence stays. The site runner reads the recorded identities into
+  its fence (docs/local/SITE-RUNNER.md, "Review captures").
 
 The application's role reads both tables; it may insert a gate item and update
 the mode alone, and nothing else, and it writes them only through these two
