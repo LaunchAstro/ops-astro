@@ -175,18 +175,25 @@ export async function runCommand(
   credentialLapsed?: StillStanding,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
+  const standing: Standing = { presented, credentialLapsed };
+  // What the replay's door asked, asked again after the replay's audit wait.
+  let replayAsked: ScopeRequest | undefined;
   return await enter(tx, session, request, {
-    release: async (stored) =>
-      await withheldNow(tx, session, entryPoint, request, declaration, stored),
+    release: async (stored) => {
+      const withheld = await withheldNow(tx, session, entryPoint, request, declaration, stored);
+      replayAsked = withheld.asked;
+      return withheld.released;
+    },
+    // A replay is a call (#2307): its stored success goes out only to a caller
+    // the door would let in after its last wait, judged as a fresh write is.
+    lastCheck: async (identified) =>
+      await standsNow(tx, session, identified, declaration, standing, replayAsked),
     attempt: async (identified, digest) => {
       if (declaration.targetsExistingRecord && typeof expectedRevisionOf(identified) !== 'number') {
         const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
         return await settle(tx, session, identified, digest, refusal);
       }
-      return await attempt(tx, session, entryPoint, identified, digest, declaration, {
-        presented,
-        credentialLapsed,
-      });
+      return await attempt(tx, session, entryPoint, identified, digest, declaration, standing);
     },
   });
 }
@@ -475,7 +482,7 @@ function keptApart(result: unknown): { stored: CommandResult; subject: string | 
 
 /**
  * The refusal a stored success answers with now, or nothing when it goes out
- * as stored.
+ * as stored, and what the door asked to say so (`lastCheck` asks it again).
  *
  * The same preparation a fresh call takes, with the target's revision left
  * out: the scope, the R4 rule and the grant decision are the ones the first
@@ -497,15 +504,21 @@ async function withheldNow(
   request: UncheckedRequest,
   declaration: CommandDeclaration,
   stored: CommandHandle,
-): Promise<CommandResult | Refused | undefined> {
+): Promise<{
+  readonly released: CommandResult | Refused | undefined;
+  readonly asked?: ScopeRequest | undefined;
+}> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, {
     ...declaration,
     targetsExistingRecord: false,
   });
-  if ('refusal' in prepared) return prepared;
-  if (declaration.name === 'credential.issue') return await replayIssue(tx, session, stored);
-  if (declaration.name !== 'task.pickup') return undefined;
-  return await unboundPickup(tx, session, stored);
+  if ('refusal' in prepared) return { released: prepared };
+  const { asked } = prepared;
+  if (declaration.name === 'credential.issue') {
+    return { released: await replayIssue(tx, session, stored), asked };
+  }
+  if (declaration.name !== 'task.pickup') return { released: undefined, asked };
+  return { released: await unboundPickup(tx, session, stored), asked };
 }
 
 /**

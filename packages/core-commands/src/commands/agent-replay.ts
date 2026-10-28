@@ -78,10 +78,18 @@ async function releaseReplay(
   }
 }
 
+/** The replays whose release asks `authorise`, and asks it again after the audit wait. */
+const REAUTHORISED: ReadonlySet<AgentOperation['replay']> = new Set([
+  'reauthorise',
+  'childPickup',
+  'correctionRequest',
+]);
+
 /**
  * The agent entry's replay (`Replaying`): a stored success released by the
- * row's `replay`, and an own-site correction request's own-work check asked
- * again last, after the replay's audit-chain wait (#1877).
+ * row's `replay`, and asked again last, after the replay's audit-chain wait:
+ * the delegation and grants `authorise` judged at release (#2307), then an
+ * own-site correction request's own-work check (#1877).
  */
 export function replaying(
   tx: TenantQuery,
@@ -91,9 +99,14 @@ export function replaying(
 ): Replaying {
   const release = async (stored: CommandHandle, request: IdentifiedRequest) =>
     await releaseReplay(tx, callOf(request), operation, stored, presented);
-  if (operation.replay !== 'correctionRequest') return { release };
+  if (!REAUTHORISED.has(operation.replay)) return { release };
   const lastCheck = async (request: IdentifiedRequest) => {
     const call = callOf(request);
+    const lapsed = await operation.open(async (row) => {
+      const authorised = await authorise(tx, call, row);
+      return 'refusal' in authorised ? authorised.refusal : undefined;
+    });
+    if (lapsed !== undefined || operation.replay !== 'correctionRequest') return lapsed;
     const resolved = await resolveDelegation(tx, call.session.actorId, call.credential ?? '');
     return resolved.ok ? await replayOwnWork(tx, call.request, resolved.value) : resolved.refusal;
   };
