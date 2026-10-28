@@ -18,7 +18,7 @@ import { TaskTimerSelection } from './task-timer-selection.tsx';
 import { Icon } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { tabOwnerGeneration } from '../../session/token.ts';
-import { TaskTimer, type TimerTask } from './task-timer.ts';
+import { TaskTimer, type TimerState, type TimerTask } from './task-timer.ts';
 
 const Context = createContext<TaskTimer | null>(null);
 export const useTaskTimer = (): TaskTimer | null => useContext(Context);
@@ -239,29 +239,52 @@ export function TaskTimerNotice(): ReactElement | null {
           Timer recovery is only in this tab. Reload may show an older recovery.
         </span>
       ) : null}
-      {attempt === null ? null : (
-        <>
-          {attempt.status === 'pending'
-            ? 'Saving timer…'
-            : `${attempt.status === 'unknown' ? 'Timer outcome unknown' : 'Timer change refused'}: ${attempt.because ?? ''}`}
-          {attempt.status === 'pending' ? null : (
-            <button
-              className="btn btn--secondary"
-              type="button"
-              data-task-timer-retry
-              onClick={() => timer?.retry()}
-            >
-              Retry
-            </button>
-          )}
-          {attempt.status === 'refused' ? (
-            <button className="btn btn--secondary" type="button" onClick={() => timer?.dismiss()}>
-              Dismiss refusal
-            </button>
-          ) : null}
-        </>
-      )}
+      {attempt === null || timer === null ? null : <TimerAttempt timer={timer} attempt={attempt} />}
     </span>
+  );
+}
+
+const TIMER_WORDS = {
+  pending: 'Saving timer…',
+  unknown: 'Timer outcome unknown: ',
+  refused: 'Timer change refused: ',
+  abandoned: 'This change was let go, but this browser could not clear its saved copy yet.',
+} as const;
+
+/** A let-go attempt offers only clearing its saved copy; a refused unknown may be let go. */
+function TimerAttempt(props: {
+  readonly timer: TaskTimer;
+  readonly attempt: NonNullable<TimerState['attempt']>;
+}): ReactElement {
+  const { timer, attempt } = props;
+  const dismiss =
+    attempt.status === 'refused'
+      ? 'Dismiss refusal'
+      : attempt.status === 'abandoned'
+        ? 'Clear saved copy'
+        : attempt.status === 'unknown' && attempt.refusal
+          ? 'Stop waiting for this change'
+          : null;
+  return (
+    <>
+      {TIMER_WORDS[attempt.status]}
+      {attempt.status === 'unknown' || attempt.status === 'refused' ? attempt.because : null}
+      {attempt.status === 'unknown' || attempt.status === 'refused' ? (
+        <button
+          className="btn btn--secondary"
+          type="button"
+          data-task-timer-retry
+          onClick={() => timer.retry()}
+        >
+          Retry
+        </button>
+      ) : null}
+      {dismiss === null ? null : (
+        <button className="btn btn--secondary" type="button" onClick={() => timer.dismiss()}>
+          {dismiss}
+        </button>
+      )}
+    </>
   );
 }
 

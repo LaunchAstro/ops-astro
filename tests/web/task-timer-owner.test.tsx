@@ -26,10 +26,12 @@ const refused = () =>
   new Response(JSON.stringify({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }), {
     status: 403,
   });
+/** `sent` is the timer's commands; a task read is answered too, but not recorded there. */
 function transport(answer: () => Promise<Response>) {
   const sent: Record<string, unknown>[] = [];
-  const fetch: typeof globalThis.fetch = (_url, init) => {
-    sent.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+  const fetch: typeof globalThis.fetch = (url, init) => {
+    if (!String(url).endsWith('/task/read'))
+      sent.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
     return answer();
   };
   return {
