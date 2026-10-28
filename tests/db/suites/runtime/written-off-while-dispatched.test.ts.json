@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "a hold written off while its call was still dispatched leaves that call open with no outcome; a stop raised on the closed hold takes no top-up, so a later release of the call gives back nothing the envelope never carried"
+  "why": "a hold written off at 0 while its call was still dispatched leaves that call open with no outcome; a pickup of the closed hold is refused, so no stop is raised on it for a top-up, the hold is never read as counted, and a later release of the call gives back nothing the envelope never carried"
 }

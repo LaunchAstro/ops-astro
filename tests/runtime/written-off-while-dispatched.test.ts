@@ -3,9 +3,11 @@
 // A person writes a hold off while its call is still `dispatched`: the
 // write-off records its outcome only on calls already held unknown, so this
 // call keeps no outcome, and the sweep then holds it unknown. Nobody can
-// close it after that, since the hold is closed. A stop raised on that closed
-// hold takes no top-up: the top-up would mark the hold counted, and a later
-// release of the call would give back 200 the envelope never carried for it.
+// close it after that, since the hold is closed. A write-off at 0 leaves the
+// step's effect unknown (#2277), so a pickup of the closed hold is refused:
+// no replacement runs the step again, no stop is raised on the hold for a
+// top-up to mark it counted, and a later release of the call gives back
+// nothing the envelope never carried for it.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,7 +22,6 @@ import {
   asPerson,
   codeOf,
   openSchedules,
-  pickup,
   rows,
   type Schedules,
 } from './schedules-harness.ts';
@@ -30,13 +31,12 @@ import {
   callState,
   dispatchedCall,
   envelopeOf,
+  holdsOf,
   moneyOf,
   roomyWork,
   spend,
-  stampBefore,
   stopWorker,
   sweep,
-  topUp,
 } from './version-room-world.ts';
 import { answerLate, answersOn, attemptOf, counted, LATE_BROKER } from './written-off-world.ts';
 
@@ -77,11 +77,11 @@ async function outcomeOf(callId: string): Promise<string | null | undefined> {
 /**
  * The first hold's call c2 is still `dispatched` when a person writes the
  * hold off at 0, so it closes at its settled 300 and c2 keeps no outcome; the
- * sweep then holds c2 unknown. The replacement holds the 200 left, spends it
- * and stops, stamped before the first hold, so picking the first hold up
- * stops the run for room.
+ * sweep then holds c2 unknown. A pickup of the first hold is refused (#2277):
+ * the replacement that held the 200 left, and the stop for room it led to on
+ * the first hold, no longer arise.
  */
-async function stopOnWrittenOffWhileDispatched() {
+async function pickedUpAfterWriteOffWhileDispatched() {
   const { work, versionId, first } = await roomyWork(s);
   await spend(s, first, 300);
   const c2 = await dispatchedCall(s, first, 200);
@@ -93,68 +93,55 @@ async function stopOnWrittenOffWhileDispatched() {
   );
   appliedDetail(writtenOff, 'budget.write_off');
   await sweep(s);
+  const before = await moneyOf(s, work, versionId);
 
-  const second = await pickup(s, first);
-  await spend(s, second['reservationId'], 200);
-  await stopWorker(s, second);
-  await stampBefore(s, first, second['reservationId']);
-  const stopped = await asAgent(s, {
+  const picked = await asAgent(s, {
     command: 'task.pickup',
     operationId: randomUUID(),
     reservationId: first,
     leaseSeconds: 600,
   });
+  const held = (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held');
   const call = { state: await callState(s, c2), outcome: await outcomeOf(c2) };
-  return { work, versionId, first, c2, stopped, call, ...(await askOf(s, first)) };
+  return { work, versionId, first, c2, picked, held, call, before, ...(await askOf(s, first)) };
 }
 
 describe.skipIf(serverUrl === undefined)(
-  'a top-up on a hold written off while its call was dispatched',
+  'a pickup of a hold written off while its call was dispatched',
   () => {
-    it('refuses a top-up on a hold written off while its call was dispatched, moving nothing, and lets the end apply', async () => {
-      const { work, versionId, first, stopped, call, runId, askId } =
-        await stopOnWrittenOffWhileDispatched();
-      const before = await moneyOf(s, work, versionId);
-
-      const topped = await topUp(s, work, first, 100);
+    // No stop is raised on the written-off hold, so the top-up this case
+    // refused and the end it applied have no ask to answer; what they
+    // guarded, the hold never read as counted and no money moved, is kept.
+    it('refuses a pickup of a hold written off at 0 while its call was dispatched, moving nothing and raising no stop to top up', async () => {
+      const { work, versionId, first, picked, held, call, before, runId, askId } =
+        await pickedUpAfterWriteOffWhileDispatched();
       expect({
-        stopped: codeOf(stopped),
+        picked: codeOf(picked),
+        held,
         call,
-        code: codeOf(topped),
+        ask: askId,
         answers: await answersOn(s, runId),
         money: await moneyOf(s, work, versionId),
         counted: await counted(s, first),
       }).toEqual({
-        stopped: 'BUDGET_UNAVAILABLE',
+        picked: 'RESERVATION_NOT_CLAIMABLE',
+        held: [],
         call: { state: 'liability_unknown', outcome: null },
-        code: 'TRANSITION_NOT_PERMITTED',
+        ask: undefined,
         answers: 0,
         money: before,
         counted: false,
       });
-
-      const ended = await asPerson(s, {
-        command: 'run.end_at_budget_stop',
-        operationId: randomUUID(),
-        recordId: work.taskId,
-        runId,
-        askId,
-      });
-      expect({
-        code: codeOf(ended),
-        money: await moneyOf(s, work, versionId),
-        counted: await counted(s, first),
-      }).toEqual({ code: 'applied', money: before, counted: false });
     });
   },
 );
 
 describe.skipIf(serverUrl === undefined)(
-  'a release of the call after a top-up on a hold written off while it was dispatched',
+  'a release of the call on a hold written off while it was dispatched',
   () => {
-    it("keeps the envelope's actual at 500 when the provider's proof later releases the call", async () => {
-      const { work, first, c2 } = await stopOnWrittenOffWhileDispatched();
-      const topped = await topUp(s, work, first, 100);
+    it("keeps the envelope's actual at the written-off 300 when the provider's proof later releases the call", async () => {
+      const { work, first, c2, picked } = await pickedUpAfterWriteOffWhileDispatched();
+      const before = await envelopeOf(s, work);
       // The reconciliation pass asks only about a call whose step is held
       // unknown, and the write-off abandoned the step, so the pass leaves c2
       // alone. The provider's proof that nothing happened reaches c2 as the
@@ -163,17 +150,22 @@ describe.skipIf(serverUrl === undefined)(
       // #1623 R1 (B2): only a reason the operation declares proves nothing happened;
       // any other is held unknown. The proof is the replay operation's own code.
       await answerLate(s, work.picked, c2, { kind: 'nothing', reason: REPLAY_NOTHING_HAPPENED });
-      const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
+      const after = await envelopeOf(s, work);
+      const [envelope] = after as readonly { actual: string }[];
       expect({
-        topped: codeOf(topped),
+        picked: codeOf(picked),
         passed,
         call: await callState(s, c2),
         actual: envelope?.actual,
+        envelope: after,
+        counted: await counted(s, first),
       }).toEqual({
-        topped: 'TRANSITION_NOT_PERMITTED',
+        picked: 'RESERVATION_NOT_CLAIMABLE',
         passed: [],
         call: 'released',
-        actual: '500',
+        actual: '300',
+        envelope: before,
+        counted: false,
       });
     });
   },
