@@ -26,7 +26,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('the client Reviews read under revocation', () => {
-  it('Sol proof, criterion 2: comments written after review grant revocation never reach the former reader', async () => {
+  it('comments written after a review grant is revoked never reach the former reader', async () => {
     openedOf(detailOf(await w.open(w.fay)));
     const reader = await shareWithClient(w.world.db.app, w.world.business, w.admin, w.taskA);
     await w.world.db.app.withBusiness(w.world.business, async (tx) => {
