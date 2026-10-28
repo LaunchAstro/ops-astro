@@ -35,6 +35,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -105,6 +106,7 @@ describe.skipIf(serverUrl === undefined)(
         credential: agentToken,
         delegation: credential,
         reporter: SYNTHETIC_USAGE,
+        runner: COMPUTES_NOTHING,
       });
       const proposed = await proposer.proposeOnce();
       if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
@@ -133,6 +135,7 @@ describe.skipIf(serverUrl === undefined)(
         credential: agentToken,
         delegation: credential,
         reporter: SYNTHETIC_USAGE,
+        runner: COMPUTES_NOTHING,
         ...(provider === undefined ? {} : { provider }),
       });
 

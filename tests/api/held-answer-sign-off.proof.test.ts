@@ -6,6 +6,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { linkClient } from '../runtime/closed-stop-answer-world.ts';
 import { attempts, launched, r, useReceiptWorld } from './aw-08-receipt-world.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 useReceiptWorld('prv942signoff');
 
@@ -56,6 +57,7 @@ it('a held provider answer cannot bypass client sign-off enabled before its comm
     credential: r.agentToken,
     delegation: credential,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
     provider: {
       call: () => {
         providerEffects += 1;

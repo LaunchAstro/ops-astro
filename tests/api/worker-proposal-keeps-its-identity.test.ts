@@ -29,6 +29,7 @@ import {
   tokenFor,
   type ApiFixture,
 } from './fixture.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -81,6 +82,7 @@ describe.skipIf(serverUrl === undefined)('a worker proposal keeps its identity',
       credential: agentToken,
       delegation,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
 
   /** A new task and the agent's read, comment and write delegation scoped to it. */

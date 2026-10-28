@@ -23,6 +23,7 @@ import type { AgentIdentity } from './cast.ts';
 import { startWorker, type WorkerProcess } from './kill-harness.ts';
 import { startApi, type RunningApi } from './restart-process.ts';
 import { createWorld, serverUrl, type World } from './world.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 export const PROOF_PORT: string | undefined = process.env['L5_RESTART_API_PORT'];
 /** Asked only by `pnpm verify:runtime-proofs`, on its own Postgres. */
@@ -108,6 +109,7 @@ export async function openProofWorld(part: string): Promise<ProofWorld> {
       credential: agent.token,
       delegation,
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
     const proposed = await proposer.proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);

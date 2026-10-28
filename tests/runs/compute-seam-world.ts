@@ -27,7 +27,7 @@ import { reserveModelCall, type Broker } from '../../packages/core-custody/src/i
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../../apps/cli/client.ts';
-import type { StepRunner } from '../../apps/worker/step-runner.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { tokenFor } from '../api/fixture.ts';
@@ -132,14 +132,14 @@ async function delegationFor(taskId: string): Promise<string> {
 }
 
 /**
- * The worker's plan on a fresh task, accepted and not launched. When given,
- * `runner` (scripted, or the shipped agent runner) is the worker's own;
+ * The worker's plan on a fresh task, accepted and not launched. `runner` is the
+ * worker's own (scripted, the shipped agent's, or else one computing nothing);
  * `broker` is the door's `model.call` broker (one with the turn operation,
  * for the agent runner); `around` wraps the worker's transport.
  */
 export async function acceptedPlan(
   title: string,
-  runner?: Scripted['runner'] | StepRunner,
+  runner?: Scripted['runner'] | WorkerOptions['runner'],
   broker?: ModelBroker,
   around?: (transport: Transport) => Transport,
 ): Promise<Seam> {
@@ -170,7 +170,7 @@ export async function acceptedPlan(
 /** A fresh task and the options a worker on it is made with (a second shares its delegation), nothing proposed. */
 export async function unproposed(
   title: string,
-  runner?: Scripted['runner'] | StepRunner,
+  runner?: Scripted['runner'] | WorkerOptions['runner'],
   broker?: ModelBroker,
   around: (transport: Transport) => Transport = (transport) => transport,
 ): Promise<{ readonly taskId: string; readonly log: Sent[]; readonly options: WorkerOptions }> {
@@ -182,14 +182,14 @@ export async function unproposed(
     [s.business],
   );
   const log: Sent[] = [];
-  const options = {
+  const options: WorkerOptions = {
     transport: around(transportOver(door(undefined, broker), log)),
     businessKey: String(business?.key),
     credential: await tokenFor(s.agent.subject),
     delegation: await delegationFor(taskId),
     reporter: SYNTHETIC_USAGE,
-    ...(runner === undefined ? {} : { runner }),
-  } as WorkerOptions;
+    runner: (runner ?? COMPUTES_NOTHING) as WorkerOptions['runner'],
+  };
   return { taskId, log, options };
 }
 

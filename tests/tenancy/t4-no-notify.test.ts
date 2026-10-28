@@ -18,6 +18,7 @@ import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { launchThrough } from '../support/launch-worker.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { delegate } from '../journey/passes.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 const NOTIFYING = /\bnotify\b|pg_notify/iu;
 
@@ -64,6 +65,7 @@ describe.skipIf(serverUrl === undefined)('the runtime sends no NOTIFY (RN-01)', 
       credential: world.agent.token,
       delegation: await delegate(world, taskId),
       reporter: SYNTHETIC_USAGE,
+      runner: COMPUTES_NOTHING,
     });
     const proposed = await worker.proposeOnce();
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);

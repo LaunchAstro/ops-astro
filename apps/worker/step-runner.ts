@@ -8,8 +8,8 @@
 // person's cancel, or the runner's own `run.end`). Nothing irreversible runs
 // before a Launch: after it, the worker's own apply path runs unchanged.
 //
-// The synthetic runner is the default and computes nothing; the shipped
-// worker (`main.ts`) hands the agent's runner (#1717 R8b).
+// The worker has no runner of its own: the shipped one (`main.ts`) hands the
+// agent's (#1717 R8b), and nothing here computes a plan with nothing (R8c).
 
 import type { EndCode, RunOutcome } from '../../packages/core-wire/src/index.ts';
 import type { Call } from './agent-call.ts';
@@ -32,8 +32,3 @@ export interface StepEnd {
 export interface StepRunner {
   readonly compute: (context: StepContext) => Promise<StepEnd>;
 }
-
-/** The synthetic step's runner: nothing to compute, so the plan goes straight to review. */
-export const SYNTHETIC_RUNNER: StepRunner = {
-  compute: async () => await Promise.resolve({ outcome: 'success', endCode: 'COMPLETED' }),
-};

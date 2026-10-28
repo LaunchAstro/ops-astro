@@ -4,6 +4,7 @@ import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { attempts, HOST, launched, r, useReceiptWorld } from './aw-08-receipt-world.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 useReceiptWorld('solow074retry');
 
@@ -27,6 +28,7 @@ function workerWith(transport: Transport, delegation: string, call: Provider['ca
     credential: r.agentToken,
     delegation,
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
     provider: { call },
   });
 }

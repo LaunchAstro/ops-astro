@@ -26,6 +26,7 @@ import { runCli } from '../cli/cli-process-harness.ts';
 import { asBrowser } from '../support/sign-in.ts';
 import { readFacts, type JourneyFacts } from './facts.ts';
 import { holdSecret } from './redact.ts';
+import { COMPUTES_NOTHING } from '../support/computes-nothing-runner.ts';
 
 export type Surface = 'app' | 'cli';
 
@@ -157,6 +158,7 @@ export async function approvedTask(
     credential: world.agent.token,
     delegation: await delegate(world, taskId),
     reporter: SYNTHETIC_USAGE,
+    runner: COMPUTES_NOTHING,
     ...options,
   });
   const proposed = await worker.proposeOnce();
