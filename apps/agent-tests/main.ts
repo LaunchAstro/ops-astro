@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent test commands (#1626 R11), on the replay fake:
-//   node apps/agent-tests/main.ts <set> [--out <file>]
+// The agent test commands (#1626 R11, R12):
+//   node apps/agent-tests/main.ts <set> [--plan] [--out <file>]
 //     runs the named set (`cases.ts`) and writes its results file, by
 //     default under `agent-test-results/`, never over one already there
 //     (a saved review stays with the results it reviewed); exits 1 when a
-//     case fails.
+//     case fails. On the replay fake, or with `--plan` on the owner's
+//     ChatGPT plan, on the M5, only when the owner started it and never in
+//     CI (`plan.ts`).
 //   node apps/agent-tests/main.ts review <results file> <review file>
 //     saves Astra's review beside the results file, as
 //     `<results>.astra-review.md`, never over one already saved.
 // A refusal exits 2 and writes nothing.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { SETS } from './cases.ts';
 import { isResults, runSet } from './harness.ts';
+import { ownerStarted, runOnPlan } from './plan.ts';
 
 function refuse(why: string): never {
   process.stderr.write(`agent-tests: ${why}\n`);
@@ -56,7 +59,15 @@ async function runNamed(name: string | undefined, args: readonly string[]): Prom
         )
       : args[at + 1];
   if (out === undefined) refuse('--out needs a file');
-  const results = await runSet(set);
+  if (args.includes('--plan')) {
+    if (process.env['CI'] || process.env['GITHUB_ACTIONS']) refuse('the plan never runs in CI');
+    if (existsSync(out)) refuse(`a results file is already at ${out}`);
+    const why = ownerStarted(process.env['HOME'] ?? '', set.name);
+    if (why !== undefined) refuse(why);
+  }
+  const results = args.includes('--plan')
+    ? await runOnPlan(set, process.env['HOME'] ?? '')
+    : await runSet(set);
   mkdirSync(dirname(out), { recursive: true });
   try {
     writeFileSync(out, `${JSON.stringify(results, null, 2)}\n`, { flag: 'wx' });
