@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1738 (U103's AW-10 on the new runner): the shipped worker's agentRunner turn on the replay provider meets each of the three drops (provider down, connection cut, worker lost mid-turn), and each is read on the task with its kind, whose fault and where the work got to, the hold kept whole and a person told; no two collapse."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1738 (U103's AW-09 round on the new runner): the agentRunner's reviewed output takes two request-changes rounds and a third is refused CHANGE_ROUNDS_EXHAUSTED offering approve, reject or escalate, with the gate left open, the same through the app's client and the command line's own entry."
+}
