@@ -56,13 +56,13 @@ const provenanceIdentities = [
 // security address this project documents, and the reserved documentation
 // domains of RFC 2606 and RFC 6761, which can never reach a mailbox.
 //
-// The last six are the local slice's five synthetic logins and the staging
+// The last seven are the local slice's six synthetic logins and the staging
 // reset's made-up operator, one entry each and no wildcard: docs/local/README.md
-// lists them as the whole set, and a seventh invented one should be a finding
+// lists them as the whole set, and an eighth invented one should be a finding
 // until that file and this list both say so.
 // `.local` is reserved for multicast DNS by RFC 6762 and is not delegable, so
 // these cannot reach a mailbox either, and a real address at someone's Bonjour
-// hostname is still a finding because it is not one of these six.
+// hostname is still a finding because it is not one of these seven.
 // Then Sol's REVB1SL01S34 proof (byte for byte): two made-up database logins,
 // password `example` before a host, which read as addresses; those strings alone.
 const publishedAddresses = [
@@ -76,6 +76,7 @@ const publishedAddresses = [
   /^noah@alpha\.local$/u,
   /^orphan@alpha\.local$/u,
   /^bea@bravo\.local$/u,
+  /^ben@bravo\.local$/u,
   /^olive@alpha\.local$/u,
 ];
 

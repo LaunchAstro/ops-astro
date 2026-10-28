@@ -5,9 +5,9 @@
 // until `db:seed` has judged the database.
 
 /**
- * The contract's five. `business` is the contract's A/B label; `businessKey`
- * is the same business as the path prefix spells it, so the consumer does not
- * have to carry the mapping in its head.
+ * The contract's five, and bravo's administrator. `business` is the
+ * contract's A/B label; `businessKey` is the same business as the path prefix
+ * spells it, so the consumer does not have to carry the mapping in its head.
  *
  * `grants` is the coordinator's ruling of 22:57Z. An entry that omits it takes
  * the seed's ordinary grants for its role; `noah@alpha.local` carries an empty
@@ -54,5 +54,14 @@ export const PEOPLE = [
     businessKey: 'bravo',
     person: 'Bea Rivera',
     role: 'member',
+  },
+  {
+    // Bravo's administrator (#2308), so a trial crossing from alpha meets a
+    // bravo holder with the admin role's keys, not a refusal at the grant layer.
+    email: 'ben@bravo.local',
+    business: 'B',
+    businessKey: 'bravo',
+    person: 'Ben Okafor',
+    role: 'admin',
   },
 ];

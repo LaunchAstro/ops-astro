@@ -64,6 +64,7 @@ const CAST = [
   { email: 'noah@alpha.local', business: 'A', person: 'Noah Alpha', role: 'member', grants: [] },
   { email: 'orphan@alpha.local', business: 'A', person: 'Orphan Alpha', role: 'none' },
   { email: 'bea@bravo.local', business: 'B', person: 'Bea Bravo', role: 'member' },
+  { email: 'ben@bravo.local', business: 'B', person: 'Ben Bravo', role: 'admin' },
 ];
 
 const BUSINESS_KEYS = { A: 'alpha', B: 'bravo' };
