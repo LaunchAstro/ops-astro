@@ -86,65 +86,60 @@ async function pickupOf(reservationId: unknown) {
   });
 }
 
+/**
+ * The step held unknown after spending `spent`, written off at 0, then a
+ * pickup of its hold: what the write-off left, the pickup's answer, the holds
+ * still held, and the money as the write-off left it and after the pickup.
+ */
+async function writtenOffThenPickedUp(spent: number) {
+  const { work, versionId, first, attemptId } = await heldUnknown(spent);
+  appliedDetail(
+    await asPerson(s, writeOffBody({ taskId: work.taskId, attemptId }, 0)),
+    'budget.write_off',
+  );
+  const money = await moneyOf(s, work, versionId);
+  const picked = await pickupOf(first);
+  const seen = {
+    hold: await holdOf(s, { attemptId }),
+    picked: codeOf(picked),
+    held: (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held'),
+    money: await moneyOf(s, work, versionId),
+  };
+  return { seen, money };
+}
+
+const unknownAbandoned = { attempt_state: 'abandoned', outcome: 'unknown', attempt_actual: null };
+const refused = { picked: 'RESERVATION_NOT_CLAIMABLE', held: [] };
+
 describe.skipIf(serverUrl === undefined)('a step written off at nothing', () => {
   it('records the effect as unknown, closes the unspent hold under the write-off, and refuses a pickup with nothing moved', async () => {
-    const { work, versionId, first, attemptId } = await heldUnknown(0);
-    appliedDetail(
-      await asPerson(s, writeOffBody({ taskId: work.taskId, attemptId }, 0)),
-      'budget.write_off',
-    );
-    const money = await moneyOf(s, work, versionId);
-
-    const picked = await pickupOf(first);
-    expect({
-      hold: await holdOf(s, { attemptId }),
-      picked: codeOf(picked),
-      held: (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held'),
-      money: await moneyOf(s, work, versionId),
-    }).toEqual({
+    const { seen, money } = await writtenOffThenPickedUp(0);
+    expect(seen).toEqual({
       hold: {
-        attempt_state: 'abandoned',
-        outcome: 'unknown',
-        attempt_actual: null,
+        ...unknownAbandoned,
         reservation_state: 'abandoned',
         reservation_actual: null,
         classified_cause: 'written_off',
         envelope_held: '0',
         envelope_actual: '0',
       },
-      picked: 'RESERVATION_NOT_CLAIMABLE',
-      held: [],
+      ...refused,
       money,
     });
   });
 
   it('records the effect as unknown, settles the hold at what its calls spent, and refuses a pickup with nothing moved', async () => {
-    const { work, versionId, first, attemptId } = await heldUnknown(300);
-    appliedDetail(
-      await asPerson(s, writeOffBody({ taskId: work.taskId, attemptId }, 0)),
-      'budget.write_off',
-    );
-    const money = await moneyOf(s, work, versionId);
-
-    const picked = await pickupOf(first);
-    expect({
-      hold: await holdOf(s, { attemptId }),
-      picked: codeOf(picked),
-      held: (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held'),
-      money: await moneyOf(s, work, versionId),
-    }).toEqual({
+    const { seen, money } = await writtenOffThenPickedUp(300);
+    expect(seen).toEqual({
       hold: {
-        attempt_state: 'abandoned',
-        outcome: 'unknown',
-        attempt_actual: null,
+        ...unknownAbandoned,
         reservation_state: 'actual',
         reservation_actual: '300',
         classified_cause: null,
         envelope_held: '0',
         envelope_actual: '300',
       },
-      picked: 'RESERVATION_NOT_CLAIMABLE',
-      held: [],
+      ...refused,
       money,
     });
   });

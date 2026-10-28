@@ -98,14 +98,14 @@ async function firstApprovers(
 async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<void> {
   const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
   const charge = amount > spentMinor ? amount : spentMinor;
+  // At nothing, a dispatch-marked attempt keeps `abandoned`: 20261012052116 admits no
+  // other outcome on a marked attempt abandoned, and pickup never replaces a marked one.
   await tx.query(
     amount > 0n
       ? `update public.attempts
             set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
           where business_id = $1 and id = $2`
-      : // A dispatch-marked attempt keeps `abandoned`: 20261012052116 admits no other
-        // outcome on a marked attempt abandoned, and pickup never replaces a marked one.
-        `update public.attempts
+      : `update public.attempts
             set state = 'abandoned',
                 outcome = case when dispatch_marker then 'abandoned' else 'unknown' end
           where business_id = $1 and id = $2`,
