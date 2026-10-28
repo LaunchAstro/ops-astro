@@ -11,7 +11,8 @@
 // two race to one winner. It writes no row of its own among the money tables:
 // no new attempt, hold or envelope (split 2.2, "no ledger row"). The step never
 // runs again (#2277), so a replacement the pass reserved when it proved the
-// step absent is stopped, as `happened` stops it, unless it already dispatched.
+// step absent is stopped, as `happened` stops it, unless it already dispatched
+// or has a model call out.
 //
 // Above the four-eyes band, T2e's stored setting read here, a second person
 // names the same figure, exactly as a top-up pairs (`budget.ts`). The band is
@@ -209,9 +210,14 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
   }
   await close(tx, row, request.amountMinor);
   for (const one of replacements.filter((replacement) => !replacement.marked)) {
-    // Sequential: each moves the one envelope the step shares.
+    // Sequential: each moves the one envelope the step shares. A replacement whose model
+    // call is out keeps its hold, which carries the call's answer (S2282-2), read under
+    // its locks: a call starts under them too.
     // eslint-disable-next-line no-await-in-loop
-    await stopReplacement(tx, one, row.attempt_id);
+    if (!(await modelCallsOn(tx, one.reservation_id)).open) {
+      // eslint-disable-next-line no-await-in-loop
+      await stopReplacement(tx, one, row.attempt_id);
+    }
   }
   // AW-10: the step's held broker calls record the write-off and who made it.
   await resolveHeldCalls(tx, row.reservation_id, 'written_off', request.personId);
