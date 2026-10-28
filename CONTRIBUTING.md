@@ -49,11 +49,14 @@ fast gate and DCO, not full CI, with Sol's approval of the exact head
 Review is part of that rule because the rulesets hold it, not because the
 agent judges it. The review ruleset requests Copilot's review on every push.
 The primary ruleset requires every review conversation resolved, Copilot's
-included, before the merge button is enabled. `review evidence for this
-revision` is a required check, so the code-review and security-review
-outcomes must be stated for the exact head being merged, and so must the
-record the cross-company reviewer posted: `Reviewer:`, `Model:` (not the
-builder's company), `Head SHA:` and `Verdict: approve`. The record is copied
+included, before the merge button is enabled. Until 28 October 2026,
+`review evidence for this revision` was also a required check, so the
+code-review and security-review outcomes were stated for the exact head
+being merged, and so was the record the cross-company reviewer posted:
+`Reviewer:`, `Model:` (not the builder's company), `Head SHA:` and
+`Verdict: approve`. Since then that workflow is off and the landing tool
+reads the same record for the exact head (or carries it by an identical
+range-diff) before it posts `Sol verdict`. The record is copied
 text, not proof that the reading happened; [the ruleset procedure](docs/plan/ruleset.md)
 says why no required check can. Question four below is answered in the pull
 request body and bound to the head by that check, not by a further gate.
@@ -125,9 +128,11 @@ because tests read its bundle, with the tests the change reaches in place of
 the full test run; the full test run,
 `isolation tests` and the database conformance shards run in the merge queue,
 and `database conformance` passes on the shards' skip when the contamination
-gate passed (a failed gate fails it). The full set runs in the
-merge queue, which tests each pull request on top of `main` and is the only
-way into it, so nothing reaches `main` untested.
+gate passed (a failed gate fails it). Until 28 October 2026 the full set
+ran in the merge queue, which tested each pull request on top of `main` and
+was the only way into it. Since then `main` has no merge queue and full CI
+gates nothing: the fast gate on the exact head does (see above), and this
+section describes those workflows for when they run.
 A green pull request is therefore not a full run: builders run the full
 `pnpm check` locally before declaring a change ready.
 
@@ -154,8 +159,10 @@ cannot read means the full set. Pushes to `main` never cancel each other.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. A branch need not be up to date
-with its base to merge: `strict_required_status_checks_policy` is off and the
-merge queue tests each pull request on top of `main`. When a branch does need
+with its base to merge: `strict_required_status_checks_policy` is off, and since 28 October 2026
+the landing tool updates each pull request onto `main`, runs the fast gate
+there, and merges only while `main` is still the commit it gated (before
+then, the merge queue tested each pull request on top of `main`). When a branch does need
 its base, for a conflict, merge it locally and push.
 
 A newer push, label change or reopen on a pull request cancels its older
