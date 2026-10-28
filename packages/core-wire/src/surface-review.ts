@@ -10,11 +10,16 @@
 // worker's: asked of the lease's task like `task.check`, the lease the authority, never a
 // person's grant beyond the one the lease stands on. The reads are `review:read` at the
 // holder, asked inside the query.
+//
+// C57's change requests (#2016) are `proposal:write` and `proposal:decide` there. A filing
+// is a person's: an agent inside a delegation for the review's task reaches it only to be
+// refused CLIENT_MODEL_USE_OFF. A decision is never an agent's.
 
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { declare, read } from './surface-builders.ts';
 
 const REVIEW_COLLECTION = 'review';
+const PROPOSAL_COLLECTION = 'proposal';
 
 const AT_THE_LEASE = {
   targetsExistingRecord: false,
@@ -49,5 +54,18 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: ['revisionId'],
     agent: 'delegated',
+  }),
+  declare('review.propose_change', 'write', {
+    collection: PROPOSAL_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['commentId'],
+    agent: 'delegated',
+  }),
+  declare('review.decide_change', 'decide', {
+    collection: PROPOSAL_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['changeRequestId'],
   }),
 ];
