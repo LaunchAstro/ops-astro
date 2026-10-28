@@ -43,7 +43,7 @@ test('an unrelated apostrophe cannot truncate a complete contact address', () =>
 test('unrelated inline code cannot truncate a complete contact address', () => {
   const address = '`' + approved;
   assert.equal(scan(`Contact ${address}, please forward.`).status, 1);
-  const result = scan(`Contact ${address}, run ` + '`status` instead.');
+  const result = scan(`Contact ${address}, run \`status\` instead.`);
   assert.equal(result.status, 1, result.output);
   assert.ok(!result.output.includes(address), 'evidence must withhold the complete contact value');
 });

@@ -85,9 +85,11 @@ export function addressRules(text, scope) {
     // A file name has no quotes or emphasis to frame an address: it is read whole.
     // Every frame comes off, outermost first (`'`a`'`).
     let [value, at] = [address, index];
-    for (let next = framed(text, at, value); scope !== 'path' && next !== value;) {
-      [at, value] = [at + value.length - next.length, next];
-      next = framed(text, at, value);
+    if (scope !== 'path') {
+      for (let next = framed(text, at, value); next !== value;) {
+        [at, value] = [at + value.length - next.length, next];
+        next = framed(text, at, value);
+      }
     }
     value = value.toLowerCase();
     const local = value.slice(0, value.lastIndexOf('@'));
