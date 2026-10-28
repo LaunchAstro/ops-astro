@@ -17,7 +17,7 @@ starts at `/implement`. Pstack supplies standards here.
 
 Read [current decisions](docs/current-decisions.md) and the ticket before
 work. Read [model roles](docs/agents/model-roles.md) for fresh context,
-independent review, and written handoffs. Run the
+independent review, and handoffs. Run the
 [session check](docs/agents/session-check.md) before implementation. For
 built code, start at [the local slice](docs/local/README.md).
 
@@ -27,10 +27,10 @@ One owner, ticket branch, and isolated worktree per ticket. Ticket review
 reads the complete committed change. When commits are held during
 local foundation preparation, review the actual files and diff against an
 identified manifest, as [review checkpoints](docs/agents/review-checkpoint.md)
-requires. Commit nothing only to enable that review.
+requires.
 
 The final ticket verifies the integrated feature. Done is a checked artefact.
-Another company's frontier model reviews the builder's work; Copilot reviews
+Another company's model reviews the builder's work; Copilot reviews
 the hosted revision.
 The merge rule: an agent merges on Nathan's credential once every required
 check is green on the head being merged; a change touching one of the eight
@@ -41,15 +41,14 @@ and Nathan's acceptance; the production deploy is the one other human gate.
 Run `/security-review` before a pull request touching auth, tenancy, tool
 execution, egress, custody, or the audit chain.
 
-Code Factory builds here run the **production** variant
-([production.md](https://github.com/LaunchAstro/code-factory/blob/main/docs/variants/production.md)),
-Nathan's pick on 28 October 2026.
+Code Factory builds run the
+[production variant](https://github.com/LaunchAstro/code-factory/blob/main/docs/variants/production.md)
+(Nathan's pick, 28 Oct 2026).
 
 ## References
 
 For naming or public copy, read [Product identity](docs/product-identity.md).
 
 [CONTEXT.md](CONTEXT.md) defines terms. [ADRs](docs/adr/README.md) explain
-technical decisions. [Vendored skills](.claude/skills/README.md) define the
-shared skill set. Write Australian English, sentence-case headings, and no
-em dashes. Apply `unslop`.
+decisions. [Vendored skills](.claude/skills/README.md) define the skill set.
+Write Australian English, sentence-case headings, no em dashes. Apply `unslop`.
