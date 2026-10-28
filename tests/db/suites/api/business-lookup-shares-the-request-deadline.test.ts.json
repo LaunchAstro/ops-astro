@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (Sol's design check on #2243): the pass's business-key lookup waiting on public.businesses ends by the pass deadline, its transaction closed before the answer"
+}
