@@ -8,7 +8,7 @@ import { MARKER, holding, request, reviewAnswer, standIn, refusal } from './c57-
 it.each([
   ['business', 'bravo', 'client-a'],
   ['client review', 'alpha', 'client-b'],
-])('Sol proof, criterion 2: a late read cannot disclose words after a %s switch', async (_kind, business, reviewId) => {
+])('a late read discloses no words after a %s switch', async (_kind, business, reviewId) => {
   const first = standIn('alpha');
   const next = standIn(business);
   const view = await mount(<ChangeRequestDock client={first.client} reviewId="client-a" onOpenTask={() => {}} />);
@@ -22,7 +22,7 @@ it.each([
   await view.unmount();
 });
 
-it('Sol proof, criterion 2: changing the person client clears previously admitted client words', async () => {
+it('changing the person client clears the words admitted for the earlier person', async () => {
   const ada = standIn('alpha');
   const noah = standIn('alpha');
   const draw = (client: typeof ada.client) =>
@@ -38,7 +38,7 @@ it('Sol proof, criterion 2: changing the person client clears previously admitte
   await view.unmount();
 });
 
-it('Sol proof, criterion 2: a write from an earlier visit cannot unlock the current visit write', async () => {
+it('a write from an earlier visit cannot unlock a write on the current visit', async () => {
   const { client, calls } = standIn();
   const draw = (reviewId: string) =>
     <ChangeRequestDock client={client} reviewId={reviewId} onOpenTask={() => {}} />;
