@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35-X's records (#2014, the version half; migration 20261019170000): the one review
+// C35-X's records (#2014, the version half; migration 20261028170000): the one review
 // decision, bound to its revision's exact digest, and Astra's review of a revision. Both are
 // written by a caller holding the review's row lock (`lockCoveredReview`), the lock a new
 // revision is numbered under, so the latest revision and Astra's latest word on it read

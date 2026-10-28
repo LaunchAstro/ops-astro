@@ -1152,7 +1152,7 @@ at the same moment, stores nothing and is answered the first correction: the
 second insert waits on the first's index entry, then reads the stored row.
 The column never changes once written (`live_corrections_plan_kept`).
 
-## The review decision (20261019170000, #2014)
+## The review decision (20261028170000, #2014)
 
 `review_decisions` holds a person's approval of a review revision. Its foreign
 keys hold the revision, the review, the exact digest and the author person to

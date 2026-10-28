@@ -12,7 +12,7 @@
 // as R5 allows (#1689, director register 132): single-operator mode on with one operator,
 // read under the mode's share lock, and Astra's latest review of this exact digest
 // approving, for every self-approved revision. The table holds the same rule
-// (20261019170000). An approval writes its record and nothing else: no publish, no send.
+// (20261028170000). An approval writes its record and nothing else: no publish, no send.
 
 import {
   astraApproves,

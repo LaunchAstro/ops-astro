@@ -26,7 +26,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['sid', 'storage_objects'],
   // C57 (20261028160000): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
-  // C35-X (20261019170000): a decision and Astra's review of a revision, written once.
+  // C35-X (20261028170000): a decision and Astra's review of a revision, written once.
   ['si', 'review_decisions'],
   ['si', 'review_astra_reviews'],
   // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
