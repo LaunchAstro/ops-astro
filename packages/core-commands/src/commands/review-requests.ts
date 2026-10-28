@@ -53,4 +53,11 @@ export type ReviewRequest =
       readonly changeRequestId: string;
       /** approve or refuse. */
       readonly decision: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'review.make_change_task';
+      /** The worker's live lease on the review's task, and the fence it holds. */
+      readonly leaseId: unknown;
+      readonly fence: unknown;
+      readonly changeRequestId: unknown;
     } & Envelope);

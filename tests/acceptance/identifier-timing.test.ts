@@ -721,14 +721,27 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
         fabricated: () => ({ leaseId: randomUUID(), fence: 1, ...extra }),
       });
     }
+    // #2117: the worker's own lease, naming bravo's change request or a made-up one.
+    out.push({
+      op: 'review.make_change_task',
+      operand: 'changeRequestId',
+      by: agent,
+      code: 'NOT_FOUND',
+      foreign: () => ({ leaseId: picked.leaseId, fence: picked.fence, changeRequestId: change }),
+      fabricated: () => ({
+        leaseId: picked.leaseId,
+        fence: picked.fence,
+        changeRequestId: randomUUID(),
+      }),
+    });
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 128 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 129 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(128);
-    expect(names).toHaveLength(128);
+    expect(new Set(names).size, 'distinct operations').toBe(129);
+    expect(names).toHaveLength(129);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "An approved change request becomes one task only when a worker asks under its live lease, through the one create path, with its client and source derived"
+}

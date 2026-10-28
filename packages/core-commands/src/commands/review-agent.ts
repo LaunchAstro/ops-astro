@@ -10,6 +10,7 @@
 // delegation's own task, served on that task alone (`review-pin.ts`).
 // A change request's filing (#2016) is a `record` row that is refused CLIENT_MODEL_USE_OFF
 // (`review-change.ts`); its decision has no row, as the surface never offers it to an agent.
+// The worker's `review.make_change_task` (#2117) is a lease row: `task:write` on the leased task.
 
 import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentCall, NoOperands } from './agent-call.ts';
@@ -17,6 +18,7 @@ import type { HandlerOutcome } from './outcome.ts';
 import { claimCapture, landCapture } from './review-captures.ts';
 import { PIN_COMMENT } from './review-pin.ts';
 import { PROPOSE_CHANGE } from './review-change.ts';
+import { MAKE_CHANGE_TASK } from './review-change-task.ts';
 
 /** A row a pickup's delegation never reaches: no operands, no `serve`. */
 export interface OutsidePurpose {
@@ -71,10 +73,18 @@ type ReviewAgentName =
   | 'review.capture_claim'
   | 'review.capture_land'
   | 'review.pin_comment'
-  | 'review.propose_change';
+  | 'review.propose_change'
+  | 'review.make_change_task';
 
 export const reviewAgentRows = <T>(
-  close: (typed: OutsidePurpose | UnderLease | typeof PIN_COMMENT | typeof PROPOSE_CHANGE) => T,
+  close: (
+    typed:
+      | OutsidePurpose
+      | UnderLease
+      | typeof PIN_COMMENT
+      | typeof PROPOSE_CHANGE
+      | typeof MAKE_CHANGE_TASK,
+  ) => T,
 ): readonly (readonly [ReviewAgentName, T])[] => [
   ['review.open', close(OUTSIDE_PURPOSE)],
   ['review.capture', close(OUTSIDE_PURPOSE)],
@@ -82,4 +92,5 @@ export const reviewAgentRows = <T>(
   ['review.capture_land', close(underLease(landCapture))],
   ['review.pin_comment', close(PIN_COMMENT)],
   ['review.propose_change', close(PROPOSE_CHANGE)],
+  ['review.make_change_task', close(MAKE_CHANGE_TASK)],
 ];

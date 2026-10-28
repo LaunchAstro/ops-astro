@@ -13,7 +13,8 @@
 //
 // C57's change requests (#2016) are `proposal:write` and `proposal:decide` there. A filing
 // is a person's: an agent inside a delegation for the review's task reaches it only to be
-// refused CLIENT_MODEL_USE_OFF. A decision is never an agent's.
+// refused CLIENT_MODEL_USE_OFF. A decision is never an agent's. `review.make_change_task`
+// (#2117) is a lease operation, as `task.handback` is: the worker's lease on the review's task.
 
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { declare, read } from './surface-builders.ts';
@@ -67,5 +68,12 @@ export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'target',
     untargetedIdentifiers: ['changeRequestId'],
+  }),
+  declare('review.make_change_task', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId', 'changeRequestId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
   }),
 ];
