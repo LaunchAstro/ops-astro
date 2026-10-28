@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 task read judged last through its map: a map grant that expires while the last check's locking read of the ticket waits on a writer answers SCOPE_NOT_GRANTED and never returns the ticket (S2114-5)."
+}
