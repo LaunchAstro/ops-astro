@@ -17,8 +17,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   catalogue,
+  HERMES_BODY_LIMIT,
   HERMES_CONVERSATION,
   HERMES_PROVIDER,
+  hermesRequest,
   REPLAY_COMPOSE,
   replayAdapter,
   type ModelOperationDeclaration,
@@ -116,5 +118,34 @@ describe.skipIf(noDatabase)('Hermes Agent’s operation in the broker', () => {
     );
     expect(listed).toMatchObject({ ok: true, reservedMinor: 0 });
     expect(world.provider.seen.length).toBe(seen + 1);
+  }, 120_000);
+
+  it('a listed person’s message too large for Hermes Agent is refused here, before any row or send', async () => {
+    const owner = ownerOf(s);
+    const seen = world.provider.seen.length;
+    // Under the panel's 20,000 characters, over 48 KiB once encoded: three bytes a character.
+    const message = 'あ'.repeat(17_000);
+    expect(Buffer.byteLength(hermesRequest({ message }).body)).toBeGreaterThan(HERMES_BODY_LIMIT);
+    const listed = withHermes(local(s), [`${s.business}:${String(owner.attendedByPersonId)}`]);
+    const sized: Broker = {
+      ...listed,
+      providers: new Map([
+        [HERMES_PROVIDER, { build: hermesRequest, price: () => 0, bodyLimit: HERMES_BODY_LIMIT }],
+      ]),
+    };
+    const asked = await ask(s);
+    const answer = await callModelInConversation(
+      s.db.app,
+      s.business,
+      owner,
+      {
+        ...asked,
+        operation: HERMES.key,
+        fields: [{ name: 'message', source: 'outside', value: message }],
+      },
+      sized,
+    );
+    expect(answer).toMatchObject({ ok: false, code: 'PROMPT_TOO_LARGE', callId: null });
+    expect(world.provider.seen.length).toBe(seen);
   }, 120_000);
 });
