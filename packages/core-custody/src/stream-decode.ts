@@ -17,11 +17,11 @@
 // 3. The folded body: `{ model, content, finish_reason, usage, error }` from the
 //    redacted events, `content` the whole redacted text, redacted as JSON once more.
 //
-// A payload that is not a JSON object, content that is not text, or a stream
+// A payload out of shape anywhere a choice is read (`readable`), or a stream
 // cut mid-event or before `[DONE]`, folds to `{ error: 'stream_malformed' }`;
 // a stream that reports a second model or a second, different usage folds to
-// `stream_contradicted`; an error, or a finish other than `stop`, once
-// reported stays. The adapter reads each as held.
+// `stream_contradicted`; an error once reported stays, and so does the worst
+// finish (`error`, then any other, then `stop`). The adapter reads each as held.
 // It imports no connector code, as custody's process loads it.
 
 import { StringDecoder } from 'node:string_decoder';
@@ -62,6 +62,37 @@ function dataOf(event: string): string | undefined {
   return lines.length === 0 ? undefined : lines.join('\n');
 }
 
+/** A finish's rank: `stop` 0, `error` 2, any other (`length`, `cancelled`) 1. */
+const rank = (finish: unknown): number => (finish === 'stop' ? 0 : finish === 'error' ? 2 : 1);
+
+/** `finish` is worse than the one folded so far, or none is folded. */
+const worse = (finish: unknown, folded: unknown): boolean =>
+  folded === null || rank(finish) > rank(folded);
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * An event read whole: an object; its choices, where present, a list of
+ * objects; the first one's delta, where present, an object, its content text
+ * or null, and its finish a name or null. Anything else is no stream read whole.
+ */
+function readable(event: unknown): boolean {
+  if (!isObject(event)) return false;
+  const { choices } = event;
+  if (choices === undefined) return true;
+  if (!Array.isArray(choices) || !choices.every((choice) => isObject(choice))) return false;
+  const first = choices[0] as Record<string, unknown> | undefined;
+  if (first === undefined) return true;
+  const { delta, finish_reason: finish } = first;
+  if (delta !== undefined && !isObject(delta)) return false;
+  const content = delta?.['content'];
+  return (
+    (content === undefined || content === null || typeof content === 'string') &&
+    (finish === undefined || finish === null || typeof finish === 'string')
+  );
+}
+
 /** A value already folded that a later event says otherwise of. */
 const contradicts = (was: unknown, now: unknown): boolean =>
   was !== null && JSON.stringify(was) !== JSON.stringify(now);
@@ -83,10 +114,11 @@ function fold(folded: Folded, seen: Record<string, unknown>): void {
   if (seen['error'] !== undefined && seen['error'] !== null && folded.error === null) {
     folded.error = seen['error'];
   }
-  // A finish other than `stop` stays: a later `stop` never makes a cut-short answer whole.
+  // The worst finish reported stays: `error` over any other, any other over `stop`.
   const finish = choiceOf(seen)['finish_reason'];
-  const whole = folded.finishReason === null || folded.finishReason === 'stop';
-  if (finish !== undefined && finish !== null && whole) folded.finishReason = finish;
+  if (finish !== undefined && finish !== null && worse(finish, folded.finishReason)) {
+    folded.finishReason = finish;
+  }
 }
 
 // oxlint-disable-next-line max-lines-per-function -- one decoder's state and its two steps
@@ -141,10 +173,7 @@ export function openaiSse(credential: StoredCredential): StreamDecode {
     fold(folded, seen);
     // The decoded text is read unredacted here: the holding redactor sees it joined.
     const delta = record(choiceOf(raw)['delta'])['content'];
-    // An event that is no object, or content that is no text, is no stream read whole.
-    if (raw !== parsed || (delta !== undefined && delta !== null && typeof delta !== 'string')) {
-      unreadable = true;
-    }
+    if (!readable(parsed)) unreadable = true;
     return typeof delta === 'string' ? delta : '';
   };
 
