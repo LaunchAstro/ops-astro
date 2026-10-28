@@ -97,6 +97,7 @@ as running it once.
 
 ```
 corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
+  && LOCAL_SEED_MADE_UP=confirm corepack pnpm db:admit \
   && corepack pnpm auth:seed && corepack pnpm db:seed
 ```
 
@@ -110,6 +111,17 @@ corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
   before `auth:up` here because it refuses to apply anything while another
   session is connected to the database, and GoTrue holds sessions there.
 - `auth:up` starts GoTrue on `127.0.0.1:54391` and writes `.local/auth.env`.
+- `db:admit` vouches for the database before the first sign-in is written.
+  The seed's made-up guard (`scripts/ops/made-up-only.ts`) opens an unmarked
+  database only while no tenant or sign-in table has ever held a row, so this
+  step puts the guard on every tenant table and on `auth.users` and marks the
+  database. Until `db:seed` has judged it, the guard admits only the sign-ins
+  `auth:seed` makes (`scripts/local/synthetic-logins.mjs`), so `db:seed`
+  refuses a database holding any other sign-in, even at a `.local` address.
+  `LOCAL_SEED_MADE_UP=confirm` is you saying the database is new and made-up;
+  once it is marked, the step judges it again and keeps the mark. It refuses a
+  database that has held a row, or whose guard has noted a write it cannot
+  vouch for.
 - `auth:seed` mints the synthetic logins and writes `.local/synthetic-users.json`.
 - `db:seed` maps those subjects to people, memberships and grants. It seeds no
   task. Nobody would have created a seeded task, and it would make the

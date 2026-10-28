@@ -65,12 +65,25 @@ const LEDGER_AND_NOTE = [
 // definer function included, is neither owner nor superuser. The guard runs as
 // the writer, so current_user is that role, and only an owner or superuser
 // reads the digests.
-const GUARD_FUNCTION = `
+//
+// A sign-in passes when its address is a made-up `.local` one and, while a
+// sign-in list is installed (`db:admit`, until the next install without one),
+// its address's digest is on the list. The list is part of the function's
+// text, so the guard reads no table for it, whichever role writes the sign-in.
+function guardFunction(signIns: readonly string[]): string {
+  if (signIns.some((digest) => !/^[0-9a-f]{64}$/u.test(digest)))
+    throw new Error('made-up-install: a sign-in digest is not a sha256 hex digest');
+  const listed =
+    signIns.length === 0
+      ? ''
+      : ` or encode(sha256(convert_to(lower(new.email), 'UTF8')), 'hex')
+            <> all (array[${signIns.map((digest) => `'${digest}'`).join(', ')}]::text[])`;
+  return `
     create or replace function ops_astro_made_up.guard() returns trigger
       language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
     begin
       if tg_table_schema = 'auth' then
-        if new.email is null or lower(new.email) not like '%.local' then
+        if new.email is null or lower(new.email) not like '%.local'${listed} then
           perform ops_astro_made_up.note('auth.users');
         end if;
       elsif (select rolsuper from pg_roles where rolname = current_user)
@@ -88,6 +101,7 @@ const GUARD_FUNCTION = `
       end if;
       return null;
     end $$`;
+}
 
 /** After the guard function: the watch, protect() and the event trigger. */
 const WATCH_AND_PROTECT = [
@@ -141,16 +155,20 @@ const WATCH_AND_PROTECT = [
  * The guard and the watch, in order; each statement is safe to run again.
  * `seedDigest` is the digest of the seed's tag, the only form the guard holds,
  * kept for this backend beside other live seed sessions' digests; the digests
- * of sessions that have ended go.
+ * of sessions that have ended go. `signIns`, the digests of the only sign-in
+ * addresses the guard admits, is empty except at `db:admit`.
  */
-export function installStatements(seedDigest: string): readonly string[] {
+export function installStatements(
+  seedDigest: string,
+  signIns: readonly string[] = [],
+): readonly string[] {
   return [
     ...LEDGER_AND_NOTE,
     // A login sees every session's pid, though not always its start.
     `delete from ${SEEDS} where pid not in (select pid from pg_stat_activity)`,
     `insert into ${SEEDS} select pid, backend_start, '${seedDigest}' from (${THIS_BACKEND}) b
       on conflict do nothing`,
-    GUARD_FUNCTION,
+    guardFunction(signIns),
     ...WATCH_AND_PROTECT,
   ];
 }

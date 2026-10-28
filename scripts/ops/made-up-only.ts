@@ -9,7 +9,8 @@
 //   `business_id`) and on `auth.users`. A write by the database's owner or a
 //   superuser that the seed did not tag, as a restore or a hand-loaded file
 //   is, lands in the guard's ledger by table name, never by content. So does a
-//   sign-in whose address is not a made-up `.local` one. Writes through the
+//   sign-in whose address is not a made-up `.local` one, and, while `db:admit`'s
+//   sign-in list stands, one whose address is not on it. Writes through the
 //   application's own role are what people typed on staging, and pass. The
 //   seed's tag is a secret its process makes at start and never stores: the
 //   guard holds only its digest, kept for the session the seed bound by
@@ -174,14 +175,21 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
   return [...signs];
 }
 
-/** The guard and the watch, in order, for this process's seed tag. */
-const INSTALL = installStatements(digest(SEED_SECRET));
-
-/** Install, or refresh, the guard and the watch. It never clears the ledger. */
-export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
+/**
+ * Install, or refresh, the guard and the watch. It never clears the ledger.
+ * `signIns` are the only sign-in addresses the guard admits until the next
+ * install without them.
+ */
+export async function guardMadeUp(
+  admin: OwnerQuery,
+  signIns: readonly string[] = [],
+): Promise<void> {
+  // The guard and the watch, in order, for this process's seed tag.
+  const listed = signIns.map((address) => digest(address.toLowerCase()));
+  const install = installStatements(digest(SEED_SECRET), listed);
   // In order: each statement builds on the one before.
   // oxlint-disable-next-line no-await-in-loop
-  for (const statement of INSTALL) await admin.execute(statement);
+  for (const statement of install) await admin.execute(statement);
   for (const { oid } of await admin.execute<{ oid: number }>(GUARDED))
     // One table's guard at a time: each is DDL on its own table.
     // oxlint-disable-next-line no-await-in-loop
@@ -212,6 +220,14 @@ export async function markMadeUp(
   personIds: readonly string[] = [],
 ): Promise<void> {
   await guardMadeUp(admin);
+  await writeMark(admin, businessIds, personIds);
+}
+
+async function writeMark(
+  admin: OwnerQuery,
+  businessIds: readonly string[],
+  personIds: readonly string[],
+): Promise<void> {
   const [row] = await admin.execute<{ statement: string }>(
     "select format('comment on database %I is %L', current_database(), $1::text) as statement",
     [`${MARK}${joined(businessIds)}${PEOPLE}${joined(personIds)}`],
@@ -225,11 +241,37 @@ export async function markMadeUp(
  * A row that lands between the first judgement and the guard is seen by the
  * second, since the seed has written nothing yet; one after it is noted.
  */
-export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promise<string[]> {
+export async function admitMadeUp(
+  admin: OwnerQuery,
+  confirmed: boolean,
+  signIns: readonly string[] = [],
+): Promise<string[]> {
   const signs = await productionSigns(admin, [], confirmed);
   if (signs.length > 0) return signs;
-  await guardMadeUp(admin);
+  await guardMadeUp(admin, signIns);
   return productionSigns(admin, [], confirmed);
+}
+
+/**
+ * The local slice's admission before its first sign-in (`db:admit`, between
+ * `auth:up` and `auth:seed`): the seed's admission, with the guard admitting
+ * only `signIns`, `auth:seed`'s own addresses, then the mark with nothing made
+ * yet, as the staging reset marks an emptied database. Any other sign-in
+ * written after it is noted, so `db:seed` finds a marked database and refuses
+ * one holding a sign-in `auth:seed` did not write. `db:seed`'s admission judges
+ * that, then installs the guard without the list. A marked database is judged
+ * and keeps its mark.
+ */
+export async function admitBeforeSignIns(
+  admin: OwnerQuery,
+  confirmed: boolean,
+  signIns: readonly string[],
+): Promise<string[]> {
+  if (signIns.length === 0) throw new Error('made-up-only: no sign-in to admit');
+  const wasMarked = await marked(admin);
+  const signs = await admitMadeUp(admin, confirmed, signIns);
+  if (signs.length === 0 && !wasMarked) await writeMark(admin, [], []);
+  return signs;
 }
 
 /**

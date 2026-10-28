@@ -44,6 +44,7 @@ corepack and Docker present, run `corepack pnpm install`, then
 
 ```
 corepack pnpm db:up && corepack pnpm db:migrate && corepack pnpm auth:up \
+  && LOCAL_SEED_MADE_UP=confirm corepack pnpm db:admit \
   && corepack pnpm auth:seed && corepack pnpm db:seed
 ```
 

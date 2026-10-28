@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the local slice seeds a fresh made-up database in the order docs/local/README.md gives, and the made-up guard still refuses a sign-in or business that order did not write, or a database that held a sign-in before its guard stood"
+}
