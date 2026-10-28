@@ -17,6 +17,10 @@
 // the stop raised its ask (a person's `happened` that waited on the run's lock
 // while the worker's call stopped the run), so its start time comes first.
 //
+// A step written off with its effect unknown is not finished either way: a
+// top-up would run it again, so it is refused the same way until a person
+// records what happened, and the end still answers the stop.
+//
 // A worker's report that the step failed, with no effect applied, keeps the
 // hold whole the same way when its priced cost runs above the hold: the end is
 // refused alike, and the person's outcome still answers the hold.
@@ -152,6 +156,92 @@ it('a top-up after the stopped step was recorded as happened is refused, and the
     'applied',
   );
   expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
+});
+
+it('a top-up after the stopped step was written off with its effect unknown is refused, and the end still applies', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  // A person accepts the cost without knowing whether the step's effect happened.
+  const written = await asPerson(s, writeOff(w));
+  expect(codeOf(written)).toBe('applied');
+  const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
+  expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'actual', answers: 0 });
+
+  const ask = { recordId: w.taskId, runId, askId };
+  const topUp = { command: 'run.top_up', ...ask, amountMinor: 1_000, currency: 'AUD' };
+  expect(await answer(people.approver, topUp)).toBe('TRANSITION_NOT_PERMITTED');
+  // Nothing written: no fresh hold for a step whose effect is unknown, the run still waiting.
+  expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
+
+  expect(await answer(people.second, { command: 'run.end_at_budget_stop', ...ask })).toBe(
+    'applied',
+  );
+  expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
+});
+
+/** A positive write-off of the stopped step: any amount above nothing settles it at an unknown outcome. */
+const writeOff = (w: { taskId: string; attemptId: string }) => ({
+  command: 'budget.write_off',
+  operationId: randomUUID(),
+  recordId: w.taskId,
+  attemptId: w.attemptId,
+  amountMinor: 1,
+  reason: 'The provider billed the call; nobody can say whether the step ran.',
+});
+
+it('a top-up after a write-off is refused even when the write-off and the ask share a start time', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  expect(codeOf(await asPerson(s, writeOff(w)))).toBe('applied');
+  // As if settled and asked in one transaction: the stamps are equal.
+  await s.db.admin.execute(
+    `update public.attempts set settled_at = (select raised_at from public.budget_asks where id = $2)
+      where id = $1`,
+    [w.attemptId, askId],
+  );
+  const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
+  const topUp = { command: 'run.top_up', recordId: w.taskId, runId, askId };
+  expect(await answer(people.approver, { ...topUp, amountMinor: 1_000, currency: 'AUD' })).toBe(
+    'TRANSITION_NOT_PERMITTED',
+  );
+  expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
+});
+
+it('a top-up that waited behind a write-off is refused once the write-off commits', async () => {
+  await setThreshold(null);
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  const topUp = { command: 'run.top_up', recordId: w.taskId, runId, askId };
+  const held = racer(s);
+  let topped: Promise<string> | undefined;
+  try {
+    await held.withBusiness(s.business, async (tx) => {
+      const inTx = { ...held, withBusiness: async (_b, run) => await run(tx) } as Database;
+      expect(codeOf(await asPerson(s, writeOff(w), inTx))).toBe('applied');
+      // The top-up starts while the write-off holds its locks, and parks behind them.
+      topped = answer(people.approver, { ...topUp, amountMinor: 1_000, currency: 'AUD' });
+      await expect
+        .poll(
+          async () =>
+            (
+              await one<{ n: string }>(
+                `select count(*)::text as n from pg_stat_activity
+                  where datname = current_database() and wait_event_type = 'Lock'`,
+                [],
+              )
+            ).n,
+          { timeout: 10_000 },
+        )
+        .not.toBe('0');
+    });
+  } finally {
+    await held.close();
+  }
+  expect(await topped).toBe('TRANSITION_NOT_PERMITTED');
+  expect(await moneyOf(runId)).toMatchObject({ run: 'waiting_budget', answers: 0 });
+  expect(await stateOf(runId, w.attemptId)).toMatchObject({ reservation: 'actual' });
 });
 
 /** A `happened` through the command entry, in a transaction on its own connection begun before `stop`. */

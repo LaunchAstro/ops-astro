@@ -197,28 +197,6 @@ export async function releaseUnstarted(
   return total;
 }
 
-/**
- * A step settled `completed` in any transaction but the ask's own (a person's `happened` or
- * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
- * Both stamps are now(), each its transaction's start, which can invert across transactions,
- * so only equal stamps mark a settle and ask in one transaction, which would still top up;
- * no path raises that today.
- */
-export async function recordedRefusal(
-  tx: TenantQuery,
-  stop: { readonly reservation_id: string; readonly ask_id: string },
-): Promise<RuntimeResult<never> | null> {
-  const done = await tx.query(
-    `select 1 from public.attempts a join public.budget_asks k on k.business_id = a.business_id
-      where a.business_id = $1 and a.reservation_id = $2 and k.id = $3 and a.state = 'settled'
-        and a.outcome = 'completed' and a.settled_at is distinct from k.raised_at`,
-    [tx.businessId, stop.reservation_id, stop.ask_id],
-  );
-  if (done.length === 0) return null;
-  const why = "this step's outcome was recorded after the run stopped, so a top-up cannot apply";
-  return refuse('TRANSITION_NOT_PERMITTED', why, 'End the work instead.');
-}
-
 export interface Remaining {
   readonly heldMinor: number;
   readonly spentMinor: number;
