@@ -2,7 +2,7 @@
 //
 // C35 (#2018, D17-14): `operations.record_capture_pool_review` records one closed
 // other-company adversarial review of the capture pool (migration
-// 20261020032000), a person's act under `operations:manage` in the business that
+// 20261028190000), a person's act under `operations:manage` in the business that
 // operates the installation, never an agent's, audited by the envelope. The
 // site runner reads the recorded identities into its fence's pool; three
 // distinct reviews of the pool version the fence runs now open a client's bound
