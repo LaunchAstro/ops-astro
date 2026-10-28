@@ -6,7 +6,9 @@
 // landed picture's bytes. Each filters by the caller's grant at the review's holder inside the
 // query (`covering.ts`), so a party grant reads no other client's review and a picture of
 // another business or out of reach is one answer with a picture that is not there. The review's
-// change requests (C57) carry their text: that read is the team's alone.
+// change requests (C57) carry their text: that read is the team's alone. One review's parts are
+// read in statements of their own, so its grant is judged again after the last of them
+// (`stillCovered`): a grant revoked or run out meanwhile reads nothing written since (S2276-1).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
@@ -16,6 +18,7 @@ import { readCarried, type CarriedPinView } from './carries.ts';
 import { DATABASE_STORAGE } from './storage.ts';
 import { readChangeRequests, type ChangeRequestView } from './change-requests.ts';
 import { decisionsOf, type DecisionView } from './decisions.ts';
+import { stillCovered } from './client-reviews.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -94,6 +97,10 @@ export async function readCoveredReview(
     correctionId: revision.correction_id,
   }));
   const held = { reviewId, taskId: review.task_id };
+  const pins = await readPins(tx, held);
+  const carried = await readCarried(tx, held, views.at(-1) ?? null);
+  const changeRequests = await readChangeRequests(tx, reviewId);
+  if ((await stillCovered(tx, covering, [reviewId])).size === 0) return undefined;
   return {
     reviewId,
     taskId: review.task_id,
@@ -104,9 +111,9 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins: await readPins(tx, held),
-    ...(await readCarried(tx, held, views.at(-1) ?? null)),
-    changeRequests: await readChangeRequests(tx, reviewId),
+    pins,
+    ...carried,
+    changeRequests,
   };
 }
 
