@@ -40,6 +40,12 @@ export const SITE_GRANTS: readonly { readonly from: string; readonly line: strin
   line: `ops_astro_app SELECT ops.capture_pool_reviews.${column}`,
 }));
 
+/**
+ * Installation-wide tables under row security: an insert outside the installation operator's own
+ * session meets the policy, never the table's constraints. C35 (#2018, 20261028190000).
+ */
+export const SITE_ROW_SECURED: ReadonlySet<string> = new Set(['ops.capture_pool_reviews']);
+
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
 export const SITE_EXECUTES: readonly string[] = ['public.party_site_under_correction'];
 
