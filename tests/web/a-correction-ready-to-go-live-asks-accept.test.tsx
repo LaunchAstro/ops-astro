@@ -4,7 +4,8 @@
 // #1988: the second approval of a site change. A correction the locate found,
 // waiting for its decision while its check holds, asks "Your change is ready
 // to go live. Accept?" with the text before and after, above Launch and
-// Decline; one whose check does not hold, or past its decision, asks nothing.
+// Decline; one whose check does not hold, whose Launch is held for a missing
+// review (#1781), or past its decision, asks nothing.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Correction } from '../../apps/web/src/assistant/correction-desks.ts';
@@ -24,6 +25,7 @@ const WAITING: Correction = {
   reason: null,
   refusal: null,
   receipts: null,
+  reviewMissingFor: null,
 };
 
 const drawn = (correction: Correction) =>
@@ -59,5 +61,11 @@ describe('a correction ready to go live', () => {
       const view = await drawn(correction);
       expect(view.find('[data-correction-ready]'), correction.state).toBeNull();
     }
+  });
+
+  it('asks nothing while Launch is held for a missing Astra review of the version shown (#1781)', async () => {
+    const view = await drawn({ ...WAITING, reviewMissingFor: 'v-1' });
+    expect(view.find('[data-correction-ready]')).toBeNull();
+    expect(view.find('[data-correction-launch-held]')).not.toBeNull();
   });
 });
