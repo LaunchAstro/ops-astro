@@ -3,9 +3,10 @@
 // `review.pin_comment` (C35, #2012): a comment on the review's task, pinned to a spot on one
 // width's capture of a revision. It is `review:comment` at the review's holder: the door asks
 // it there (`prepare.ts`), the review is locked and judged again in the statement, and the
-// key is read once more after the last lock wait, so a grant revoked while the pin waited
-// keeps nothing. An agent pins inside a delegation for the review's own task only, and only a
-// team note (`AGENT_AUDIENCES`), as its other comments are.
+// key is read once more after the last lock wait, an agent's after its identity waits too
+// (`agent-standing.ts`), so a grant revoked or run out while the pin waited keeps nothing. An
+// agent pins inside a delegation for the review's own task only, and only a team note
+// (`AGENT_AUDIENCES`), as its other comments are.
 //
 // The comment itself is `task.comment`'s (`writeTaskComment`): body, audience and storability
 // are judged there. The task is locked before the review, the order `review.open` takes.
@@ -39,7 +40,13 @@ import { readTaskSpine } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { lockTask } from './prepare.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { refused, type HandlerOutcome } from './outcome.ts';
+import {
+  isRefused,
+  refused,
+  type HandlerOutcome,
+  type JudgedLast,
+  type Refused,
+} from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import {
   AGENT_AUDIENCES,
@@ -101,7 +108,7 @@ interface Pinner {
  * The anchor, or its refusal: a revision id left out is the caller's to send, and a malformed
  * one names no revision, as a foreign one.
  */
-function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | HandlerOutcome {
+function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | Refused {
   if (typeof sent['revisionId'] !== 'string') {
     return refused(
       refuseCommand('FIELD_VALUE_INVALID', ['revisionId'], ['Send revisionId as an identifier.']),
@@ -117,7 +124,7 @@ function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | Ha
 }
 
 /** A live-view pin's own refusal before any record is read: its width and its selectors. */
-function liveRefusal(sent: Sent, anchor: Anchor): HandlerOutcome | undefined {
+function liveRefusal(sent: Sent, anchor: Anchor): Refused | undefined {
   const viewport = sent['liveViewport'];
   if (viewport === undefined) return undefined;
   if (viewport !== anchor.width) return refused(NOT_AT_WIDTH);
@@ -125,7 +132,23 @@ function liveRefusal(sent: Sent, anchor: Anchor): HandlerOutcome | undefined {
   return marksOnly ? undefined : refused(LIVE_QUOTE);
 }
 
-async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<HandlerOutcome> {
+/**
+ * The key, and an agent's delegation, read after the last lock wait: the refusal, or nothing.
+ * Asked again as the pin's `lastCheck`, since the agent path waits on its actor, login and
+ * audit chain after the pin returns (its last waits, `agent-standing.ts`).
+ */
+const endedAfterWaits =
+  (tx: TenantQuery, { delegation }: Pinner, covering: Covering, partyId: string | null) =>
+  async () => {
+    const stood = await standsAfterWaits(tx, {
+      covering,
+      partyId,
+      ...(delegation === undefined ? {} : { delegationId: delegation.id }),
+    });
+    return stood === 'stands' ? undefined : endedRefusal(stood, delegation !== undefined);
+  };
+
+async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast> {
   const anchor = anchorOf(sent);
   if (!('source' in anchor)) return anchor;
   const live = liveRefusal(sent, anchor);
@@ -166,13 +189,10 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<HandlerOutc
     sent['audience'],
     sent['audience'] === 'client' ? 'client' : undefined,
   );
-  if ('refusal' in written) return written;
-  const stood = await standsAfterWaits(tx, {
-    covering,
-    partyId: locked.review.partyId,
-    ...(by.delegation === undefined ? {} : { delegationId: by.delegation.id }),
-  });
-  return stood === 'stands' ? written : refused(endedRefusal(stood, by.delegation !== undefined));
+  if (isRefused(written)) return written;
+  const ended = endedAfterWaits(tx, by, covering, locked.review.partyId);
+  const first = await ended();
+  return first === undefined ? { ...written, lastCheck: ended } : refused(first);
 }
 
 /** A person's pin in the audiences `task.comment` lets them write; an agent credential's is a team note. */
@@ -206,7 +226,7 @@ export async function pinCommentAsAgent(
   },
   sent: Sent,
   delegation: Delegation,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   return await pin(
     tx,
     {
@@ -242,7 +262,7 @@ export const PIN_COMMENT: {
     },
     operands: Readonly<Record<string, never>>,
     delegation: Delegation,
-  ) => Promise<HandlerOutcome>;
+  ) => Promise<JudgedLast>;
 } = {
   authority: 'record',
   subjectTask: 'record',
