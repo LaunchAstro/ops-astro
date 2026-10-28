@@ -163,7 +163,6 @@ export {
   siteCatalogue,
   siteOperation,
 } from './site/operations.ts';
-export { compareCaptures, type PageObservation } from './site/captures.ts';
 export * from './site/capture-changes.ts';
 export {
   checkEnvelope,
