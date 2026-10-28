@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#1886 beside design F1: run.end whose delegating person's grants were revoked while it waited on the run still commits its stop, judged on its delegation alone."
+}

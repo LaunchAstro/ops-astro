@@ -287,7 +287,7 @@ async function runRow<O extends object>(
   if (shut !== undefined) return await settle(tx, session, request, digest, shut);
 
   // Judged again after the handler's last wait, holding no operation id.
-  const judged = { call, presented: verified, authority: operation.authority };
+  const judged = { call, presented: verified, asked: authorised.asked };
   const outcome = await workJudged(tx, judged, async () => await authorised.run(operands));
   if ('ended' in outcome) return await settle(tx, session, request, digest, outcome.ended, 'none');
   if (isRefused(outcome)) {

@@ -9,7 +9,7 @@ import {
   resolveDelegation,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Delegation, ScopeRequest, TenantQuery } from '../../../core-records/src/index.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { TypedOperation } from './agent-operations.ts';
@@ -32,11 +32,18 @@ const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
   ...NO_DELEGATION_FIXES.slice(1),
 ];
 
+/** What a record or purpose row's check asked, which the final standing check asks again. */
+export interface Asked {
+  readonly delegation: Delegation;
+  readonly request: ScopeRequest;
+}
+
 /**
  * What `authorise` answered: the refusal, or `run`, which serves the row
  * under the delegation the check resolved and, on a record row, on the task
  * it checked, so no later step resolves the credential or reads the body's id
- * again. The pre-pickup pair runs under none.
+ * again. The pre-pickup pair runs under none. `asked` is the check a record or
+ * purpose row passed (`agent-standing.ts` asks it again after the last wait).
  */
 export type Authorisation<O extends object> =
   | {
@@ -44,7 +51,7 @@ export type Authorisation<O extends object> =
       /** What the refusal's audit event records beside it: the acting delegation. */
       readonly attempted?: Readonly<Record<string, unknown>>;
     }
-  | { readonly run: (operands: O) => Promise<HandlerOutcome> };
+  | { readonly run: (operands: O) => Promise<HandlerOutcome>; readonly asked?: Asked };
 
 const refusing = <O extends object>(refusal: CommandRefusal): Authorisation<O> => ({ refusal });
 
@@ -109,14 +116,18 @@ export async function authorise<O extends object>(
   // the agent is told `DELEGATION_NARROWED` rather than shown a scope it
   // cannot use.
   if (operation.authority === 'purpose') {
-    const reach = await checkDelegatedAuthority(tx, delegation, {
+    const question: ScopeRequest = {
       collection: delegation.collections[0] ?? 'task',
       action: 'read',
       scope: delegation.purposeScope,
-    });
+    };
+    const reach = await checkDelegatedAuthority(tx, delegation, question);
     const { serve } = operation;
     return reach.ok
-      ? { run: async (operands) => await serve(tx, call, operands, delegation) }
+      ? {
+          run: async (operands) => await serve(tx, call, operands, delegation),
+          asked: { delegation, request: question },
+        }
       : refusing(reach.refusal);
   }
 
@@ -154,19 +165,23 @@ export async function authorise<O extends object>(
   }
 
   const named = await namedTaskId(tx, request, operation.subjectTask);
-  const decision = await checkDelegatedAuthority(tx, delegation, {
+  const question: ScopeRequest = {
     collection: declaration.collection,
     action: declaration.action,
     // Always the record, never the business: a business-scoped request under a
     // delegation is outside its purpose by construction, and the one-task
     // ceiling is the whole of what `purposeScope` buys.
     scope: { kind: 'record', id: named ?? delegation.purposeScope.id },
-  });
+  };
+  const decision = await checkDelegatedAuthority(tx, delegation, question);
   const { serve } = operation;
   // The task checked is the task served: `serve` is handed the id the check
   // was made on, never the body to read again.
   return decision.ok
-    ? { run: async (operands) => await serve(tx, call, operands, delegation, named) }
+    ? {
+        run: async (operands) => await serve(tx, call, operands, delegation, named),
+        asked: { delegation, request: question },
+      }
     : refusing(decision.refusal);
 }
 
