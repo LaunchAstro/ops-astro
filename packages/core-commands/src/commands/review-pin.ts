@@ -99,6 +99,22 @@ function anchorOf(sent: Sent): Extract<AnchorParse, { ok: true }>['anchor'] | Re
   );
 }
 
+/**
+ * The key, and an agent's delegation, read after the last lock wait: the refusal, or nothing.
+ * Asked again as the pin's `lastCheck`, since the agent path waits on its actor, login and
+ * audit chain after the pin returns (its last waits, `agent-standing.ts`).
+ */
+const endedAfterWaits =
+  (tx: TenantQuery, { delegation }: Pinner, covering: Covering, partyId: string | null) =>
+  async () => {
+    const stood = await standsAfterWaits(tx, {
+      covering,
+      partyId,
+      ...(delegation === undefined ? {} : { delegationId: delegation.id }),
+    });
+    return stood === 'stands' ? undefined : endedRefusal(stood, delegation !== undefined);
+  };
+
 async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast> {
   const anchor = anchorOf(sent);
   if (!('source' in anchor)) return anchor;
@@ -137,18 +153,8 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast>
     sent['audience'] === 'client' ? 'client' : undefined,
   );
   if (isRefused(written)) return written;
-  const standing = {
-    covering,
-    partyId: locked.review.partyId,
-    ...(by.delegation === undefined ? {} : { delegationId: by.delegation.id }),
-  };
-  const ended = async () => {
-    const stood = await standsAfterWaits(tx, standing);
-    return stood === 'stands' ? undefined : endedRefusal(stood, by.delegation !== undefined);
-  };
+  const ended = endedAfterWaits(tx, by, covering, locked.review.partyId);
   const first = await ended();
-  // The agent path waits on its actor, login and audit chain after this returns (its last
-  // waits, `agent-standing.ts`), so the key and the delegation are read once more after them.
   return first === undefined ? { ...written, lastCheck: ended } : refused(first);
 }
 
