@@ -8,6 +8,8 @@
 // The write-off wins (#2277): the outcome gives the replacement's hold back but
 // resumes nothing, so no fresh hold is reserved for the step, and a pickup of
 // any of the step's holds is refused with nothing written and no money moved.
+// The reconciliation pass, proving that replacement's effect absent, resumes
+// nothing either: no hold is reserved, and the replacement waits for a person.
 // With no write-off, the same `nothing_happened` resumes the step and a pickup
 // runs it.
 
@@ -122,5 +124,26 @@ describe.skipIf(url === undefined)(
       expect(seen.held).toStrictEqual(['2500', '2500']);
       expect(seen.picked.filter((code) => code === 'applied')).toStrictEqual(['applied']);
     });
+  },
+);
+
+describe.skipIf(url === undefined)(
+  'a write-off wins over the pass proving its dispatched replacement absent',
+  { timeout: 60_000 },
+  () => {
+    it.each([0, 700])(
+      'written off at %i, the pass proves the replacement absent and reserves nothing for the step',
+      async (amount) => {
+        const { next } = await dispatchedReplacementHeldUnknown(amount);
+        const before = await h.t3b.snapshot();
+        const passed = await h.reconcile();
+        expect(passed.find((one) => one.attemptId === next.attemptId)).toMatchObject({
+          answer: 'absent',
+          reason: expect.stringMatching(/^not resumed: /u) as unknown,
+        });
+        // No fresh hold or attempt for the step: the replacement waits for a person.
+        expect(await h.t3b.snapshot()).toStrictEqual(before);
+      },
+    );
   },
 );
