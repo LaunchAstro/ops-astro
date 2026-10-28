@@ -7,9 +7,10 @@
 // again, the server's refusal quoted as it came either way. Nothing else in
 // the drawer moves, and nothing is retried. A click after an unknown outcome
 // reuses the operation id kept for that body in that session, from any card
-// that sends it, so a committed accept replays (operations/client.ts); a
-// settled answer ends the attempt. That card stays `unknown`, its accept kept,
-// even once a newer version lands.
+// that sends it, so a committed accept replays (operations/client.ts). The
+// attempt ends once no card that sent it is in flight or unknown: one card's
+// settled answer leaves the id for another card still waiting or unanswered.
+// That card stays `unknown`, its accept kept, even once a newer version lands.
 
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
@@ -27,9 +28,13 @@ export interface CardStore {
 /**
  * The operation id of each attempt whose outcome is still unknown, by session
  * and by the whole body the register digests: two cards that send one body
- * are one accept, and two tabs' cards (each its conversation) are two.
+ * are one accept, and two tabs' cards (each its conversation) are two. It
+ * holds the clicks still in flight and the cards whose answer was lost.
  */
-const attempts = new Map<string, string>();
+const attempts = new Map<
+  string,
+  { readonly operationId: string; flying: number; readonly unknown: Set<string> }
+>();
 
 /**
  * The register's canonical form (core-digest, which loads node:crypto, so
@@ -70,10 +75,19 @@ export async function acceptPlanCard(
   const conversationId = store.chat(key)?.conversationId ?? null;
   const body = acceptBody(offer, conversationId);
   const attempt = JSON.stringify([grantKey ?? null, canonical(body)]);
-  const operationId = attempts.get(attempt) ?? client.newOperationId();
-  attempts.set(attempt, operationId);
+  const held = attempts.get(attempt) ?? {
+    operationId: client.newOperationId(),
+    flying: 0,
+    unknown: new Set<string>(),
+  };
+  attempts.set(attempt, held);
+  held.flying += 1;
+  held.unknown.delete(id);
+  const { operationId } = held;
   const settled = settle(await client.mutate('task.accept_plan', body, { operationId }));
-  if (settled.kind !== 'unknown') attempts.delete(attempt);
+  held.flying -= 1;
+  if (settled.kind === 'unknown') held.unknown.add(id);
+  if (held.flying === 0 && held.unknown.size === 0) attempts.delete(attempt);
   store.update((current) =>
     settlePlan(current, key, id, {
       state: SETTLED[settled.kind],
