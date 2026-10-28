@@ -170,7 +170,8 @@ async function readCast() {
          join public.actors a on a.business_id = p.business_id and a.person_id = p.id
          join public.person_logins pl on pl.business_id = p.business_id and pl.person_id = p.id
          join public.logins l on l.id = pl.login_id
-        where p.business_id = $1 and l.subject = any($2) and pl.active`,
+        where p.business_id = $1 and l.provider = 'supabase' and l.subject = any($2)
+          and pl.active`,
       [tx.businessId, [subjects.get(ADMIN) ?? '', subjects.get(MEMBER) ?? '']],
     );
     // The seeded agent, never the helper this script adds beside it.
