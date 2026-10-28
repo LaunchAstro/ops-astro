@@ -237,7 +237,7 @@ export async function deployWeb(
 }
 
 const ROLLED_BACK =
-  "production's last web act is a rollback, and Vercel gives the page no domain until a deploy is promoted: deploy a version first, which promotes itself";
+  'production was rolled back since its last deploy, and Vercel gives the page no domain until a deploy is promoted: deploy a version first, which promotes itself';
 
 const UNCHECKED =
   'no version was named, so the deploy that takes the page off was not checked; outside an incident, name it with --version and --artefacts';

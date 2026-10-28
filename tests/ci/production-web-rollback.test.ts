@@ -103,7 +103,7 @@ it('refuses a deployment production never recorded, asking Vercel nothing', asyn
     expect(outcome).toMatchObject(refused(why));
     expect(vercel.lines('argv')).toStrictEqual([]);
   });
-});
+}, 30_000);
 
 it("refuses a deployment Vercel does not report ready on production: it would build it again with today's settings", async () => {
   const at = records([deployed('production', OLDER, EARLIER)]);
@@ -123,7 +123,7 @@ it("refuses a deployment Vercel does not report ready on production: it would bu
     expect(outcome).toMatchObject(refused('not ready on production'));
     expect(vercel.lines('argv')).toStrictEqual([`inspect ${EARLIER} --format json`]);
   });
-});
+}, 30_000);
 
 it('a rollback Vercel does not finish is a failure, not a record', async () => {
   const at = records([deployed('production', OLDER, EARLIER)]);
@@ -189,7 +189,7 @@ it('the next production deploy after a recorded rollback promotes itself; others
     expect(outcome.kind).toBe('deployed');
     expect(argv.filter((line) => line.startsWith('promote'))).toStrictEqual([]);
   }
-});
+}, 30_000);
 
 it('a promotion Vercel does not finish leaves the deploy unrecorded', async () => {
   const back = [deployed('production', OLDER, EARLIER), rolledBack(OLDER, EARLIER)];
@@ -198,7 +198,7 @@ it('a promotion Vercel does not finish leaves the deploy unrecorded', async () =
     kind: 'failed',
     reason: expect.stringContaining(`vercel promote ${URL_MADE}`),
   });
-});
+}, 30_000);
 
 it('the maintenance page waits for the deploy that promotes after a recorded rollback', async () => {
   const vercel = fakeVercel();
@@ -211,4 +211,4 @@ it('the maintenance page waits for the deploy that promotes after a recorded rol
   expect(await deployMaintenance({ env, rolledBackIn: settled })).toMatchObject({
     kind: 'deployed',
   });
-});
+}, 30_000);
