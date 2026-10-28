@@ -15,10 +15,12 @@
 // 13); demoting sends one command, and revoking waits on a confirmation
 // first. Every command goes through `useMoneyCommand`, since mandate:manage
 // needs a fresh sign-in (C59), says its refusal in the server's words, and
-// reads the region again; a form clears only once its write succeeds. A write
-// held for that sign-in is withdrawn when the scope bar moves or the form that
-// sent it is cancelled, and one whose answer was lost goes again under its
-// operation.
+// reads the region again; a form clears only once its write succeeds. A write held for that
+// sign-in locks every form until it settles, and is withdrawn when the client changes, the last
+// client leaves or its form is cancelled; one whose answer was lost goes again under its operation.
+//
+// The chosen client and every client's forms are kept above the read (`graduation-drafts.ts`),
+// so an outage gives them back; a standing approval files under its draft id, one per intent.
 
 import { useState, type ReactElement } from 'react';
 import { Empty, SectionHead } from '@launchastro/ui';
@@ -34,8 +36,15 @@ import type { StepUpAsk } from '../../records/use-money-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
-import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
-import { ConfirmRevokeMandate, GraduationRow, Mandate } from './graduation-rows.tsx';
+import {
+  GraduationDrafts,
+  useChosenClient,
+  useMandateDraft,
+  useLeftEmpty,
+  useOpenPromotion,
+} from './graduation-drafts.ts';
+import { MandateForm } from './graduation-forms.tsx';
+import { ConfirmRevokeMandate, GraduationRow, Mandate, promoted } from './graduation-rows.tsx';
 import { promotionOf, useSend, type Drop, type Send } from './graduation-send.ts';
 
 type Client = ConnectionGraduationResult['clients'][number];
@@ -72,14 +81,13 @@ function StandingApprovals(props: {
   readonly client: Client;
   readonly mandates: readonly MandateView[];
   readonly rows: readonly GraduationRowView[];
+  readonly drafts: GraduationDrafts;
   readonly send: Send;
   readonly locked: boolean;
 }): ReactElement {
   const { client, send, locked } = props;
   const [revoking, setRevoking] = useState<MandateView | null>(null);
-  const file = (mandate: MandateFiling, done: () => void): void => {
-    send('mandate.file', { clientId: client.id, ...mandate }, undefined, done);
-  };
+  const form = useMandateDraft(props.drafts, client.id, send);
   return (
     <div className="card">
       <div className="card__title">Standing approvals</div>
@@ -107,7 +115,7 @@ function StandingApprovals(props: {
           ))
         )}
       </div>
-      <MandateForm key={client.id} scopes={client.scopes} file={file} locked={locked} />
+      <MandateForm key={client.id} scopes={client.scopes} {...form} locked={locked} />
       <p className="approval__meta">
         Core checks the classes, client, ceiling, expiry and revocation at every effect; nothing
         reads the sentence.
@@ -119,15 +127,17 @@ function StandingApprovals(props: {
 function Graduation(props: {
   readonly client: Client;
   readonly rows: readonly GraduationRowView[];
+  readonly mandates: readonly MandateView[];
+  readonly drafts: GraduationDrafts;
   readonly send: Send;
   readonly drop: Drop;
   readonly locked: boolean;
 }): ReactElement {
-  const { client, send } = props;
-  const [promoting, setPromoting] = useState<string | null>(null);
+  const { client, drafts, send } = props;
+  const promoting = useOpenPromotion(drafts, client.id);
   const flip = (row: GraduationRowView): void => {
-    if (row.state === 'promoted') send('graduation.demote', { classId: row.id }, row.revision);
-    else setPromoting(row.id);
+    if (promoted(row)) send('graduation.demote', { classId: row.id }, row.revision);
+    else drafts.openPromotion(client.id, row.id);
   };
   return (
     <div className="card card--flush">
@@ -136,18 +146,25 @@ function Graduation(props: {
           <GraduationRow
             key={row.id}
             row={row}
+            holder={props.mandates.find((one) => one.id === row.heldBy)?.label ?? null}
             clientLabel={client.label}
-            promoting={promoting === row.id}
+            promoting={promoting?.classId === row.id ? promoting : null}
+            edit={(change) => drafts.editPromotion(client.id, change)}
             locked={props.locked}
             flip={() => flip(row)}
             promote={(filing) => {
-              send('graduation.promote', { classId: row.id, ...filing }, row.revision, () =>
-                setPromoting(null),
+              send(
+                'graduation.promote',
+                { classId: row.id, ...filing },
+                row.revision,
+                (settled) => {
+                  if (settled.kind === 'ok') drafts.closePromotion(client.id, row.id);
+                },
               );
             }}
             cancel={() => {
               props.drop(promotionOf(row.id));
-              setPromoting(null);
+              drafts.closePromotion(client.id, row.id);
             }}
           />
         ))}
@@ -191,28 +208,22 @@ function ClientMocks(props: { readonly scoped: ReactElement }): ReactElement {
 
 function Shown(props: {
   readonly region: ConnectionGraduationResult;
+  readonly drafts: GraduationDrafts;
   readonly send: Send;
   readonly drop: Drop;
   readonly said: string | null;
   readonly locked: boolean;
   readonly stepUp: StepUpAsk | null;
 }): ReactElement | null {
-  const { region, send, locked } = props;
-  const [chosen, choose] = useState(region.clients[0]?.id ?? '');
-  const client = region.clients.find((one) => one.id === chosen) ?? region.clients[0];
+  const { region, drafts, send, locked } = props;
+  const [client, selectClient] = useChosenClient(region.clients, drafts, props.drop);
   if (client === undefined) return null;
   const rows = region.rows.filter((one) => one.clientId === client.id);
+  const mandates = region.mandates.filter((one) => one.clientId === client.id);
   const scoped = <span data-scope-client>{client.label}</span>;
   return (
     <>
-      <ScopeBar
-        clients={region.clients}
-        chosen={client.id}
-        choose={(id) => {
-          props.drop();
-          choose(id);
-        }}
-      />
+      <ScopeBar clients={region.clients} chosen={client.id} choose={selectClient} />
       <section className="gradsec" data-section="010" id="graduation">
         <SectionHead index="010" title="Graduation" right={scoped} />
         <Notices said={props.said} stepUp={props.stepUp} />
@@ -220,6 +231,8 @@ function Shown(props: {
           key={client.id}
           client={client}
           rows={rows}
+          mandates={mandates}
+          drafts={drafts}
           send={send}
           drop={props.drop}
           locked={locked}
@@ -227,8 +240,9 @@ function Shown(props: {
         <StandingApprovals
           key={`approvals-${client.id}`}
           client={client}
-          mandates={region.mandates.filter((one) => one.clientId === client.id)}
+          mandates={mandates}
           rows={rows}
+          drafts={drafts}
           send={send}
           locked={locked}
         />
@@ -252,6 +266,9 @@ export function GraduationRegion(props: {
     deps: [],
   });
   const { command, send, drop } = useSend(client, reload);
+  // Above the read, so an outage keeps it; the region's key is the grant's.
+  const [drafts] = useState(() => new GraduationDrafts());
+  useLeftEmpty(drafts, state.outcome === 'empty', drop);
   return (
     <div className="secs" data-graduation>
       <RecordState
@@ -269,10 +286,11 @@ export function GraduationRegion(props: {
         {(region) => (
           <Shown
             region={region}
+            drafts={drafts}
             send={send}
             drop={drop}
             said={command.because}
-            locked={command.locked}
+            locked={command.locked || command.stepUp !== null}
             stepUp={command.stepUp}
           />
         )}

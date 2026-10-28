@@ -12,10 +12,12 @@ import { MandateForm } from '../../apps/web/src/screens/connections/graduation-f
 import { drawn } from './shipped-sheets.ts';
 
 const ignore = (): void => undefined;
+// The form as first drawn, before anything is typed (graduation-drafts.ts's blank draft).
+const DRAFT = { label: '', scope: '', refuses: false, ceiling: '', expiry: '', draftId: null };
 
 const FORM = renderToStaticMarkup(
   <section className="gradsec">
-    <MandateForm scopes={['*']} file={ignore} locked={false} />
+    <MandateForm scopes={['*']} draft={DRAFT} edit={ignore} file={ignore} locked={false} />
   </section>,
 );
 

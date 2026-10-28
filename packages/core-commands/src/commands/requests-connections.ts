@@ -29,6 +29,7 @@ export type ConnectionsRequest<Envelope> =
   | ({
       readonly command: 'mandate.file';
       readonly clientId: string;
+      readonly draftId: string;
       readonly classes?: unknown;
       readonly refuses?: unknown;
       readonly ceiling?: unknown;

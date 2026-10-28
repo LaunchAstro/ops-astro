@@ -24,6 +24,9 @@ export const BRAVO_CANARY: string = `bravo-canary-${randomUUID()}`;
 /** C59's step-up is asked of a money key; this is the statement it reads its clock with. */
 export const STEP_UP_CLOCK = 'floor(extract(epoch from clock_timestamp()))';
 
+/** A filing's draft is its operation's, so a retry is the same filing, unless the case names one. */
+const draftOf = (name: string, body: Readonly<Record<string, unknown>>) =>
+  name === 'mandate.file' ? { draftId: body['operationId'] ?? randomUUID() } : {};
 export const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
 
@@ -207,7 +210,7 @@ export async function buildMandatesWorld(part: string): Promise<MandatesWorld> {
     await post(
       api,
       path(business, name),
-      { operationId: randomUUID(), ...body },
+      { operationId: randomUUID(), ...draftOf(name, body), ...body },
       authorised(await bearer(who, signIn)),
     );
 
