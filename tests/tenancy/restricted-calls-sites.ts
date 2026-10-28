@@ -24,7 +24,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35 (20261028142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
-  // C57 (20261019160000): a change request is filed once and decided once, by column.
+  // C57 (20261028160000): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
 ];
 
@@ -73,7 +73,7 @@ export const SITE_UPDATES = [
   },
   {
     table: 'public.review_change_requests',
-    from: '20261019160000',
+    from: '20261028160000',
     columns: [
       'state',
       'decided_by_actor_id',
