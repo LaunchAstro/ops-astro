@@ -109,7 +109,7 @@ describe.skipIf(serverUrl === undefined)('the task read judged last through its 
         next: codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id })),
       }).toEqual({ code: 'SCOPE_NOT_GRANTED', leaked: false, next: 'SCOPE_NOT_GRANTED' });
     } finally {
-      await blocker?.catch(() => undefined);
+      await blocker?.catch(() => null);
       await holder.close();
     }
   }, 30_000);
