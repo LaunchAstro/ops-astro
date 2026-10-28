@@ -370,3 +370,125 @@ it.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+it.skipIf(serverUrl === undefined)(
+  'a credential issue replayed after its issuer’s credential grant expired in the audit wait hands back no secret',
+  async () => {
+    const cy = await enrol(world.db.app, world.business, 'Cy Hale');
+    const grantId = await world.db.app.withBusiness(world.business, async (tx) => {
+      await grantTo(tx, cy, 'write', WHOLE_BUSINESS);
+      return await grantTo(tx, cy, 'write', WHOLE_BUSINESS, false, 'credential');
+    });
+    const issue = {
+      command: 'credential.issue',
+      operationId: randomUUID(),
+      scope: [{ collection: 'task', action: 'write' }],
+      purpose: 'an issue replayed across its grant end',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    };
+    const first = await send(cy, issue);
+    if (isCommandRefusal(first)) throw new Error(`credential.issue refused ${first.code}`);
+    const secret = String(first.detail['credential']);
+    await world.db.admin.execute(
+      `update public.grants set expires_at = clock_timestamp() + interval '2 seconds' where id = $1`,
+      [grantId],
+    );
+    const answer = await waitingOnTheChain(
+      async (replayer) => await send(cy, issue, replayer),
+      async () => await pastExpiry('grants', grantId),
+    );
+    const audit = await world.auditFor(issue.operationId);
+    expect({
+      answer: codeOf(answer),
+      leaked: JSON.stringify(answer).includes(secret),
+      replayed: audit.some(({ outcome }) => outcome === 'replayed'),
+      last: audit.at(-1),
+    }).toStrictEqual({
+      answer: 'SCOPE_NOT_GRANTED',
+      leaked: false,
+      replayed: false,
+      last: { outcome: 'refused', code: 'SCOPE_NOT_GRANTED' },
+    });
+  },
+);
+
+/** `body` replayed by the agent behind the held chain while `delegationId` runs out. */
+async function agentReplayAcrossExpiry(
+  body: Body,
+  credential: string,
+  delegationId: string,
+): Promise<CommandResult> {
+  await world.db.admin.execute(
+    `update public.delegations set expires_at = clock_timestamp() + interval '2 seconds'
+      where business_id = $1 and id = $2`,
+    [world.business, delegationId],
+  );
+  return await waitingOnTheChain(
+    async (replayer) =>
+      (await executeAgentCommand(
+        replayer,
+        world.business,
+        { provider: 'supabase', subject: world.agentSubject() },
+        credential,
+        body as never,
+      )) as CommandResult,
+    async () => await pastExpiry('delegations', delegationId),
+  );
+}
+
+it.skipIf(serverUrl === undefined)(
+  'a handback replayed after its settled delegation expired in the audit wait is refused',
+  async () => {
+    const decider = await world.decider('handback');
+    const picked = await world.pickUp(decider, 'a handback replayed across its delegation end');
+    const handback = {
+      command: 'task.handback',
+      operationId: randomUUID(),
+      leaseId: String(picked.detail['leaseId']),
+      fence: Number(picked.detail['fence']),
+      outcome: 'completed',
+      report: { wrote: 'a draft' },
+    };
+    expect(codeOf(await world.asAgent(handback, picked.credential))).toBe('applied');
+    const answer = await agentReplayAcrossExpiry(
+      handback,
+      picked.credential,
+      String(picked.detail['delegationId']),
+    );
+    expect({
+      answer: codeOf(answer),
+      audit: await world.auditFor(handback.operationId),
+    }).toStrictEqual({
+      answer: 'DELEGATION_NOT_LIVE',
+      audit: [
+        { outcome: 'applied', code: null },
+        { outcome: 'refused', code: 'DELEGATION_NOT_LIVE' },
+      ],
+    });
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  'an agent’s capabilities replayed after its delegation expired in the audit wait are refused',
+  async () => {
+    const decider = await world.decider('capabilities');
+    const picked = await world.pickUp(decider, 'capabilities replayed across a delegation end');
+    const capabilities = { command: 'session.capabilities', operationId: randomUUID() };
+    expect(codeOf(await world.asAgent(capabilities, picked.credential))).toBe('applied');
+    const answer = await agentReplayAcrossExpiry(
+      capabilities,
+      picked.credential,
+      String(picked.detail['delegationId']),
+    );
+    expect({
+      answer: codeOf(answer),
+      audit: await world.auditFor(capabilities.operationId),
+    }).toStrictEqual({
+      answer: 'DELEGATION_NOT_LIVE',
+      audit: [
+        { outcome: 'applied', code: null },
+        { outcome: 'refused', code: 'DELEGATION_NOT_LIVE' },
+      ],
+    });
+  },
+);
