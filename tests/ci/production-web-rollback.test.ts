@@ -105,6 +105,20 @@ it('refuses a deployment production never recorded, asking Vercel nothing', asyn
   });
 }, 30_000);
 
+it('refuses a target that is not a deployment address before Vercel is asked, recorded or not', async () => {
+  const targets = ['--help', `${EARLIER}/`, 'https://example.com'];
+  await each(targets, async (target) => {
+    const vercel = fakeVercel({ inspect: inspected(EARLIER) });
+    const outcome = await rollBackWeb(target, {
+      env: production(vercel.path),
+      records: records([deployed('production', OLDER, target)]),
+      authorised: held,
+    });
+    expect(outcome).toMatchObject(refused('is not a deployment address'));
+    expect(vercel.lines('argv')).toStrictEqual([]);
+  });
+}, 30_000);
+
 it("refuses a deployment Vercel does not report ready on production: it would build it again with today's settings", async () => {
   const at = records([deployed('production', OLDER, EARLIER)]);
   const answers = [
