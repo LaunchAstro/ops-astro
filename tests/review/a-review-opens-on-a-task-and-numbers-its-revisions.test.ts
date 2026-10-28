@@ -32,6 +32,7 @@ const shown = (
   digest: opened['digest'],
   captures,
   decision: null,
+  correctionId: null,
 });
 
 describe.skipIf(serverUrl === undefined)('C35 review records', () => {
