@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (Sol S2243-1): the reconciliation pass has one deadline for all its businesses, so two businesses stalled on a lock hold a request no longer than one does, within the #1411 bound"
+}
