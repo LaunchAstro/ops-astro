@@ -13,7 +13,7 @@ The Matt Pocock loop routes the work. No other routing block applies.
 
 `/grill-with-docs`, `/to-spec`, `/to-tickets`, `/implement`, `/code-review`.
 Confirm unresolved seams and the ticket breakdown with the human. Small work
-starts at `/implement`. Pstack supplies standards here.
+starts at `/implement`. Pstack supplies standards.
 
 Read [current decisions](docs/current-decisions.md) and the ticket before
 work. Read [model roles](docs/agents/model-roles.md) for fresh context,
@@ -30,7 +30,7 @@ identified manifest, as [review checkpoints](docs/agents/review-checkpoint.md)
 requires.
 
 The final ticket verifies the integrated feature. Done is a checked artefact.
-Another company's model reviews the builder's work; Copilot reviews
+Another company's frontier model reviews the builder's work; Copilot reviews
 the hosted revision.
 The merge rule: an agent merges on Nathan's credential once every required
 check is green on the head being merged; a change touching one of the eight
