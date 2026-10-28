@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The picture holds only where its browser reads the page as the observation did. A policy in the
-// page's own markup can drop an inline sheet the observation read, so such a page is refused before
-// any browser starts; a sheet's copy is served as UTF-8 only where a browser's order (BOM, header,
-// `@charset`, the referrer's encoding) gives UTF-8 for it, and any other sheet fails the picture.
+// page's own markup that names a style source can drop an inline sheet the observation read, so
+// such a page is refused before any browser starts; a sheet's copy is served as UTF-8 only where
+// a browser's order (BOM, header, `@charset`, the referrer's encoding) gives UTF-8 for it, and any
+// other sheet fails the picture.
 // The browser here is a stand-in that asks for what the route serves, so no Chromium is needed.
+import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import {
   capturePicture,
@@ -66,8 +68,26 @@ it.each([
     'in the body',
     '<p>Hi</p><meta http-equiv="content-security-policy" content="style-src \'none\'">',
   ],
+  [
+    'under the fallback',
+    '<meta http-equiv=content-security-policy content="default-src \'self\'">',
+  ],
+  ['for elements', '<meta http-equiv=content-security-policy content="style-src-elem \'self\'">'],
+  ['for attributes', '<meta http-equiv=content-security-policy content="style-src-attr \'none\'">'],
+  [
+    'after another directive, with tabs',
+    '<meta http-equiv=content-security-policy content="img-src *;\tSTYLE-SRC\t\'none\'">',
+  ],
+  [
+    'as a second policy',
+    '<meta http-equiv=content-security-policy content="img-src *, default-src \'none\'">',
+  ],
+  [
+    'in a second tag',
+    '<meta http-equiv=content-security-policy content="img-src *"><meta http-equiv=content-security-policy content="style-src \'none\'">',
+  ],
 ])(
-  'a page whose markup declares its own policy %s is refused before the browser starts',
+  'a page whose markup declares its own style policy %s is refused before the browser starts',
   async (_, policy) => {
     const browser = standIn([], []);
     const picture = await capturePicture(
@@ -85,10 +105,6 @@ it.each([
 // A browser applies no sheet of another type, and of titled sets only the preferred one, so
 // any of these could leave a sheet the observation read out of the picture with no request missed.
 it.each([
-  [
-    'a policy with no inline sheet',
-    '<meta http-equiv=content-security-policy content="img-src \'none\'"><p>Hi</p>',
-  ],
   ['a style of another type', '<style type="text/plain">p{color:red}</style><p>Hi</p>'],
   [
     'a style type with parameters',
@@ -161,6 +177,43 @@ it.each([
     world(`${sheet}<p>Hi</p>`, { [SHEET]: 'p{color:red}' }),
     standIn(links, []),
   );
+  expect(picture.ok).toBe(true);
+});
+
+// A policy blocks an inline sheet or a style attribute only under `default-src` or a `style-src`
+// directive; every other source it limits reaches the route, which refuses all but sheets anyway.
+// agencyastro.com serves such a policy in its markup (fixtures/agency-about, about.live.html).
+const ABOUT = readFileSync(
+  new URL('fixtures/agency-about/about.live.html', import.meta.url),
+  'utf8',
+);
+const AGENCY_POLICY = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/u.exec(
+  ABOUT,
+)?.[1];
+
+it.each([
+  ['the policy agencyastro.com serves', AGENCY_POLICY],
+  ['an image policy', "img-src 'none'"],
+  ['no directives', ''],
+  ['a directive no browser knows', "ſtyle-src 'none'; style-srcx 'none'"],
+])(
+  'a page whose markup declares %s, naming no style source, still gets its picture',
+  async (_, policy) => {
+    expect(policy).toBeTypeOf('string');
+    const page = `<meta http-equiv="Content-Security-Policy" content="${policy}"><style>p{color:red}</style><p style="margin:0">Hello</p>`;
+    const browser = standIn([], []);
+    const picture = await capturePicture(PAGE, world(page), browser);
+    expect({ ok: picture.ok, started: browser.started }).toEqual({ ok: true, started: 1 });
+  },
+);
+
+it('the agency about page, served with its own policy, gets its picture', async () => {
+  const sheets = [...ABOUT.matchAll(/<link rel="stylesheet" href="([^"]+)">/gu)].map(
+    ([, href]) => new URL(href ?? '', PAGE).href,
+  );
+  expect(sheets).toHaveLength(2);
+  const css = Object.fromEntries(sheets.map((href) => [href, 'p{color:red}']));
+  const picture = await capturePicture(PAGE, world(ABOUT, css), standIn(sheets, []));
   expect(picture.ok).toBe(true);
 });
 
