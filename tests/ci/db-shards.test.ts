@@ -80,15 +80,15 @@ function balance(
   return { heaviest: Math.max(...loads), bound: Math.max(longest, (total / count) * 1.1) };
 }
 
-// DIRSHARD13, the director's 19 October 2026 decision: 13 shards (12 under RELAYSHARD1830,
-// 13 October), so a merge group runs about 21 jobs at once and two groups fit the account's 60.
-// At most 20 minutes of measured items a shard (19.2 at this plan), beside about a minute of
-// checkout, install and the migrated template, well inside the job's 35-minute limit. A plan
-// past it needs more shards or a finer split.
+// DIRSHARD14, the director's 28 October 2026 decision: 14 shards (13 under DIRSHARD13,
+// 19 October), so a merge group runs about 22 jobs at once and two groups fit the account's 60.
+// At most 20 minutes of measured items a shard (13 had reached 20.0 by 28 October), beside about
+// a minute of checkout, install and the migrated template, well inside the job's 35-minute limit.
+// A plan past it needs more shards or a finer split.
 const SHARD_ITEM_SECONDS = 20 * 60;
 
-it('the run is split 13 ways, each shard near its share', () => {
-  expect(shardCount).toBe(13);
+it('the run is split 14 ways, each shard near its share', () => {
+  expect(shardCount).toBe(14);
   const { heaviest, bound } = balance(items, timings, shardCount);
   expect(heaviest).toBeLessThanOrEqual(bound);
   expect(heaviest, 'the heaviest shard, in seconds of measured items').toBeLessThanOrEqual(

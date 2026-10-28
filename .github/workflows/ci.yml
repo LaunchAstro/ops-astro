@@ -524,7 +524,10 @@ jobs:
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
-      # 13 since DIRSHARD13 (director, 19 October 2026), up from 12
+      # 14 since DIRSHARD14 (director, 28 October 2026): with #2121's suites
+      # the 13 shards of DIRSHARD13 (19 October 2026) carried 1200.2 to 1201.5 s
+      # of items each (run 40750019356), past the 20-minute cap; 14 run about
+      # 22 jobs a group, so two groups still fit. 13 was up from 12
       # (RELAYSHARD1830, 13 October 2026, down from 30 under CIITEM3): the
       # account runs 60 jobs at once and one merge group took 53 of them at 30
       # (run 38366609090), so a second group waited for the first. By the green
@@ -532,11 +535,11 @@ jobs:
       # shard at 12, past the 20-minute cap tests/ci/db-shards.test.ts holds;
       # 13 hold about 1152 s of items each, plus about a minute of setup, and
       # a group runs about 21 jobs at once, so two groups still fit.
-      # scripts/db-census.ts proves the 13- and 30-way splits hold the same
+      # scripts/db-census.ts proves the 14- and 30-way splits hold the same
       # items and tests. One line, which tests/ci/db-shards.test.ts reads.
       matrix:
         # prettier-ignore
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
