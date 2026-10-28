@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2240 (S2243-4): with the driver's cancel lost, the server's limit on each statement and the connection closed once the cancel is not taken still answer hosted health within the shared request bound"
+}

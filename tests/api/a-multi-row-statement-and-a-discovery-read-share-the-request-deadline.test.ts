@@ -17,8 +17,12 @@ import {
   type BoundWorld,
 } from './recovery-pass-bound-world.ts';
 
-/** How long the first lock is held: past half the deadline, so a fresh wait for the second ends past the bound. */
-const FIRST_HELD_MS = 1_800;
+/**
+ * When the first lock goes, from the request: past half the deadline, so a
+ * fresh wait for the second ends past the bound, and early enough that the
+ * second wait is seen before the deadline ends it.
+ */
+const FIRST_HELD_MS = 1_500;
 
 /** Two sent model calls on the expired lease, which the sweep holds in one UPDATE. */
 async function twoSentCalls(world: BoundWorld): Promise<readonly string[]> {
@@ -40,8 +44,8 @@ async function twoSentCalls(world: BoundWorld): Promise<readonly string[]> {
 }
 
 /**
- * Hold `first` and `second` in two sessions, let `first` go after
- * `FIRST_HELD_MS`, and answer whether the request came back within the bound
+ * Hold `first` and `second` in two sessions, let `first` go `FIRST_HELD_MS`
+ * after the request, and answer whether the request came back within the bound
  * with the statement matching `pattern` still the one waiting.
  */
 async function heldInTurn(
@@ -59,11 +63,13 @@ async function heldInTurn(
   const answer = withinBound(world.handle(request('/api/health')), started);
   await expect.poll(async () => await world.waiting(pattern)).toBeDefined();
   const before = await world.waiting(pattern);
-  await sleep(FIRST_HELD_MS);
+  await sleep(started + FIRST_HELD_MS - performance.now());
   await one.query('rollback');
-  expect(await world.waiting(pattern), 'the same statement waits on the second lock').toEqual(
-    before,
-  );
+  await expect
+    .poll(async () => await world.waiting(pattern), {
+      message: 'the same statement waits on the second lock',
+    })
+    .toEqual(before);
   const result = await answer;
   console.log(pattern, result, Math.round(performance.now() - started), 'ms');
   return result;

@@ -62,8 +62,32 @@ export async function sleep(ms: number): Promise<void> {
   });
 }
 
-/** A business with live work on a lease that has expired, and the function that recovers it. */
-export async function boundWorld(part: string): Promise<BoundWorld> {
+/** The hosted function over `part`'s one business, on `databaseUrl` and the lookup login's `lookupUrl`. */
+function functionOver(
+  part: string,
+  databaseUrl: string,
+  lookupUrl: string,
+): (request: Request) => Promise<Response> {
+  const keyId = `test/${part}@1`;
+  return createFunctionHandler({
+    DATABASE_URL: databaseUrl,
+    DATABASE_LOOKUP_URL: lookupUrl,
+    GOTRUE_URL: TEST_ISSUER,
+    SERVED_HOST: 'ops.example.test',
+    DELEGATION_CREDENTIAL_KEY_ID: keyId,
+    DELEGATION_CREDENTIAL_KEYS: `${keyId}:${randomBytes(32).toString('base64url')}`,
+    RECOVERY_BUSINESS_KEYS: `schedules-${part}`,
+  });
+}
+
+/**
+ * A business with live work on a lease that has expired, and the function
+ * that recovers it, reaching the database at the URL `reach` gives for it.
+ */
+export async function boundWorld(
+  part: string,
+  reach: (appUrl: string) => string | Promise<string> = (appUrl) => appUrl,
+): Promise<BoundWorld> {
   const s = await openSchedules(part, 100_000);
   const work = await liveWork(s, `Synthetic ${part} work`, 1_000);
   const leaseId = String(work.picked['leaseId']);
@@ -74,16 +98,7 @@ export async function boundWorld(part: string): Promise<BoundWorld> {
   const url = new URL(databaseUrlFromEnvironment() ?? '');
   url.pathname = `/${s.db.name}`;
   const lookup = await loginIn(s.db, 'ops_astro_lookup', part);
-  const keyId = `test/${part}@1`;
-  const handle = createFunctionHandler({
-    DATABASE_URL: s.db.appUrl,
-    DATABASE_LOOKUP_URL: lookup.url,
-    GOTRUE_URL: TEST_ISSUER,
-    SERVED_HOST: 'ops.example.test',
-    DELEGATION_CREDENTIAL_KEY_ID: keyId,
-    DELEGATION_CREDENTIAL_KEYS: `${keyId}:${randomBytes(32).toString('base64url')}`,
-    RECOVERY_BUSINESS_KEYS: `schedules-${part}`,
-  });
+  const handle = functionOver(part, await reach(s.db.appUrl), lookup.url);
   const holders: Client[] = [];
   const pending: Promise<unknown>[] = [];
   const answer = async (incoming: Request): Promise<Response> => {
