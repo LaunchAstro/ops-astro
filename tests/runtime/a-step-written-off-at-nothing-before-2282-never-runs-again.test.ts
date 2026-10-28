@@ -5,14 +5,14 @@
 // no cause: the same rows a person's `nothing_happened` leaves. An attempt's
 // outcome never changes (0014), so those rows stay. The write-off's applied
 // operation, written in its own transaction and never changed, still says what
-// happened, so a pickup of that hold is refused and the step never runs again
-// (#2277), with no money moved. One business's register never marks another
-// business's step.
+// happened, so a pickup of that hold, or of a replacement the reconciliation
+// pass reserved for the step before the write-off, is refused and the step
+// never runs again (#2277), with no money moved. One business's register never
+// marks another business's step.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
-import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { closeHold } from '../../packages/core-runtime/src/close-hold.ts';
 import { resolveHeldCalls } from '../../packages/core-runtime/src/recovery/broker-effect.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -27,6 +27,7 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { holdOf, writeOffBody } from './t3c-harness.ts';
+import { openBilling, t3d1Harness } from './t3d1-harness.ts';
 import {
   dispatchedCall,
   holdsOf,
@@ -48,14 +49,14 @@ if (serverUrl === undefined) {
 
 let s: Schedules;
 let other: Schedules;
+const h = t3d1Harness(() => s);
 
 async function open(part: string): Promise<Schedules> {
   const opened = await openSchedules(part, 1_000_000);
+  await openBilling(opened);
   await opened.db.app.withBusiness(opened.business, async (tx) => {
     await grantTo(tx, opened.decider, 'manage');
-    await grantTo(tx, opened.decider, 'decide', undefined, false, 'billing');
     await grantTo(tx, opened.decider, 'decide', undefined, false, 'gate');
-    await installBusinessSettings(tx);
   });
   return opened;
 }
@@ -106,15 +107,15 @@ interface Operation {
  * shaped as a real write-off's own (`template`), naming this attempt.
  */
 async function writtenOffBefore2282(
-  held: Awaited<ReturnType<typeof heldUnknown>>,
+  held: { readonly reservationId: unknown; readonly attemptId: string; readonly taskId: string },
   template: Operation,
 ): Promise<void> {
   const [hold] = await rows<{ envelope_id: string }>(
     s,
     'select envelope_id from public.reservations where business_id = $1 and id = $2',
-    [s.business, held.first],
+    [s.business, held.reservationId],
   );
-  const reservationId = String(held.first);
+  const reservationId = String(held.reservationId);
   await s.db.app.withBusiness(s.business, async (tx) => {
     await tx.query(
       `update public.attempts set state = 'abandoned', outcome = 'abandoned'
@@ -128,7 +129,7 @@ async function writtenOffBefore2282(
       300n,
     );
     await resolveHeldCalls(tx, reservationId, 'written_off', s.decider.personId);
-    await plantWriteOff(tx, template, { attemptId: held.attemptId, taskId: held.work.taskId });
+    await plantWriteOff(tx, template, { attemptId: held.attemptId, taskId: held.taskId });
   });
 }
 
@@ -176,7 +177,10 @@ describe.skipIf(serverUrl === undefined)('a step written off at nothing before #
   it('reads as written off from its applied operation, so a pickup is refused with nothing moved', async () => {
     const template = await aRealWriteOff();
     const held = await heldUnknown(s);
-    await writtenOffBefore2282(held, template);
+    await writtenOffBefore2282(
+      { reservationId: held.first, attemptId: held.attemptId, taskId: held.work.taskId },
+      template,
+    );
     // The rows a person's `nothing_happened` would leave: only the operation tells them apart.
     expect(await holdOf(s, { attemptId: held.attemptId })).toMatchObject({
       attempt_state: 'abandoned',
@@ -193,6 +197,28 @@ describe.skipIf(serverUrl === undefined)('a step written off at nothing before #
       held: (await holdsOf(s, held.versionId)).filter((hold) => hold.state === 'held'),
       money: await moneyOf(s, held.work, held.versionId),
     }).toEqual({ picked: 'RESERVATION_NOT_CLAIMABLE', held: [], money });
+  });
+
+  it('refuses the replacement the pass reserved before the write-off, with nothing written or moved', async () => {
+    const template = await aRealWriteOff();
+    // Held unknown after spending 300; the pass proves its effect absent and reserves a
+    // replacement on its own hold. Then the old write-off at nothing closes the first hold.
+    const w = await h.unknownStep({ applied: false, room: true });
+    await spend(s, w.decision['reservationId'], 300);
+    await h.reconcile();
+    const replacement = await h.replacement(w);
+    expect(replacement).toBeDefined();
+    await writtenOffBefore2282(
+      { reservationId: w.decision['reservationId'], attemptId: w.attemptId, taskId: w.taskId },
+      template,
+    );
+    const before = await h.t3b.snapshot();
+
+    const picked = await pickupOf(s, replacement);
+    expect({ picked: codeOf(picked), after: await h.t3b.snapshot() }).toStrictEqual({
+      picked: 'RESERVATION_NOT_CLAIMABLE',
+      after: before,
+    });
   });
 
   it("never reads one business's write-off onto another business's step", async () => {
