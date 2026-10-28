@@ -22,6 +22,7 @@ import { launchChromium } from '../support/chromium.ts';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
 import { CONVERSATION_ID } from './made-up-agent.ts';
+import { REVIEW_ID } from './made-up-review.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import { fetchAssets, MODE, readAssets, readPacket, type Packet, type Theme } from './packet.ts';
 import {
@@ -101,6 +102,7 @@ export const MADE_UP_PARAMS: Readonly<Record<string, string>> = {
   business: 'alpha',
   document: 'privacy-policy',
   conversation: CONVERSATION_ID,
+  review: REVIEW_ID,
 };
 
 /** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */

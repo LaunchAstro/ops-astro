@@ -123,6 +123,7 @@ describe.skipIf(serverUrl === undefined)('C35 review records', () => {
         after: { revisionId: two['revisionId'], number: 2, digest: two['digest'], captures: [] },
         before: { revisionId: one['revisionId'], number: 1, digest: one['digest'], captures: [] },
         ...NO_NOTES,
+        differences: [],
       },
     });
     expect(await w.count('reviews', w.world.business)).toBe(1);

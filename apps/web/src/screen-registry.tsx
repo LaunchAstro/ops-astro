@@ -31,6 +31,7 @@ import { LegalScreen } from './screens/Legal.tsx';
 import { MapsScreen } from './screens/Maps.tsx';
 import { MapScreen } from './screens/Map.tsx';
 import { ExecutiveScreen } from './screens/Executive.tsx';
+import { ReviewWorkspaceScreen } from './screens/review/ReviewWorkspace.tsx';
 import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
@@ -204,6 +205,17 @@ export const SCREENS: {
               context.taskPanel?.open(key, 'open', undefined, false, origin),
             changes: context.taskPanel.changes,
           })}
+    />
+  ),
+  // Keyed on the grant and the review, so a change of business, person or review starts the
+  // marked spot and an unsent pin over.
+  'agency:review-workspace': (context) => (
+    <ReviewWorkspaceScreen
+      key={`${context.grantKey}:${context.params.review}`}
+      client={context.client}
+      grantKey={context.grantKey}
+      reviewId={context.params.review}
+      rollup={tabRollupFloor()}
     />
   ),
   'agency:task-unnamed': () => <TaskUnnamed />,

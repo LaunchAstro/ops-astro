@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 before and after: review.read tells each width's text and stylesheet change between the previous revision's landed observation and this one's; a first revision or an unlanded width has none."
+}
