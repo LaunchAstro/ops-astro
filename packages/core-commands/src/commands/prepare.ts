@@ -735,8 +735,10 @@ export async function askedAtCommit(
   request: UncheckedRequest,
   declaration: CommandDeclaration,
   asked: ScopeRequest | undefined,
+  /** A replay (#2307) applied no act, so a write on authority is asked its grant too. */
+  replaying = false,
 ): Promise<CommandRefusal | undefined> {
-  if (asked !== undefined && !ACCESS_LOCKERS.test(declaration.name)) {
+  if (asked !== undefined && (replaying || !ACCESS_LOCKERS.test(declaration.name))) {
     const still = await askCovered(tx, session, request, declaration, asked);
     if ('refusal' in still) return still.refusal;
   }

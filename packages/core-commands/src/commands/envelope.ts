@@ -190,7 +190,7 @@ export async function runCommand(
     // the door would let in after its last wait, judged as a fresh write is,
     // and a pickup's receipt only while its lease is still the caller's.
     lastCheck: async (identified) =>
-      (await standsNow(tx, session, identified, declaration, standing, replayAsked)) ??
+      (await standsNow(tx, session, identified, declaration, standing, replayAsked, true)) ??
       (declaration.name === 'task.pickup' && replayStored !== undefined
         ? (await unboundPickup(tx, session, replayStored))?.refusal
         : undefined),
@@ -608,6 +608,8 @@ async function standsNow(
   declaration: CommandDeclaration,
   { presented, credentialLapsed }: Standing,
   asked: ScopeRequest | undefined,
+  /** A replay's, which applied no act: its grant is asked on authority writes too. */
+  replaying = false,
 ): Promise<CommandRefusal | undefined> {
   if (presented !== undefined) {
     const signedIn = await standingOf(tx, presented, 'required');
@@ -615,7 +617,7 @@ async function standsNow(
   }
   return (
     (await credentialLapsed?.(tx)) ??
-    (await askedAtCommit(tx, session, request, declaration, asked))
+    (await askedAtCommit(tx, session, request, declaration, asked, replaying))
   );
 }
 
