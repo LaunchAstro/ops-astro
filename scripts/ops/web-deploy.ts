@@ -255,9 +255,10 @@ function maintenancePage(env: Environment): Promise<MaintenanceOutcome> {
 /**
  * The maintenance page to the main address: its deployment, recorded; no
  * database is asked. On production (`rolledBackIn`, the record folder) it is
- * refused after a recorded rollback, until a deploy has promoted (#2299). Planned, it runs the version deploy that takes it off up
- * to Vercel (`asVersionDeploy`), and the page, not the version, is what Vercel
- * is then asked to take.
+ * refused after a recorded rollback, until a deploy has promoted (#2299).
+ * Planned, it runs the version deploy that takes it off up to Vercel
+ * (`asVersionDeploy`), and the page, not the version, is what Vercel is then
+ * asked to take.
  */
 export async function deployMaintenance(
   options: { env: Environment; rolledBackIn?: string },

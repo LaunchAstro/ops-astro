@@ -84,7 +84,8 @@ type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
  * Vercel already holds, with the settings it was made with, so settings
  * changed since never reach it. Refused unless Vercel reports it ready on
  * production first, since Vercel answers a rollback or promote to any other
- * deployment by building a new one with today's settings. `vercel rollback`
+ * deployment by building a new one with today's settings, and Vercel is asked
+ * nothing for a target that is not a deployment's own address. `vercel rollback`
  * waits up to 3 minutes for its alias job and exits 0 only once it succeeded.
  */
 export function rollBack(
@@ -92,6 +93,10 @@ export function rollBack(
   env: Environment,
   deployment: string,
 ): Unrecorded | undefined {
+  if (!DEPLOYMENT.test(deployment)) {
+    const reason = `${deployment} is not a deployment address (https://<name>.vercel.app). Nothing changed.`;
+    return { kind: 'refused', reason };
+  }
   const inspected = vercel(['inspect', deployment, '--format', 'json'], env, folder);
   if (!inspected.ok || !readyOnProduction(inspected.out, deployment)) {
     return {
