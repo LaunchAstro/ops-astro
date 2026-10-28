@@ -56,22 +56,28 @@ function refusalOf(error: unknown): SiteWrite | undefined {
   return code === undefined ? undefined : { ok: false, code };
 }
 
-/** One write in a savepoint of its own, so a refusal leaves the caller's transaction going. */
+/**
+ * One write in a savepoint of its own, so a refusal leaves the caller's transaction going. Any
+ * other fault is thrown as the server raised it, so a deadlock victim (40P01) keeps the code the
+ * command envelope retries on (S2333-2).
+ */
 async function held(
   tx: TransactionQuery,
   write: (inner: TenantQuery) => Promise<void>,
 ): Promise<SiteWrite> {
   let refusal: SiteWrite | undefined;
+  let fault: unknown = new Error('party site write failed');
   const done = await tx.savepoint(async (inner) => {
     try {
       await write(inner);
     } catch (error) {
       refusal = refusalOf(error);
+      fault = error;
       throw error;
     }
   });
   if (done) return { ok: true };
-  if (refusal === undefined) throw new Error('party site write failed');
+  if (refusal === undefined) throw fault;
   return refusal;
 }
 

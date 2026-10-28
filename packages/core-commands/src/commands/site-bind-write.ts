@@ -74,7 +74,7 @@ const exactPage = (value: unknown): value is string => {
     url.href === value &&
     url.username === '' &&
     url.password === '' &&
-    url.hash === '' &&
+    !value.includes('#') &&
     value.length <= 2000
   );
 };
@@ -102,7 +102,10 @@ function pagesOf(value: unknown): { pageUrl: string; path: string }[] | undefine
     pages.push({ pageUrl, path });
   }
   const addresses = new Set(pages.map((page) => page.pageUrl));
-  return addresses.size === pages.length ? pages : undefined;
+  // In address order, so two binds naming the same pages take them in one order (S2333-2).
+  return addresses.size === pages.length
+    ? pages.toSorted((a, b) => (a.pageUrl < b.pageUrl ? -1 : 1))
+    : undefined;
 }
 
 /** The handler's transaction is the store's: its savepoint keeps a refusal from failing it. */
