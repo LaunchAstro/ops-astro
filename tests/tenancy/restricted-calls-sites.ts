@@ -40,11 +40,18 @@ export const SITE_GRANTS: readonly { readonly from: string; readonly line: strin
   line: `ops_astro_app SELECT ops.capture_pool_reviews.${column}`,
 }));
 
+/** Installation-wide tables under row security. C35 (#2018, 20261028190000). */
+const SITE_ROW_SECURED: ReadonlySet<string> = new Set(['ops.capture_pool_reviews']);
+
 /**
- * Installation-wide tables under row security: an insert outside the installation operator's own
- * session meets the policy, never the table's constraints. C35 (#2018, 20261028190000).
+ * A granted call on an installation-wide table (0047's outbox, SL09's gate tables): a read sees
+ * every row, and a write passes privilege and then meets the table's own constraints or
+ * triggers, the permitted path. An insert into one under row security meets the policy first.
  */
-export const SITE_ROW_SECURED: ReadonlySet<string> = new Set(['ops.capture_pool_reviews']);
+export function installationWide(qualified: string, operation: string, own: number): string {
+  if (operation === 'select') return `rows ${String(own)}`;
+  return operation === 'insert' && SITE_ROW_SECURED.has(qualified) ? 'rls' : 'past privilege';
+}
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
 export const SITE_EXECUTES: readonly string[] = ['public.party_site_under_correction'];
