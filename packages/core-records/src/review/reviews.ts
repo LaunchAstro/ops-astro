@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C35's records (#2011, migration 20261019140000): a review on its task, its
+// C35's records (#2011, migration 20261028140000): a review on its task, its
 // numbered revisions and their captures at two widths.
 //
 // A review's holder is its task's client, or none for the business's own site
