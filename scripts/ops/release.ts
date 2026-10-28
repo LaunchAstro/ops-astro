@@ -19,17 +19,22 @@
 //   so a deploy and a promotion can check they hold the same bytes. The
 //   digest covers every file, `build.json` included without its own digest.
 //
+// With OPS_ASTRO_DEPLOYMENTS set, the step appends `release recorded` (the
+// build and the digest) to that record folder once the output is checked:
+// with staging off, production deploys only the digest it holds (#2285).
+//
 // No environment value is read into the output: the function reads its
 // settings when it runs. The output is checked with `buildOutputProblems`
 // before this step reports it; a problem fails the release.
 
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
 import { readStamp } from '../../apps/web/build-stamp.ts';
 import { FRAMING_HEADERS } from '../../apps/web/framing-headers.ts';
 import { buildOutputProblems, outputDigest, stampOutput } from './build-output.ts';
+import { RECORD_FILE } from './deployment-record.ts';
 
 export { outputDigest };
 
@@ -94,6 +99,15 @@ if (import.meta.main) {
   mkdirSync(out, { recursive: true });
   try {
     const record = await release({ dist, out });
+    const records = process.env['OPS_ASTRO_DEPLOYMENTS'] ?? '';
+    if (records !== '') {
+      const line = { action: 'release recorded', version: record.build, digest: record.digest };
+      mkdirSync(records, { recursive: true, mode: 0o700 });
+      const at = new Date().toISOString();
+      appendFileSync(join(records, RECORD_FILE), `${JSON.stringify({ ...line, at })}\n`, {
+        mode: 0o600,
+      });
+    }
     console.log(`release: ${record.build} ${record.digest}`);
   } catch (error) {
     console.error(`release: refused: ${(error as Error).message}`);

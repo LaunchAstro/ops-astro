@@ -10,10 +10,16 @@
 //   node scripts/ops/web-deploy.mjs --version <id> --artefacts <store> [--production]
 //   node scripts/ops/web-deploy.mjs --maintenance --version <id> --artefacts <store> [--production]
 //   node scripts/ops/web-deploy.mjs --maintenance [--production]
+//   node scripts/ops/web-deploy.mjs [--maintenance] --version <id> --artefacts <store> --production --staging-off <reference>
 //
 // `--production` deploys to production (deploy/production/README.md): its
 // database and sign-in addresses must be production's project, never
 // staging's, and production's own preflight replaces made-up-only.
+//
+// `--staging-off <reference>`, production's alone and only with a version,
+// names the owner's decision that turned staging off: the digest the release
+// step recorded for the version stands in for staging's record, and the
+// deploy record says so (#2285). Every other check stays.
 //
 // `--maintenance` puts the maintenance page on the main address (`maintenance
 // recorded`); deploying a version again takes it off. Planned, it names that
@@ -48,6 +54,7 @@ try {
       artefacts: { type: 'string' },
       maintenance: { type: 'boolean' },
       production: { type: 'boolean' },
+      'staging-off': { type: 'string' },
     },
   }));
 } catch (error) {
@@ -60,6 +67,12 @@ if (values.maintenance ? either && !both : !both) {
   console.error(
     'web-deploy: --version and --artefacts together, or --maintenance with or without them',
   );
+  process.exit(2);
+}
+
+const stagingOff = values['staging-off'];
+if (stagingOff !== undefined && !(values.production && both)) {
+  console.error('web-deploy: --staging-off goes with --production, --version and --artefacts');
   process.exit(2);
 }
 
@@ -79,6 +92,7 @@ const deploy = {
   environment,
   records: gate.records,
   authorised,
+  stagingOff,
 };
 const outcome = values.maintenance
   ? await deployMaintenance({ env: process.env }, both ? { request, options: deploy } : undefined)

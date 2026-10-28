@@ -146,6 +146,18 @@ with two different digests. `VERCEL_ORG_ID` and
 is staging's made-up-only preflight. A database that holds real sign-ins never
 passes it.
 
+While staging is off by the owner's decision, add `--staging-off <reference>`,
+naming that decision (for example `DECISIONS 33`). It is production's alone and
+needs a version. The digest must then be the one the release step recorded for
+that version, so run the release with `OPS_ASTRO_DEPLOYMENTS` set to the
+operator's record folder: it appends `release recorded`, the build and its
+digest, once the output is checked. The same refusals apply to that line: a
+tree put in the store since the release, a version with no release line, and
+a version released twice with different digests. Every other check above and
+below stays. The `deploy recorded` line carries `stagingRecord: "waived"` and
+the reference as `waivedBy`. The planned maintenance page takes the flag too.
+Without the flag, staging's record is required as before.
+
 In its place, before Vercel or the database is asked:
 
 - `DATABASE_ADMIN_URL` must reach production's project, and never staging's;

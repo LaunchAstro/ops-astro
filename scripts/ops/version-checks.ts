@@ -5,10 +5,12 @@
 // sign-in server's version. The deploy runs them, and so does a planned
 // maintenance, so the page goes up only if the version that takes it off
 // could deploy now (#1985). Each refusal names a setting or a problem, never
-// a value.
+// a value. `--staging-off` changes only whose record ties the bytes to the
+// build, and only on production (#2285).
 
 import { authVersionOf } from './auth-version.ts';
 import type { Authorised } from './authorised-act.ts';
+import type { RecordSource } from './deployment-record.ts';
 import { type DeployEnvironment, productionAddressRefusal } from './deploy.ts';
 import { type StoredArtefact, stagedArtefact, storedArtefact } from './promotion.ts';
 
@@ -39,6 +41,13 @@ function productionProblems(env: Environment): string[] {
     ? []
     : ["GOTRUE_URL is not production's sign-in"];
 }
+
+/** The owner's decision a staging-off deploy names: one short line, recorded as given. */
+const DECISION = /^[A-Za-z0-9][A-Za-z0-9 ,.:#/_-]{0,99}$/u;
+
+/** Whose record ties a deploy's bytes to its build: the release step's with staging off. */
+export const recordSource = (options: VersionDeployOptions): RecordSource =>
+  options.stagingOff === undefined ? 'staging' : 'release';
 
 /** What a version deploy is asked for: the version and the store holding its artefact. */
 export interface VersionRequest {
@@ -89,9 +98,17 @@ export async function versionReady(
   if (production && options.authorised === undefined) {
     settings.push("a production deploy runs only under the operator's held grant");
   }
+  const off = options.stagingOff;
+  if (off !== undefined && !production)
+    settings.push('--staging-off is for a production deploy alone');
+  if (off !== undefined && !DECISION.test(off)) {
+    settings.push(
+      "--staging-off names the owner's decision: one line of at most 100 letters, digits, spaces and , . : # / _ -",
+    );
+  }
   if (settings.length > 0) return settings.join('; ');
   const selected = production
-    ? stagedArtefact(request.version, request.store, options.records ?? '')
+    ? stagedArtefact(request.version, request.store, options.records ?? '', recordSource(options))
     : storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return selected;
   const signs = await options.preflight();
