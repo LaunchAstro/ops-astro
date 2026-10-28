@@ -21,6 +21,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { authorise, NO_DELEGATION_FIXES } from './agent-authority.ts';
 import type { AgentCall } from './agent-call.ts';
 import { replayChildPickup } from './agent-child.ts';
+import { leaseLapsed } from './lease-replay.ts';
 import type { AgentOperation } from './agent-operations.ts';
 import { replayOwnWork } from './live-correction-agent.ts';
 import { pickupStanding } from './pickup-receipt.ts';
@@ -35,13 +36,21 @@ type Again = (
 ) => Promise<CommandRefusal | undefined>;
 
 /**
- * What `authorise` judged at release, asked again; then a hand-over's child
- * (`replayChildPickup`) or an own-site correction request's own work (#1877).
+ * What `authorise` judged at release, asked again, with the lease a lease
+ * command named under the delegation it resolved (#2332); then a hand-over's
+ * child (`replayChildPickup`) or an own-site correction request's own work
+ * (#1877).
  */
 const reauthorised: Again = async (tx, call, operation, stored) => {
   const lapsed = await operation.open(async (row) => {
     const authorised = await authorise(tx, call, row);
-    return 'refusal' in authorised ? authorised.refusal : undefined;
+    if ('refusal' in authorised) return authorised.refusal;
+    const delegationId = authorised.asked?.delegation.id;
+    return await leaseLapsed(tx, call.declaration, call.request, {
+      claimant: 'agent',
+      actorId: call.session.actorId,
+      ...(delegationId === undefined ? {} : { delegationId }),
+    });
   });
   if (lapsed !== undefined) return lapsed;
   if (operation.replay === 'childPickup') {

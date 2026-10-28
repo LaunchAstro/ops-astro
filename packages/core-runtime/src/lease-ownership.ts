@@ -223,6 +223,30 @@ export function fenceCause(
   return null;
 }
 
+/**
+ * Whether the caller still holds the lease it named at the fence it presented
+ * and, when `liveAsked`, whether that lease is live and unexpired at `at`: the
+ * rungs a lease command's call asks before the authority behind the lease,
+ * read with no lock taken. A replay asks them after its last wait (#2332) and
+ * judges the caller's authority on its own.
+ */
+export async function leaseHeldAt(
+  tx: TenantQuery,
+  caller: LeaseClaimant,
+  presented: { readonly leaseId: string; readonly fence: number },
+  at: string,
+  fix: string,
+  liveAsked: boolean,
+): Promise<RuntimeResult<never> | undefined> {
+  const lease = await readLease(tx, presented.leaseId, at);
+  if (lease === undefined || !holdsLease(lease, caller)) return refuseLease('not_owned', fix);
+  const cause = fenceCause(lease, presented.fence);
+  if (cause === null || (!liveAsked && (cause === 'not_live' || cause === 'expired'))) {
+    return undefined;
+  }
+  return refuseLease(cause, fix);
+}
+
 /** A person's own live write on the task, at the locked instant. */
 export async function personWriteLive(
   tx: TenantQuery,

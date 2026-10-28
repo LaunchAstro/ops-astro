@@ -4,8 +4,8 @@
 // A replay is a call, so its stored success goes out only to a caller the door
 // would let in now, judged after the replay's last wait (#2307). A fixture
 // holds the business's audit-chain lock, so the replay's `replayed` audit
-// insert waits on it; while it waits, the grant, credential or delegation the
-// caller stands on expires; then the fixture lets go. The replay is refused
+// insert waits on it; while it waits, the grant, credential, delegation or
+// lease the caller stands on expires; then the fixture lets go. The replay is refused
 // as a fresh call would be, the `replayed` event is taken back, and the
 // operation and its record are as the first call left them.
 
@@ -15,7 +15,10 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCredentialCommand } from '../../packages/core-commands/src/commands/credential-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
+import type {
+  CommandHandle,
+  CommandResult,
+} from '../../packages/core-commands/src/commands/register-store.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { hold, waitingOn } from '../support/lock-waits.ts';
@@ -313,46 +316,59 @@ it.skipIf(serverUrl === undefined)(
   },
 );
 
+/** A reservation `by` approved, picked up by `by` as a person: the pickup sent and its receipt. */
+async function personPickup(
+  by: Member,
+  title: string,
+): Promise<{
+  readonly pickup: Body & { readonly operationId: string };
+  readonly first: CommandHandle;
+}> {
+  const task = await world.asPerson(by, {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title },
+  });
+  if (isCommandRefusal(task)) throw new Error(`task.create refused ${task.code}`);
+  const proposed = await world.asPerson(by, {
+    command: 'task.propose',
+    operationId: randomUUID(),
+    recordId: task.recordId,
+    expectedRevision: Number(task.revision),
+    purpose: `draft_${randomUUID().slice(0, 8)}`,
+    maximumMinor: 3_000,
+    currency: 'AUD',
+    payload: { instruction: 'draft a reply' },
+    step: { kind: 'compose', payload: {} },
+  });
+  if (isCommandRefusal(proposed)) throw new Error(`task.propose refused ${proposed.code}`);
+  const decided = await world.asPerson(by, {
+    command: 'task.decide',
+    operationId: randomUUID(),
+    gateId: proposed.detail['gateId'],
+    versionId: proposed.detail['versionId'],
+    decision: 'approve',
+    note: 'approved so a person can work it',
+  });
+  if (isCommandRefusal(decided)) throw new Error(`task.decide refused ${decided.code}`);
+  const pickup = {
+    command: 'task.pickup',
+    operationId: randomUUID(),
+    reservationId: decided.detail['reservationId'],
+  };
+  const first = await send(by, pickup);
+  if (isCommandRefusal(first)) throw new Error(`task.pickup refused ${first.code}`);
+  return { pickup, first };
+}
+
 it.skipIf(serverUrl === undefined)(
   "a person's pickup whose lease expired while its replay waited on the audit chain is refused",
-  // oxlint-disable-next-line max-lines-per-function -- the reservation is a person's own, made in place
   async () => {
     const decider = await world.decider('person-picker');
-    const task = await world.asPerson(decider, {
-      command: 'task.create',
-      operationId: randomUUID(),
-      fields: { title: 'a person pickup replayed across its lease end' },
-    });
-    if (isCommandRefusal(task)) throw new Error(`task.create refused ${task.code}`);
-    const revision = Number(task.revision);
-    const proposed = await world.asPerson(decider, {
-      command: 'task.propose',
-      operationId: randomUUID(),
-      recordId: task.recordId,
-      expectedRevision: revision,
-      purpose: `draft_${randomUUID().slice(0, 8)}`,
-      maximumMinor: 3_000,
-      currency: 'AUD',
-      payload: { instruction: 'draft a reply' },
-      step: { kind: 'compose', payload: {} },
-    });
-    if (isCommandRefusal(proposed)) throw new Error(`task.propose refused ${proposed.code}`);
-    const decided = await world.asPerson(decider, {
-      command: 'task.decide',
-      operationId: randomUUID(),
-      gateId: proposed.detail['gateId'],
-      versionId: proposed.detail['versionId'],
-      decision: 'approve',
-      note: 'approved so a person can work it',
-    });
-    if (isCommandRefusal(decided)) throw new Error(`task.decide refused ${decided.code}`);
-    const pickup = {
-      command: 'task.pickup',
-      operationId: randomUUID(),
-      reservationId: decided.detail['reservationId'],
-    };
-    const first = await send(decider, pickup);
-    if (isCommandRefusal(first)) throw new Error(`task.pickup refused ${first.code}`);
+    const { pickup, first } = await personPickup(
+      decider,
+      'a person pickup replayed across its lease end',
+    );
     const leaseId = await leaseExpiringSoon(first.detail);
     const answer = await waitingOnTheChain(
       async (replayer) => await send(decider, pickup, replayer),
@@ -366,6 +382,92 @@ it.skipIf(serverUrl === undefined)(
       audit: [
         { outcome: 'applied', code: null },
         { outcome: 'refused', code: 'LEASE_EXPIRED' },
+      ],
+    });
+  },
+);
+
+/** A check recorded under the lease `receipt` names, at its fence. */
+const checkUnder = (receipt: Readonly<Record<string, unknown>>) => ({
+  command: 'task.check',
+  operationId: randomUUID(),
+  leaseId: String(receipt['leaseId']),
+  fence: Number(receipt['fence']),
+  name: 'lint',
+  outcome: 'passed',
+});
+
+/** `body` sent by the agent on `database` under `credential`. */
+const agentOn =
+  (credential: string, body: Body) =>
+  async (database: Database): Promise<CommandResult> =>
+    (await executeAgentCommand(
+      database,
+      world.business,
+      { provider: 'supabase', subject: world.agentSubject() },
+      credential,
+      body as never,
+    )) as CommandResult;
+
+const leaseRefused = [
+  { outcome: 'applied', code: null },
+  { outcome: 'refused', code: 'LEASE_EXPIRED' },
+];
+
+it.skipIf(serverUrl === undefined)(
+  "a person's check replayed after its own lease expired in the audit wait is refused (#2332)",
+  async () => {
+    const decider = await world.decider('person-checker');
+    const { first } = await personPickup(decider, 'a person check replayed across its lease end');
+    const check = checkUnder(first.detail);
+    expect(codeOf(await send(decider, check))).toBe('applied');
+    const leaseId = await leaseExpiringSoon(first.detail);
+    const answer = await waitingOnTheChain(
+      async (replayer) => await send(decider, check, replayer),
+      async () => await pastExpiry('leases', leaseId),
+    );
+    expect({
+      answer: codeOf(answer),
+      audit: await world.auditFor(check.operationId),
+    }).toStrictEqual({ answer: 'LEASE_EXPIRED', audit: leaseRefused });
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  "an agent's check replayed after its lease alone expired in the audit wait is refused (#2332)",
+  async () => {
+    const decider = await world.decider('agent-checker');
+    const picked = await world.pickUp(decider, 'an agent check replayed across its lease end');
+    const check = checkUnder(picked.detail);
+    expect(codeOf(await world.asAgent(check, picked.credential))).toBe('applied');
+    const leaseId = await leaseExpiringSoon(picked.detail);
+    const answer = await waitingOnTheChain(agentOn(picked.credential, check), async () => {
+      await pastExpiry('leases', leaseId);
+    });
+    expect({
+      answer: codeOf(answer),
+      audit: await world.auditFor(check.operationId),
+    }).toStrictEqual({ answer: 'LEASE_EXPIRED', audit: leaseRefused });
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  "an agent's check replayed while its lease is live returns the stored success",
+  async () => {
+    const decider = await world.decider('agent-checker-live');
+    const picked = await world.pickUp(decider, 'an agent check replayed under a live lease');
+    const check = checkUnder(picked.detail);
+    const first = await world.asAgent(check, picked.credential);
+    expect(codeOf(first)).toBe('applied');
+    const answer = await waitingOnTheChain(
+      agentOn(picked.credential, check),
+      async () => await Promise.resolve(),
+    );
+    expect({ answer, audit: await world.auditFor(check.operationId) }).toStrictEqual({
+      answer: first,
+      audit: [
+        { outcome: 'applied', code: null },
+        { outcome: 'replayed', code: null },
       ],
     });
   },

@@ -95,7 +95,7 @@ export {
   type HeartbeatRequest,
   type Renewed,
 } from './heartbeat.ts';
-export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+export { leaseHeldAt, leaseReason, NOT_OWNED_FIX, type LeaseClaimant } from './lease-ownership.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
 export { endRun, type RunEndRequest } from './run-end.ts';
 export { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
