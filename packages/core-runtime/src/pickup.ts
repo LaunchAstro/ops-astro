@@ -82,7 +82,8 @@ const AGENT_REACH = `($2::uuid is null
  * Approved, held, unpicked. A reservation bound to a lease is out, a terminal
  * lineage is out, and an attempt carrying a dispatch marker or an observation
  * is out — the last because T5 quarantines it with its hold retained, and a
- * quarantined attempt must not be handed to a worker as ordinary work.
+ * quarantined attempt must not be handed to a worker as ordinary work. A step a person wrote
+ * off is out too: it never runs again (#2277), and its pickup is refused (#2321).
  *
  * `agentActorId` is an agent's own read: under a live delegation its queue
  * never shows another client's task, purpose slug or held amount
@@ -121,8 +122,8 @@ export async function queue(
         and lin.state = 'live'
         and ver.superseded_at is null
         and att.state = 'reserved'
-        and not att.dispatch_marker
-        and not att.observed
+        and not att.dispatch_marker and not att.observed
+        and not ${stepWrittenOff('att.business_id', 'att.step_id')}
         and ${AGENT_REACH}
       order by res.created_at`,
     [tx.businessId, agentActorId ?? null],

@@ -61,7 +61,9 @@ describe('CQ-8 runtime structure', () => {
     const named = functionLengths(join(RUNTIME, 'handback.ts')).map((fn) => fn.name);
     expect(named).toContain('handback');
   });
+});
 
+describe('CQ-8 runtime structure', () => {
   it('CQ-8 function size: recovery is split into the classifier, lease retirement, authority loss and the sweep, none over 600 lines', () => {
     const parts = sourceFiles(join(RUNTIME, 'recovery'));
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
@@ -83,6 +85,8 @@ describe('CQ-8 runtime structure', () => {
       'recovery/sweep.ts',
       // T3c: a person's write-off of an unknown hold.
       'recovery/write-off.ts',
+      // #2321: the pass stops a replacement held for a written-off step.
+      'recovery/written-off-replacements.ts',
     ]);
     for (const file of [...parts, join(RUNTIME, 'recovery.ts')]) {
       expect(readFileSync(file, 'utf8').split('\n').length, file).toBeLessThanOrEqual(600);

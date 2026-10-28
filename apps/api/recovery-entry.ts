@@ -36,6 +36,7 @@ import {
   EFFECT_OPERATIONS,
   reconcileUnknown,
   replayRecordedTransitions,
+  stopWrittenOffReplacements,
   sweepLostWorkers,
   withProviderCalls,
 } from '../../packages/core-runtime/src/index.ts';
@@ -281,10 +282,19 @@ export const registerEffectLookup: EffectLookup = async (tx, step) => {
   return providerReached ? undefined : false;
 };
 
+/** #2321: the pass's stop of a written-off step's replacement, one transaction per business. */
+const stopDeployment = async (
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+): Promise<RecoveryOutcome<string>> =>
+  await eachBusiness(database, resolveBusiness, keys, 'written-off', stopWrittenOffReplacements);
+
 /**
  * The one reconciliation pass, as the API runs it on its interval: the sweep,
  * then the recorded-transition replay (its production caller from T3d1 on,
- * beside start-time recovery), then the register's answers. Each phase is one
+ * beside start-time recovery), then the register's answers, then the stop of a
+ * written-off step's replacement (#2321). Each phase is one
  * transaction per business on the tenancy connection, so no phase takes a
  * lock after another phase's in the same transaction.
  */
@@ -321,6 +331,8 @@ export async function passDeployment(
     async (tx) => await reconcileUnknown(tx, withProviderCalls(lookup)),
   );
   if (!answered.ok) return answered;
+  const stopped = await stopDeployment(database, resolveBusiness, keys);
+  if (!stopped.ok) return stopped;
   return {
     ok: true,
     businesses: swept.businesses.map((business, at) => ({
