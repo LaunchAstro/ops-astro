@@ -45,7 +45,12 @@ const ENROL_MAX_BYTES = 2 * 1024 * 1024;
 
 type Json = Readonly<Record<string, unknown>>;
 
-/** One request to the provider: its answer unread, or a fault if none came. */
+/**
+ * One request to the provider: its answer unread, or a fault if none came.
+ * Told apart by `fault`, never by `instanceof Response`: the local server's
+ * `@hono/node-server` replaces the global `Response` once it serves, and the
+ * platform `fetch` still answers with the native one (#2291).
+ */
 type Request = (
   method: 'GET' | 'POST' | 'DELETE',
   path: string,
@@ -118,7 +123,7 @@ function requestGoTrue(options: GoTrueFactorOptions, timeoutMs: number): Request
 function callGoTrue(request: Request, limits: Limits): Call {
   return async (method, path, accessToken, body) => {
     const response = await request(method, path, accessToken, body);
-    if (!(response instanceof Response)) return { ok: false, fault: response.fault };
+    if ('fault' in response) return { ok: false, fault: response.fault };
     const read = await readBounded(response, limits.maxBytes, limits.timeoutMs);
     if ('fault' in read) return { ok: false, fault: read.fault };
     let parsed: unknown;
@@ -231,7 +236,7 @@ async function signOut(
 ): Promise<ProviderAnswer<void>> {
   if (scope !== 'local' && scope !== 'others') return { ok: false, fault: 'refused' };
   const response = await request('POST', `/logout?scope=${scope}`, accessToken);
-  if (!(response instanceof Response)) return { ok: false, fault: response.fault };
+  if ('fault' in response) return { ok: false, fault: response.fault };
   const read = await readBounded(response, limits.maxBytes, limits.timeoutMs);
   if ('fault' in read) return { ok: false, fault: read.fault };
   if (response.status >= 400 && response.status < 500) return { ok: false, fault: 'refused' };

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The QR of an authenticator enrol (C59), as the provider sends it and as the
-// browser draws it. GoTrue v2.197.0 sends raw SVG (`mfa.go`, `buf.String()`),
-// a square per module, light ones included: about 320,000 characters. It is
-// admitted to a megabyte of characters, only as SVG, and handed on as the SVG
-// data URI the browser draws as an image, never as markup.
+// browser draws it. GoTrue sends raw SVG (`mfa.go`, `buf.String()`), v2.192.0
+// and v2.197.0 alike, a square per module, light ones included: about 320,000
+// characters. It is admitted to a megabyte of characters, only as SVG, and
+// handed on as the SVG data URI the browser draws as an image, never as markup.
 
 import { Buffer } from 'node:buffer';
 
