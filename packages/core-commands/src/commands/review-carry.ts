@@ -25,6 +25,7 @@ import {
   fieldsRefused,
   holdLease,
   invalidLease,
+  judgedAgain,
   personCaller,
   stillHeld,
   type CaptureCaller,
@@ -75,6 +76,8 @@ export async function carryPins(
   return {
     ...applied(revisionId, null, { revisionId, moved: carried.length - lost, lost }),
     carried: carried.map((one) => ({ recordId: one.commentId })),
+    // Judged once more after the agent path's identity waits, so a lapse there carries nothing.
+    lastCheck: judgedAgain(tx, held.lease, caller),
   };
 }
 
