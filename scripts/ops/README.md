@@ -43,3 +43,17 @@ deploy that carries the own-site migration (`20261018020000_own_business_site`).
    `capture pool agencyPages entry "https://agencyastro.com/about"`. Give the
    site runner's `CapturePool.agencyPages` exactly that address: no trailing
    slash, since `/about/` answers 308 and the capture refuses redirects.
+
+## The nightly parts run on the M5
+
+`nightly-parts.sh` runs the suites `tests/db/shard-plan.json` splits into parts
+on `main`'s head at 02:00 (#2302), each through `scripts/db-conformance.mjs` on
+its own throwaway Postgres, once the M5's load is under 27 and a gate slot in
+`~/.oa-gate-slots` is free. A red suite opens one `nightly-parts` issue, or
+comments on the one open for it, as the plist's `NIGHTLY_GH_USER`. Logs:
+`~/Library/Logs/ops-astro-nightly-parts/<date>.log`. To install on the M5, copy
+the script outside any checkout (to
+`~/Library/Application Support/ops-astro-nightly-parts/`), fill the plist's
+`@...@` fields into `~/Library/LaunchAgents/`, then
+`launchctl bootstrap gui/501 <plist>`: through `gui/501`, never bare ssh, since
+only there does `gh` reach the keychain.
