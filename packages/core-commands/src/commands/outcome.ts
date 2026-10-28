@@ -144,6 +144,13 @@ export interface Refused {
 
 export type HandlerOutcome = Applied | Refused;
 
+/**
+ * An agent row's outcome whose every success carries its `lastCheck`: the agent path waits on
+ * its identity locks after the work returns (`agent-standing.ts`), and this type refuses a
+ * success path that would skip the judgement after them.
+ */
+export type JudgedLast = Refused | (Applied & Required<Pick<Applied, 'lastCheck'>>);
+
 export function applied(
   recordId: string | null,
   revision: number | null,
