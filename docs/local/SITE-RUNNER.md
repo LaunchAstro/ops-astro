@@ -141,7 +141,10 @@ cannot read fails the pass and pings no heartbeat, as the corrections' does,
 and so does a claim refused or never answered: it logs its code, lands
 nothing and hands the lease back `failed`. A due carry refused or never
 answered fails the pass the same way: it logs its code (`CARRY_FAULT` when
-there is none), carries nothing and hands the lease back `failed`. The captures are spare work, so
+there is none) and hands the lease back `failed`. A refused carry carries
+nothing. One never answered may have committed before its answer was lost,
+so the runner cannot tell whether the pins moved; a carry is written once
+per pin and revision, so a later carry never writes one twice. The captures are spare work, so
 they never keep a pass healthy: when the locate and the corrections both
 failed, the pass fails however the captures went.
 Only codes are printed or reported, never a path or a credential.
