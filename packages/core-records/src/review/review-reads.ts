@@ -5,6 +5,9 @@
 // by the caller's grant at the review's holder inside the query (`covering.ts`), so a party
 // grant reads no other client's review and a picture of another business or out of reach is
 // one answer with a picture that is not there.
+// One review's parts are read in statements of their own, so its grant is judged again after
+// the last of them (`stillCovered`): a grant revoked or run out meanwhile reads nothing written
+// since (S2276-1).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
@@ -72,6 +75,8 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
+  const pins = await readPins(tx, { reviewId, taskId: review.task_id });
+  if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
     taskId: review.task_id,
@@ -82,7 +87,7 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins: await readPins(tx, { reviewId, taskId: review.task_id }),
+    pins,
   };
 }
 
@@ -152,4 +157,22 @@ export async function readCoveredPicture(
     byteCount: stored.byteCount,
     body: Buffer.from(stored.body).toString('base64'),
   };
+}
+
+/**
+ * Whether the caller's grant still covers the review, judged at this statement's own instant.
+ * Asked after the read's last part, so a grant revoked or expired meanwhile reads nothing.
+ */
+async function stillCovered(
+  tx: TenantQuery,
+  covering: Covering,
+  reviewId: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `${EFFECTIVE_AT}
+     select c.id from public.reviews c
+      where c.business_id = $1 and c.id = $6::uuid and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), reviewId],
+  );
+  return rows.length > 0;
 }
