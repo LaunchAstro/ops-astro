@@ -20,14 +20,14 @@ import { TRACE_GRANTS } from './restricted-calls-trace.ts';
 export const MANDATE_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'graduation_classes'],
   ['si', 'standing_mandates'],
-  // 20261012123000 (#1427): a draft is bound to the mandate it filed, once.
+  // 20261028040000 (#1427): a draft is bound to the mandate it filed, once.
   ['si', 'standing_mandate_drafts'],
 ];
 
 /** Executed: a mandate's word list checked whole, in its check constraint. */
 export const MANDATE_EXECUTES: readonly string[] = [
   'public.standing_mandate_words_known',
-  // 20261012123000 (#1427): a filing's identity, judged by the command and by the insert trigger.
+  // 20261028040000 (#1427): a filing's identity, judged by the command and by the insert trigger.
   'public.standing_mandate_live_filing',
 ];
 
@@ -63,7 +63,7 @@ export const MANDATE_GRANTS: readonly { readonly from: string; readonly line: st
     line: `ops_astro_app INSERT public.standing_mandates.${column}`,
   })),
   ...(INSERT_COLUMNS['public.standing_mandate_drafts'] ?? []).map((column) => ({
-    from: '20261012123000',
+    from: '20261028040000',
     line: `ops_astro_app INSERT public.standing_mandate_drafts.${column}`,
   })),
 ];
