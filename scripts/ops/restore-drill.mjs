@@ -58,9 +58,11 @@
 // attestation: the store takes a pass only through the store login the
 // installation appointed as them (deploy/staging/backup-store.sql). An export
 // and a drill from the store ask the gate again before each step with the
-// store, and once more after each part's read, so an operator whose sign-in
-// ended or whose `operations:manage` was revoked part way reads no further and
-// keeps nothing.
+// store; each part comes sealed under a key the store releases only once the
+// gate has answered again (backup-store-upgrade-3.sql), and the gate is asked
+// once more after it, so an operator whose sign-in ended or whose
+// `operations:manage` was revoked part way reads no further and keeps
+// nothing.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -95,18 +97,20 @@ export const drillAsOperator = ({ reach = stagingReach, prefix, ...options }) =>
 
 /**
  * `reach` asking the gate again (operator.ts, `stillOperator`) before each
- * call. The fetch reads each part in a call of its own, begun only once the
- * one before it has ended (drill-acts.mjs, `fetchLatest`), so a part is read
- * from the store only after the gate admits it again, with nothing admitted
- * earlier still queued: an operator whose sign-in ended or whose
- * `operations:manage` was revoked part way reads no further part, and the
- * fetch removes what it wrote. A part's read asks once more as the store's
- * route takes its script, so a sign-in ended or a grant revoked once the read
- * was called sends the store nothing; the operator's grant is held from the
- * call until that ask or the part's first line, so a revocation waits for the
- * ask and never for the read. The gate is asked again after the part has
- * arrived, so an ending during the read refuses that part too, and nothing
- * read is kept or reported. Every gate operator.ts admits carries both.
+ * call. The fetch reads each part in two calls, each begun only once the one
+ * before it has ended (drill-acts.mjs, `fetchLatest`): the part, which the
+ * store hands out sealed under a key of its own, then its release, the one
+ * call handed `onLine`, which has the store hand out that key and log the
+ * part's read. The store cannot see a sign-in, so a sign-in ended or a grant
+ * revoked before the release is asked for leaves the operator with nothing
+ * they can open, and the fetch removes what it wrote. The release asks once
+ * more as the store's route takes its script, with the operator's grant held
+ * from the call until the key's line, so a revocation cannot land between
+ * that ask and the key; a key is one line, and the part's read is never under
+ * the hold, so a revocation never waits on a read. The gate is asked again
+ * once the key has arrived, so an ending during the release refuses that
+ * part too, and nothing read is kept or reported. Every gate operator.ts
+ * admits carries both.
  */
 function askingAgain(reach, gate) {
   return async (url, script, onLine) => {
@@ -116,7 +120,6 @@ function askingAgain(reach, gate) {
     const answer = await hold(async (release) => {
       async function* asked() {
         await gate.stillOperator?.();
-        release();
         yield* typeof script === 'string' ? [script] : script;
       }
       return await reach(url, asked(), (line) => {

@@ -46,6 +46,7 @@ import {
   scope,
   sealed,
 } from './carried-archive.fixture.ts';
+import { twoPhaseStore } from './two-phase-store.fixture.ts';
 
 describe('S0-3 carried archive', () => {
   exportCases();
@@ -58,24 +59,18 @@ type Archive = { takenAt: string; sha256: string; body: Buffer };
 
 /**
  * The store's answers to the export's reads, as `fetchLatest` asks for them:
- * the header, then each part on a line of its own with the store's digest of it.
+ * the header, then each part sealed under a key of its own with the store's
+ * digest of it, then that key (two-phase-store.fixture.ts).
  */
-const storeOf =
-  (archive: Archive) =>
-  async (_url: string, _script: unknown, onLine?: (line: string) => unknown): Promise<string> => {
-    const { digestOf } = await carried();
-    if (onLine === undefined) {
-      return JSON.stringify({
-        id: randomUUID(),
-        takenAt: archive.takenAt,
-        bytes: archive.body.length,
-        parts: 1,
-        sha256: archive.sha256,
-      });
-    }
-    await onLine(`0|${digestOf(archive.body)}|${archive.body.toString('hex')}`);
-    return '';
+const storeOf = (archive: Archive) => {
+  const header = {
+    id: randomUUID(),
+    takenAt: archive.takenAt,
+    bytes: archive.body.length,
+    parts: 1,
   };
+  return twoPhaseStore({ ...header, sha256: archive.sha256 }, archive.body);
+};
 
 function exportCases() {
   exportCases1();

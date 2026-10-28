@@ -45,7 +45,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 store read binding', () => {
 });
 
 function readBindingCases1() {
-  it('every successful read_part access writes an access receipt', async () => {
+  it('every part key the store releases writes an access receipt', async () => {
     const writer = await asRole(backupLogin.url, BACKUP);
     try {
       await writer.query('begin');
@@ -64,8 +64,13 @@ function readBindingCases1() {
       const id = rows[0]?.id;
       expect(id).toBeDefined();
       const before = await countReadReceipts();
-      await reader.query('select * from backups.read_part($1, 0)', [id]);
-      await reader.query('select * from backups.read_part($1, 0)', [id]);
+      // A part's read is logged as its key is released (backup-store-upgrade-3.sql).
+      for (let release = 0; release < 2; release += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- each key goes once, after its read
+        await reader.query('select * from backups.read_part($1, 0)', [id]);
+        // oxlint-disable-next-line no-await-in-loop
+        await reader.query('select backups.release_part($1, 0)', [id]);
+      }
       expect(await countReadReceipts()).toBe(before + 2);
     } finally {
       await reader.end();

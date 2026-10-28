@@ -8,6 +8,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { COMMANDS, manager, marks } from './operator-only-commands.fixture.ts';
 import { environment, token } from './operator-only.fixture.ts';
+import { twoPhaseStore, type Script } from './two-phase-store.fixture.ts';
 
 export type Seal = {
   sealArchive: (dump: Buffer, publicKey: string) => Buffer;
@@ -37,14 +38,11 @@ export const digestOf = (body: Buffer): string => createHash('sha256').update(bo
 /** A store holding one sealed archive of `dump`, answering as the real one does; it counts each reach. */
 export function plantedStore(body: Buffer): { reach: Reach; reached: () => number } {
   let reached = 0;
-  const reach: Reach = (_url, _script, onLine) => {
+  const header = { id: randomUUID(), takenAt: TAKEN, bytes: body.length, parts: 1 };
+  const store = twoPhaseStore({ ...header, sha256: digestOf(body) }, body);
+  const reach: Reach = async (url, script, onLine) => {
     reached += 1;
-    if (onLine === undefined) {
-      const header = { id: randomUUID(), takenAt: TAKEN, bytes: body.length, parts: 1 };
-      return Promise.resolve(JSON.stringify({ ...header, sha256: digestOf(body) }));
-    }
-    onLine(`0|${digestOf(body)}|${body.toString('hex')}`);
-    return Promise.resolve('');
+    return await store(url, script as Script, onLine);
   };
   return { reach, reached: () => reached };
 }
