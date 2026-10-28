@@ -19,7 +19,7 @@
 // local-seed has not seeded. Exit 0 when seeded or already seeded, 1 refused.
 
 import { randomInt, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
@@ -148,21 +148,30 @@ async function appRole() {
   if (row.owner) return 'is a member of the database owner';
 }
 
+/** The sign-in subject of each cast address, from the users file local-seed seeded from. */
+function castSubjects() {
+  const file = `${local}/synthetic-users.json`;
+  if (!existsSync(file)) throw new Refusal(`no ${file}: run local-seed first.`);
+  const users = JSON.parse(readFileSync(file, 'utf8'));
+  return new Map(users.map((user) => [user.email, user.subject]));
+}
+
 /** The business, its two people and its agent, as local-seed left them. */
 async function readCast() {
   const [business] = await admin.execute('select id from public.businesses where key = $1', [
     BUSINESS,
   ]);
   if (business === undefined) throw new Refusal(`no '${BUSINESS}' business: run local-seed first.`);
+  const subjects = castSubjects();
   return await database.withBusiness(business.id, async (tx) => {
     const people = await tx.query(
-      `select p.display_name as name, a.id as actor_id, l.subject
+      `select a.id as actor_id, l.subject
          from public.people p
          join public.actors a on a.business_id = p.business_id and a.person_id = p.id
          join public.person_logins pl on pl.business_id = p.business_id and pl.person_id = p.id
          join public.logins l on l.id = pl.login_id
-        where p.business_id = $1 and p.display_name = any($2) and pl.active`,
-      [tx.businessId, [ADMIN, MEMBER]],
+        where p.business_id = $1 and l.subject = any($2) and pl.active`,
+      [tx.businessId, [subjects.get(ADMIN) ?? '', subjects.get(MEMBER) ?? '']],
     );
     // The seeded agent, never the helper this script adds beside it.
     const [agent] = await tx.query(
@@ -173,20 +182,25 @@ async function readCast() {
         order by a.id limit 1`,
       [tx.businessId],
     );
-    const byName = new Map(people.map((row) => [row.name, row]));
-    if (!byName.has(ADMIN) || !byName.has(MEMBER) || agent === undefined) {
+    const bySubject = new Map(people.map((row) => [row.subject, row]));
+    const byEmail = new Map(
+      [ADMIN, MEMBER]
+        .filter((email) => bySubject.has(subjects.get(email)))
+        .map((email) => [email, bySubject.get(subjects.get(email))]),
+    );
+    if (!byEmail.has(ADMIN) || !byEmail.has(MEMBER) || agent === undefined) {
       throw new Refusal(`the cast of '${BUSINESS}' is not seeded: run local-seed first.`);
     }
     const now = Math.floor(Date.now() / 1000);
-    const person = (name) => ({
+    const person = (email) => ({
       provider: 'supabase',
-      subject: byName.get(name).subject,
+      subject: byEmail.get(email).subject,
       assurance: { level: 'aal2', signedInAt: now, factorAt: now },
     });
     return {
       businessId: business.id,
       people: { [ADMIN]: person(ADMIN), [MEMBER]: person(MEMBER) },
-      adminActorId: byName.get(ADMIN).actor_id,
+      adminActorId: byEmail.get(ADMIN).actor_id,
       agent: { provider: 'supabase', subject: agent.subject },
     };
   });
