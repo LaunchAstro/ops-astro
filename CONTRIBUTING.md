@@ -42,6 +42,9 @@ account with push access. The rule it obeys carries no discretion: every
 required check green on the head being merged, or it does not merge. After
 merging it notifies Nathan, naming the pull request and the merged revision.
 That notification records what happened; it does not ask permission.
+Since 28 October 2026, by Nathan's decision, the required checks are the
+fast gate and DCO, not full CI, with Sol's approval of the exact head
+([current decisions](docs/current-decisions.md#fast-gate-replaces-full-ci-28-october-2026)).
 
 Review is part of that rule because the rulesets hold it, not because the
 agent judges it. The review ruleset requests Copilot's review on every push.

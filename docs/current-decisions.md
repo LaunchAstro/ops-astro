@@ -14,6 +14,20 @@ public baseline; ADRs explain its trade-offs and tickets define executable
 scope. New decisions must be recorded here before a ticket relies on them.
 Private conversation history cannot be an implementation dependency.
 
+## Fast gate replaces full CI, 28 October 2026
+
+Nathan's decision, 28 Oct 2026, a reduction of a check's tier that is his
+to make. Full CI no longer gates a merge. Every piece passes the fast gate
+on its exact head instead: typecheck, lint, gitleaks with
+`.gitleaks.toml`, every migration applied in order on a fresh database
+(refusing a duplicate migration, or a new one dated at or below main's
+newest), and the unit tests for the files it changes. Its commit status
+`fast gate` and `DCO` are main's required checks, and Sol's approval of
+that exact head stays the merge condition; an update onto main whose
+`git range-diff` against the approved head is identical carries that
+approval. The merge rule in the 28 September amendment is unchanged: the
+required checks named here are the ones it means.
+
 ## Run outcome contract, 18 October 2026
 
 Decision `B2-1623`. Accepted by the owner, 18 Oct 2026, REGISTER 9, with
