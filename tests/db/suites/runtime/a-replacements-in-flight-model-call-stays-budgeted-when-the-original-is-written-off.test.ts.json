@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a write-off never stops a replacement whose broker model call is in flight: the replacement keeps its hold and lease, so the call's late answer is charged on that hold inside the envelope, and the envelope carries the write-off and the call once each"
+}
