@@ -54,17 +54,24 @@ export function outsideFields(fields: readonly ClaimedField[]): readonly Resolve
   }));
 }
 
-/** Only the owner, in their own session, with no delegation between them and the call. */
+/**
+ * Only the owner, in their own session, with no delegation between them and the call;
+ * Hermes Agent's operation only for a person its list names (#2270), whatever the
+ * command layer offered.
+ */
 export function ownsConversation(
   businessId: BusinessId,
   caller: ModelCaller,
-  { conversation }: ConversationCallRequest,
+  { conversation, operation }: ConversationCallRequest,
+  broker: Pick<Broker, 'operations' | 'hermesPeople'>,
 ): boolean {
+  const hermes = broker.operations.get(operation)?.provider === HERMES_PROVIDER_KEY;
   return (
     conversation.businessId === businessId &&
     caller.delegationId === null &&
     caller.attendedByPersonId !== null &&
-    caller.attendedByPersonId === conversation.ownerPersonId
+    caller.attendedByPersonId === conversation.ownerPersonId &&
+    (!hermes || hermesStanding(broker, businessId, caller))
   );
 }
 
@@ -160,14 +167,10 @@ export async function callModelUnpriced(
   request: ConversationCallRequest,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
+  if (!ownsConversation(businessId, caller, request, broker)) return refused('AUTHORITY_LOST');
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
-  // #2270: Hermes Agent answers only a person its list names, whatever the command layer offered.
-  if (operation.provider === HERMES_PROVIDER_KEY && !hermesStanding(broker, businessId, caller)) {
-    return refused('AUTHORITY_LOST');
-  }
   const chosen = routeFor(operation, request, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { fields } = chosen;

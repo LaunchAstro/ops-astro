@@ -84,7 +84,7 @@ export async function callModelInConversation(
   if (operation === undefined || operation.maximumMinor === 0) {
     return await callModelUnpriced(database, businessId, caller, request, broker);
   }
-  if (!ownsConversation(businessId, caller, request)) return refused('AUTHORITY_LOST');
+  if (!ownsConversation(businessId, caller, request, broker)) return refused('AUTHORITY_LOST');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
   const fields = outsideFields(request.fields);
   const { paid } = request;

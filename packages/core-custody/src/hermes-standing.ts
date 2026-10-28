@@ -10,6 +10,10 @@
 /** Hermes Agent's provider key (`HERMES_PROVIDER` in core-connectors); a test holds the two equal. */
 export const HERMES_PROVIDER_KEY = 'hermes';
 
+/** An operation a run may name: never Hermes Agent's. */
+export const answersRuns = (operation: { readonly provider: string }): boolean =>
+  operation.provider !== HERMES_PROVIDER_KEY;
+
 /** The caller is listed for this business, present in their own session, with no delegation. */
 export function hermesStanding(
   broker: { readonly hermesPeople?: readonly string[] },
