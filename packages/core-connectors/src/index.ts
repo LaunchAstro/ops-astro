@@ -247,6 +247,7 @@ export {
   conversationModelsOf,
   conversationOperationOf,
   conversationProviderOf,
+  hermesPeopleOf,
   outsidePeopleOf,
   planRouteSet,
   type ConversationModel,
@@ -268,6 +269,17 @@ export {
   readOpenRouterAnswer,
   type OpenRouterModel,
 } from './openrouter.ts';
+export {
+  HERMES_BODY_LIMIT,
+  HERMES_CONVERSATION,
+  HERMES_CONVERSATION_KEY,
+  HERMES_MODEL,
+  HERMES_PATH,
+  HERMES_PROVIDER,
+  hermesCostMinor,
+  hermesRequest,
+  readHermesAnswer,
+} from './hermes.ts';
 export {
   CHATGPT_PLAN_ANSWER_BYTES,
   CHATGPT_PLAN_BODY_LIMIT,

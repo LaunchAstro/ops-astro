@@ -12,7 +12,9 @@
 // `https://openrouter.ai`. The owner's ChatGPT plan's settings (#1620 P4) are
 // optional and go together too: the plan's token file, by its absolute path,
 // and the two addresses its custody reaches, exactly `https://api.openai.com`
-// and `https://auth.openai.com`.
+// and `https://auth.openai.com`. Hermes Agent's settings (#2270) are optional
+// and go together: custody's credential reference for its key, and its address,
+// which must be exactly `http://127.0.0.1:8642`, this machine's loopback.
 
 import { isAbsolute } from 'node:path';
 import {
@@ -41,10 +43,15 @@ export interface AgentSettings {
   readonly planTokenFile?: string;
   readonly planOrigin?: string;
   readonly planIssuer?: string;
+  /** Custody's reference for Hermes Agent's key; absent, with its address, no Hermes call is sent. */
+  readonly hermesCredentialRef?: string;
+  readonly hermesOrigin?: string;
 }
 
 /** OpenRouter's one address. */
 export const OPENROUTER_ORIGIN = 'https://openrouter.ai';
+/** Hermes Agent's one address: its API server on this machine's loopback. */
+export const HERMES_ORIGIN = 'http://127.0.0.1:8642';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const TEXTS =
@@ -74,7 +81,15 @@ function problemIn(shape: Record<string, unknown>): string | undefined {
   if (next !== undefined && typeof next !== 'string') return 'carryKeyNext is malformed';
   if (!parseCarryKeys(text('carryKey'), next).ok) return 'the carry key is malformed';
   if (!loopback(text('ollamaOrigin') ?? '')) return "ollamaOrigin is not this machine's loopback";
-  return paidProblemIn(shape) ?? planProblemIn(shape);
+  return paidProblemIn(shape) ?? planProblemIn(shape) ?? hermesProblemIn(shape);
+}
+
+/** Hermes Agent's two settings: both or neither, the address exactly its loopback one. */
+function hermesProblemIn(shape: Record<string, unknown>): string | undefined {
+  const { hermesCredentialRef: ref, hermesOrigin: origin } = shape;
+  if (ref === undefined && origin === undefined) return undefined;
+  if (typeof ref !== 'string' || ref === '') return 'hermesCredentialRef is missing';
+  return origin === HERMES_ORIGIN ? undefined : `hermesOrigin is not ${HERMES_ORIGIN}`;
 }
 
 /** The paid chat's two settings: both or neither, the address exactly OpenRouter's. */
