@@ -81,9 +81,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
-  const held = { reviewId, taskId: review.task_id };
-  const pins = await readPins(tx, held);
-  const carried = await readCarried(tx, held, views.at(-1) ?? null);
+  const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views.at(-1) ?? null);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
@@ -95,9 +93,17 @@ export async function readCoveredReview(
     revisions: views,
     after: views.at(-1) ?? null,
     before: views.at(-2) ?? null,
-    pins,
-    ...carried,
+    ...notes,
   };
+}
+
+/** The review's pins and their carry onto the latest revision. */
+async function notesOf(
+  tx: TenantQuery,
+  held: { readonly reviewId: string; readonly taskId: string },
+  latest: RevisionView | null,
+): Promise<Pick<ReviewView, 'pins' | 'carried' | 'carryDue'>> {
+  return { pins: await readPins(tx, held), ...(await readCarried(tx, held, latest)) };
 }
 
 /** Every capture of the review's revisions, widest first, by the revision it is of. */
