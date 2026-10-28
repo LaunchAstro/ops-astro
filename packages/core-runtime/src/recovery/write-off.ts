@@ -6,12 +6,12 @@
 // evidence shows, or nothing) and a written reason. Never a timer: the one
 // caller is the command a person sends (15.3, O6).
 //
-// It closes the one hold it names, under the step's locks, the same set a
-// recorded outcome takes (`outcome.ts`), so the two race to one winner. It
-// writes no row of its own among the money tables: no new attempt, hold or
-// envelope (split 2.2, "no ledger row"). It moves no work: a step proved
-// absent has already resumed on its own hold, and a step not proved absent
-// keeps its stop until a person records an outcome for the work.
+// It closes the one hold it names, under the step's locks and its
+// replacements', the same set a recorded outcome takes (`outcome.ts`), so the
+// two race to one winner. It writes no row of its own among the money tables:
+// no new attempt, hold or envelope (split 2.2, "no ledger row"). The step never
+// runs again (#2277), so a replacement the pass reserved when it proved the
+// step absent is stopped, as `happened` stops it, unless it already dispatched.
 //
 // Above the four-eyes band, T2e's stored setting read here, a second person
 // names the same figure, exactly as a top-up pairs (`budget.ts`). The band is
@@ -33,6 +33,7 @@ import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
+import { discoverReplacements, replacementLocks, stopReplacement } from './outcome.ts';
 import { resolveHeldCalls } from './broker-effect.ts';
 
 export interface WriteOffRequest {
@@ -137,13 +138,19 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
   const firsts = await firstApprovers(tx, request.attemptId, request.amountMinor);
   const subjects = [...request.subjects, ...firsts.flatMap((first) => first.subjects)];
   await holdCoveringGrants(tx, subjects, request.collection);
-  const { found } = await lockRediscovered(tx, {
-    discover: async () =>
-      await tx.query<Unknown>(
-        `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
-        [tx.businessId, request.attemptId, request.taskId],
-      ),
-    locks: locksOf,
+  const discover = async () => {
+    const rows = await tx.query<Unknown>(
+      `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
+      [tx.businessId, request.attemptId, request.taskId],
+    );
+    const first = rows[0];
+    return [rows, first === undefined ? [] : await discoverReplacements(tx, first)] as const;
+  };
+  const {
+    found: [found, replacements],
+  } = await lockRediscovered(tx, {
+    discover,
+    locks: ([rows, more]) => [...locksOf(rows), ...replacementLocks(more)],
     rule: 'exact',
     changed: 'write-off: the step changed under discovery; roll back and write it off again',
   });
@@ -191,6 +198,11 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     return { ok: true, value: { ...figure, state, firstApproverPersonId: request.personId } };
   }
   await close(tx, row, request.amountMinor);
+  for (const one of replacements.filter((replacement) => !replacement.marked)) {
+    // Sequential: each moves the one envelope the step shares.
+    // eslint-disable-next-line no-await-in-loop
+    await stopReplacement(tx, one, row.attempt_id);
+  }
   // AW-10: the step's held broker calls record the write-off and who made it.
   await resolveHeldCalls(tx, row.reservation_id, 'written_off', request.personId);
   const approvers = [...(pair === null ? [] : [pair.personId]), request.personId];
