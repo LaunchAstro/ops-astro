@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- Sol's proof, one revocation read top to bottom */
 //
 // C35 (#2114), Sol's proof for S2276-1: the team review read checks its grant in the covered
 // review query, then reads the review's parts in statements of their own. A reader's sole
