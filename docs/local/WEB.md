@@ -722,7 +722,18 @@ are drawn as never silenced. **This business** is the screen below, whose
 two more rows: the conversation and retention windows in whole days, each
 written through its own command (`settings.set_conversation_window`,
 `settings.set_retention_window`) with the same revision, conflict and refusal
-handling (`settings/windows.tsx`).
+handling (`settings/windows.tsx`). Single-operator mode (R5, #1781) is one
+more row, on or off, written only through `settings.set_single_operator`
+under `settings:manage` (`settings/single-operator-row.tsx`); its
+`SINGLE_OPERATOR_REFUSED` (a second operator exists) is said in a plain
+sentence on the refusal line, never the code. The drawer's correction cards
+say the mode beside Launch, read from the same `settings.read` row only while
+a card offers a decision, and a Launch the server refuses with
+`ASTRA_REVIEW_MISSING` stays drawn, disabled, with that reason while the card
+shows that version; rereads and failed reads keep it, and a new version or a
+fresh drawer drops it (`views/correction-decisions.tsx`). A later refusal of the
+settings read withdraws the mode it had shown. Neither changes who may Launch:
+the server decides.
 
 The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
 the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms

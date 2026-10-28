@@ -33,6 +33,7 @@ const listed = (item: CorrectionListItem): Correction => ({
   readAt: null,
   reason: null,
   refusal: null,
+  reviewMissingFor: null,
   receipts: null,
 });
 

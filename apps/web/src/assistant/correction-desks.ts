@@ -26,6 +26,13 @@ export interface Correction {
   readonly reason: string | null;
   /** The last read's or decision's refusal, in the server's words. */
   readonly refusal: string | null;
+  /**
+   * The version whose Launch the server refused for a missing Astra review, or
+   * null, set whatever the read after the refusal answers, a failure included.
+   * Launch stays held while the card shows that version: no read says the
+   * review was recorded since, so only a new version or a fresh drawer drops it.
+   */
+  readonly reviewMissingFor: string | null;
   /** Its receipts, newest first, once a person opened them; null until then. */
   readonly receipts: readonly CorrectionReceiptView[] | null;
 }

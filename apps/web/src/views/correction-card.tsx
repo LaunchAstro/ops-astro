@@ -21,40 +21,9 @@ import { desksOf, type Correction } from '../assistant/correction-desks.ts';
 import { taskCorrectionPort } from '../assistant/locate.ts';
 import { useCorrections, type Corrections } from '../assistant/use-corrections.ts';
 import { useLaunchClock } from '../assistant/use-launch-clock.ts';
+import { useSingleOperatorMode } from '../assistant/single-operator.ts';
 import type { OperationsClient } from '../operations/client.ts';
-
-const DECISIONS = [
-  // The owner's word for this flow (#1612); the server's decision stays `approve`.
-  ['approve', 'Launch'],
-  ['reject', 'Decline'],
-] as const;
-
-/** A person's approve and decline, the card's only controls; approve only while the check holds. */
-function Decisions(props: {
-  readonly busy: boolean;
-  readonly launchable: boolean;
-  readonly onDecide: (decision: 'approve' | 'reject') => void;
-}): ReactElement {
-  const offered = DECISIONS.filter(([decision]) => decision !== 'approve' || props.launchable);
-  return (
-    <div className="aip__plan-act">
-      {offered.map(([decision, words]) => (
-        <button
-          key={decision}
-          type="button"
-          className={decision === 'approve' ? 'btn btn--primary btn--sm' : 'btn btn--sm'}
-          data-correction-decide={decision}
-          disabled={props.busy}
-          onClick={() => {
-            props.onDecide(decision);
-          }}
-        >
-          {words}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { Decisions, Notes, reviewHeld } from './correction-decisions.tsx';
 
 const capture = (label: string, taken: CorrectionReceiptView['afterCapture']): ReactElement =>
   taken === null ? (
@@ -107,9 +76,15 @@ function Receipts(props: {
   );
 }
 
+/** Waiting for a decision on a version a read named: Launch and Decline are drawn. */
+const isDecidable = (each: Correction): boolean =>
+  each.state === 'requested' && each.versionId !== null;
+
 export function CorrectionCard(props: {
   readonly correction: Correction;
   readonly busy: boolean;
+  /** The business's single-operator mode, or null where it was not read. */
+  readonly singleOperator?: boolean | null;
   readonly onDecide: (decision: 'approve' | 'reject') => void;
   readonly onReceipts: () => void;
   /** Read the correction again: the card's clock calls it. */
@@ -118,7 +93,7 @@ export function CorrectionCard(props: {
   const { correction, busy, onDecide } = props;
   const { ask } = correction;
   const { launchable, checking } = useLaunchClock(correction, props.onReread);
-  const decidable = correction.state === 'requested' && correction.versionId !== null;
+  const decidable = isDecidable(correction);
   const receipted = correction.state === 'published' || correction.state === 'reverted';
   return (
     <section
@@ -135,17 +110,16 @@ export function CorrectionCard(props: {
         {stateWords(correction.state, correction.reason)}
         {correction.approver === null ? '' : ` Decided by ${correction.approver}.`}
       </p>
-      {checking ? (
-        <p className="aip__plan-meta" data-correction-checking="">
-          Checking the page again…
-        </p>
+      <Notes checking={checking} correction={correction} />
+      {decidable ? (
+        <Decisions
+          busy={busy}
+          launchable={launchable}
+          held={reviewHeld(correction)}
+          singleOperator={props.singleOperator ?? null}
+          onDecide={onDecide}
+        />
       ) : null}
-      {correction.refusal === null ? null : (
-        <p className="aip__plan-meta aip__plan-refused" role="alert">
-          {correction.refusal}
-        </p>
-      )}
-      {decidable ? <Decisions busy={busy} launchable={launchable} onDecide={onDecide} /> : null}
       {receipted ? (
         <Receipts receipts={correction.receipts} busy={busy} onOpen={props.onReceipts} />
       ) : null}
@@ -209,14 +183,52 @@ function Door(props: {
   );
 }
 
+/** The desks and their cards, each deciding through the hook. */
+function Desks(props: {
+  readonly corrections: Corrections;
+  readonly singleOperator: boolean | null;
+}): ReactElement {
+  const { corrections } = props;
+  return (
+    <>
+      {desksOf(corrections.list).map((desk) => (
+        <section key={desk.key} data-correction-desk={desk.key} aria-label={desk.title}>
+          <span className="aip__plan-k">{desk.title}</span>
+          {desk.corrections.map((correction) => (
+            <CorrectionCard
+              key={correction.correctionId}
+              correction={correction}
+              busy={corrections.busy}
+              singleOperator={props.singleOperator}
+              onDecide={(decision) => {
+                corrections.decide(correction.correctionId, decision);
+              }}
+              onReceipts={() => {
+                corrections.openReceipts(correction.correctionId);
+              }}
+              onReread={() => {
+                corrections.reread(correction.correctionId);
+              }}
+            />
+          ))}
+        </section>
+      ))}
+    </>
+  );
+}
+
 /** The door, where there is a port, and the active business's desks, under the session's grant. */
 export function SidebarCorrections(props: {
   readonly client: OperationsClient;
   readonly propose?: ProposePort | undefined;
   /** The grant it serves (`grantKeyOf`): its desks are held under it as well as the business. */
   readonly grantKey?: string | undefined;
+  /** Read the business's single-operator mode for Launch (the drawer's host does). */
+  readonly readsMode?: boolean;
 }): ReactElement {
   const corrections = useCorrections(props.client, props.propose, props.grantKey);
+  const wanted = props.readsMode === true && corrections.list.some(isDecidable);
+  const singleOperator = useSingleOperatorMode(props.client, props.grantKey, wanted);
   const { request } = corrections;
   return (
     <div data-assistant="corrections">
@@ -233,27 +245,7 @@ export function SidebarCorrections(props: {
           {corrections.listRefusal}
         </p>
       )}
-      {desksOf(corrections.list).map((desk) => (
-        <section key={desk.key} data-correction-desk={desk.key} aria-label={desk.title}>
-          <span className="aip__plan-k">{desk.title}</span>
-          {desk.corrections.map((correction) => (
-            <CorrectionCard
-              key={correction.correctionId}
-              correction={correction}
-              busy={corrections.busy}
-              onDecide={(decision) => {
-                corrections.decide(correction.correctionId, decision);
-              }}
-              onReceipts={() => {
-                corrections.openReceipts(correction.correctionId);
-              }}
-              onReread={() => {
-                corrections.reread(correction.correctionId);
-              }}
-            />
-          ))}
-        </section>
-      ))}
+      <Desks corrections={corrections} singleOperator={singleOperator} />
     </div>
   );
 }
@@ -277,6 +269,7 @@ export const besideAllowance = (
     <SidebarCorrections
       client={host.client}
       grantKey={host.grantKey}
+      readsMode
       propose={host.taskId === undefined ? undefined : taskCorrectionPort(host.client, host.taskId)}
     />
   </>
