@@ -119,7 +119,9 @@ describe.skipIf(noDatabase)('Hermes Agent’s operation in the broker', () => {
     expect(listed).toMatchObject({ ok: true, reservedMinor: 0 });
     expect(world.provider.seen.length).toBe(seen + 1);
   }, 120_000);
+});
 
+describe.skipIf(noDatabase)('Hermes Agent’s operation in the broker, sized', () => {
   it('a listed person’s message too large for Hermes Agent is refused here, before any row or send', async () => {
     const owner = ownerOf(s);
     const seen = world.provider.seen.length;

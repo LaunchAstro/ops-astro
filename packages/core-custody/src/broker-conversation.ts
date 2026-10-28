@@ -153,6 +153,40 @@ async function earlierOrLost(
 }
 
 /**
+ * The started row for an unpriced call, inside its business's transaction: an
+ * earlier or lost call first, then the ceiling, then carriage, then the insert.
+ * A string is the started call's id.
+ */
+async function startCall(
+  tx: TenantQuery,
+  call: {
+    request: ConversationCallRequest;
+    caller: ModelCaller;
+    operation: ModelOperation;
+    route: BrokerRoute;
+    account: string | null;
+  },
+  broker: Broker,
+): Promise<string | ModelCallResult> {
+  const { request, caller, operation, route, account } = call;
+  const earlier = await earlierOrLost(tx, request, caller, operation);
+  if (earlier !== undefined) return earlier;
+  // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
+  if (await atCeiling(tx, operation, route)) {
+    return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
+  }
+  const { carrier } = broker;
+  if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
+    return refused('CARRIAGE_UNAVAILABLE');
+  }
+  return (
+    (await insertStarted(tx, request, operation, route, account, carrier)) ??
+    (await messageCall(tx, request.messageId)) ??
+    RATE_LIMITED
+  );
+}
+
+/**
  * A person's unpriced model call from their own conversation, streamed only where
  * custody presents no credential the answer could echo (`sendingCarrier`). Every check runs before
  * anything is written: the owner, the catalogue, a local route (a cloud one is
@@ -182,25 +216,8 @@ export async function callModelUnpriced(
   const { route } = chosen;
   const { account, presentsNothing } = await sendingCarrier(broker, route, operation.destination);
   const streamed = presentsNothing && operation.fold !== undefined;
-  const started = await database.withBusiness(
-    businessId,
-    async (tx): Promise<string | ModelCallResult> => {
-      const earlier = await earlierOrLost(tx, request, caller, operation);
-      if (earlier !== undefined) return earlier;
-      // The ceiling's lock waits out a twin asking at this moment; its call is read after it.
-      if (await atCeiling(tx, operation, route)) {
-        return (await messageCall(tx, request.messageId)) ?? RATE_LIMITED;
-      }
-      const { carrier } = broker;
-      if (carrier !== undefined && !(await carriedIn(tx, request.conversation.id, carrier))) {
-        return refused('CARRIAGE_UNAVAILABLE');
-      }
-      return (
-        (await insertStarted(tx, request, operation, route, account, carrier)) ??
-        (await messageCall(tx, request.messageId)) ??
-        RATE_LIMITED
-      );
-    },
+  const started = await database.withBusiness(businessId, (tx) =>
+    startCall(tx, { request, caller, operation, route, account }, broker),
   );
   if (typeof started !== 'string') return started;
   const callId = started;
