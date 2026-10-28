@@ -60,7 +60,10 @@ afterAll(async () => {
  */
 async function dispatchedReplacementHeldUnknown(amount: number | null) {
   const w = await h.unknownStep({ applied: false, room: true });
-  expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
+  // A written-off step's replacement proved absent stays unknown for a person, so a later
+  // pass answers it too: only this step's first attempt is asked about here.
+  const passed = await h.reconcile();
+  expect(passed.find((one) => one.attemptId === w.attemptId)).toMatchObject({ answer: 'absent' });
   const replacement = await h.replacement(w);
   const picked = await pickup(s, replacement);
   const next: Work = {
@@ -143,7 +146,7 @@ describe.skipIf(url === undefined)(
         const passed = await h.reconcile();
         expect(passed.find((one) => one.attemptId === next.attemptId)).toMatchObject({
           answer: 'absent',
-          reason: expect.stringMatching(/^not resumed: /u) as unknown,
+          reason: expect.stringMatching(/^not resumed: a person wrote this step off/u) as unknown,
         });
         // No fresh hold or attempt for the step: the replacement waits for a person.
         expect(await h.t3b.snapshot()).toStrictEqual(before);

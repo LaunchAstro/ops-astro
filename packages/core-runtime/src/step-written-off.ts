@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Whether a step was written off: the one fact a pickup (`pickup.ts`) and a top-up at a
-// budget stop (`recorded-refusal.ts`) read. A step any of whose attempts a person wrote off,
-// at nothing or above, never runs again (#2277).
+// Whether a step was written off: the one fact a pickup (`pickup.ts`), a top-up at a
+// budget stop (`recorded-refusal.ts`) and a resume (`recovery/reconcile.ts`) read. A step
+// any of whose attempts a person wrote off, at nothing or above, never runs again (#2277).
+
+import type { TenantQuery } from '../../core-records/src/index.ts';
 
 /**
  * SQL, true when an attempt of the step `step` names, in the business `business` names, was
@@ -25,3 +27,17 @@ export const stepWrittenOff = (business: string, step: string): string => `exist
                       where o.business_id = w.business_id and o.command = 'budget.write_off'
                         and o.outcome = 'applied' and o.result -> 'detail' ->> 'state' = 'applied'
                         and o.result -> 'detail' ->> 'attemptId' = w.id::text)))`;
+
+/**
+ * Whether a person wrote off any attempt of this attempt's step, read in the caller's
+ * transaction; the caller holds the step's lock, which a write-off takes too.
+ */
+export async function stepIsWrittenOff(tx: TenantQuery, attemptId: string): Promise<boolean> {
+  const [found] = await tx.query<{ readonly written_off: boolean }>(
+    `select ${stepWrittenOff('att.business_id', 'att.step_id')} as written_off
+       from public.attempts att
+      where att.business_id = $1 and att.id = $2`,
+    [tx.businessId, attemptId],
+  );
+  return found?.written_off === true;
+}
