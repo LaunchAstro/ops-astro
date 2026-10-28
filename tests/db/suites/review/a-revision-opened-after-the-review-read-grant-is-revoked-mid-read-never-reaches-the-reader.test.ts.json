@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 read under revocation: a review:read grant revoked between the covered review query and the read of its revisions, with a revision opened after it, answers NOT_FOUND and never carries that revision (S2061-1)."
+}
