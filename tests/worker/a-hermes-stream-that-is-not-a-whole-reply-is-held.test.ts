@@ -8,13 +8,21 @@
 //     progress events and all, folds to its text and reads as the reply;
 //   - a finish other than `stop` (`length`, `cancelled`) stays, so a later
 //     `stop` never makes a cut-short or cancelled answer a reply;
-//   - an event that is not a JSON object, or a delta whose content is not
-//     text, makes the stream malformed, so it is held.
+//   - an event out of shape anywhere a choice is read (an event, the choices,
+//     a choice or its delta that is no object, content that is no text, a
+//     finish that is no name) makes the stream malformed, so it is held;
+//   - the worst finish reported stays: `error` over any other, any other
+//     over `stop`, so OpenRouter's paid reader never settles a failed reply.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { hermesRequest, readHermesAnswer } from '../../packages/core-connectors/src/index.ts';
+import {
+  hermesRequest,
+  openrouterRequest,
+  readHermesAnswer,
+  readOpenRouterAnswer,
+} from '../../packages/core-connectors/src/index.ts';
 import type { OutboundRequest } from '../../packages/core-custody/src/agent.ts';
-import { event } from '../api/openrouter-stand-in-fixture.ts';
+import { event, HAIKU } from '../api/openrouter-stand-in-fixture.ts';
 import { openAgentWorld, PROMPT, type AgentWorld } from './model-agent-world.ts';
 
 const WAIT = 15_000;
@@ -46,22 +54,47 @@ const chunk = (delta: Record<string, unknown>, finish: string | null = null): st
 const progress = (payload: Record<string, unknown>): string =>
   `event: hermes.tool.progress\ndata: ${JSON.stringify(payload)}\n\n`;
 
-/** Custody's folded body for `chunks`, sent through the agent to the stand-in Hermes Agent. */
-async function folded(chunks: readonly string[]): Promise<Record<string, unknown>> {
-  world = await openAgentWorld({ hermes: true });
-  const { hermes } = world;
-  if (hermes === undefined) throw new Error('no stand-in Hermes Agent');
-  hermes.answer = () => ({ status: 200, chunks });
+/** OpenRouter's paid chat as the broker builds it. */
+const paid = (): OutboundRequest => {
+  const built = openrouterRequest({ message: PROMPT }, undefined, HAIKU);
+  return { ...request(), destination: 'openrouter', path: built.path, body: built.body };
+};
+
+/** Custody's folded body for `chunks`, sent through the agent to the stand-in Hermes Agent (or OpenRouter). */
+async function folded(
+  chunks: readonly string[],
+  to: 'hermes' | 'openrouter' = 'hermes',
+): Promise<Record<string, unknown>> {
+  world = await openAgentWorld(to === 'hermes' ? { hermes: true } : { paid: true });
+  const standIn = to === 'hermes' ? world.hermes : world.openrouter;
+  if (standIn === undefined) throw new Error('no stand-in');
+  standIn.answer = () => ({ status: 200, chunks });
   const call = await world.call();
-  await call.line.send('request', call.seal('request', call.body(request())));
+  const asked = to === 'hermes' ? request() : paid();
+  await call.line.send('request', call.seal('request', call.body(asked)));
   const [answer] = await call.until('answer');
   const outcome = answer?.body as { outbound: { body: string } } | undefined;
   return JSON.parse(outcome?.outbound.body ?? '{}') as Record<string, unknown>;
 }
 
+/** One chunk of OpenRouter's paid stream finishing `finish`, with text only on a length finish. */
+const paidChunk = (finish: string, usage?: unknown): string =>
+  event({
+    model: HAIKU,
+    choices: [
+      {
+        index: 0,
+        delta: { content: finish === 'length' ? 'partial paid reply' : '' },
+        finish_reason: finish,
+      },
+    ],
+    ...(usage === undefined ? {} : { usage }),
+  });
+
 const DONE = 'data: [DONE]\n\n';
 const STOP = chunk({}, 'stop');
 
+// oxlint-disable-next-line max-lines-per-function -- the control and each held stream
 describe('a Hermes Agent stream becomes a reply only when whole', () => {
   it(
     'control: the stream recorded on the M5, tool progress and all, reads as its text',
@@ -93,6 +126,55 @@ describe('a Hermes Agent stream becomes a reply only when whole', () => {
       const body = await folded([chunk({ content: 'partial reply' }, finish), STOP, DONE]);
       expect(body['finish_reason']).toBe(finish);
       expect(readHermesAnswer(body)).toBeUndefined();
+    },
+    WAIT,
+  );
+
+  it.each([
+    [
+      'a delta that is text',
+      event({ model: 'hermes-agent', choices: [{ index: 0, delta: 'lost' }] }),
+    ],
+    [
+      'a delta that is a list',
+      event({ model: 'hermes-agent', choices: [{ index: 0, delta: ['lost'] }] }),
+    ],
+    [
+      'choices that are no list',
+      event({ model: 'hermes-agent', choices: { delta: { content: 'x' } } }),
+    ],
+    ['a choice that is no object', event({ model: 'hermes-agent', choices: ['lost'] })],
+    ['a finish that is no name', chunk({}, 7 as unknown as string)],
+  ])(
+    'Sol proof, criterion 5: a malformed nested event cannot become a reply (%s)',
+    async (_name, strange) => {
+      const body = await folded([chunk({ content: 'partial reply' }), strange, STOP, DONE]);
+      expect(body['error']).toBe('stream_malformed');
+      expect(readHermesAnswer(body)).toBeUndefined();
+    },
+    WAIT,
+  );
+
+  it(
+    'Sol proof, correctness: a later error finish is never masked by an earlier length',
+    async () => {
+      const hermes = await folded([
+        chunk({ content: 'partial reply' }, 'length'),
+        chunk({}, 'error'),
+        DONE,
+      ]);
+      expect(hermes['finish_reason']).toBe('error');
+      expect(readHermesAnswer(hermes)).toBeUndefined();
+      const openrouter = await folded(
+        [
+          paidChunk('length'),
+          paidChunk('error', { prompt_tokens: 120, completion_tokens: 12, cost: 0.000_3 }),
+          DONE,
+        ],
+        'openrouter',
+      );
+      expect(openrouter['finish_reason']).toBe('error');
+      expect(readOpenRouterAnswer(openrouter)).toBeUndefined();
     },
     WAIT,
   );
