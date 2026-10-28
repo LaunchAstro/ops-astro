@@ -21,7 +21,7 @@ import {
   systemResolver,
   type Resolver,
   type Transport as PinnedPost,
-} from '../../../packages/core-connectors/src/capture/transport.ts';
+} from '../../../packages/core-connectors/src/index.ts';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
 import { withinDeadline } from './deadline.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
