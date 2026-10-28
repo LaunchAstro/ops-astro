@@ -100,16 +100,17 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
   const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
   const charge = amount > spentMinor ? amount : spentMinor;
   // At nothing, a dispatch-marked attempt keeps `abandoned`: 20261012052116 admits no
-  // other outcome on a marked attempt abandoned, and pickup never replaces a marked one.
-  await tx.query(
+  // other outcome on a marked attempt abandoned. Its hold records the write-off instead,
+  // even settled at its calls (20261004040100), and pickup reads either (`pickup.ts`).
+  const [attempt] = await tx.query<{ readonly marked: boolean }>(
     amount > 0n
       ? `update public.attempts
             set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
-          where business_id = $1 and id = $2`
+          where business_id = $1 and id = $2 returning dispatch_marker as marked`
       : `update public.attempts
             set state = 'abandoned',
                 outcome = case when dispatch_marker then 'abandoned' else 'unknown' end
-          where business_id = $1 and id = $2`,
+          where business_id = $1 and id = $2 returning dispatch_marker as marked`,
     amount > 0n
       ? [tx.businessId, row.attempt_id, amount.toString()]
       : [tx.businessId, row.attempt_id],
@@ -119,6 +120,7 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
     { reservationId: row.reservation_id, envelopeId: row.envelope_id },
     { cause: 'written_off', causeId: row.attempt_id },
     charge,
+    { stopped: amount === 0n && attempt?.marked === true },
   );
   if (charge > 0n) {
     await raiseAlert(tx, {

@@ -3,9 +3,9 @@
 // A top-up on a held hold moves its calls' spend to date, an open call at its
 // maximum, onto the envelope's actual. When a person later writes that hold
 // off, its charge leaves the counted call out: the call's maximum lives in
-// the envelope, not in the hold's actual. The version room must count the
-// hold at every call the top-up counted, the written-off one too, so a
-// replacement holds no more than the envelope has left.
+// the envelope, not in the hold's actual. A written-off step never runs again
+// (#2277), so a pickup of any older hold of it is refused before the version
+// room is read, and the envelope keeps what the top-up and the write-off left.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -105,46 +105,55 @@ async function countedWriteOff(charge = 0, beforeWriteOff?: (r1: unknown) => Pro
   return { work, versionId, first, r1, closed };
 }
 
+/** A pickup of the hold as an agent, by its answer's code. */
+const pickupCode = async (reservationId: unknown): Promise<string> =>
+  codeOf(
+    await asAgent(s, {
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId,
+      leaseSeconds: 600,
+    }),
+  );
+
+const REFUSED = 'RESERVATION_NOT_CLAIMABLE';
+
 describe.skipIf(serverUrl === undefined)(
   'the version room after a counted hold is written off',
   () => {
-    it('counts a hold topped up before a person wrote it off at the 500 the top-up moved, so the replacement holds the 100 left', async () => {
+    it('refuses the older hold of a step topped up and then written off at nothing, and the envelope keeps the 500 the top-up moved', async () => {
       const { work, versionId, first, r1, closed } = await countedWriteOff();
-      // R1 stamped before the first hold, which reads as the newest and is
-      // replaced on its whole 500 left: the room is 600 less R1's 500.
+      // R1 stamped before the first hold, which reads as the newest: its step was written off.
       await stampBefore(s, first, r1);
-      await pickup(s, first);
+      const code = await pickupCode(first);
       const holds = await holdsOf(s, versionId);
       const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
       expect({
+        code,
         closed,
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       }).toEqual({
+        code: REFUSED,
         closed: { call: 'liability_unknown', counted: true, recorded: [{ hold_state: 'held' }] },
         actual: '500',
-        live: ['100'],
+        live: [],
       });
     });
 
-    it('counts a hold topped up and then written off above zero at the moved calls and the charge, so no hold passes the raised ceiling', async () => {
+    it('refuses the older hold of a step topped up and then written off above zero, and the envelope keeps the moved calls and the charge', async () => {
       // The ceiling is 500 raised by 100: 600. The top-up moved R1's 500 to the
       // envelope's actual and the write-off charges 100 more, so R1 alone fills it.
       const { work, versionId, first, r1 } = await countedWriteOff(100);
       await stampBefore(s, first, r1);
-      const again = await asAgent(s, {
-        command: 'task.pickup',
-        operationId: randomUUID(),
-        reservationId: first,
-        leaseSeconds: 600,
-      });
+      const code = await pickupCode(first);
       const holds = await holdsOf(s, versionId);
       const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
       expect({
-        code: codeOf(again),
+        code,
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
-      }).toEqual({ code: 'BUDGET_UNAVAILABLE', actual: '600', live: [] });
+      }).toEqual({ code: REFUSED, actual: '600', live: [] });
     });
   },
 );
@@ -152,27 +161,22 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'the version room after an upgrade from before the hold state',
   () => {
-    it('counts a hold topped up while held before the hold state, then written off above zero, at the moved calls and the charge', async () => {
+    it('refuses the older hold of a step topped up while held before the hold state, then written off above zero, and the envelope keeps the moved calls and the charge', async () => {
       // Sol's SC1 Scenario: the top-up predates the column, so only the upgrade
       // can say the hold was still held when it answered.
       const { work, versionId, first, r1 } = await countedWriteOff(100);
       await stampBefore(s, first, r1);
       await asBeforeHoldState(s);
-      const again = await asAgent(s, {
-        command: 'task.pickup',
-        operationId: randomUUID(),
-        reservationId: first,
-        leaseSeconds: 600,
-      });
+      const code = await pickupCode(first);
       const holds = await holdsOf(s, versionId);
       const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
       expect({
-        code: codeOf(again),
+        code,
         recorded: await holdStateOf(s, r1),
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       }).toEqual({
-        code: 'BUDGET_UNAVAILABLE',
+        code: REFUSED,
         recorded: [{ hold_state: 'held' }],
         actual: '600',
         live: [],
@@ -184,7 +188,7 @@ describe.skipIf(serverUrl === undefined)(
 describe.skipIf(serverUrl === undefined)(
   'the version room after an upgrade, with a start stamp shared by another hold',
   () => {
-    it('reads a top-up made while held as held, even when another hold on the run was reserved at its start stamp', async () => {
+    it('refuses the older hold of a written-off step, even when another hold on the run was reserved at its start stamp', async () => {
       // SEC-P2R18 L1: two transactions on one run started in the same microsecond.
       // The first hold's attempt (500, not the top-up's 100) shares the answer's stamp.
       const { work, versionId, first, r1 } = await countedWriteOff(100);
@@ -200,20 +204,15 @@ describe.skipIf(serverUrl === undefined)(
       );
       expect(moved, "the top-up's stamp now the first hold's").toHaveLength(1);
       await asBeforeHoldState(s);
-      const again = await asAgent(s, {
-        command: 'task.pickup',
-        operationId: randomUUID(),
-        reservationId: first,
-        leaseSeconds: 600,
-      });
+      const code = await pickupCode(first);
       const live = (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held');
       expect({
-        code: codeOf(again),
+        code,
         recorded: await holdStateOf(s, r1),
         live: live.map((hold) => hold.held),
         envelope: await envelopeOf(s, work),
       }).toMatchObject({
-        code: 'BUDGET_UNAVAILABLE',
+        code: REFUSED,
         recorded: [{ hold_state: 'held' }],
         live: [],
       });
@@ -223,8 +222,8 @@ describe.skipIf(serverUrl === undefined)(
 
 /**
  * Sol's SC2 Scenario: after the top-up, reconciliation proves R1's step absent and reserves R2 at
- * R1's 100 for the same step. R1 is written off at 100 and R2 ends unspent. R2's attempt shares the
- * answer's start stamp (two transactions starting in one microsecond): nothing tells them apart.
+ * R1's 100 for the same step. R1 is written off at 100, which stops R2 unspent. R2's attempt shares
+ * the answer's start stamp (two transactions starting in one microsecond): nothing tells them apart.
  */
 async function reconciledAtTheTopUpStamp() {
   const reconciled: { r2?: unknown } = {};
@@ -243,7 +242,6 @@ async function reconciledAtTheTopUpStamp() {
     reconciled.r2 = r2?.id;
   });
   const r2 = reconciled.r2;
-  await stopWorker(s, await pickup(s, r2));
   const moved = await s.db.admin.execute(
     `update public.budget_answers a set answered_at = t.created_at
        from public.budget_asks k, public.attempts t
@@ -273,24 +271,19 @@ async function reconciledAtTheTopUpStamp() {
 describe.skipIf(serverUrl === undefined)(
   'the version room after an upgrade, with a replacement at the top-up step, amount and stamp',
   () => {
-    it('reads a top-up made while held as held when a reconciled replacement at its step and amount shares its stamp, so the written-off charge fills the version', async () => {
+    it('refuses the replacement a write-off stopped when it shares the top-up stamp, step and amount, and the written-off charge fills the version', async () => {
       const { work, versionId, r1, r2 } = await reconciledAtTheTopUpStamp();
       await asBeforeHoldState(s);
-      const again = await asAgent(s, {
-        command: 'task.pickup',
-        operationId: randomUUID(),
-        reservationId: r2,
-        leaseSeconds: 600,
-      });
+      const code = await pickupCode(r2);
       const holds = await holdsOf(s, versionId);
       const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
       expect({
-        code: codeOf(again),
+        code,
         recorded: await holdStateOf(s, r1),
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       }).toEqual({
-        code: 'BUDGET_UNAVAILABLE',
+        code: REFUSED,
         recorded: [{ hold_state: 'held' }],
         actual: '600',
         live: [],
