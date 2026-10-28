@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable max-lines-per-function -- one proof: two pins, the client read and the team read, top to bottom */
 //
-// C35 (#2012): a pin is a comment, so the client sees it through the task's client
-// projection, the allowlist of client comments in shared fields. A client pin is projected
-// with its anchor; an internal pin, its body, anchor and id, never reaches the client's read.
+// C35 (#2012), ORCH-S2158-7: client review is switched off in this cut (DECISIONS 43, the
+// server's half of the web's `NO_CLIENT_GRANTS`), so a team member's pin for the client is
+// refused `CLIENT_REVIEW_OFF` and writes nothing. The client reading the task shared with
+// them sees no pin: neither the refused one nor an internal pin's body, anchor or id.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
@@ -16,6 +17,7 @@ const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C35 pin projection: DATABASE_URL is unset.');
 
 const INTERNAL_MARKER = 'team only: margin-marker-4412';
+const CLIENT_MARKER = 'for the client: photo-marker-7731';
 
 let w: C35World;
 let client: Member;
@@ -29,19 +31,18 @@ afterAll(async () => {
   if (serverUrl !== undefined) await w.world.drop();
 });
 
-describe.skipIf(serverUrl === undefined)('C35 the client projection of pins', () => {
-  it('C35 the client projection carries a client pin and never an internal one', async () => {
+describe.skipIf(serverUrl === undefined)('C35 pins while client review is off', () => {
+  it('C35 a client pin is refused while client review is off and reaches no client', async () => {
     const opened = detailOf(await w.open(w.ava));
     const revisionId = String(opened['revisionId']);
     expect(codeOf(await w.capture(w.ava, revisionId))).toBe('not-a-refusal');
-    const forClient = detailOf(
-      await w.pin(w.ava, revisionId, {
-        audience: 'client',
-        body: 'Is this the photo you wanted here?',
-        width: 390,
-        selector: [spot('xywh=0,200,390,240')],
-      }),
-    );
+    const forClient = await w.pin(w.ava, revisionId, {
+      audience: 'client',
+      body: CLIENT_MARKER,
+      width: 390,
+      selector: [spot('xywh=0,200,390,240')],
+    });
+    expect(codeOf(forClient)).toBe('CLIENT_REVIEW_OFF');
     const internal = detailOf(
       await w.pin(w.ava, revisionId, {
         body: INTERNAL_MARKER,
@@ -58,18 +59,15 @@ describe.skipIf(serverUrl === undefined)('C35 the client projection of pins', ()
     expect('sharedTask' in read).toBe(true);
     if (!('sharedTask' in read)) return;
     const comments = read.sharedTask.comments as readonly Readonly<Record<string, unknown>>[];
-    const pin = comments.find((comment) => comment['id'] === forClient['commentId']);
-    expect(pin).toMatchObject({
-      body: 'Is this the photo you wanted here?',
-      audience: 'client',
-      anchor: { source: revisionId, width: 390, selector: [spot('xywh=0,200,390,240')] },
-    });
+    expect(comments.filter((comment) => comment['anchor'] !== undefined)).toStrictEqual([]);
     const text = JSON.stringify(read);
+    expect(text).not.toContain(CLIENT_MARKER);
+    expect(text).not.toContain('xywh=0,200,390,240');
     expect(text).not.toContain(INTERNAL_MARKER);
     expect(text).not.toContain(String(internal['commentId']));
     expect(text).not.toContain('xywh=40,40,80,80');
 
-    // The team reads both, each with its anchor.
+    // The team reads the internal pin alone: the refused one left no comment.
     const team = await executeRead(w.world.db.app, w.world.business, w.ava.presented, {
       read: 'task.read',
       recordId: w.taskA,
@@ -78,6 +76,7 @@ describe.skipIf(serverUrl === undefined)('C35 the client projection of pins', ()
     const anchors = (team.task.comments as readonly Readonly<Record<string, unknown>>[])
       .filter((comment) => comment['anchor'] !== undefined)
       .map((comment) => comment['audience']);
-    expect(anchors.toSorted()).toStrictEqual(['client', 'internal']);
+    expect(anchors).toStrictEqual(['internal']);
+    expect(JSON.stringify(team)).not.toContain(CLIENT_MARKER);
   });
 });
