@@ -47,6 +47,9 @@ async function correctionOn(
 /** What a refusal's code may be when printed: the server's text it came with never is. */
 const CODE = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
+/** A refusal's code as it may be printed or reported: `unreadable` when it does not read as one. */
+export const printable = (refused: string): string => (CODE.test(refused) ? refused : 'unreadable');
+
 /**
  * A `task.queue` the runner could not read: refused, with its code, or with no
  * usable answer. The pass fails on it, never reading the queue as empty.
@@ -56,7 +59,7 @@ export class QueueUnread extends Error {
   readonly code: string | undefined;
 
   constructor(refused?: string) {
-    const code = refused === undefined || CODE.test(refused) ? refused : 'unreadable';
+    const code = refused === undefined ? refused : printable(refused);
     super(
       code === undefined ? 'the queue gave no usable answer' : `the queue was refused: ${code}`,
     );
@@ -71,6 +74,14 @@ function entriesOf(answer: Answer): readonly Readonly<Record<string, unknown>>[]
   const queue = 'detail' in answer ? answer.detail['queue'] : undefined;
   if (!Array.isArray(queue)) throw new QueueUnread();
   return queue as readonly Readonly<Record<string, unknown>>[];
+}
+
+/** The queue's work as the agent reads it; one it could not read throws `QueueUnread`. */
+export async function queueOf(
+  call: AgentCall,
+): Promise<readonly Readonly<Record<string, unknown>>[]> {
+  // A call that never answered is a queue with no usable answer too.
+  return entriesOf(await call('task.queue', {}).catch(() => ({ fault: true }) as const));
 }
 
 type Lease = Omit<Claim, 'correctionId' | 'taskId'>;
@@ -121,9 +132,7 @@ export function queueClaims(call: AgentCall, db: Database, business: BusinessId)
   return {
     holder: () => holder,
     async take() {
-      // A call that never answered is a queue with no usable answer too.
-      const answer = await call('task.queue', {}).catch(() => ({ fault: true }) as const);
-      const queued = entriesOf(answer);
+      const queued = await queueOf(call);
       const claims: Claim[] = [];
       for (const entry of queued.filter((work) => work['purpose'] === SITE_PURPOSE)) {
         // oxlint-disable-next-line no-await-in-loop -- one pickup at a time, each its own lease

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 (#2013, TR-P-1): a review of a client's page, its capture approved and queued, is refused by the fence while the pool's reviews are open: no request reaches the client's site, no browser opens, nothing is stored or landed, and the lease is handed back failed by code."
+}
