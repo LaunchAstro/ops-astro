@@ -3,10 +3,12 @@
 // #2277 (S2282-1): once a person writes off a step's attempt, at nothing or
 // above, no hold for that step dispatches it again. The reconciliation pass
 // proves the first attempt's effect absent and reserves a replacement for the
-// step on its own hold; a person then writes the first attempt off. A pickup
-// of that replacement is refused, and it writes nothing and moves no money.
-// With no write-off, or after a person says nothing happened, the same
-// replacement is picked up and dispatches.
+// step on its own hold; a person then writes the first attempt off. The
+// write-off stops that replacement, as `happened` does: its hold goes back,
+// and one already picked up loses its lease and never dispatches. A pickup of
+// it afterwards is refused, and it writes nothing and moves no money. With no
+// write-off, or after a person says nothing happened, the same replacement is
+// picked up and dispatches.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -68,17 +70,42 @@ async function stepStates(w: Work) {
   return found.map((one) => one.state);
 }
 
-/** The replacement picked up and dispatched: the step runs again. */
-async function runsAgain(w: Work, replacement: string | undefined) {
+/** The replacement picked up: the work a fresh worker holds for the step. */
+async function pickedUp(w: Work, replacement: string | undefined): Promise<Work> {
   const picked = await pickup(s, replacement);
-  await h.t2d.dispatched({
+  return {
     ...w,
     picked,
     credential: String(picked['credential']),
     attemptId: String(picked['attemptId']),
-  });
+  };
+}
+
+/** The replacement picked up and dispatched: the step runs again. */
+async function runsAgain(w: Work, replacement: string | undefined) {
+  await h.t2d.dispatched(await pickedUp(w, replacement));
   return await stepStates(w);
 }
+
+/** The replacement's hold and lease, and the envelope, once the step is written off. */
+async function stoppedBy(w: Work, replacement: string | undefined, amount: number) {
+  appliedDetail(await asPerson(s, writeOffBody(w, amount)), 'budget.write_off');
+  const [hold] = await rows(
+    s,
+    `select res.state, att.state as attempt_state, l.state as lease_state,
+            (d.revoked_at is not null) as delegation_revoked
+       from public.reservations res
+       join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+       left join public.leases l on l.business_id = res.business_id and l.id = att.lease_id
+       left join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
+      where res.business_id = $1 and res.id = $2`,
+    [s.business, replacement],
+  );
+  return { hold, envelope: await h.envelope(w) };
+}
+
+/** Closed at `amount`, the written-off hold is the envelope's only spend. */
+const givenBack = (amount: number) => ({ held: '0', actual: String(amount) });
 
 /** Written off at `amount`, then a pickup of its replacement: the answer and what it changed. */
 async function writtenOffThenReplacementPickedUp(amount: number) {
@@ -112,6 +139,40 @@ describe.skipIf(url === undefined)(
           after: before,
           dispatched: [],
         });
+      },
+    );
+
+    it.each([0, 700])(
+      'written off at %i, the replacement reserved before it is stopped and its hold goes back',
+      async (amount) => {
+        const { w, replacement } = await absentWithReplacement();
+        expect(await stoppedBy(w, replacement, amount)).toMatchObject({
+          hold: { state: 'abandoned', attempt_state: 'abandoned', lease_state: null },
+          envelope: givenBack(amount),
+        });
+      },
+    );
+
+    it.each([0, 700])(
+      'written off at %i after its replacement was picked up, the replacement never dispatches',
+      async (amount) => {
+        const { w, replacement } = await absentWithReplacement();
+        const next = await pickedUp(w, replacement);
+        expect(await stoppedBy(w, replacement, amount)).toMatchObject({
+          hold: {
+            state: 'abandoned',
+            attempt_state: 'abandoned',
+            lease_state: 'released',
+            delegation_revoked: true,
+          },
+          envelope: givenBack(amount),
+        });
+        const dispatch = await h.t2d.held(next, { command: 'task.dispatch' });
+        expect(codeOf(dispatch)).not.toBe('applied');
+        expect(await stepStates(w)).toStrictEqual([
+          amount > 0 ? 'settled' : 'abandoned',
+          'abandoned',
+        ]);
       },
     );
 
