@@ -6,12 +6,13 @@
 // evidence shows, or nothing) and a written reason. Never a timer: the one
 // caller is the command a person sends (15.3, O6).
 //
-// It closes the one hold it names, under the step's locks, the same set a
-// recorded outcome takes (`outcome.ts`), so the two race to one winner. It
-// writes no row of its own among the money tables: no new attempt, hold or
-// envelope (split 2.2, "no ledger row"). It moves no work: a step proved
-// absent has already resumed on its own hold, and a step not proved absent
-// keeps its stop until a person records an outcome for the work.
+// It closes the one hold it names, under the step's locks and its
+// replacements', the same set a recorded outcome takes (`outcome.ts`), so the
+// two race to one winner. It writes no row of its own among the money tables:
+// no new attempt, hold or envelope (split 2.2, "no ledger row"). The step never
+// runs again (#2277), so a replacement the pass reserved when it proved the
+// step absent is stopped, as `happened` stops it, unless it already dispatched
+// or has a model call out.
 //
 // Above the four-eyes band, T2e's stored setting read here, a second person
 // names the same figure, exactly as a top-up pairs (`budget.ts`). The band is
@@ -33,6 +34,7 @@ import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
+import { discoverReplacements, replacementLocks, stopReplacement } from './outcome.ts';
 import { resolveHeldCalls } from './broker-effect.ts';
 
 export interface WriteOffRequest {
@@ -87,23 +89,29 @@ async function firstApprovers(
 }
 
 /**
- * Close the hold at the amount: a positive figure settles the attempt (its
- * outcome stays `unknown`, since nobody observed the effect), nothing
- * abandons it under the write-off. The hold is charged the amount, and never
- * less than what its model calls settled at, which did happen (AW-01,
+ * Close the hold at the amount. Nobody observed the step's effect, so its
+ * outcome is `unknown` at any figure and the step never runs again (#2277): a
+ * positive figure settles the attempt, and nothing abandons it, since an
+ * attempt's actual is never zero (0034). The hold is charged the amount, and
+ * never less than what its model calls settled at, which did happen (AW-01,
  * `closeHold`). Either way the envelope gives the whole hold back and takes
  * the charge.
  */
 async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<void> {
   const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
   const charge = amount > spentMinor ? amount : spentMinor;
-  await tx.query(
+  // At nothing, a dispatch-marked attempt keeps `abandoned`: 20261012052116 admits no
+  // other outcome on a marked attempt abandoned. Its hold records the write-off instead,
+  // even settled at its calls (20261004040100), and pickup reads either (`pickup.ts`).
+  const [attempt] = await tx.query<{ readonly marked: boolean }>(
     amount > 0n
       ? `update public.attempts
             set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
-          where business_id = $1 and id = $2`
-      : `update public.attempts set state = 'abandoned', outcome = 'abandoned'
-          where business_id = $1 and id = $2`,
+          where business_id = $1 and id = $2 returning dispatch_marker as marked`
+      : `update public.attempts
+            set state = 'abandoned',
+                outcome = case when dispatch_marker then 'abandoned' else 'unknown' end
+          where business_id = $1 and id = $2 returning dispatch_marker as marked`,
     amount > 0n
       ? [tx.businessId, row.attempt_id, amount.toString()]
       : [tx.businessId, row.attempt_id],
@@ -113,6 +121,7 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
     { reservationId: row.reservation_id, envelopeId: row.envelope_id },
     { cause: 'written_off', causeId: row.attempt_id },
     charge,
+    { stopped: amount === 0n && attempt?.marked === true },
   );
   if (charge > 0n) {
     await raiseAlert(tx, {
@@ -124,6 +133,29 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
 }
 
 /**
+ * The step and the replacements the pass reserved for it, locked as one set, as a recorded
+ * outcome locks them: a replacement dispatched between discovery and the locks is a changed
+ * set, rolled back and asked again.
+ */
+async function lockStep(tx: TenantQuery, request: WriteOffRequest) {
+  const discover = async () => {
+    const rows = await tx.query<Unknown>(
+      `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
+      [tx.businessId, request.attemptId, request.taskId],
+    );
+    const first = rows[0];
+    return [rows, first === undefined ? [] : await discoverReplacements(tx, first)] as const;
+  };
+  const { found } = await lockRediscovered(tx, {
+    discover,
+    locks: ([rows, more]) => [...locksOf(rows), ...replacementLocks(more)],
+    rule: 'exact',
+    changed: 'write-off: the step changed under discovery; roll back and write it off again',
+  });
+  return found;
+}
+
+/**
  * A person's write-off, under the step's locks with their covering grants and
  * any first approver's held, and `billing:decide` on the task judged again at
  * the locked instant, for the caller and for the first approver it pairs with.
@@ -132,16 +164,7 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
   const firsts = await firstApprovers(tx, request.attemptId, request.amountMinor);
   const subjects = [...request.subjects, ...firsts.flatMap((first) => first.subjects)];
   await holdCoveringGrants(tx, subjects, request.collection);
-  const { found } = await lockRediscovered(tx, {
-    discover: async () =>
-      await tx.query<Unknown>(
-        `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
-        [tx.businessId, request.attemptId, request.taskId],
-      ),
-    locks: locksOf,
-    rule: 'exact',
-    changed: 'write-off: the step changed under discovery; roll back and write it off again',
-  });
+  const [found, replacements] = await lockStep(tx, request);
   const at = await lockedInstant(tx, ['four_eyes_threshold']);
   const scope = { kind: 'record', id: request.taskId } as const;
   const ask = { collection: request.collection, action: 'decide', scope } as const;
@@ -186,6 +209,16 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     return { ok: true, value: { ...figure, state, firstApproverPersonId: request.personId } };
   }
   await close(tx, row, request.amountMinor);
+  for (const one of replacements.filter((replacement) => !replacement.marked)) {
+    // Sequential: each moves the one envelope the step shares. A replacement whose model
+    // call is out keeps its hold, which carries the call's answer (S2282-2), read under
+    // its locks: a call starts under them too.
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await modelCallsOn(tx, one.reservation_id)).open) {
+      // eslint-disable-next-line no-await-in-loop
+      await stopReplacement(tx, one, row.attempt_id);
+    }
+  }
   // AW-10: the step's held broker calls record the write-off and who made it.
   await resolveHeldCalls(tx, row.reservation_id, 'written_off', request.personId);
   const approvers = [...(pair === null ? [] : [pair.personId]), request.personId];

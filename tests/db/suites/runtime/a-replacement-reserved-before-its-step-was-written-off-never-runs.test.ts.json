@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a write-off, at nothing or above, means the step never runs again through any hold: a replacement the reconciliation pass reserved before the write-off is refused at pickup with nothing written and no money moved, while with no write-off, or after a person says nothing happened, it is picked up and dispatches"
+}

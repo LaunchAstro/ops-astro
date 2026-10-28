@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "a stop raised on a hold a person wrote off with a call still unknown takes no top-up, so custody never reads the hold as one that counted its open calls; the end at the stop still applies"
+  "why": "a hold a person wrote off at 0 with a call still unknown is never picked up again, before or after the call settles late, so the step never runs again, no stop is raised on the hold for a top-up to answer and no money moves"
 }

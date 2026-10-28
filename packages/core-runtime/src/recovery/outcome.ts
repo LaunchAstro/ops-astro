@@ -64,7 +64,7 @@ interface Replacement {
   readonly marked: boolean;
 }
 
-async function discoverReplacements(
+export async function discoverReplacements(
   tx: TenantQuery,
   row: Unknown,
 ): Promise<readonly Replacement[]> {
@@ -83,7 +83,7 @@ async function discoverReplacements(
   );
 }
 
-const replacementLocks = (replacements: readonly Replacement[]): readonly LockRequest[] =>
+export const replacementLocks = (replacements: readonly Replacement[]): readonly LockRequest[] =>
   replacements.flatMap((one): LockRequest[] => [
     { lockClass: 'reservation', id: one.reservation_id },
     ...(one.lease_id === null ? [] : [{ lockClass: 'lease' as const, id: one.lease_id }]),
@@ -98,7 +98,11 @@ const replacementLocks = (replacements: readonly Replacement[]): readonly LockRe
  * lease ends, its delegation is revoked and its hold goes back, by amount,
  * under the recorded outcome. It never dispatches.
  */
-async function stopReplacement(tx: TenantQuery, one: Replacement, causeId: string): Promise<void> {
+export async function stopReplacement(
+  tx: TenantQuery,
+  one: Replacement,
+  causeId: string,
+): Promise<void> {
   if (one.lease_id !== null) await endLease(tx, one.lease_id, 'released');
   if (one.delegation_id !== null) {
     await revokeDelegation(tx, one.delegation_id, 'work_retired');
