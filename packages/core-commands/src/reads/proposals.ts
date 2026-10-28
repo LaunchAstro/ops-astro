@@ -55,9 +55,13 @@
 //   or superseded gate reads its stored outcome whatever the clock says.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts';
+import { gateVerifyingKeys } from '../../../core-runtime/src/index.ts';
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
-import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
+import {
+  DecisionIntegrityError,
+  readVerifiedProjection,
+  type VerifiedDecision,
+} from './verified-decisions.ts';
 import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
 import { ENVELOPES, ledgerOf, STATES, STOPS } from './task-ledger.ts';
 import type { DecisionLink, ProposalView, TaskLedgerView } from '../../../core-wire/src/index.ts';
@@ -283,11 +287,13 @@ function asDecision(row: VerifiedDecision): DecisionLink {
 }
 
 /**
- * The keys a read verifies with: the one configured key, as the resolver's
- * only entry. Retaining an older key id is a configuration change that adds
- * an entry here, and it belongs with the key configuration, not in the read.
+ * The keys a read verifies with: the configured signing key and every retired
+ * key `GATE_RETAINED_KEYS` keeps (#2265), each row verified under the key its
+ * own row names. A refused setting fails the read rather than verifying with
+ * fewer keys than the deployment meant.
  */
 function configuredKeys(): KeyResolver | null {
-  const key = gateSigningKey();
-  return key === undefined ? null : keyResolver([key]);
+  const keys = gateVerifyingKeys();
+  if (!keys.ok) throw new DecisionIntegrityError(keys.problem);
+  return keys.keys;
 }

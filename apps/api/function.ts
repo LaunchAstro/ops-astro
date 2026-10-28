@@ -72,6 +72,7 @@ import {
 import {
   crashSeamProblem,
   runtimeKeys,
+  runtimeKeysProblem,
   type RuntimeKeys,
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
@@ -125,8 +126,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
   for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
-  if (!keys.delegation.ok)
-    throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
+  const keysProblem = runtimeKeysProblem(keys);
+  if (keysProblem !== undefined) throw new Error(keysProblem);
   const alerts = outboxAlerts(settings, databaseUrl, required);
   const database = connect(databaseUrl, { source: 'runtime' });
   const lookup = connectAsAdmin(lookupUrl, { source: 'lookup', idleSeconds: RUNTIME_IDLE_SECONDS });

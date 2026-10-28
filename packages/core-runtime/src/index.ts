@@ -229,9 +229,13 @@ export {
   delegationCredentialKeys,
   custodySealingKey,
   gateSigningKey,
+  gateVerifyingKeys,
   readBusinessCapId,
+  RETAINED_GATE_KEYS_VARIABLE,
   runtimeKeys,
+  runtimeKeysProblem,
   withRuntimeKeys,
+  type GateVerifyingKeysDecision,
   type RuntimeKeys,
 } from './runtime-config.ts';
 export {

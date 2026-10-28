@@ -29,13 +29,15 @@ import type {
   CredentialKeysDecision,
   SealingKey,
 } from '../../core-records/src/index.ts';
-import type { SigningKey } from './signing.ts';
+import { keyResolver, type KeyResolver, type SigningKey } from './signing.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
 
 /** Both deployment keys, read once by a composition root. */
 export interface RuntimeKeys {
   readonly gate: SigningKey | undefined;
+  /** The keys a read verifies decision links with: `gate` and every retained key. */
+  readonly gateVerifying: GateVerifyingKeysDecision;
   readonly delegation: CredentialKeysDecision;
   /** The broker's public key custody seals to (C31); the application never holds the private half. */
   readonly custody: SealingKey | undefined;
@@ -44,9 +46,21 @@ export interface RuntimeKeys {
 export function runtimeKeys(settings: Settings): RuntimeKeys {
   return {
     gate: gateSigningKey(settings),
+    gateVerifying: gateVerifyingKeys(settings),
     delegation: configuredCredentialKeys(settings),
     custody: loadSealingKey(settings),
   };
+}
+
+/**
+ * Why a composition root must not start with these keys, or nothing: a
+ * malformed delegation keyring or retained gate key setting. It names the
+ * setting, never a key's bytes.
+ */
+export function runtimeKeysProblem(keys: RuntimeKeys): string | undefined {
+  if (!keys.delegation.ok) return `delegation credential keys: ${keys.delegation.problem}`;
+  if (!keys.gateVerifying.ok) return `gate keys: ${keys.gateVerifying.problem}`;
+  return undefined;
 }
 
 const handedOver = new AsyncLocalStorage<RuntimeKeys>();
@@ -76,6 +90,85 @@ export function gateSigningKey(settings?: Settings): SigningKey | undefined {
   const secret = environment['GATE_SIGNING_SECRET'];
   if (id === undefined || id === '' || secret === undefined || secret === '') return undefined;
   return { id, secret };
+}
+
+/** The setting that names retired gate keys, as a JSON array of `{"id","secret"}`. */
+export const RETAINED_GATE_KEYS_VARIABLE = 'GATE_RETAINED_KEYS';
+
+/**
+ * The keys a read verifies decision links with, or why the setting was
+ * refused. `keys` is `null` when no signing key is configured. Never thrown.
+ */
+export type GateVerifyingKeysDecision =
+  | { readonly ok: true; readonly keys: KeyResolver | null }
+  | { readonly ok: false; readonly problem: string };
+
+/**
+ * The signing key and every key `GATE_RETAINED_KEYS` retains (#2265).
+ *
+ * A business's chain outlives the key that signed its first links, and each
+ * row names the key it was signed under, so a read verifies an older row with
+ * the retired key its row names. A retained key only verifies: `gateSigningKey`
+ * stays the one key a decision is signed with. Malformed is refused rather
+ * than skipped, as the delegation keyring is, and the problem names the
+ * setting and the entry, never a secret.
+ */
+export function gateVerifyingKeys(settings?: Settings): GateVerifyingKeysDecision {
+  const held = settings === undefined ? handedOver.getStore() : undefined;
+  if (held !== undefined) return held.gateVerifying;
+  const environment = settings ?? process.env;
+  const signing = gateSigningKey(environment);
+  const retained = parseRetainedGateKeys(environment[RETAINED_GATE_KEYS_VARIABLE]);
+  if (!retained.ok) return retained;
+  if (retained.keys.length > 0 && signing === undefined) {
+    return refuseRetained('is set but GATE_SIGNING_KEY_ID and GATE_SIGNING_SECRET are not');
+  }
+  if (signing === undefined) return { ok: true, keys: null };
+  if (retained.keys.some((key) => key.id === signing.id)) {
+    return refuseRetained('repeats the signing key id');
+  }
+  return { ok: true, keys: keyResolver([signing, ...retained.keys]) };
+}
+
+function refuseRetained(problem: string): { readonly ok: false; readonly problem: string } {
+  return { ok: false, problem: `${RETAINED_GATE_KEYS_VARIABLE} ${problem}` };
+}
+
+function parseRetainedGateKeys(
+  text: string | undefined,
+):
+  | { readonly ok: true; readonly keys: readonly SigningKey[] }
+  | { readonly ok: false; readonly problem: string } {
+  if (text === undefined || text.trim() === '') return { ok: true, keys: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return refuseRetained('is not JSON');
+  }
+  if (!Array.isArray(parsed)) return refuseRetained('is not a JSON array');
+  const keys: SigningKey[] = [];
+  for (const [index, entry] of (parsed as unknown[]).entries()) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      return refuseRetained(`entry ${index} is not an object`);
+    }
+    const fields = entry as Record<string, unknown>;
+    if (Object.keys(fields).some((name) => name !== 'id' && name !== 'secret')) {
+      return refuseRetained(`entry ${index} has a field other than id and secret`);
+    }
+    const { id, secret } = fields;
+    if (typeof id !== 'string' || id === '') {
+      return refuseRetained(`entry ${index} has no id`);
+    }
+    if (typeof secret !== 'string' || secret === '') {
+      return refuseRetained(`entry ${index} has no secret`);
+    }
+    if (keys.some((key) => key.id === id)) {
+      return refuseRetained(`entry ${index} repeats a key id`);
+    }
+    keys.push({ id, secret });
+  }
+  return { ok: true, keys };
 }
 
 /**

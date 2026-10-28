@@ -247,6 +247,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
       const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
       return composed(noting, {
         gate: { id, secret: randomUUID() },
+        gateVerifying: { ok: true, keys: null },
         delegation,
         custody: undefined,
       });

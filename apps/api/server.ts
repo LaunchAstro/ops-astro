@@ -75,6 +75,7 @@ import {
   CRASH_POINT_VARIABLE,
   crashSeamProblem,
   runtimeKeys,
+  runtimeKeysProblem,
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
@@ -540,8 +541,9 @@ async function main(): Promise<void> {
   // Checked at boot so a malformed keyring stops the server with its reason,
   // rather than serving until the first agent pickup refuses. The problem names
   // the setting, never a key's bytes.
-  if (!keys.delegation.ok) {
-    console.error(`api: delegation credential keys: ${keys.delegation.problem}`);
+  const keysProblem = runtimeKeysProblem(keys);
+  if (keysProblem !== undefined) {
+    console.error(`api: ${keysProblem}`);
     process.exit(1);
   }
 
