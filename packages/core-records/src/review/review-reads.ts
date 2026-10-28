@@ -4,9 +4,10 @@
 // landed picture's bytes. Each filters by the caller's grant at the review's
 // holder inside the query (`covering.ts`), so a party grant reads no other
 // client's review and a picture of another business or out of reach is one
-// answer with a picture that is not there. The revisions and captures are read in statements
-// of their own, so the grant is judged again after the last of them (`stillCovered`): a grant
-// revoked or run out meanwhile reads nothing written since (S2061-1).
+// answer with a picture that is not there. The revisions and captures, and a picture's bytes,
+// are read in statements of their own, so the grant is judged again after the last of them
+// (`stillCovered`, `pictureCovered`): a grant revoked or run out meanwhile reads nothing written
+// since, and no bytes (S2061-1, S2147-3).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from '../site/covering.ts';
@@ -140,13 +141,35 @@ export interface ReviewPicture {
   readonly body: string;
 }
 
-/** A landed picture whose review the caller's grant covers, as base64 with its digest. */
+/**
+ * A landed picture whose review the caller's grant covers, as base64 with its digest. The bytes
+ * are read from storage in a statement of their own, so the grant is asked again after them: a
+ * grant revoked or run out meanwhile reads no bytes (S2147-3).
+ */
 export async function readCoveredPicture(
   tx: TenantQuery,
   pictureId: string,
   covering: Covering,
 ): Promise<ReviewPicture | undefined> {
-  const reached = await tx.query<{ readonly picture_id: string }>(
+  if (!(await pictureCovered(tx, covering, pictureId))) return undefined;
+  const stored = await DATABASE_STORAGE.get(tx, pictureId);
+  if (stored === undefined) return undefined;
+  if (!(await pictureCovered(tx, covering, pictureId))) return undefined;
+  return {
+    pictureId,
+    digest: stored.digest,
+    byteCount: stored.byteCount,
+    body: Buffer.from(stored.body).toString('base64'),
+  };
+}
+
+/** Whether the caller's grant covers the review a landed picture is of, in its own statement. */
+async function pictureCovered(
+  tx: TenantQuery,
+  covering: Covering,
+  pictureId: string,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly picture_id: string }>(
     `${EFFECTIVE_AT}
      select k.picture_id from public.review_captures k
        join public.review_revisions v on v.business_id = k.business_id and v.id = k.revision_id
@@ -154,13 +177,5 @@ export async function readCoveredPicture(
       where k.business_id = $1 and k.picture_id = $6 and ${COVERED}`,
     [tx.businessId, ...coveringParameters(covering), pictureId],
   );
-  if (reached.length === 0) return undefined;
-  const stored = await DATABASE_STORAGE.get(tx, pictureId);
-  if (stored === undefined) return undefined;
-  return {
-    pictureId,
-    digest: stored.digest,
-    byteCount: stored.byteCount,
-    body: Buffer.from(stored.body).toString('base64'),
-  };
+  return rows.length > 0;
 }
