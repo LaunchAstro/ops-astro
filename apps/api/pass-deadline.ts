@@ -22,8 +22,8 @@ export function passUntil(
   return {
     database: {
       ...database,
-      withBusiness: async (businessId, run) =>
-        await database.withBusiness(businessId, run, { deadline }),
+      withBusiness: async (businessId, run, options) =>
+        await database.withBusiness(businessId, run, { ...options, deadline }),
     },
     resolveBusiness: createBusinessResolver({
       ...lookup,

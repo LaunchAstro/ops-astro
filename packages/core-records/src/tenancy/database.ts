@@ -17,6 +17,7 @@ import type postgres from 'postgres';
 import { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
 import type { StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
+import { beginFor, type Isolation } from './isolation.ts';
 import { checkDeferred, deadlineOn, timeLeft, untilDeadline, type Deadline } from './deadline.ts';
 import {
   handleOn,
@@ -27,6 +28,7 @@ import {
 
 export type { BusinessId, TenantQuery, TransactionQuery } from './transaction.ts';
 export { open, RUNTIME_IDLE_SECONDS, type DatabaseOptions } from './driver.ts';
+export type { Isolation } from './isolation.ts';
 
 export function isBusinessId(value: string): value is BusinessId {
   return isUuid(value);
@@ -69,8 +71,13 @@ export interface Database extends Connection {
   withBusiness<T>(
     businessId: BusinessId,
     run: (tx: TransactionQuery) => Promise<T>,
-    options?: TransactionDeadline,
+    options?: BusinessTransaction,
   ): Promise<T>;
+}
+
+/** How one `withBusiness` transaction runs: when it must end, and what it reads (`isolation.ts`). */
+export interface BusinessTransaction extends TransactionDeadline {
+  readonly isolation?: Isolation;
 }
 
 /** A transaction that ends by a deadline (`deadline.ts`). */
@@ -142,20 +149,21 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
   return async function withBusiness<T>(
     businessId: BusinessId,
     run: (tx: TransactionQuery) => Promise<T>,
-    { deadline }: TransactionDeadline = {},
+    { deadline, isolation = 'read committed' }: BusinessTransaction = {},
   ): Promise<T> {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
+    const begin = beginFor(isolation);
     if (deadline !== undefined) timeLeft(deadline);
     // One spelling of the id, the lower case Postgres prints, so a key built
     // from `tx.businessId` (a limiter's lock) is one key in either letter case.
     const business = businessId.toLowerCase() as BusinessId;
-    // Read committed whatever the login's or database's default, so a count
-    // read after a lock sees what the lock's last holder committed (`hasRoom`).
+    // The isolation asked for, read committed unless said otherwise, whatever
+    // the login's or database's default (`BusinessTransaction.isolation`).
     // `begin` unwraps a promise-shaped result in its own types; the cast
     // restores the caller's type and nothing else.
-    return (await sql.begin('isolation level read committed', async (tx) => {
+    return (await sql.begin(begin, async (tx) => {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
       await tx.unsafe(`select set_config('app.business_id', $1, true)`, [business]);
