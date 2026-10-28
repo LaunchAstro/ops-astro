@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a write-off at nothing recorded before #2282, its attempt abandoned under abandoned and its hold actual with no cause, is still read as written off from its applied operation, so a pickup of the hold is refused with no money moved; one business's write-off operation never marks another business's step"
+}

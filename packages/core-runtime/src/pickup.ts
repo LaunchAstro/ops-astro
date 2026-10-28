@@ -43,6 +43,7 @@ import { checkAuthorityAt, classifyUnderLocks, loseLease, holdCoveringGrants } f
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
+import { stepWrittenOff } from './step-written-off.ts';
 import { callsSpentOf, remainingOf, stopAtSpentHold, toppedUpHeld } from './budget-stop.ts';
 import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/index.ts';
 
@@ -426,12 +427,7 @@ async function recheckClaim(
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
-            exists (select 1 from public.attempts w
-                      join public.reservations wr
-                        on wr.business_id = w.business_id and wr.id = w.reservation_id
-                     where w.business_id = $1 and w.step_id = att.step_id
-                       and ((w.outcome = 'unknown' and w.state <> 'quarantined')
-                            or wr.classified_cause = 'written_off')) as written_off,
+            ${stepWrittenOff('att.business_id', 'att.step_id')} as written_off,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
             (bound.expires_at <= $3::timestamptz) as bound_lease_expired
@@ -830,11 +826,7 @@ interface ClaimState {
   readonly superseded: boolean;
   readonly attempt_id: string;
   readonly attempt_state: string;
-  /**
-   * One of the step's attempts was written off, so the step never runs again (#2277): the
-   * write-off leaves outcome `unknown` on the attempt (quarantine's is not one), or, where a
-   * marked attempt written off at nothing cannot carry it, cause `written_off` on its hold.
-   */
+  /** One of the step's attempts was written off, so the step never runs again (#2277). */
   readonly written_off: boolean;
   readonly marked: boolean;
   readonly bound_lease_state: string | null;
@@ -861,7 +853,8 @@ type ClaimPlan =
 
 /**
  * The claims refused before any branch below is asked: an attempt carrying a
- * marker, or a run waiting on a person at its budget stop. Null when neither.
+ * marker, a step a person wrote off, or a run waiting on a person at its
+ * budget stop. Null when none.
  */
 function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
   if (state.marked) {
@@ -871,6 +864,19 @@ function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
         'RESERVATION_NOT_CLAIMABLE',
         `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
         'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
+      ),
+    };
+  }
+  // A step any of whose attempts a person wrote off, at nothing or above, never
+  // runs again (#2277), through this hold or any other of it: a replacement
+  // already held for it included (S2313-1).
+  if (state.written_off) {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `a person wrote off the step attempt ${state.attempt_id} runs`,
+        'A written-off step never runs again. New work for it is a new proposal.',
       ),
     };
   }
@@ -955,14 +961,12 @@ function approvalNotCurrent(): RuntimeResult<never> {
 }
 
 /**
- * An abandoned hold whose work was never settled and whose run is still open. A step any of
- * whose attempts a person wrote off, at nothing or above, never runs again (#2277), through
- * this hold or any other of it; a person's `nothing_happened` abandons it, and it does.
+ * An abandoned hold whose work was never settled and whose run is still open. A written-off
+ * step was refused before this is asked; a person's `nothing_happened` abandons it, and it runs.
  */
 function replaceable(state: {
   readonly state: string;
   readonly attempt_state: string;
-  readonly written_off: boolean;
   readonly run_state: string;
   readonly settled: boolean;
   readonly marked: boolean;
@@ -979,7 +983,6 @@ function replaceable(state: {
   // older one's remainder ignores the spend on every hold after it, passing the version's ceiling.
   return (
     ended &&
-    !state.written_off &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&
