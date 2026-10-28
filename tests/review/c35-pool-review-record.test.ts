@@ -62,6 +62,41 @@ onDatabase('C35 who may record a capture pool review', () => {
     ).toStrictEqual([]);
   });
 
+  it("C35 another business's row never reaches the table past the command: row security holds it", async () => {
+    const write = await w.world.db.app
+      .withBusiness(
+        w.beta,
+        async (tx) =>
+          await tx.query(
+            `insert into ops.capture_pool_reviews
+               (review, pool_version, evidence, company, operator_business_id,
+                recorded_by_person_id, recorded_by_actor_id, operation_id)
+             values ($1, $2, 'https://example.test/review', 'Other Co', $3, $4, $5, $6)`,
+            [
+              uniqueReview('direct'),
+              CAPTURE_POOL_VERSION,
+              w.beta,
+              w.eve.personId,
+              w.eve.actorId,
+              randomUUID(),
+            ],
+          ),
+      )
+      .then(
+        () => 'allowed',
+        (error: unknown) => String(error),
+      );
+    expect(write).toMatch(/row-level security/u);
+    const [table] = await w.world.db.admin.execute<{
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+    }>(
+      `select relrowsecurity, relforcerowsecurity from pg_class
+        where oid = 'ops.capture_pool_reviews'::regclass`,
+    );
+    expect(table).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+  });
+
   it('C35 an agent cannot record a pool review', async () => {
     const bare = async () =>
       await w.world.asAgent({ operationId: randomUUID(), ...poolReview(uniqueReview('bare')) });
