@@ -29,11 +29,11 @@
 // integrity check) leaves one unasked, and the picture fails. So does an import a
 // browser skips (one after a rule, or under a condition it does not support): the
 // observation read a sheet the picture would lack. An `http-equiv` in the page's own
-// markup (a policy, a default set, a refresh), a style of another type, or a titled or
-// alternate sheet can leave out a sheet the observation read, or the page itself, with no
-// request to show it, so such a page is refused before the browser starts. Each copy is
-// served as UTF-8, so a sheet a browser would decode otherwise fails the picture, as it
-// fails the page observation.
+// markup (a policy naming a style source, a default set, a refresh), a style of another
+// type, or a titled or alternate sheet can leave out a sheet the observation read, or the
+// page itself, with no request to show it, so such a page is refused before the browser
+// starts. Each copy is served as UTF-8, so a sheet a browser would decode otherwise fails
+// the picture, as it fails the page observation.
 //
 // No credential reaches the browser: the fence sends none. Nor has the browser
 // a network of its own: a preconnect or DNS prefetch makes no request the
@@ -154,8 +154,9 @@ const lower = (text: string): string =>
 // The `http-equiv` values that leave the picture as the observation read the page: the fence
 // holds the charset, a language or compatibility mode moves no sheet, the picture's browser has
 // no network to prefetch on, and a browser ignores a report-only policy and cache headers in
-// markup. Any other is refused: a policy can drop a sheet, a default set chooses among titled
-// ones, a refresh navigates away from the page pictured, and an unknown one is not guessed at.
+// markup. A policy is judged by its directives (STYLE_DIRECTIVES). Any other is refused: a
+// default set chooses among titled sheets, a refresh navigates away from the page pictured, and
+// an unknown one is not guessed at.
 const PICTURED_EQUIV = new Set([
   '',
   'content-type',
@@ -168,11 +169,22 @@ const PICTURED_EQUIV = new Set([
   'expires',
 ]);
 
+// The directives under which a policy can block an inline sheet or a style attribute, which no
+// request shows; `default-src` stands in for each that is absent. A sheet any other directive
+// blocks never reaches the route, so it is left unasked and the picture fails.
+const STYLE_DIRECTIVES = new Set(['default-src', 'style-src', 'style-src-elem', 'style-src-attr']);
+
+/** Whether a markup policy names a style source: any directive, in any policy of a list. */
+const namesStyleSource = (policy: string): boolean =>
+  policy
+    .split(/[;,]/u)
+    .some((directive) => STYLE_DIRECTIVES.has(lower(directive.trim().split(/\s/u)[0] ?? '')));
+
 /**
  * Whether a browser could leave out a sheet the observation reads, with no request to show it:
- * an `http-equiv` other than those, a style of a type other than CSS, or a titled or
- * alternate sheet (of titled sets a browser applies only the preferred one). Only the forms a
- * browser always applies pass.
+ * a policy naming a style source, an `http-equiv` other than those, a style of a type other
+ * than CSS, or a titled or alternate sheet (of titled sets a browser applies only the preferred
+ * one). Only the forms a browser always applies pass.
  */
 function mayDropSheet(document: Tree.Document): boolean {
   const stack: Tree.Node[] = [document];
@@ -183,7 +195,13 @@ function mayDropSheet(document: Tree.Document): boolean {
     const attribute = (name: string) => node.attrs.find((one) => one.name === name)?.value;
     const titled = (attribute('title') ?? '') !== '';
     const rel = lower(attribute('rel') ?? '').split(/[\t\n\f\r ]+/u);
-    if (node.tagName === 'meta' && !PICTURED_EQUIV.has(lower(attribute('http-equiv') ?? '').trim()))
+    const equiv = lower(attribute('http-equiv') ?? '').trim();
+    if (
+      node.tagName === 'meta' &&
+      (equiv === 'content-security-policy'
+        ? namesStyleSource(attribute('content') ?? '')
+        : !PICTURED_EQUIV.has(equiv))
+    )
       return true;
     if (
       node.tagName === 'style' &&
