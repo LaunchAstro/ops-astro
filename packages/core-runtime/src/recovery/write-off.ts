@@ -132,14 +132,11 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
 }
 
 /**
- * A person's write-off, under the step's locks with their covering grants and
- * any first approver's held, and `billing:decide` on the task judged again at
- * the locked instant, for the caller and for the first approver it pairs with.
+ * The step and the replacements the pass reserved for it, locked as one set, as a recorded
+ * outcome locks them: a replacement dispatched between discovery and the locks is a changed
+ * set, rolled back and asked again.
  */
-export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promise<WriteOffResult> {
-  const firsts = await firstApprovers(tx, request.attemptId, request.amountMinor);
-  const subjects = [...request.subjects, ...firsts.flatMap((first) => first.subjects)];
-  await holdCoveringGrants(tx, subjects, request.collection);
+async function lockStep(tx: TenantQuery, request: WriteOffRequest) {
   const discover = async () => {
     const rows = await tx.query<Unknown>(
       `${UNKNOWN_SELECT} where att.business_id = $1 and att.id = $2 and run.task_id = $3`,
@@ -148,14 +145,25 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     const first = rows[0];
     return [rows, first === undefined ? [] : await discoverReplacements(tx, first)] as const;
   };
-  const {
-    found: [found, replacements],
-  } = await lockRediscovered(tx, {
+  const { found } = await lockRediscovered(tx, {
     discover,
     locks: ([rows, more]) => [...locksOf(rows), ...replacementLocks(more)],
     rule: 'exact',
     changed: 'write-off: the step changed under discovery; roll back and write it off again',
   });
+  return found;
+}
+
+/**
+ * A person's write-off, under the step's locks with their covering grants and
+ * any first approver's held, and `billing:decide` on the task judged again at
+ * the locked instant, for the caller and for the first approver it pairs with.
+ */
+export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promise<WriteOffResult> {
+  const firsts = await firstApprovers(tx, request.attemptId, request.amountMinor);
+  const subjects = [...request.subjects, ...firsts.flatMap((first) => first.subjects)];
+  await holdCoveringGrants(tx, subjects, request.collection);
+  const [found, replacements] = await lockStep(tx, request);
   const at = await lockedInstant(tx, ['four_eyes_threshold']);
   const scope = { kind: 'record', id: request.taskId } as const;
   const ask = { collection: request.collection, action: 'decide', scope } as const;

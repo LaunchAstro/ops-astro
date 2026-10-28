@@ -142,6 +142,23 @@ describe.skipIf(url === undefined)(
       },
     );
 
+    it('with no write-off, the replacement is picked up and dispatches', async () => {
+      const { w, replacement } = await absentWithReplacement();
+      expect(await runsAgain(w, replacement)).toStrictEqual(['liability_unknown', 'dispatched']);
+    });
+
+    it('after a person says nothing happened, the replacement is picked up and dispatches', async () => {
+      const { w, replacement } = await absentWithReplacement();
+      appliedDetail(await h.outcome(w, 'nothing_happened'), 'budget.record_outcome');
+      expect(await runsAgain(w, replacement)).toStrictEqual(['abandoned', 'dispatched']);
+    });
+  },
+);
+
+describe.skipIf(url === undefined)(
+  'a write-off stops the replacement reserved before it',
+  { timeout: 60_000 },
+  () => {
     it.each([0, 700])(
       'written off at %i, the replacement reserved before it is stopped and its hold goes back',
       async (amount) => {
@@ -175,16 +192,5 @@ describe.skipIf(url === undefined)(
         ]);
       },
     );
-
-    it('with no write-off, the replacement is picked up and dispatches', async () => {
-      const { w, replacement } = await absentWithReplacement();
-      expect(await runsAgain(w, replacement)).toStrictEqual(['liability_unknown', 'dispatched']);
-    });
-
-    it('after a person says nothing happened, the replacement is picked up and dispatches', async () => {
-      const { w, replacement } = await absentWithReplacement();
-      appliedDetail(await h.outcome(w, 'nothing_happened'), 'budget.record_outcome');
-      expect(await runsAgain(w, replacement)).toStrictEqual(['abandoned', 'dispatched']);
-    });
   },
 );
