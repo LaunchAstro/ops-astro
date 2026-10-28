@@ -18,6 +18,7 @@ import {
   appliedDetail,
   asAgent,
   openSchedules,
+  seedSchedules,
   rows,
   type Detail,
   type Schedules,
@@ -39,8 +40,8 @@ let other: Schedules;
 const h = t3d1Harness(() => s);
 const ho = t3d1Harness(() => other);
 
-async function open(part: string): Promise<Schedules> {
-  const opened = await openSchedules(part, 1_000_000);
+/** Billing, manage and gate decide for the decider. */
+async function open(opened: Schedules): Promise<Schedules> {
   await openBilling(opened);
   await opened.db.app.withBusiness(opened.business, async (tx) => {
     await grantTo(tx, opened.decider, 'manage');
@@ -51,13 +52,13 @@ async function open(part: string): Promise<Schedules> {
 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
-  s = await open('legacy_replacement');
-  other = await open('legacy_replacement_other');
+  s = await open(await openSchedules('legacy_replacement', 1_000_000));
+  // The other business is a second tenant of the same database, so one pass reaches both.
+  other = await open(await seedSchedules(s.db, 'legacy_replacement_other', 1_000_000));
 }, 180_000);
 
 afterAll(async () => {
   await s?.db.drop();
-  await other?.db.drop();
 });
 
 /** The pass as the API runs it on its interval, over both businesses. */
@@ -203,6 +204,13 @@ describe.skipIf(serverUrl === undefined)(`${legacy}, in another business`, () =>
       await plantWriteOff(tx, template, { attemptId: w.attemptId, taskId: w.taskId });
     });
     const before = await moneyOf(other, w, replacement);
+    // The pass's own database holds the other business's replacement (S2335-1).
+    const seen = await rows<{ business_id: string; state: string }>(
+      s,
+      'select business_id, state from public.reservations where id = $1',
+      [replacement],
+    );
+    expect(seen).toEqual([{ business_id: other.business, state: 'held' }]);
 
     await pass();
     expect({
