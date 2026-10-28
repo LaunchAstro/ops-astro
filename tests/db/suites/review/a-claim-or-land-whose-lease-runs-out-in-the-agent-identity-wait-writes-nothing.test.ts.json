@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 an agent's claim or land re-judged after its actor identity wait: a lease that ran out while the agent actor was held refuses the call, so the claim takes no width and the land stores nothing."
+}
