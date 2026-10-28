@@ -169,7 +169,8 @@ describe('CQ-3 supply-chain settings', () => {
     expect(keys.map((k) => stated(workspace, k))).toStrictEqual(
       Object.values(want).map((v) => [v]),
     );
-    expect(workspace).toMatch(/^minimumReleaseAgeExclude:\n {2}- vite@8\.3\.0$/mu);
+    // vite 8.3.4 is past the release age, so vite needs no exemption.
+    expect(workspace).not.toMatch(/^ {2}- vite@/mu);
   });
 
   it('CQ-3 renovate rules: every package rule carries a minimum release age', () => {
@@ -182,7 +183,7 @@ describe('CQ-3 supply-chain settings', () => {
     expect(ages).toStrictEqual([[WANT.minimumReleaseAge], ['7 days']]);
   });
 
-  it('CQ-3 frozen install: the lockfile installs, vite 8.3.0 included', async () => {
+  it('CQ-3 frozen install: the lockfile installs, vite 8.3.4 included', async () => {
     const tree = scratch();
     for (const path of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'])
       cpSync(join(ROOT, path), join(tree, path));
@@ -196,7 +197,7 @@ describe('CQ-3 supply-chain settings', () => {
     runs.push(frozen);
     expect(frozen.status, frozen.out).toBe(0);
     const vite = readFileSync(join(tree, 'node_modules/vite/package.json'), 'utf8');
-    expect(JSON.parse(vite).version).toBe('8.3.0');
+    expect(JSON.parse(vite).version).toBe('8.3.4');
   }, 180_000);
 
   it('CQ-3 auth image pin: a moved tag and an unrecorded digest are refused', async () => {
