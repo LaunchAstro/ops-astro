@@ -87,10 +87,11 @@ async function firstApprovers(
 }
 
 /**
- * Close the hold at the amount: a positive figure settles the attempt (its
- * outcome stays `unknown`, since nobody observed the effect), nothing
- * abandons it under the write-off. The hold is charged the amount, and never
- * less than what its model calls settled at, which did happen (AW-01,
+ * Close the hold at the amount. Nobody observed the step's effect, so its
+ * outcome is `unknown` at any figure and the step never runs again (#2277): a
+ * positive figure settles the attempt, and nothing abandons it, since an
+ * attempt's actual is never zero (0034). The hold is charged the amount, and
+ * never less than what its model calls settled at, which did happen (AW-01,
  * `closeHold`). Either way the envelope gives the whole hold back and takes
  * the charge.
  */
@@ -102,7 +103,11 @@ async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<voi
       ? `update public.attempts
             set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
           where business_id = $1 and id = $2`
-      : `update public.attempts set state = 'abandoned', outcome = 'abandoned'
+      : // A dispatch-marked attempt keeps `abandoned`: 20261012052116 admits no other
+        // outcome on a marked attempt abandoned, and pickup never replaces a marked one.
+        `update public.attempts
+            set state = 'abandoned',
+                outcome = case when dispatch_marker then 'abandoned' else 'unknown' end
           where business_id = $1 and id = $2`,
     amount > 0n
       ? [tx.businessId, row.attempt_id, amount.toString()]

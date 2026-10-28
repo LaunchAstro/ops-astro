@@ -425,7 +425,7 @@ async function recheckClaim(
                        and (n.created_at, n.id) > (res.created_at, res.id)) as replaced,
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
-            att.id as attempt_id, att.state as attempt_state,
+            att.id as attempt_id, att.state as attempt_state, att.outcome as attempt_outcome,
             (att.dispatch_marker or att.observed) as marked,
             bound.state as bound_lease_state,
             (bound.expires_at <= $3::timestamptz) as bound_lease_expired
@@ -824,6 +824,7 @@ interface ClaimState {
   readonly superseded: boolean;
   readonly attempt_id: string;
   readonly attempt_state: string;
+  readonly attempt_outcome: string | null;
   readonly marked: boolean;
   readonly bound_lease_state: string | null;
   readonly bound_lease_expired: boolean | null;
@@ -942,10 +943,15 @@ function approvalNotCurrent(): RuntimeResult<never> {
   );
 }
 
-/** An abandoned hold whose work was never settled and whose run is still open. */
+/**
+ * An abandoned hold whose work was never settled and whose run is still open. A write-off,
+ * at nothing or above, leaves the step's effect `unknown`, and that step never runs again
+ * (#2277); a person's `nothing_happened` abandons it, and it does.
+ */
 function replaceable(state: {
   readonly state: string;
   readonly attempt_state: string;
+  readonly attempt_outcome: string | null;
   readonly run_state: string;
   readonly settled: boolean;
   readonly marked: boolean;
@@ -962,6 +968,7 @@ function replaceable(state: {
   // older one's remainder ignores the spend on every hold after it, passing the version's ceiling.
   return (
     ended &&
+    state.attempt_outcome !== 'unknown' &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&
