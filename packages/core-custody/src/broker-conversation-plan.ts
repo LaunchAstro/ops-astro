@@ -131,7 +131,7 @@ async function grantsStand(
     reads.some(
       (scope) => scope.kind === 'business' || (scope.kind === 'record' && scope.id === task),
     );
-  if (!tasks.every(readable)) return false;
+  if (!tasks.every((task) => readable(task))) return false;
   const own = await checkAuthority(tx, subjects, {
     collection: 'conversation',
     action: 'write',

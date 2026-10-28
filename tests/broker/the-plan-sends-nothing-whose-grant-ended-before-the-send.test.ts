@@ -83,8 +83,22 @@ beforeAll(async () => {
 
 afterAll(async () => await db?.drop());
 
-/** A new owner's typed message on the plan, with `ended` revoked once the context transaction returns. */
-async function ask(ended: 'run' | 'conversation' | null) {
+/** Custody that records each request and answers as the plan's custody does. */
+function recording(sent: OutboundRequest[]): Custody {
+  const output = [{ type: 'message', content: [{ type: 'output_text', text: 'A plan.' }] }];
+  const usage = { input_tokens: 12, output_tokens: 5 };
+  const body = JSON.stringify({ model: 'gpt-6.1-luna', output, usage });
+  const outbound = { ok: true, status: 200, mediaType: 'application/json', body };
+  const answer = { kind: 'answered', started: true, credentialKind: 'api_key', outbound };
+  const dispatch = (_ref: unknown, request: OutboundRequest) => {
+    sent.push(request);
+    return Promise.resolve({ ...answer, account: null });
+  };
+  return { describe: () => Promise.resolve(null), dispatch } as unknown as Custody;
+}
+
+/** A new owner with business-wide `conversation:write` and `run:write`, and those grants. */
+async function anOwner() {
   const owner = await enrol(db.app, business, 'owner');
   await db.admin.execute(
     "update public.memberships set role_key = 'owner' where business_id = $1 and person_id = $2",
@@ -94,6 +108,12 @@ async function ask(ended: 'run' | 'conversation' | null) {
     conversation: await grantTo(tx, owner, 'write', undefined, false, 'conversation'),
     run: await grantTo(tx, owner, 'write', undefined, false, 'run'),
   }));
+  return { owner, grants };
+}
+
+/** A new owner's typed message on the plan, with `ended` revoked once the context transaction returns. */
+async function ask(ended: 'run' | 'conversation' | null) {
+  const { owner, grants } = await anOwner();
   const asked = { conversationId: randomUUID(), messageId: randomUUID() };
   await db.app.withBusiness(business, async (tx) => {
     await tx.query(
@@ -123,25 +143,8 @@ async function ask(ended: 'run' | 'conversation' | null) {
     },
   };
   const sent: OutboundRequest[] = [];
-  const custody = {
-    describe: async () => null,
-    dispatch: async (_ref: unknown, request: OutboundRequest) => {
-      sent.push(request);
-      const output = [{ type: 'message', content: [{ type: 'output_text', text: 'A plan.' }] }];
-      const usage = { input_tokens: 12, output_tokens: 5 };
-      const body = JSON.stringify({ model: 'gpt-6.1-luna', output, usage });
-      const outbound = { ok: true, status: 200, mediaType: 'application/json', body };
-      const answered = {
-        kind: 'answered',
-        started: true,
-        credentialKind: 'api_key',
-        account: null,
-      };
-      return { ...answered, outbound };
-    },
-  } as unknown as Custody;
   const exchange = conversationExchange({
-    custody,
+    custody: recording(sent),
     operations: catalogue([OLLAMA_CONVERSATION, CHATGPT_PLAN_CONVERSATION]),
     providers: new Map([
       [OLLAMA_PROVIDER, { build: ollamaAdapter, price: ollamaCostMinor }],
