@@ -29,7 +29,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35-X (20261028170000): a decision and Astra's review of a revision, written once.
   ['si', 'review_decisions'],
   ['si', 'review_astra_reviews'],
-  // C35-X (20261019174900): a pin's carry onto a revision is written once and never changed.
+  // C35-X (20261028174900): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
 ];
 
