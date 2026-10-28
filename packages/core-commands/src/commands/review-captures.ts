@@ -155,6 +155,16 @@ async function stillHeld(
   return reach.ok ? null : reach.refusal;
 }
 
+/**
+ * The agent path waits on its actor, login and audit chain after the handler returns (its last
+ * waits, `agent-standing.ts`), so the lease and the authority behind it are judged once more
+ * after them (`stillHeld`): one that lapsed there rolls the write back.
+ */
+export const judgedAgain =
+  (tx: TenantQuery, lease: CaptureLease, caller: CaptureCaller) =>
+  async (): Promise<CommandRefusal | undefined> =>
+    (await stillHeld(tx, lease, caller)) ?? undefined;
+
 const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', wrong, [fix]));
 
@@ -176,7 +186,10 @@ export async function claimCapture(
   if (lapsed !== null) return refused(lapsed);
   const claimed = await claimLockedCaptures(tx, locked.ids, held.lease);
   if ('code' in claimed) return refused(REFUSALS[claimed.code]);
-  return applied(revisionId, null, { revisionId, widths: claimed.widths });
+  return {
+    ...applied(revisionId, null, { revisionId, widths: claimed.widths }),
+    lastCheck: judgedAgain(tx, held.lease, caller),
+  };
 }
 
 interface LandFields extends LeaseFields {
@@ -247,12 +260,15 @@ export async function landCapture(
     pictureId: stored.id,
     pictureDigest: stored.digest,
   });
-  return applied(capture.captureId, null, {
-    revisionId,
-    width,
-    pictureId: stored.id,
-    pictureDigest: stored.digest,
-  });
+  return {
+    ...applied(capture.captureId, null, {
+      revisionId,
+      width,
+      pictureId: stored.id,
+      pictureDigest: stored.digest,
+    }),
+    lastCheck: judgedAgain(tx, held.lease, caller),
+  };
 }
 
 /** The person entries: their own pickup's lease. */
