@@ -200,7 +200,7 @@ The synthetic logins live in `.local/synthetic-users.json`, written by
 and GoTrue subjects; read it there. No password appears in this repository,
 and none should be pasted into one.
 
-`auth:seed` writes five of them:
+`auth:seed` writes six of them:
 
 | Login                | Business |
 | -------------------- | -------- |
@@ -209,15 +209,16 @@ and none should be pasted into one.
 | `noah@alpha.local`   | alpha    |
 | `orphan@alpha.local` | alpha    |
 | `bea@bravo.local`    | bravo    |
+| `ben@bravo.local`    | bravo    |
 
-The staging reset (`scripts/ops/staging-reset.ts`) adds a sixth on staging
+The staging reset (`scripts/ops/staging-reset.ts`) adds a seventh on staging
 only, its made-up operator `olive@alpha.local` (alpha), who holds
 `operations:manage` there.
 
 These are addresses, not contact details. RFC 6762 reserves `.local` for
 multicast DNS and it cannot be delegated, so none of them reaches a mailbox.
-The public content check allows exactly these six by name
-(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a seventh
+The public content check allows exactly these seven by name
+(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports an eighth
 invented login until that login is added here and to that list.
 
 There are two businesses, keys `alpha` and `bravo`. The business you type on
@@ -227,7 +228,7 @@ route. The API resolves who you are and what you may see on the server.
 
 ### The external party's login
 
-`db:seed` adds a sixth login to the same file, the external party (R4), with
+`db:seed` adds a seventh login to the same file, the external party (R4), with
 `role: 'external'` (`scripts/local-seed.mjs`, `ensureExternalEntry` and
 `seedAgentUser`). Its address is built at seed time rather than written
 down, so it is not listed above. Read it from the file.

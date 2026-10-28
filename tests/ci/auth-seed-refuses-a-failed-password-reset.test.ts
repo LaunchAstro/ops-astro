@@ -68,12 +68,12 @@ function reseed(status: number) {
   return { status: done.status, out: done.stdout + done.stderr, written };
 }
 
-it('a reseed whose password resets succeed records the five logins', () => {
+it('a reseed whose password resets succeed records the six logins', () => {
   const { status, out, written } = reseed(200);
   expect({ status, written, exists: out.match(/ exists /gu)?.length }).toEqual({
     status: 0,
     written: true,
-    exists: 5,
+    exists: 6,
   });
 });
 
