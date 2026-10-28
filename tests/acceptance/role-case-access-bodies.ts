@@ -18,7 +18,6 @@ import type { BodyContext, Prepared } from './role-case-bodies.ts';
 type AccessCommand =
   | 'client.create'
   | 'client.set_privacy'
-  | 'client.bind_site'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
@@ -95,9 +94,6 @@ export async function accessBody(name: AccessCommand, context: BodyContext): Pro
           noAgentEdits: true,
         },
       };
-    // #2316: `operations:manage`, the operator's: a client made for the case, its site bound.
-    case 'client.bind_site':
-      return { body: { clientId: await madeClient(context), ...siteBody() } };
     // C32: `access:manage`. The key is one the member already holds over
     // the whole business, so the answer is that grant and no caller's
     // holdings change under the cases that read them.
