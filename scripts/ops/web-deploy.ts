@@ -64,7 +64,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
-import { heldFor } from './authorised-act.ts';
+import { type Authorised, heldFor } from './authorised-act.ts';
 import { notStillStaged, recordName } from './deployment-record.ts';
 import type { StoredArtefact } from './promotion.ts';
 import { holds } from './served-copy.ts';
@@ -227,6 +227,14 @@ export async function deployWeb(
   );
 }
 
+/** Production back on a deployment its deploy recorded (#2299): not built yet. */
+export function rollBackWeb(
+  deployment: string,
+  _options: { env: Environment; records: string; authorised: Authorised },
+): Promise<WebDeployOutcome> {
+  return Promise.resolve({ kind: 'failed', reason: `no rollback to ${deployment} yet` });
+}
+
 const UNCHECKED =
   'no version was named, so the deploy that takes the page off was not checked; outside an incident, name it with --version and --artefacts';
 
@@ -247,7 +255,7 @@ function maintenancePage(env: Environment): Promise<MaintenanceOutcome> {
  * is then asked to take.
  */
 export async function deployMaintenance(
-  options: { env: Environment },
+  options: { env: Environment; rolledBackIn?: string },
   planned?: { request: VersionRequest; options: VersionDeployOptions },
 ): Promise<MaintenanceOutcome> {
   const settings = settingProblems(options.env);

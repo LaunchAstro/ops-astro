@@ -104,6 +104,8 @@ export const INSPECTED: Readonly<Record<string, unknown>> = {
 interface Answers {
   deploy?: { out: string; status: number };
   inspect?: { out: string; status: number };
+  rollback?: { out: string; status: number } | undefined;
+  promote?: { out: string; status: number } | undefined;
 }
 
 /** A `vercel` on PATH that logs each call and answers as told. */
@@ -118,8 +120,11 @@ export function fakeVercel(answers: Answers = {}): FakeVercel {
   const log = join(bin, 'calls.log');
   const deploy = answers.deploy ?? { out: URL_MADE, status: 0 };
   const inspect = answers.inspect ?? { out: JSON.stringify(INSPECTED), status: 0 };
+  const answer = (kind: string, given?: { out: string; status: number }): string => {
+    writeFileSync(join(bin, `${kind}.out`), `${given?.out ?? ''}\n`);
+    return `if [ "$1" = ${kind} ]; then cat '${join(bin, `${kind}.out`)}'; exit ${String(given?.status ?? 0)}; fi`;
+  };
   writeFileSync(join(bin, 'deploy.out'), `${deploy.out}\n`);
-  writeFileSync(join(bin, 'inspect.out'), `${inspect.out}\n`);
   writeFileSync(
     join(bin, 'vercel'),
     [
@@ -134,7 +139,9 @@ export function fakeVercel(answers: Answers = {}): FakeVercel {
       '  mkdir -p .vercel && echo "{}" > .vercel/project.json',
       `  cat '${join(bin, 'deploy.out')}'; exit ${String(deploy.status)}`,
       'fi',
-      `if [ "$1" = inspect ]; then cat '${join(bin, 'inspect.out')}'; exit ${String(inspect.status)}; fi`,
+      answer('inspect', inspect),
+      answer('rollback', answers.rollback),
+      answer('promote', answers.promote),
       'exit 2',
     ].join('\n'),
   );

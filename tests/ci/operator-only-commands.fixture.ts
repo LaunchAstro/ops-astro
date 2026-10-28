@@ -188,6 +188,13 @@ export const COMMANDS: Record<string, Command> = {
       VERCEL_PROJECT_ID: 'prj_madeUpProject0123',
       ...env,
     }),
+  // #2299 operator only: production's recorded rollback to an earlier deployment.
+  'the web rollback': (env) =>
+    spawn(
+      WEB_DEPLOY,
+      ['--rollback', 'https://ops-astro-production-a1b2c3d4e.vercel.app', '--production'],
+      { VERCEL_ORG_ID: 'team_madeUpOrg0123', VERCEL_PROJECT_ID: 'prj_madeUpProject0123', ...env },
+    ),
   'the promotion step': (env, at) =>
     spawn(
       PROMOTE,
