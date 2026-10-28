@@ -24,7 +24,7 @@ create table public.review_pin_carries (
   anchor               jsonb,
   lease_id             uuid        not null,
   fence                bigint      not null,
-  operation_id         uuid        not null,
+  operation_id         text        not null,
   carried_by_actor_id  uuid        not null,
   created_at           timestamptz not null default now(),
   constraint review_pin_carries_pkey primary key (id),
