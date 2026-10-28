@@ -784,6 +784,16 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { pictureId },
         fabricated: { pictureId: randomUUID() },
       });
+      const spot = {
+        type: 'FragmentSelector',
+        conformsTo: 'http://www.w3.org/TR/media-frags/',
+        value: 'xywh=0,0,9,9',
+      };
+      const pin = { width: 1480, selector: [spot], body: 'b', audience: 'internal' };
+      await refuses('review.pin_comment', 'revisionId', ada, 'NOT_FOUND', {
+        foreign: { ...pin, revisionId },
+        fabricated: { ...pin, revisionId: randomUUID() },
+      });
     },
     120_000,
   );

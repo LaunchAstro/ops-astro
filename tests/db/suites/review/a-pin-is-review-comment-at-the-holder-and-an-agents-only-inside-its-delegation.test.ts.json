@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 review:comment: a member without the key, a pickup delegation, a delegation without comment and one for another task are refused and keep nothing; an agent inside its delegation writes a team note only; every attempt is audited under review.pin_comment."
+}

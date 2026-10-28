@@ -249,19 +249,23 @@ async function commentsFor(
   // The times as the ISO strings they are sent as, so the type this builds is
   // the one a client parses (`views.ts`).
   const signals = commentSignals(comments);
-  return comments.map((comment): InternalCommentView => ({
-    id: comment.id,
-    audience: comment.audience,
-    author: comment.authorActorId,
-    body: comment.body,
-    comment_type: comment.commentType,
-    posted_at: comment.postedAt.toISOString(),
-    edited_at: comment.editedAt?.toISOString() ?? null,
-    source: comment.source,
-    parent: comment.parentId,
-    signal: signals.get(comment.id) ?? null,
-    own: comment.authorActorId === reader.actorId,
-  }));
+  return comments.map((comment): InternalCommentView => {
+    const view: InternalCommentView = {
+      id: comment.id,
+      audience: comment.audience,
+      author: comment.authorActorId,
+      body: comment.body,
+      comment_type: comment.commentType,
+      posted_at: comment.postedAt.toISOString(),
+      edited_at: comment.editedAt?.toISOString() ?? null,
+      source: comment.source,
+      parent: comment.parentId,
+      signal: signals.get(comment.id) ?? null,
+      own: comment.authorActorId === reader.actorId,
+    };
+    // A pin carries its spot (C35); every other comment keeps its shape.
+    return comment.anchor === null ? view : Object.assign(view, { anchor: comment.anchor });
+  });
 }
 
 /**

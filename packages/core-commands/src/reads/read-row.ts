@@ -94,6 +94,13 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
    */
   readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
   /**
+   * The grant is asked again after `serve`, and a read it no longer covers
+   * answers that refusal: for a read whose parts are statements of their own,
+   * so a grant revoked or run out meanwhile reads nothing written since
+   * (S2114-3, as `stillCovered` on the review read for S2061-1).
+   */
+  readonly judgedLast?: true;
+  /**
    * A list read's admission (`declared-within`), which its `serve` decides
    * from the read of the caller's grants: the refusal `serve` would answer,
    * or none. Apart from `serve` so `admitRead` refuses what the read refuses

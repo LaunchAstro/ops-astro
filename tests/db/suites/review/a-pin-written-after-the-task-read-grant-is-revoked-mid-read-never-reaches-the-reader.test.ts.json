@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 task read under revocation: a task:read grant revoked between the task row and the read of its comments, with a pin written after it, answers SCOPE_NOT_GRANTED and never carries that pin or its anchor (S2114-3)."
+}

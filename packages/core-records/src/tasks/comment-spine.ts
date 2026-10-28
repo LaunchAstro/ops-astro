@@ -146,4 +146,18 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    key: 'anchor',
+    label: 'Pinned spot',
+    valueType: 'json',
+    // In `data` only: a W3C Web Annotation target, the review revision as source and the
+    // selectors on one width's capture (C35, `review/pins.ts`).
+    slot: null,
+    // Written with the comment by `review.pin_comment` and never edited. Shared: a client
+    // pin is shown with its spot, and an internal pin is not shown at all.
+    writeMode: 'operation',
+    owningOperations: ['review.pin_comment'],
+    escalatingOperation: null,
+    visibilityClass: 'shared',
+  },
 ];

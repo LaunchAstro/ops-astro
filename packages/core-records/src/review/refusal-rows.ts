@@ -34,4 +34,10 @@ export const REVIEW_ROWS = [
     meaning: 'The picture is past the storage cap',
     source: 'C35, the storage seam',
   },
+  {
+    code: 'CLIENT_REVIEW_OFF',
+    status: 409,
+    meaning: 'Client review is switched off; a pin for the client is refused',
+    source: 'C35, the pin (DECISIONS 43)',
+  },
 ] as const;
