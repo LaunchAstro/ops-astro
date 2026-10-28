@@ -18,16 +18,16 @@ it('the pin form offers no client audience and sends a team-only pin', async () 
     origin: '',
     businessKey: 'alpha',
     signedIn: true,
-    fetch: async (url, init) => {
+    fetch: (url, init) => {
       const path = String(url);
       const body = JSON.parse(String(init?.body ?? '{}'));
-      if (path.endsWith('/review/read')) return json(REVIEW);
-      if (path.endsWith('/review/picture')) return json(pictureOf(body.pictureId));
+      if (path.endsWith('/review/read')) return Promise.resolve(json(REVIEW));
+      if (path.endsWith('/review/picture')) return Promise.resolve(json(pictureOf(body.pictureId)));
       if (path.endsWith('/review/pin_comment')) {
         sent.push(body);
-        return json({ recordId: 'c1', revision: 1 });
+        return Promise.resolve(json({ recordId: 'c1', revision: 1 }));
       }
-      throw new Error(`Unexpected ${path}`);
+      return Promise.reject(new Error(`Unexpected ${path}`));
     },
   });
   const view = await mount(
