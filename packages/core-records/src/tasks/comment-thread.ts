@@ -11,6 +11,7 @@ import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { type CommentAudience, type CommentType, type StoredComment } from './comments.ts';
+import type { Anchor } from '../review/pins.ts';
 
 /** The server's now, or one millisecond past the comment's last edit if that is later. */
 const EDIT_TEXT = `to_char(greatest(now(), (data ->> 'edited_at')::timestamptz + interval '1 millisecond')
@@ -19,7 +20,7 @@ const EDIT_TEXT = `to_char(greatest(now(), (data ->> 'edited_at')::timestamptz +
 /** A comment row as the reads here select it (`COMMENT_COLUMNS`). */
 interface CommentRow {
   readonly id: string;
-  readonly data: Readonly<Record<string, string | null>>;
+  readonly data: Readonly<Record<string, string | null>> & { readonly anchor?: Anchor };
   readonly from_outside: boolean;
 }
 
@@ -54,6 +55,7 @@ function storedFrom(row: CommentRow): StoredComment {
     source: data['source'] ?? '',
     parentId: data['parent'] ?? null,
     onBehalfOfPersonId: data['on_behalf_of'] ?? null,
+    anchor: data.anchor ?? null,
     fromOutside: row.from_outside,
   };
 }

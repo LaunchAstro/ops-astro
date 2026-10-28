@@ -14,6 +14,7 @@
 
 import type {
   Action,
+  Anchor,
   DeliveryState,
   InboxAccess,
   InboxAlert,
@@ -396,6 +397,8 @@ export type InternalCommentView = {
    * author again; this only saves offering a control that would be refused.
    */
   readonly own: boolean;
+  /** A pin's spot on a review's capture (C35); absent on a comment that is no pin. */
+  readonly anchor?: Anchor;
 };
 
 export interface EvidenceView {

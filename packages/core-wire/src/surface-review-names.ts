@@ -4,13 +4,15 @@
 // In a file that imports nothing, as `surface-site-names.ts` is.
 
 /**
- * A person or a delegated agent opens a review and asks a capture of a revision; a worker
- * claims the capture and lands it under its lease; the review and a landed picture are read.
+ * A person or a delegated agent opens a review, asks a capture of a revision and pins a
+ * comment on a spot of one (#2012); a worker claims the capture and lands it under its
+ * lease; the review, with its revisions, captures and pins, and a landed picture are read.
  */
 export type ReviewCommandName =
   | 'review.open'
   | 'review.capture'
   | 'review.capture_claim'
   | 'review.capture_land'
+  | 'review.pin_comment'
   | 'review.read'
   | 'review.picture';
