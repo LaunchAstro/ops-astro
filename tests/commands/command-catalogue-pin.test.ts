@@ -180,6 +180,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (origi
   restoreTasks: recorder('restoreTasks'),
   trashTask: recorder('trashTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-delete.ts', async (original) => ({
+  ...(await original<object>()),
+  deleteTask: recorder('deleteTask'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (original) => ({
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
@@ -878,6 +882,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.move', operationId: 'op', recordId: 'r', board: 'b', boardSection: 's' },
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
   { command: 'task.trash', operationId: 'op', recordId: 'r' },
+  { command: 'task.delete', operationId: 'op', recordId: 'r' },
   { command: 'task.launch', operationId: 'op', recordId: 'r' },
   { command: 'task.take_launch', operationId: 'op', launchId: 'launch' },
   { command: 'task.restore', operationId: 'op', batchId: 'batch' },
@@ -1192,6 +1197,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],
   'task.trash': ['trashTask'],
+  'task.delete': ['deleteTask'],
   'task.launch': ['launchTask'],
   'task.take_launch': ['takeLaunchAsPerson'],
   'task.restore': ['restoreTasks', 'batch'],

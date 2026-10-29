@@ -65,6 +65,11 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
     return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
   }
   if (MANDATE_COMMANDS.has(name)) return await mandateBody(name, context);
+  // #2345: the admin deletes a fresh task with no history.
+  if (name === 'task.delete') {
+    const task = await context.freshTask('a task for task.delete');
+    return { body: { recordId: task.id, expectedRevision: task.revision } };
+  }
   // Assign to AI: the admin renames an agent of their own, made first.
   if (name === 'agent.rename') {
     const made = await context.asPerson('agent.create', { name: 'An agent to rename' });

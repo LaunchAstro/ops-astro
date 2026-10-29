@@ -42,6 +42,7 @@ export type CommandName =
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
+  | 'task.delete'
   | 'task.restore'
   | 'task.purge'
   // The reads. They are here because a read is an operation the same surfaces

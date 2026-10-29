@@ -161,6 +161,7 @@ export const DECLARED: Readonly<
   'task.move': { carry: 'not carried', plant: 'placement: the new task is on no board' },
   'task.rank': { carry: 'not carried', plant: 'placement: ranked afresh' },
   'task.trash': { carry: 'not carried', plant: 'a trashed task is not duplicated' },
+  'task.delete': { carry: 'not carried', plant: 'a deleted task is not duplicated' },
   'task.restore': { carry: 'not carried', plant: 'a batch, not a task' },
   'task.purge': { carry: 'not carried', plant: 'the business window, not a task' },
   'time.start': { carry: 'not carried', plant: 'a running entry; time.log plants time' },

@@ -57,8 +57,6 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['SLOT_UNKNOWN', 422, 'caller'],
   ['TRANSITION_PROTECTED', 422, 'caller'],
   ['PLACEMENT_IS_DERIVED', 422, 'caller'],
-  ['PARENT_TRASHED', 409, 'caller'],
-  ['ALREADY_TRASHED', 409, 'caller'],
   ['UNIQUE_VALUE_TAKEN', 409, 'caller'],
   ['RETENTION_CLASS_PROTECTED', 403, 'caller'],
   ['OPERATION_ID_REQUIRED', 422, 'caller'],
@@ -229,6 +227,9 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CAPTURE_NOT_CLAIMABLE', 409, 'caller'],
   ['CAPTURE_NOT_CLAIMED', 409, 'caller'],
   ['PICTURE_TOO_LARGE', 422, 'caller'],
+  ['PARENT_TRASHED', 409, 'caller'],
+  ['ALREADY_TRASHED', 409, 'caller'],
+  ['TASK_NOT_DELETABLE', 409, 'caller'],
 ];
 
 /**

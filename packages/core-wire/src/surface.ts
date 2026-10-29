@@ -187,6 +187,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
+  // A person's delete (#2345): the bin under `decide`, so a writer and an
+  // agent are refused, and the handler refuses a subtree with money, run or
+  // client history, which is cancelled instead. `task.restore` undoes it.
+  declare('task.delete', 'decide'),
   declare('task.restore', 'write', {
     targetsExistingRecord: false,
     untargetedIdentifiers: ['batchId'],

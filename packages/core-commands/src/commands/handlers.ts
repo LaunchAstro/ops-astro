@@ -26,6 +26,7 @@ import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
+import { deleteTask } from './tasks-delete.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setNotificationChannel } from './settings-notification.ts';
@@ -120,6 +121,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     rankTask(tx, context, request.afterId ?? null, request.beforeId ?? null),
 
   'task.trash': (tx, context) => trashTask(tx, context),
+  'task.delete': (tx, context) => deleteTask(tx, context),
   'task.restore': (tx, context, request) => restoreTasks(tx, context, request.batchId),
   'task.purge': (tx, context, request) => purgeTasks(tx, context, request.olderThanDays),
 
