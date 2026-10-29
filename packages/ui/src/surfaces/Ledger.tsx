@@ -59,6 +59,7 @@ const KIND: Readonly<Record<string, string>> = {
   'task.move': 'Moved',
   'task.rank': 'Reordered',
   'task.trash': 'Trashed',
+  'task.delete': 'Deleted',
   'task.restore': 'Restored',
   'task.purge': 'Purged',
   'task.cancel': 'Cancelled',

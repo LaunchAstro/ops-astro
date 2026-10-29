@@ -47,6 +47,7 @@ export const HISTORY_OPERATIONS: Readonly<Record<string, string>> = {
   'task.resolve': 'Resolved',
   'task.close_out_of_scope': 'Closed as out of scope',
   'task.trash': 'Moved to the bin',
+  'task.delete': 'Deleted',
   'task.restore': 'Restored',
   'onboarding.start': 'Onboarding started',
   'map.chart': 'Map created',

@@ -29,7 +29,7 @@ import { refusePurgeOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
-async function revisionOf(tx: TenantQuery, recordId: string): Promise<number | null> {
+export async function revisionOf(tx: TenantQuery, recordId: string): Promise<number | null> {
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from records where business_id = $1 and id = $2`,
     [tx.businessId, recordId],
@@ -67,7 +67,7 @@ export async function trashTask(tx: TenantQuery, context: CommandContext): Promi
  * uncovered descendant refuses the whole trash with the authority refusal as
  * it stands: no count and no name of what is below.
  */
-async function refuseUnreached(
+export async function refuseUnreached(
   tx: TenantQuery,
   context: CommandContext,
   rootId: string,

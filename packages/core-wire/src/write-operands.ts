@@ -119,6 +119,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
   'task.trash': TARGET,
+  'task.delete': TARGET,
   'task.restore': { batchId: 'id' },
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },

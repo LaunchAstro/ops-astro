@@ -95,6 +95,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.move': TASK,
   'task.rank': TASK,
   'task.trash': TASK,
+  'task.delete': TASK,
   // A purge clears what still names the task before it deletes the row (`tasks/trash.ts`): its
   // links and tags go, its record grants are revoked, a conversation on it and its time detach.
   // The delete takes its inbox items with their attention and delivery rows, and a map's body, by

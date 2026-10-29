@@ -48,6 +48,7 @@ const ON_A_TICKET: readonly CommandName[] = [
   'task.reparent',
   'task.rank',
   'task.trash',
+  'task.delete',
 ];
 
 /**

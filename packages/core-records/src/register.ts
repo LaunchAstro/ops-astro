@@ -27,6 +27,7 @@
 import { DEFINITION_ROWS } from './register-definitions.ts';
 import { EFFECT_ROWS } from './register-effects.ts';
 import { LAUNCH_ROWS } from './register-launch.ts';
+import { TRASH_ROWS } from './register-trash.ts';
 import { LIVE_CORRECTION_ROWS } from './site/refusal-rows.ts';
 import { REVIEW_ROWS } from './review/refusal-rows.ts';
 
@@ -190,18 +191,6 @@ const ROWS_HEAD = [
     code: 'PLACEMENT_IS_DERIVED',
     status: 422,
     meaning: 'A create payload chose placement the server derives',
-    source: 'T1e, unregistered',
-  },
-  {
-    code: 'PARENT_TRASHED',
-    status: 409,
-    meaning: 'The parent is still in the trash, in the batch named',
-    source: 'spec 14.3',
-  },
-  {
-    code: 'ALREADY_TRASHED',
-    status: 409,
-    meaning: 'The subtree root is already in the trash',
     source: 'T1e, unregistered',
   },
   {
@@ -888,7 +877,7 @@ const ROWS_HEAD = [
 /** Every registered code. Declared by the rows above and nowhere else. */
 /**
  * Every row, in register order: the head, the definition codes, the effect codes, the
- * launch, C80's, C35's.
+ * launch, C80's, C35's, the bin's.
  */
 type Row = (
   | typeof ROWS_HEAD
@@ -897,6 +886,7 @@ type Row = (
   | typeof LAUNCH_ROWS
   | typeof LIVE_CORRECTION_ROWS
   | typeof REVIEW_ROWS
+  | typeof TRASH_ROWS
 )[number];
 
 export type RefusalCode = Row['code'];
@@ -929,6 +919,7 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...LAUNCH_ROWS,
   ...LIVE_CORRECTION_ROWS,
   ...REVIEW_ROWS,
+  ...TRASH_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
   status: row.status,

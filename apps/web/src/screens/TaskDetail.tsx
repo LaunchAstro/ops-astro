@@ -138,6 +138,7 @@ import { DetailsForm } from './task/DetailsForm.tsx';
 import { DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
+import { DeleteTask } from './task/DeleteTask.tsx';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
@@ -767,6 +768,8 @@ function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElem
           onField={form.onField}
           onSubmit={writes.onFields}
         />
+
+        <DeleteTask client={client} task={task} disabled={locked} onDeleted={props.onChanged} />
       </div>
     </details>
   );
