@@ -67,7 +67,7 @@ function ConfirmDelete(props: {
     <div data-confirm="delete-task">
       <Card
         title="Delete this task?"
-        sub="It and its subtasks disappear from every list. Nothing is erased: an owner can restore it."
+        sub="It and its subtasks disappear from every list. Nothing is erased, and it can be restored."
       >
         <span data-act="delete">
           <Button variant="primary" onClick={props.onDelete}>

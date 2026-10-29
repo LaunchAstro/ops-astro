@@ -53,7 +53,7 @@ it('asks first, says it can be restored, and Keep sends nothing', async () => {
   const { view, sent } = await deleting(APPLIED);
   await view.click('[data-act="ask-delete"] button');
   expect(view.find('[data-confirm="delete-task"]')).not.toBeNull();
-  expect(view.text()).toContain('an owner can restore it');
+  expect(view.text()).toContain('it can be restored');
   await view.click('[data-act="keep"] button');
   expect(view.find('[data-confirm="delete-task"]')).toBeNull();
   expect(sent).toStrictEqual([]);
