@@ -90,10 +90,12 @@ function FilterTags<Row>(props: {
   );
 }
 
-/** The presets whose every filter is on. */
+/** The presets whose every filter is on, and one of no filters (All tasks) while none is. */
 function onPresetsOf(presets: readonly Preset[], view: BoardView): readonly Preset[] {
-  return presets.filter(
-    (preset) => preset.facetIds.length > 0 && preset.facetIds.every((id) => view.ids.includes(id)),
+  return presets.filter((preset) =>
+    preset.facetIds.length === 0
+      ? view.ids.length === 0
+      : preset.facetIds.every((id) => view.ids.includes(id)),
   );
 }
 

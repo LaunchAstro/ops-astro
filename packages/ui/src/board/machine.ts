@@ -141,7 +141,10 @@ function presetStep<Row>(
   if (preset === undefined) return state;
   const on = preset.facetIds.every((id) => view.ids.includes(id));
   let ids: readonly string[];
-  if (action.stack) {
+  // A preset of no filters is All tasks: pressed either way, every filter goes off.
+  if (preset.facetIds.length === 0) {
+    ids = [];
+  } else if (action.stack) {
     ids = on
       ? view.ids.filter((id) => !preset.facetIds.includes(id))
       : unique([...view.ids, ...preset.facetIds]);

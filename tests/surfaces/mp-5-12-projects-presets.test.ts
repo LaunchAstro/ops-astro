@@ -92,7 +92,7 @@ describe('MP-5-12 the viewer preset is on by default for the signed-in person', 
     const others = ROWS.filter((each) => each.id !== 'mine');
     const facet = projectFacets(others, NOW, ME).find((one) => one.id === `assignee:${ME}`);
     expect(facet?.test(ROWS[0] as ProjectRow)).toBe(true);
-    expect(projectPresets(others, ME)[0]?.label).toBe('Mine');
+    expect(projectPresets(others, ME).find((one) => one.variant === 'viewer')?.label).toBe('Mine');
   });
 
   it('is on at load agency-wide, and an address already naming filters is left alone', () => {

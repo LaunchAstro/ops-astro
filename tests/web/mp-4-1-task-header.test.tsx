@@ -50,11 +50,11 @@ describe('MP-4-1 ruled address', () => {
 });
 
 describe('MP-4-1 crumb', () => {
-  it('reads "Projects →", then the board from the task’s record, then its key and state', async () => {
+  it('reads "Tasks →", then the board from the task’s record, then its key and state', async () => {
     const view = await page('Proj-Verity-Pacing', found());
     const parts = view.all('[data-crumb]').map((part) => (part as HTMLElement).dataset['crumb']);
     expect(parts).toStrictEqual(['projects', 'board', 'key', 'state']);
-    expect(view.find('[data-crumb="projects"]')?.textContent).toBe('Projects →');
+    expect(view.find('[data-crumb="projects"]')?.textContent).toBe('Tasks →');
     expect(view.find('[data-crumb="board"]')?.textContent).toBe('Website Projects');
     expect(view.find('[data-crumb="key"]')?.textContent).toBe('Proj-Verity-Pacing');
     expect(view.find('[data-crumb="state"]')?.textContent).toContain('Awaiting approval');

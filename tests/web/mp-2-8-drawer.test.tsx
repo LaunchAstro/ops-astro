@@ -156,7 +156,7 @@ describe('MP-2-8 deep link at 390', () => {
     expect(app.view.all('.rail .rail__item').map((a) => a.getAttribute('href'))).toEqual(
       hub.map((each) => each.path),
     );
-    expect(lit(app.view)).toEqual(['Projects']);
+    expect(lit(app.view)).toEqual(['Tasks']);
     await follow(app.view, '.rail__item[href="/settings"]');
     expect(app.seen.at(-1)).toBe('/settings');
     await app.view.unmount();

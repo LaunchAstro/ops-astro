@@ -18,8 +18,8 @@
 // The book and the form are keyed on the grant, so an answer from before a
 // business or person switch touches nothing after it.
 //
-// A row's door is Projects filtered to that client (`/projects/?f=client:"<name>"`,
-// the board's Client facet), by the dock's gesture law when the Projects panel
+// A row's door is Tasks filtered to that client (`/projects/?f=client:"<name>"`,
+// the board's Client facet), by the dock's gesture law when the Tasks panel
 // is registered (plain solos, shift stacks) and as a link when it is not. The
 // board names a row's client only where the reader's grants reach it, as
 // `client.list` does. Not drawn: a press walking to the client's record
@@ -58,7 +58,7 @@ function search(clients: readonly ClientView[], query: string): readonly ClientV
     .toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The Projects door: to `place`, by the dock's gesture law, or as a link without a dock. */
+/** The Tasks door: to `place`, by the dock's gesture law, or as a link without a dock. */
 function ProjectsDoor(props: { readonly place: string; readonly label: string }): ReactElement {
   return (
     <span className="clbook__go">
@@ -92,7 +92,7 @@ function ClientRow(props: { readonly client: ClientView }): ReactElement {
           <span className="clbook__name">{name}</span>
         </span>
       </div>
-      <ProjectsDoor place={boardOf(name)} label={`Open Projects, ${name}'s work`} />
+      <ProjectsDoor place={boardOf(name)} label={`Open Tasks, ${name}'s work`} />
     </>
   );
 }

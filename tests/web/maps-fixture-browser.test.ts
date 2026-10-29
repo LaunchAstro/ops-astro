@@ -27,7 +27,7 @@ it('the Maps fixture renders at 1480, 900 and 390 in light and dark and its row 
         await row.waitFor({ state: 'visible' });
         expect(await row.textContent()).toBe(map?.title);
         expect(await row.getAttribute('href')).toBe('/map/T-40');
-        expect(await page.locator('.rail [data-lit]').textContent()).toContain('Projects');
+        expect(await page.locator('.rail [data-lit]').textContent()).toContain('Tasks');
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
           true,
         );

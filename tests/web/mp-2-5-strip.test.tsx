@@ -73,7 +73,7 @@ describe('MP-2-5 CS-2.3 step back and forward through the pages visited in this 
       button(view, 'Back')?.click();
     });
     expect(window.location.pathname).toBe('/projects/');
-    expect(view.find('h1')?.textContent).toBe('Projects');
+    expect(view.find('h1')?.textContent).toBe('Tasks');
     expect(button(view, 'Forward')?.disabled).toBe(false);
 
     await traversed(() => {

@@ -28,7 +28,7 @@ export function drawContent(props: {
   /** The address names a client the session holds no grant on. */
   readonly refused: boolean;
   readonly signIn: ReactElement;
-  /** Where "Go to Projects" goes for a person already signed in. */
+  /** Where "Go to Tasks" goes for a person already signed in. */
   readonly onGo: () => void;
   readonly screen: Omit<ScreenContext, 'params'>;
   /** What a public page reads with: the API's origin and the fetch. */

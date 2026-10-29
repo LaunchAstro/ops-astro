@@ -69,7 +69,7 @@ export const ROUTES = {
   'agency:projects-board': {
     namespace: 'agency',
     path: '/projects/',
-    title: 'Projects',
+    title: 'Tasks',
     surface: 'S1',
     authenticated: true,
   },
@@ -104,7 +104,7 @@ export const ROUTES = {
   // tickets, frontier and fog views. Keyed like a task, by the map's own key.
   // Its look is the accepted prototype W4, which names no surface letter, so
   // `surface` is `none`. It is no manifest page (a key is not a rail address);
-  // the rail lights Projects on it, as on a task.
+  // the rail lights Tasks on it, as on a task.
   'agency:map': {
     namespace: 'agency',
     path: '/map/:key',
@@ -181,7 +181,7 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // The reader's own to-dos (MP-7-1): the Projects dock panel's address.
+  // The reader's own to-dos (MP-7-1): the Tasks dock panel's address.
   'agency:todos': {
     namespace: 'agency',
     path: '/todos',

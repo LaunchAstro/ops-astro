@@ -101,7 +101,7 @@ describe('the screens with nothing to draw', () => {
     );
     const way = empty?.querySelector('.empty__action a.sb__addr');
     expect(way?.getAttribute('href')).toBe('/projects/');
-    expect(way?.textContent).toBe('Go to Projects');
+    expect(way?.textContent).toBe('Go to Tasks');
     await view.unmount();
   });
 

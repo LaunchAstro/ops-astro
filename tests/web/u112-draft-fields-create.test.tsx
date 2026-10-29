@@ -158,14 +158,14 @@ describe('Core 04 4: client scope is set before any content part', () => {
 });
 
 describe('Core 04 2: each door carries its page’s scope, never a fixed client', () => {
-  it('the Projects board door carries the board’s client and project', () => {
+  it('the Tasks board door carries the board’s client and project', () => {
     const door = document.createElement('button');
     for (const [name, value] of Object.entries(
       boardDoor(`/projects/?board=${BOARD}&client=${CLIENT}`, true),
     ))
       if (value !== undefined) door.setAttribute(name, value);
     const page = doorContext(door);
-    expect(page).toMatchObject({ from: 'Projects', clientId: CLIENT, boardId: BOARD });
+    expect(page).toMatchObject({ from: 'Tasks', clientId: CLIENT, boardId: BOARD });
     expect(prefilledDraft(scopeOf(page).prefill!)).toMatchObject({
       clientId: CLIENT,
       boardId: BOARD,

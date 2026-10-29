@@ -3,7 +3,7 @@
 // The task page's record header (MP-4-1, DS-TASK-11): the crumb, the title and
 // the run line.
 //
-// **The crumb is the record's.** "Projects →" goes back to the board, then the
+// **The crumb is the record's.** "Tasks →" goes back to the board, then the
 // task's board as `task.read` names it: its title, "No board", or a board the
 // reader may not open, which the server withholds rather than this screen
 // hiding. After it, the task's category by its label (`TASK_CATEGORIES`, a
@@ -50,11 +50,11 @@ export function TaskHeader(props: {
       <nav className="tpr__crumb" aria-label="Where this task sits">
         {boardAddress === null ? (
           <span className="sb__addr" data-crumb="projects">
-            Projects →
+            Tasks →
           </span>
         ) : (
           <a className="sb__addr" data-crumb="projects" href={boardAddress}>
-            Projects →
+            Tasks →
           </a>
         )}
         {boardAddress !== null && task.board?.readable ? (
