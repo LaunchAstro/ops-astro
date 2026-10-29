@@ -387,6 +387,11 @@ vi.mock('../../packages/core-commands/src/commands/review-commands.ts', async (o
   openReview: recorder('openReview'),
   askReviewCapture: recorder('askReviewCapture'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-captures.ts', async (original) => ({
+  ...(await original<object>()),
+  claimCaptureAsPerson: recorder('claimCaptureAsPerson'),
+  landCaptureAsPerson: recorder('landCaptureAsPerson'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -474,6 +479,8 @@ const PINNED_RUNTIME_SHAPED = {
   'model.call': 'leaseId',
   'run.delegate_child': 'leaseId',
   'run.end': 'leaseId',
+  'review.capture_claim': 'leaseId',
+  'review.capture_land': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -524,6 +531,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'live_correction.request': ['taskId'],
   'live_correction.revert': ['correctionId'],
   'review.capture': ['revisionId'],
+  'review.capture_claim': ['leaseId', 'revisionId'],
+  'review.capture_land': ['leaseId', 'revisionId'],
   'review.open': ['taskId'],
   'map.chart': [],
   'model.call': ['leaseId'],
@@ -684,7 +693,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.set_overseas_service',
   'record.create',
   'review.capture',
+  'review.capture_claim',
+  'review.capture_land',
   'review.open',
+  'review.picture',
   'review.read',
   'run.child_handback',
   'run.delegate_child',
@@ -748,6 +760,8 @@ const PINNED_AGENT_SURFACE = [
   'model.call',
   'onboarding.step_result',
   'review.capture',
+  'review.capture_claim',
+  'review.capture_land',
   'review.open',
   'run.child_handback',
   'run.delegate_child',
@@ -1046,6 +1060,17 @@ const REQUESTS: readonly CommandRequest[] = [
     sourceRevision: 'r',
   },
   { command: 'review.capture', operationId: 'op', revisionId: 'v' },
+  { command: 'review.capture_claim', operationId: 'op', leaseId: 'l', fence: 1, revisionId: 'v' },
+  {
+    command: 'review.capture_land',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 1,
+    revisionId: 'v',
+    width: 390,
+    picture: 'AA==',
+    observation: {},
+  },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -1251,6 +1276,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.set_single_operator': ['setSingleOperator', 'request'],
   'review.open': ['openReview', 'request'],
   'review.capture': ['askReviewCapture', 'request'],
+  'review.capture_claim': ['claimCaptureAsPerson', 'request'],
+  'review.capture_land': ['landCaptureAsPerson', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',

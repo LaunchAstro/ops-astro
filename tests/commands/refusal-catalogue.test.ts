@@ -226,6 +226,9 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['PAGE_UNDER_CORRECTION', 409, 'caller'],
   ['PAGE_OUTSIDE_HOLDER_SITE', 409, 'caller'],
   ['CAPTURE_ALREADY_ASKED', 409, 'caller'],
+  ['CAPTURE_NOT_CLAIMABLE', 409, 'caller'],
+  ['CAPTURE_NOT_CLAIMED', 409, 'caller'],
+  ['PICTURE_TOO_LARGE', 422, 'caller'],
 ];
 
 /**

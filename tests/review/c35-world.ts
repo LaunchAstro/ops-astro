@@ -13,6 +13,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import type { Scope } from '../../packages/core-records/src/authority/grants.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 
 export { ABOUT, B_FILE, B_PAGE, PAGE };
 
@@ -72,4 +73,165 @@ export async function c35World(part: string): Promise<C35World> {
         )[0]?.n,
       ),
   };
+}
+
+// The capture half's helpers (part B): a task of a client's with a review open on its bound
+// page and its capture asked, and the agent's pickup of it. The worker's claim and land under
+// that lease, each a call of the agent envelope as the site runner makes it, are in
+// c35-landing.ts.
+
+/** A task under a client, its review open on a page that client's site binds, capture asked. */
+export interface Reviewed {
+  readonly taskId: string;
+  readonly reviewId: string;
+  readonly revisionId: string;
+}
+
+/** The lease a pickup handed back, and what it was picked up from. */
+export interface Lease {
+  readonly taskId: string;
+  readonly reservationId: string;
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly credential: string;
+}
+
+/** An applied answer's detail, or a throw naming the refusal. */
+function needDetail(result: CommandResult, what: string): Record<string, unknown> {
+  if (isCommandRefusal(result)) throw new Error(`c35World: ${what} refused ${result.code}`);
+  return { ...(result.detail as Record<string, unknown>), recordId: result.recordId };
+}
+
+const revisionOfTask = async (w: C35World, taskId: string): Promise<number> =>
+  Number(
+    (
+      await w.world.db.admin.execute<{ readonly revision: string }>(
+        'select revision::text as revision from public.records where business_id = $1 and id = $2',
+        [w.world.business, taskId],
+      )
+    )[0]?.revision,
+  );
+
+/** On party A's about page unless told otherwise; ava creates, opens and asks. */
+export async function underReview(
+  w: C35World,
+  title: string,
+  at: { readonly partyId?: string; readonly pageUrl?: string; readonly path?: string } = {},
+): Promise<Reviewed> {
+  const created = needDetail(
+    await w.as(w.ava, { command: 'task.create', fields: { title } }),
+    'task.create',
+  );
+  const taskId = String(created['recordId']);
+  needDetail(
+    await w.as(w.admin, {
+      command: 'task.set_party',
+      recordId: taskId,
+      expectedRevision: await revisionOfTask(w, taskId),
+      fields: { client: at.partyId ?? w.partyA },
+    }),
+    'task.set_party',
+  );
+  const opened = needDetail(
+    await w.open(w.ava, { taskId, pageUrl: at.pageUrl ?? PAGE, path: at.path ?? ABOUT }),
+    'review.open',
+  );
+  needDetail(await w.capture(w.ava, opened['revisionId']), 'review.capture');
+  return {
+    taskId,
+    reviewId: String(opened['reviewId']),
+    revisionId: String(opened['revisionId']),
+  };
+}
+
+const leaseOf = (
+  taskId: string,
+  reservationId: string,
+  detail: Record<string, unknown>,
+): Lease => ({
+  taskId,
+  reservationId,
+  leaseId: String(detail['leaseId']),
+  fence: Number(detail['fence']),
+  credential: String(detail['credential']),
+});
+
+/** ava approves work on the task and the agent picks it up, for `leaseSeconds` if given. */
+export async function pickUpReviewed(
+  w: C35World,
+  reviewed: Reviewed,
+  leaseSeconds?: number,
+): Promise<Lease> {
+  const proposed = needDetail(
+    await w.as(w.ava, {
+      command: 'task.propose',
+      recordId: reviewed.taskId,
+      expectedRevision: await revisionOfTask(w, reviewed.taskId),
+      purpose: `review_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3_000,
+      currency: 'AUD',
+      payload: { instruction: 'capture the page under review' },
+      step: { kind: 'compose', payload: {} },
+    }),
+    'task.propose',
+  );
+  const decided = needDetail(
+    await w.as(w.ava, {
+      command: 'task.decide',
+      gateId: proposed['gateId'],
+      versionId: proposed['versionId'],
+      decision: 'approve',
+      note: 'approved so the agent can capture the page',
+    }),
+    'task.decide',
+  );
+  const reservationId = String(decided['reservationId']);
+  const picked = needDetail(
+    await w.world.asAgent({
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId,
+      ...(leaseSeconds === undefined ? {} : { leaseSeconds }),
+    }),
+    'task.pickup',
+  );
+  return leaseOf(reviewed.taskId, reservationId, picked);
+}
+
+/** Wait, on the database's clock, until `lease` and the delegation that expires with it have run out. */
+export async function untilExpired(w: C35World, lease: Lease): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    // Polling is sequential by definition.
+    // eslint-disable-next-line no-await-in-loop
+    const [row] = await w.world.db.admin.execute<{ readonly past: boolean }>(
+      `select clock_timestamp() > greatest(l.expires_at, d.expires_at) as past
+         from public.leases l join public.delegations d
+           on d.business_id = l.business_id and d.id = l.delegation_id
+        where l.id = $1`,
+      [lease.leaseId],
+    );
+    if (row?.past === true) return;
+    if (attempt > 400) throw new Error('c35World: the lease never ran out');
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+}
+
+/**
+ * Wait until `lease` has run out (`untilExpired`), then pick the same reservation up again:
+ * a later lease on the same task, at a later fence.
+ */
+export async function pickUpAgainAfterExpiry(w: C35World, lease: Lease): Promise<Lease> {
+  await untilExpired(w, lease);
+  const picked = needDetail(
+    await w.world.asAgent({
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId: lease.reservationId,
+    }),
+    'task.pickup again',
+  );
+  return leaseOf(lease.taskId, String(picked['reservationId']), picked);
 }
