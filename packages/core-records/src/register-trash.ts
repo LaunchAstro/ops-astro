@@ -17,11 +17,11 @@ export const TRASH_ROWS = [
     meaning: 'The subtree root is already in the trash',
     source: 'T1e, unregistered',
   },
-  // `task.delete` is the bin under `decide`; work with history is cancelled instead.
+  // `task.delete` is the bin under `decide`; work with history is closed instead.
   {
     code: 'TASK_NOT_DELETABLE',
     status: 409,
-    meaning: 'The task or a subtask has money, run or client history, so it is cancelled instead',
+    meaning: 'The task or a subtask has money, run or client history, so it is closed instead',
     source: '#2345',
   },
 ] as const;

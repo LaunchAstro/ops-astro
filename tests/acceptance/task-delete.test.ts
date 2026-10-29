@@ -4,7 +4,7 @@
 //
 // `task.delete` is the bin (`task.trash`) behind two more checks: it is
 // `task:decide`, a person's act, and it refuses a task whose subtree carries
-// money, run or client history, which is cancelled instead. Nothing is
+// money, run or client history, which is closed instead. Nothing is
 // removed: the rows stay, marked deleted, and `task.restore` returns them by
 // the batch the delete answered with.
 
@@ -106,7 +106,7 @@ describe.skipIf(serverUrl === undefined)('task.delete', () => {
     console.log(`delete a task with a reservation: ${refused.status} ${refused.code}`);
     expect(refused.code).toBe('TASK_NOT_DELETABLE');
     expect(refused.status).toBe(409);
-    expect(JSON.stringify(refused.body)).toContain('Cancel');
+    expect(JSON.stringify(refused.body)).toContain('Cancel its run instead');
     expect((await harness.asPerson('task.read', { recordId: subject.id })).code).toBe('ok');
   });
 

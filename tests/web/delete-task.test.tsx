@@ -76,13 +76,13 @@ it('quotes a refusal and keeps the task', async () => {
       refused: true,
       code: 'TASK_NOT_DELETABLE',
       names: ['work'],
-      fixes: ['Cancel it instead: set its status to a cancelled one. Its history stays with it.'],
+      fixes: ['Cancel its run instead, or complete the task. Its history stays with it.'],
     },
     status: 409,
   });
   await view.click('[data-act="ask-delete"] button');
   await view.click('[data-act="delete"] button');
   await tick();
-  expect(view.find('[data-task-delete-refused]')?.textContent).toContain('Cancel it instead');
+  expect(view.find('[data-task-delete-refused]')?.textContent).toContain('Cancel its run instead');
   expect(deleted.count).toBe(0);
 });

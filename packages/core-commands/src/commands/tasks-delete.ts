@@ -2,7 +2,7 @@
 //
 // A person's delete (#2345), wrapped as a command. It is the bin
 // (`tasks-trash.ts`) asked under `decide`, with one more refusal in front of
-// the write: a subtree with money, run or client history is cancelled instead.
+// the write: a subtree with money, run or client history is closed instead.
 
 import {
   isRecordsRefusal,
@@ -20,7 +20,7 @@ import { refuseUnreached, revisionOf } from './tasks-trash.ts';
  * A person's delete (#2345): the bin, asked under `decide`, for a subtree with
  * no history worth keeping in view. The rows stay either way; what this
  * refuses is hiding money, a run or a client's task behind a bin nobody
- * looks in. Those are cancelled instead, and stay where they can be seen.
+ * looks in. Those are closed instead, and stay where they can be seen.
  */
 export async function deleteTask(
   tx: TenantQuery,
@@ -86,7 +86,7 @@ async function refuseHistory(
       ['work'],
       [
         'This task or a subtask has money or run history: a hold, envelope, spend, model call, run or launch.',
-        'Cancel it instead: set its status to a cancelled one. Its history stays with it.',
+        'Cancel its run instead, or complete the task. Its history stays with it.',
       ],
     );
   }
@@ -96,7 +96,7 @@ async function refuseHistory(
       ['client'],
       [
         'This task or a subtask is linked to a client.',
-        'Cancel it instead: set its status to a cancelled one. Its history stays with it.',
+        'Complete it instead. Its history stays with it.',
       ],
     );
   }
