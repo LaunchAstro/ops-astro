@@ -44,7 +44,12 @@ const row = (id: string, over: Partial<ProjectRow> = {}): ProjectRow => ({
 });
 
 const ROWS: readonly ProjectRow[] = [
-  row('5', { assignee: { id: ME, name: 'Nathan', agent: false }, category: 'SEO' }),
+  row('5', {
+    name: 'Write cover',
+    assignee: { id: ME, name: 'Nathan', agent: false },
+    category: 'SEO',
+    awaitingDecision: true,
+  }),
   row('6'),
 ];
 
@@ -71,9 +76,10 @@ const stack = async (board: Mounted, selector: string): Promise<void> => {
 const VIEWER = '.cbd__preset--viewer';
 
 describe('#2344 the All tasks chip shows every task', () => {
-  const open = async (): Promise<Mounted> => {
+  const open = async (address?: string): Promise<Mounted> => {
     mounted = await mount(
       <ProjectsBoard
+        {...(address === undefined ? {} : { address })}
         rows={ROWS}
         withheld={0}
         stages={[]}
@@ -110,6 +116,22 @@ describe('#2344 the All tasks chip shows every task', () => {
   it('a stacked press turns every filter off too', async () => {
     const board = await open();
     await stack(board, ALL);
+    expect(drawn(board)).toStrictEqual(['5', '6']);
+  });
+
+  // S2349-1: search words and Review narrow the list as filters do.
+  it.each([
+    ['search words', 'f=&q=cover', false],
+    ['search words', 'f=&q=cover', true],
+    ['Review mode', 'f=&mode=review', false],
+    ['Review mode', 'f=&mode=review', true],
+  ])('is off under %s, and a press (stacked: %s) draws every task', async (_, address, stacked) => {
+    const board = await open(address);
+    expect(drawn(board)).toStrictEqual(['5']);
+    expect(one(board, ALL)?.classList.contains('is-on')).toBe(false);
+    await (stacked ? stack(board, ALL) : board.click(ALL));
+    expect(one(board, ALL)?.classList.contains('is-on')).toBe(true);
+    expect(one(board, '[data-mode="review"]')?.getAttribute('aria-pressed')).toBe('false');
     expect(drawn(board)).toStrictEqual(['5', '6']);
   });
 });
