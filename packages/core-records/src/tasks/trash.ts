@@ -637,6 +637,26 @@ export async function purgeTrashedRecords(
 
 /** Every conversation whose added page names one of the purged tasks `ids`: page cleared, epoch bumped. */
 async function clearPurgedPages(tx: TenantQuery, ids: readonly string[]): Promise<void> {
+  const cleared = await conversationsPagedTo(tx, ids, { lock: true });
+  if (cleared.length === 0) return;
+  await tx.query(
+    `update public.conversations set page_address = null, page_shows = null,
+            context_epoch = context_epoch + 1
+      where business_id = $1 and id = any ($2::uuid[])`,
+    [tx.businessId, cleared],
+  );
+}
+
+/**
+ * The conversations whose added page (#1467, `/task/<key or id>`) names one of the tasks `ids`,
+ * read as the exchange reads the page (`taskPageRef`), so a key spelt encoded or an id in upper
+ * case is found too. `lock` takes their rows `for update`, after the tasks'.
+ */
+export async function conversationsPagedTo(
+  tx: TenantQuery,
+  ids: readonly string[],
+  options: { readonly lock: boolean },
+): Promise<readonly string[]> {
   const keys = await tx.query<{ readonly key: string }>(
     `select ${KEY} as key from records
       where business_id = $1 and id = any ($2::uuid[]) and ${KEY} is not null`,
@@ -647,21 +667,13 @@ async function clearPurgedPages(tx: TenantQuery, ids: readonly string[]): Promis
   const paged = await tx.query<{ readonly id: string; readonly address: string }>(
     `select id, page_address as address from public.conversations
       where business_id = $1 and page_address like '/task/%'
-      order by id
-      for update`,
+      order by id ${options.lock ? 'for update' : ''}`,
     [tx.businessId],
   );
-  const cleared = paged
+  return paged
     .filter((each) => {
       const ref = taskPageRef(each.address);
       return typeof ref === 'string' && (named.has(ref) || lowered.has(ref.toLowerCase()));
     })
     .map((each) => each.id);
-  if (cleared.length === 0) return;
-  await tx.query(
-    `update public.conversations set page_address = null, page_shows = null,
-            context_epoch = context_epoch + 1
-      where business_id = $1 and id = any ($2::uuid[])`,
-    [tx.businessId, cleared],
-  );
 }

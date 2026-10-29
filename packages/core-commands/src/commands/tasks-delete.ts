@@ -5,6 +5,7 @@
 // the write: a subtree with money, run or client history is closed instead.
 
 import {
+  conversationsPagedTo,
   isRecordsRefusal,
   slotOf,
   trashSubtree,
@@ -49,11 +50,12 @@ const CLIENT_VISIBLE = slotOf(TASK_SPINE, 'client_visible');
 /**
  * Whether any task in the walk carries what a delete must not hide: proposed
  * or approved work, money held or spent (every hold, spend and model call
- * hangs off a task's envelope, lease or run), a launch, planning spend on its
- * conversation, or a client link, review or live correction.
+ * hangs off a task's envelope, lease or run), a launch, a planning envelope
+ * or model call on a conversation naming it (by scope, or by its added page,
+ * as `pageTaskOf` resolves it), or a client link, review or live correction.
  *
  * Asked after the walk is locked `for update`, read committed. Each of those
- * rows but the planning envelope names its task by a foreign key, whose check
+ * rows except a conversation's names its task by a foreign key, whose check
  * waits on that lock, so one written before this read is seen here, and one
  * written after waits for the delete and then lands on a task already in the
  * bin, as it would after `task.trash`. Nothing is removed either way.
@@ -62,22 +64,28 @@ async function refuseHistory(
   tx: TenantQuery,
   recordIds: readonly string[],
 ): Promise<CommandRefusal | undefined> {
+  const paged = await conversationsPagedTo(tx, recordIds, { lock: false });
   const rows = await tx.query<{ readonly work: boolean; readonly client: boolean }>(
-    `select
+    `with talks as (
+       select id from conversations
+        where business_id = $1 and (scope_record_id = any ($2::uuid[]) or id = any ($3::uuid[]))
+     )
+     select
        exists (select 1 from proposal_lineages where business_id = $1 and task_id = any ($2::uuid[]))
        or exists (select 1 from task_envelopes where business_id = $1 and task_id = any ($2::uuid[]))
        or exists (select 1 from planned_runs where business_id = $1 and task_id = any ($2::uuid[]))
        or exists (select 1 from leases where business_id = $1 and task_id = any ($2::uuid[]))
        or exists (select 1 from task_launches where business_id = $1 and task_id = any ($2::uuid[]))
-       or exists (select 1 from planning_envelopes p join conversations c
-                    on c.business_id = p.business_id and c.id = p.conversation_id
-                   where p.business_id = $1 and c.scope_record_id = any ($2::uuid[])) as work,
+       or exists (select 1 from planning_envelopes
+                   where business_id = $1 and conversation_id in (select id from talks))
+       or exists (select 1 from model_calls
+                   where business_id = $1 and conversation_id in (select id from talks)) as work,
        exists (select 1 from records where business_id = $1 and id = any ($2::uuid[])
                  and (${CLIENT} is not null or ${CLIENT_VISIBLE} is true))
        or exists (select 1 from reviews where business_id = $1 and task_id = any ($2::uuid[]))
        or exists (select 1 from live_corrections where business_id = $1 and task_id = any ($2::uuid[]))
          as client`,
-    [tx.businessId, recordIds],
+    [tx.businessId, recordIds, paged],
   );
   const found = rows[0];
   if (found?.work === true) {

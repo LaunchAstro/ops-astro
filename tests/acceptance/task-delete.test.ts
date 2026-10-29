@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from './role-case-harness.ts';
+import { envelopeOf, lockedOrDefault } from '../../packages/core-custody/src/broker-hold.ts';
 import { serverUrl, type Answer } from './world.ts';
 
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cases that share it
@@ -109,6 +110,39 @@ describe.skipIf(serverUrl === undefined)('task.delete', () => {
     expect(JSON.stringify(refused.body)).toContain('Cancel its run instead');
     expect((await harness.asPerson('task.read', { recordId: subject.id })).code).toBe('ok');
   });
+
+  // S2348-1: a conversation names its task by its scope, or else by the page
+  // added to it (`/task/<id>`), and planning spend on either is the task's.
+  it.each(['scope', 'page'] as const)(
+    'refuses a task with planning spend on a conversation naming it by its %s',
+    async (by) => {
+      const task = await harness.freshTask(`a deletable task planned by its ${by}`);
+      const started = await harness.asPerson('conversation.start', {
+        body: 'Plan this task',
+        ...(by === 'scope'
+          ? { scope: { kind: 'task', id: task.id } }
+          : { page: { address: `/task/${task.id}`, shows: 'the task' } }),
+      });
+      expect(started.code, 'the conversation').toBe('ok');
+      const conversationId = String(
+        (started.body['detail'] as Record<string, unknown>)['conversationId'],
+      );
+      await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+        const cap = await lockedOrDefault(tx);
+        await envelopeOf(tx, cap.id, {
+          conversation: {
+            id: conversationId,
+            businessId: harness.world.alpha,
+            ownerPersonId: String(harness.world.ada.personId),
+          },
+          operation: 'model.conversation',
+          fields: [],
+        });
+      });
+      expect((await remove(task.id)).code).toBe('TASK_NOT_DELETABLE');
+      expect((await harness.asPerson('task.read', { recordId: task.id })).code).toBe('ok');
+    },
+  );
 
   it('refuses a task linked to a client', async () => {
     const task = await clientTask('a deletable client task');

@@ -247,6 +247,7 @@ export { taskPageRef } from './tasks/page-ref.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
+export { conversationsPagedTo } from './tasks/trash.ts';
 export {
   isTaskType,
   isWayfinderRecord,
