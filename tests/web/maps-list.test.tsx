@@ -125,7 +125,7 @@ it.each(['floor', 'return', 'online'] as const)(
   },
 );
 
-it('Projects offers Maps and the admitted list links each map by key or ID', async () => {
+it('Tasks offers Maps and the admitted list links each map by key or ID', async () => {
   const projects = await open('/projects/');
   expect(projects.view.find('a[href="/projects/maps/"]')?.textContent).toBe('Maps');
   await projects.view.unmount();
@@ -142,7 +142,7 @@ it('Projects offers Maps and the admitted list links each map by key or ID', asy
       ),
   });
   await settle();
-  expect(lit(page.view)).toEqual(['Projects']);
+  expect(lit(page.view)).toEqual(['Tasks']);
   expect(page.view.find('a[href="/map/MAP-7"]')?.textContent).toBe('A made-up plan');
   expect(page.view.find('a[href="/map/map-two"]')?.textContent).toBe('Another made-up plan');
 });

@@ -200,7 +200,7 @@ export function NotFound(props: { readonly path: string }): ReactElement {
         description="The route registry is the list the application resolves through. An address that is not in it does not resolve, which is a truer answer than a blank page."
         action={
           <a className="sb__addr" href={pathTo('agency:projects-board')}>
-            Go to Projects
+            Go to Tasks
           </a>
         }
       />
@@ -216,7 +216,7 @@ export function SignedInAlready(props: { readonly onGo: () => void }): ReactElem
         title="You are already signed in."
         action={
           <button className="btn btn--primary" type="button" onClick={props.onGo}>
-            Go to Projects
+            Go to Tasks
           </button>
         }
       />

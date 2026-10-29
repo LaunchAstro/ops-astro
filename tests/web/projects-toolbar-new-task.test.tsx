@@ -17,7 +17,7 @@ it('Projects New task opens the shared untimed draft and restores its kept field
   expect(readDraft(app.storage, PERSON)).toBeNull();
   await app.view.type('#panel-draft-name', 'Kept Projects draft');
   expect(readDraft(app.storage, PERSON)).toMatchObject({
-    from: 'Projects',
+    from: 'Tasks',
     clientId: null,
     timerFrom: null,
   });

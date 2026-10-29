@@ -18,10 +18,10 @@ import { NOW, TODOS, dueOf, keysOf, serving, todos } from './todos-support.tsx';
 
 afterEach(unmountAll);
 
-describe('MP-7-1 the Projects dock panel', () => {
-  it('the dock carries a Projects panel at an address of its own', () => {
+describe('MP-7-1 the Tasks dock panel', () => {
+  it('the dock carries a Tasks panel at an address of its own', () => {
     const panel = PANELS.todos;
-    expect(panel?.label).toBe('Projects');
+    expect(panel?.label).toBe('Tasks');
     expect(panel?.route).toBe('agency:todos');
     expect(matchRoute(pathTo('agency:todos'))?.id).toBe('agency:todos');
   });

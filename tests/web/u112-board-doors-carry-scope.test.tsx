@@ -49,7 +49,7 @@ const contextOf = (address: string) => {
 describe('Core 04 2: board doors carry the board’s context into the draft', () => {
   it('a door names the board’s client, project, filtered stage, priority and category', () => {
     expect(contextOf(SCOPED)).toMatchObject({
-      from: 'Projects',
+      from: 'Tasks',
       clientId: CLIENT,
       boardId: BOARD,
       stage: 'enquiries',

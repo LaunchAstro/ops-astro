@@ -65,9 +65,9 @@ describe('MP-2-2 current section lit on every address', () => {
     }
   });
 
-  it('lights Projects on the task page', async () => {
+  it('lights Tasks on the task page', async () => {
     const { view } = await open('/task/ABC-1');
-    expect(lit(view)).toEqual(['Projects']);
+    expect(lit(view)).toEqual(['Tasks']);
     await view.unmount();
   });
 
@@ -95,9 +95,7 @@ describe('MP-2-2 railmark slides over 220ms on in-app navigation and snaps on lo
     const at = (label: string): number =>
       items.findIndex((item) => item.textContent?.trim() === label);
     expect(mark()?.dataset['placing']).toBe('');
-    expect(mark()?.style.getPropertyValue('--railmark-y')).toBe(
-      `${at('Projects') * ITEM_HEIGHT}px`,
-    );
+    expect(mark()?.style.getPropertyValue('--railmark-y')).toBe(`${at('Tasks') * ITEM_HEIGHT}px`);
 
     const click = await follow(view, '.rail__item[href="/settings"]');
     expect(click.defaultPrevented).toBe(true);

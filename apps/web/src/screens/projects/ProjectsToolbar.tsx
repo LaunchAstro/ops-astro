@@ -36,7 +36,7 @@ export function boardDoor(
     : undefined;
   return {
     'data-new-task': '',
-    'data-new-task-label': 'Projects',
+    'data-new-task-label': 'Tasks',
     'data-new-task-client': clientId,
     'data-new-task-client-name': [...clients, ...(project === null ? [] : [project])].find(
       (one) => one.clientId === clientId,

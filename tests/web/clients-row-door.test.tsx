@@ -108,7 +108,7 @@ describe('Clients row door', () => {
     expect(link?.getAttribute('href')).toBe(ZENITH_BOARD);
     expect(link?.dataset['dockPlace']).toBe(ZENITH_BOARD);
     expect(link?.dataset['dockOpen']).toBe('todos');
-    expect(link?.getAttribute('aria-label')).toBe("Open Projects, Zenith Physio's work");
+    expect(link?.getAttribute('aria-label')).toBe("Open Tasks, Zenith Physio's work");
     expect(link?.closest('.is-mock')).toBeNull();
   });
 

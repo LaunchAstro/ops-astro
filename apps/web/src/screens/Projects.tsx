@@ -59,7 +59,7 @@ function ViewSwitch(props: {
 }): ReactElement {
   const { tab, select, toolbar } = props;
   return toolbar === null ? (
-    <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+    <ProjectsTabs label="Tasks" name="projects" tabs={TABS} selected={tab} onSelect={select} />
   ) : (
     createPortal(<ProjectViews tab={tab} select={select} />, toolbar)
   );
@@ -72,10 +72,10 @@ function ProjectViews(props: {
   const { tab, select } = props;
   return (
     <details className="projects__views">
-      <summary aria-label="Project views" title="Project views">
+      <summary aria-label="Task views" title="Task views">
         <Icon name="calendar" size="xs" />
       </summary>
-      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <ProjectsTabs label="Tasks" name="projects" tabs={TABS} selected={tab} onSelect={select} />
     </details>
   );
 }

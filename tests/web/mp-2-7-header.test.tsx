@@ -25,7 +25,7 @@ describe('MP-2-7 H1 in display 24/500 with a meta slot', () => {
   it('titles the page with one h1 in the header, beside a meta slot', async () => {
     const { view } = await open('/projects/');
     expect(view.all('h1')).toHaveLength(1);
-    expect(view.find('.topbar .topbar__title h1.t-title')?.textContent).toBe('Projects');
+    expect(view.find('.topbar .topbar__title h1.t-title')?.textContent).toBe('Tasks');
     expect(view.find('.topbar .topbar__meta')).not.toBeNull();
     await view.unmount();
   });

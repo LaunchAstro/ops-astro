@@ -7,7 +7,9 @@
 // flagged, never counted, when a client or a mention waits in it. Review
 // narrows the table to the tasks waiting at a gate for the viewer's decision
 // and drops every assignee filter as it opens (P-10, `gateRule`); the queue's
-// own cards are MP-8-1's.
+// own cards are MP-8-1's. All tasks, first beside the viewer's chip, turns
+// every filter, search word and mode off (#2344): a task nobody holds is out
+// of the viewer preset.
 //
 // Every chip is built from the rows the reader was handed, so none names a
 // person or category outside the reader's scope.
@@ -41,7 +43,7 @@ function chipId(category: string, taken: Set<string>): string {
   return id;
 }
 
-/** The viewer's chip, then one chip per category in scope, by name. */
+/** All tasks and the viewer's chip, then one chip per category in scope, by name. */
 export function projectPresets(
   rows: readonly ProjectRow[],
   viewer: string | null,
@@ -65,6 +67,7 @@ export function projectPresets(
   if (viewer === null) return chips;
   const own = rows.find((row) => row.assignee?.id === viewer)?.assignee?.name;
   return [
+    { id: 'all', label: 'All tasks', icon: 'list-check', facetIds: [] },
     {
       id: `who-${viewer}`,
       label: own ?? 'Mine',
