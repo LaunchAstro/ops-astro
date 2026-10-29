@@ -8,7 +8,8 @@
 // narrows the table to the tasks waiting at a gate for the viewer's decision
 // and drops every assignee filter as it opens (P-10, `gateRule`); the queue's
 // own cards are MP-8-1's. All tasks, first beside the viewer's chip, turns
-// every filter off (#2344): a task nobody holds is out of the viewer preset.
+// every filter, search word and mode off (#2344): a task nobody holds is out
+// of the viewer preset.
 //
 // Every chip is built from the rows the reader was handed, so none names a
 // person or category outside the reader's scope.

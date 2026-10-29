@@ -139,12 +139,12 @@ function presetStep<Row>(
   const view = state.view;
   const preset = context.presets.find((one) => one.id === action.id);
   if (preset === undefined) return state;
+  // A preset of no filters is All tasks: pressed either way, nothing narrows the rows.
+  if (preset.facetIds.length === 0)
+    return record(state, `filter ${preset.label}`, { ...view, ids: [], text: [], mode: null });
   const on = preset.facetIds.every((id) => view.ids.includes(id));
   let ids: readonly string[];
-  // A preset of no filters is All tasks: pressed either way, every filter goes off.
-  if (preset.facetIds.length === 0) {
-    ids = [];
-  } else if (action.stack) {
+  if (action.stack) {
     ids = on
       ? view.ids.filter((id) => !preset.facetIds.includes(id))
       : unique([...view.ids, ...preset.facetIds]);

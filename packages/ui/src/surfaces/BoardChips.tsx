@@ -90,12 +90,11 @@ function FilterTags<Row>(props: {
   );
 }
 
-/** The presets whose every filter is on, and one of no filters (All tasks) while none is. */
+/** The presets whose every filter is on, and one of no filters (All tasks) while nothing narrows. */
 function onPresetsOf(presets: readonly Preset[], view: BoardView): readonly Preset[] {
+  const open = view.ids.length === 0 && view.text.length === 0 && view.mode === null;
   return presets.filter((preset) =>
-    preset.facetIds.length === 0
-      ? view.ids.length === 0
-      : preset.facetIds.every((id) => view.ids.includes(id)),
+    preset.facetIds.length === 0 ? open : preset.facetIds.every((id) => view.ids.includes(id)),
   );
 }
 

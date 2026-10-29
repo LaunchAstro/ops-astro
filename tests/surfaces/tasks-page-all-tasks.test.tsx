@@ -75,24 +75,24 @@ const stack = async (board: Mounted, selector: string): Promise<void> => {
 };
 const VIEWER = '.cbd__preset--viewer';
 
-describe('#2344 the All tasks chip shows every task', () => {
-  const open = async (address?: string): Promise<Mounted> => {
-    mounted = await mount(
-      <ProjectsBoard
-        {...(address === undefined ? {} : { address })}
-        rows={ROWS}
-        withheld={0}
-        stages={[]}
-        href={(each) => `/task/${each.key}`}
-        now={NOW}
-        width={1400}
-        viewport={1480}
-        viewer={ME}
-      />,
-    );
-    return mounted;
-  };
+const open = async (address?: string): Promise<Mounted> => {
+  mounted = await mount(
+    <ProjectsBoard
+      {...(address === undefined ? {} : { address })}
+      rows={ROWS}
+      withheld={0}
+      stages={[]}
+      href={(each) => `/task/${each.key}`}
+      now={NOW}
+      width={1400}
+      viewport={1480}
+      viewer={ME}
+    />,
+  );
+  return mounted;
+};
 
+describe('#2344 the All tasks chip shows every task', () => {
   it('sits first, counts every task, and is off while the viewer preset is on', async () => {
     const board = await open();
     const chips = board.all('.cbd__preset').map((chip) => (chip as HTMLElement).dataset['preset']);
@@ -118,22 +118,27 @@ describe('#2344 the All tasks chip shows every task', () => {
     await stack(board, ALL);
     expect(drawn(board)).toStrictEqual(['5', '6']);
   });
+});
 
-  // S2349-1: search words and Review narrow the list as filters do.
+// S2349-1: search words and Review narrow the list as filters do.
+describe('#2344 All tasks also turns search words and Review off', () => {
   it.each([
     ['search words', 'f=&q=cover', false],
     ['search words', 'f=&q=cover', true],
     ['Review mode', 'f=&mode=review', false],
     ['Review mode', 'f=&mode=review', true],
-  ])('is off under %s, and a press (stacked: %s) draws every task', async (_, address, stacked) => {
-    const board = await open(address);
-    expect(drawn(board)).toStrictEqual(['5']);
-    expect(one(board, ALL)?.classList.contains('is-on')).toBe(false);
-    await (stacked ? stack(board, ALL) : board.click(ALL));
-    expect(one(board, ALL)?.classList.contains('is-on')).toBe(true);
-    expect(one(board, '[data-mode="review"]')?.getAttribute('aria-pressed')).toBe('false');
-    expect(drawn(board)).toStrictEqual(['5', '6']);
-  });
+  ])(
+    'is off under %s (%s), and a press draws every task, stacked: %s',
+    async (_, address, stacked) => {
+      const board = await open(address);
+      expect(drawn(board)).toStrictEqual(['5']);
+      expect(one(board, ALL)?.classList.contains('is-on')).toBe(false);
+      await (stacked ? stack(board, ALL) : board.click(ALL));
+      expect(one(board, ALL)?.classList.contains('is-on')).toBe(true);
+      expect(one(board, '[data-mode="review"]')?.getAttribute('aria-pressed')).toBe('false');
+      expect(drawn(board)).toStrictEqual(['5', '6']);
+    },
+  );
 });
 
 const json = (body: unknown): Response =>
