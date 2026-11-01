@@ -114,7 +114,8 @@ describe.skipIf(serverUrl === undefined)('a task read between its snapshot steps
         if (step !== 1) return;
         ended = true;
         await w.db.admin.execute(
-          `update public.memberships set active = false where business_id = $1 and person_id = $2`,
+          `update public.memberships set active = false, ended_at = clock_timestamp()
+          where business_id = $1 and person_id = $2`,
           [w.business, reader.personId],
         );
       },

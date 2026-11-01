@@ -51,7 +51,7 @@ describe.skipIf(serverUrl === undefined)('a task read and the audit chain', () =
                         subject_record_id, payload_digest, attempted, seq, prev_hash, hash)
                      values ($1, gen_random_uuid(), $2, 'task.update', null, 'applied', null,
                              $3::uuid, $4, null, 1, null, repeat('0', 64))`,
-                    [w.business, owner.actorId, ticket.id, 'c35-audit-chain-crossing'],
+                    [w.business, owner.actorId, ticket.id, 'c'.repeat(64)],
                   );
                 }
                 return rows as never;
