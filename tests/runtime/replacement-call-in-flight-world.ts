@@ -142,7 +142,7 @@ async function callUnder(s: Schedules, w: Work, picked: Detail) {
 export async function closedWhileTheReplacementsCallIsOut(
   s: Schedules,
   h: Harness,
-  close: (w: Work) => Promise<void>,
+  close: (w: Work, picked: Detail) => Promise<void>,
 ): Promise<ClosedWhileOut> {
   const w = await h.unknownStep({ applied: false, room: true });
   expect(await h.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'absent' }]);
@@ -153,7 +153,7 @@ export async function closedWhileTheReplacementsCallIsOut(
   let whileOut: unknown;
   const broker = brokerOver(
     custodyAnswering(async () => {
-      await close(w);
+      await close(w, picked);
       whileOut = await seen(s, h, w, replacement);
     }),
   );

@@ -5,7 +5,8 @@
 // the call's answer is charged inside the envelope. Its worker must still never run the step
 // again (#2277): once the call has answered, `task.dispatch` on the kept lease is refused under
 // the step lock, with a refused audit row, and the envelope, the cap and the step's mark stay
-// as they were. A step a person recorded `happened_differently` goes on, so its replacement
+// as they were, and a dispatch waiting on the step lock while the write-off commits reads it.
+// A step a person recorded `happened_differently` goes on, so its replacement
 // still dispatches (S2355-1). Another business's replacement, whose step is closed nowhere
 // there, still dispatches, whatever this business's register names. Custody's answer is stubbed: no
 // provider is paid.
@@ -20,10 +21,12 @@ import {
   appliedDetail,
   asAgent,
   asPerson,
+  awaitParked,
   capCommitted,
   codeOf,
   openSchedules,
   pickup,
+  racer,
   rows,
   seedSchedules,
   type Detail,
@@ -162,6 +165,71 @@ describe.skipIf(url === undefined)(
           appliedDetail(await h.outcome(w, 'happened'), 'budget.record_outcome');
         }),
       );
+    });
+  },
+);
+
+/**
+ * While the call is out, a rival holds the step lock; the write-off queues on it first, then the
+ * kept replacement's dispatch, each on a connection of its own. Released, the write-off commits
+ * first, and the dispatch reads it after its lock wait.
+ */
+async function writeOffRacingDispatch(w: Work, picked: Detail) {
+  const [step] = await rows<{ readonly step_id: string }>(
+    s,
+    'select step_id from public.attempts where business_id = $1 and id = $2',
+    [s.business, w.attemptId],
+  );
+  const holder = racer(s);
+  const dispatcher = racer(s);
+  try {
+    let writeOff: ReturnType<typeof asPerson> | undefined;
+    let dispatch: ReturnType<typeof asAgent> | undefined;
+    await holder.withBusiness(s.business, async (tx) => {
+      await tx.query(
+        'select 1 from public.planned_steps where business_id = $1 and id = $2 for update',
+        [s.business, step?.step_id],
+      );
+      writeOff = asPerson(s, writeOffBody(w, 0));
+      await awaitParked(s, 'planned_steps', 1);
+      dispatch = asAgent(
+        s,
+        {
+          command: 'task.dispatch',
+          operationId: randomUUID(),
+          leaseId: picked['leaseId'],
+          fence: picked['fence'],
+        },
+        String(picked['credential']),
+        dispatcher,
+      );
+      await awaitParked(s, 'planned_steps', 2);
+    });
+    const [off, sent] = await Promise.all([writeOff, dispatch]);
+    if (off === undefined || sent === undefined) throw new Error('the race never started');
+    return { writeOff: codeOf(off), dispatch: codeOf(sent) };
+  } finally {
+    await holder.close();
+    await dispatcher.close();
+  }
+}
+
+describe.skipIf(url === undefined)(
+  'a write-off racing the kept replacement dispatch',
+  { timeout: 60_000 },
+  () => {
+    it('the dispatch waiting on the step lock reads the write-off that committed first; a retry is refused too', async () => {
+      let raced: unknown;
+      let closed: { readonly w: Work; readonly picked: Detail } | undefined;
+      const { seen } = await closedWhileTheReplacementsCallIsOut(s, h, async (w, picked) => {
+        closed = { w, picked };
+        raced = await writeOffRacingDispatch(w, picked);
+      });
+      expect(raced).toStrictEqual({ writeOff: 'applied', dispatch: REFUSED });
+      expect(seen).toMatchObject({ answer: true, answered: { hold: { lease_state: 'live' } } });
+      if (closed === undefined) throw new Error('the call was never out');
+      // The worker asks again once its call answered: refused, and nothing moves.
+      refusedWithNothingMoved(await dispatchKept(s, h, closed.w, closed.picked));
     });
   },
 );
