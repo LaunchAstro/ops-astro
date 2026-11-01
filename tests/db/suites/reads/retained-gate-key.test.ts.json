@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2265: a decision chain signed across a gate key change fails to read as staging's did, reads once the retired key is in GATE_RETAINED_KEYS with each row verified under its own key, and fails again when the retained key's secret is wrong"
+}

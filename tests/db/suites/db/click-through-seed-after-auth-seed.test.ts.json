@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2298: the click-through seed runs on db:seed's cast after auth:seed named the people, makes the member's tasks as auth:seed's member, and refuses another provider's login with Ada's subject, writing nothing"
+}
