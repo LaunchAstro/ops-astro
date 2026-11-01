@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2353: a review claim or land replayed after its lease lapsed in the audit-chain wait, by a person under their own lease or an agent under its pickup, is refused LEASE_EXPIRED with the replayed event taken back; a live lease still replays; a lapsed lease of business A answers no replay sent in business B."
+}
