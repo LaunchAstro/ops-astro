@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 task read and the audit chain (ORCH-2114-AUDIT 2): an audited event committed in the business while a task read is served leaves the read applied, every audit position taken once and the chain intact."
+}
