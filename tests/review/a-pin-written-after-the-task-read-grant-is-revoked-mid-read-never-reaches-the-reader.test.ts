@@ -4,7 +4,8 @@
 // C35 (#2114), Sol's proof for S2114-3: `task.read` judges its grant once, before the task
 // row, then reads the task's comments, pins among them, in statements of their own. A
 // reader's sole `task:read` grant revoked after the task row, and a pin written after the
-// revocation, never reaches the former reader: the read is refused as the next one is.
+// revocation, never reaches the former reader. The read admitted before the revoke
+// finishes from its snapshot without the pin; the next one is refused (ORCH-2114-T5).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -37,7 +38,7 @@ describe.skipIf(serverUrl === undefined)('the task read under revocation', () =>
     const database: Database = {
       log: w.world.db.app.log,
       close: async () => {},
-      withBusiness: async (business, run) =>
+      withBusiness: async (business, run, options) =>
         await w.world.db.app.withBusiness(
           business,
           async (tx) =>
@@ -76,6 +77,7 @@ describe.skipIf(serverUrl === undefined)('the task read under revocation', () =>
                 return rows as never;
               },
             }),
+          options,
         ),
     };
     try {
@@ -93,7 +95,9 @@ describe.skipIf(serverUrl === undefined)('the task read under revocation', () =>
         leaked: JSON.stringify(answer).includes(MARKER),
         next: codeOf(next as never),
       }).toEqual({
-        code: 'SCOPE_NOT_GRANTED',
+        // Admitted before the revoke, it finishes (ORCH-2114-T5, -S3; i10-inflight R4)...
+        code: 'not-a-refusal',
+        // ...with what existed at admission: never the pin written after the revoke.
         leaked: false,
         next: 'SCOPE_NOT_GRANTED',
       });
