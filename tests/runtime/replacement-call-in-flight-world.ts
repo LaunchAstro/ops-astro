@@ -6,7 +6,8 @@
 // proves a step's first attempt absent and reserves a replacement; a worker picks it up and
 // starts a model call through the production broker, with no `task.dispatch`; while custody
 // holds the request, a person closes the first attempt. Custody's answer is stubbed: no
-// provider is paid.
+// provider is paid. `a-replacement-kept-for-its-in-flight-call-never-dispatches-once-its-step-is-closed`
+// then dispatches the kept replacement.
 
 import { expect } from 'vitest';
 import {
@@ -92,6 +93,8 @@ export interface Seen {
 
 export interface ClosedWhileOut {
   readonly seen: { readonly whileOut: unknown; readonly answer: boolean; readonly answered: Seen };
+  /** The replacement's pickup: the lease, fence and credential its worker holds. */
+  readonly picked: Detail;
   readonly stopped: () => Promise<Seen>;
 }
 
@@ -169,6 +172,7 @@ export async function closedWhileTheReplacementsCallIsOut(
   );
   return {
     seen: { whileOut, answer: answer.ok, answered: await seen(s, h, w, replacement) },
+    picked,
     stopped: async () => {
       await stopWorker(s, picked);
       return await seen(s, h, w, replacement);
