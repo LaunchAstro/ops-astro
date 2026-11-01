@@ -19,7 +19,9 @@
 // the envelope (S2282-2, #2289). Its worker still holds a live lease and a
 // covering hold, so the step's own fact is read last, under the step lock a
 // write-off and an outcome take too: any attempt of the step written off
-// (`stepWrittenOff`) or settled `completed` is `TRANSITION_NOT_PERMITTED`.
+// (`stepWrittenOff`) or settled `completed` is `TRANSITION_NOT_PERMITTED`,
+// except one a person recorded `happened_differently`, after which the step
+// goes on.
 // Every replacement the close did stop has already lost its lease and hold,
 // and keeps that answer. An agent's authority
 // is its delegation too, and a pickup child's is its launch's as well: either
@@ -138,7 +140,7 @@ interface Facts {
   readonly attempt_id: string;
   readonly step_kind: string;
   readonly dispatched_at: Date | null;
-  /** An attempt of the step was written off, or settled `completed` (#2305). */
+  /** An attempt of the step was written off, or settled `completed` but not by `happened_differently` (#2305). */
   readonly step_settled: boolean;
 }
 
@@ -261,7 +263,15 @@ async function readFacts(
             (${stepWrittenOff('att.business_id', 'att.step_id')}
               or exists (select 1 from public.attempts done
                           where done.business_id = att.business_id and done.step_id = att.step_id
-                            and done.state = 'settled' and done.outcome = 'completed'))
+                            and done.state = 'settled' and done.outcome = 'completed'
+                            -- A recorded happened_differently settles its attempt
+                            -- completed and the step goes on (S2355-1).
+                            and not exists (
+                              select 1 from public.operations o
+                               where o.business_id = done.business_id
+                                 and o.command = 'budget.record_outcome' and o.outcome = 'applied'
+                                 and o.result -> 'detail' ->> 'outcome' = 'happened_differently'
+                                 and o.result -> 'detail' ->> 'attemptId' = done.id::text)))
               as step_settled
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id

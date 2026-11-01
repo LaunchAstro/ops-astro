@@ -2391,7 +2391,8 @@ launch of the reviewed output is the only decision an effect waits on.
   launch (`LAUNCH_NOT_DECIDED`: the approval behind the lease accepted a plan,
   not a reviewed output), the client's sign-off (`CLIENT_SIGNOFF_REQUIRED`
   409), the lease, the budget and the step itself (`TRANSITION_NOT_PERMITTED`:
-  an attempt of the step was written off or settled `completed`, so a
+  an attempt of the step was written off or settled `completed`, other than
+  by a person's `happened_differently`, after which the step goes on, so a
   replacement kept for its in-flight model call never runs it again, #2305),
   then the reconcile mode. Each refusal marks nothing.
 - **The reviewed output.** Whether a version's approval is a launch is

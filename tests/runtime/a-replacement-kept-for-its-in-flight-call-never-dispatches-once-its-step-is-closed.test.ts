@@ -5,8 +5,9 @@
 // the call's answer is charged inside the envelope. Its worker must still never run the step
 // again (#2277): once the call has answered, `task.dispatch` on the kept lease is refused under
 // the step lock, with a refused audit row, and the envelope, the cap and the step's mark stay
-// as they were. Another business's replacement, whose step is closed nowhere there, still
-// dispatches, whatever this business's register names. Custody's answer is stubbed: no
+// as they were. A step a person recorded `happened_differently` goes on, so its replacement
+// still dispatches (S2355-1). Another business's replacement, whose step is closed nowhere
+// there, still dispatches, whatever this business's register names. Custody's answer is stubbed: no
 // provider is paid.
 
 import { randomUUID } from 'node:crypto';
@@ -22,6 +23,7 @@ import {
   capCommitted,
   codeOf,
   openSchedules,
+  pickup,
   rows,
   seedSchedules,
   type Detail,
@@ -101,7 +103,13 @@ async function dispatchKept(at: Schedules, ah: Harness, w: Work, picked: Detail)
       where business_id = $1 and operation_id = $2 and command = 'task.dispatch'`,
     [at.business, operationId],
   );
-  return { code: codeOf(answer), audits, before, after: await around(at, ah, w, picked) };
+  // A plain array: the driver's result array is a subclass a strict compare refuses (S2355-2).
+  return {
+    code: codeOf(answer),
+    audits: [...audits],
+    before,
+    after: await around(at, ah, w, picked),
+  };
 }
 
 /** `close` while the replacement's call is out; once it answers, the replacement dispatches. */
@@ -154,6 +162,22 @@ describe.skipIf(url === undefined)(
           appliedDetail(await h.outcome(w, 'happened'), 'budget.record_outcome');
         }),
       );
+    });
+  },
+);
+
+describe.skipIf(url === undefined)(
+  'a step recorded as happened differently goes on',
+  { timeout: 60_000 },
+  () => {
+    it('its replacement is picked up and dispatches', async () => {
+      const w = await h.unknownStep({ applied: false, room: true });
+      appliedDetail(await h.outcome(w, 'happened_differently'), 'budget.record_outcome');
+      const replacement = await h.replacement(w);
+      if (replacement === undefined) throw new Error('the step did not go on');
+      const picked = await pickup(s, replacement);
+      const next = { ...w, picked, credential: String(picked['credential']) };
+      expect(codeOf(await h.t2d.held(next, { command: 'task.dispatch' }))).toBe('applied');
     });
   },
 );
