@@ -11,7 +11,17 @@
 // seen (`recheck_inside_dispatch`). Each moved fact is refused with its own
 // code, in `EFFECT_TIME_FACTS` order, and nothing is written. The order puts
 // the cause before its consequence: a revocation and a supersession both end
-// the lease too, and the answer names what moved first. An agent's authority
+// the lease too, and the answer names what moved first.
+//
+// **A closed step never runs again** (#2277, #2305). A write-off or a
+// person's `happened` stops the step's replacements, but keeps one whose model
+// call is in flight, lease and hold, so the call's answer is charged inside
+// the envelope (S2282-2, #2289). Its worker still holds a live lease and a
+// covering hold, so the step's own fact is read last, under the step lock a
+// write-off and an outcome take too: any attempt of the step written off
+// (`stepWrittenOff`) or settled `completed` is `TRANSITION_NOT_PERMITTED`.
+// Every replacement the close did stop has already lost its lease and hold,
+// and keeps that answer. An agent's authority
 // is its delegation too, and a pickup child's is its launch's as well: either
 // revoked, settled or past its expiry at the locked instant is
 // `AUTHORITY_LOST`, the answer an agent's lapsed lease also gets, since pickup
@@ -56,6 +66,7 @@ import { launchRecheck, signOffRefusal } from './launch-gate.ts';
 import { acquire, type LockRequest } from './locks.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { stepWrittenOff } from './step-written-off.ts';
 
 /** The facts rechecked at effect time, in the order a moved one is answered. */
 export const EFFECT_TIME_FACTS = [
@@ -67,6 +78,7 @@ export const EFFECT_TIME_FACTS = [
   'signOff',
   'lease',
   'budget',
+  'stepSettled',
 ] as const;
 export type EffectTimeFact = (typeof EFFECT_TIME_FACTS)[number];
 
@@ -126,6 +138,8 @@ interface Facts {
   readonly attempt_id: string;
   readonly step_kind: string;
   readonly dispatched_at: Date | null;
+  /** An attempt of the step was written off, or settled `completed` (#2305). */
+  readonly step_settled: boolean;
 }
 
 export async function dispatch(
@@ -243,7 +257,12 @@ async function readFacts(
             -- is marked again for the replacement. The answer to a second
             -- dispatch is this attempt's own mark, never another's.
             case when step.dispatch_attempt_id = att.id then step.dispatched_at end
-              as dispatched_at
+              as dispatched_at,
+            (${stepWrittenOff('att.business_id', 'att.step_id')}
+              or exists (select 1 from public.attempts done
+                          where done.business_id = att.business_id and done.step_id = att.step_id
+                            and done.state = 'settled' and done.outcome = 'completed'))
+              as step_settled
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
@@ -351,6 +370,14 @@ async function recheck(fact: EffectTimeFact, on: Recheck): Promise<RuntimeResult
             'no committed reservation covers this attempt',
             'Nothing was dispatched. A reservation is committed when a person approves the work.',
           );
+    case 'stepSettled':
+      return on.facts.step_settled
+        ? refuse(
+            'TRANSITION_NOT_PERMITTED',
+            'this step was written off or recorded as done, so it cannot run again',
+            'Nothing was dispatched. End the work; a person can propose the step again.',
+          )
+        : null;
   }
 }
 
