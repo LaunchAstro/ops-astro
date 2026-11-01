@@ -71,6 +71,8 @@ const FORWARDER_HOLDS = [
   'ops.api_alerts SELECT',
   'ops.api_events DELETE',
   'ops.api_events SELECT',
+  // It prunes the security alert log to ninety days (20261012132706).
+  'ops.security_alert_log DELETE',
 ];
 
 function roleCases() {

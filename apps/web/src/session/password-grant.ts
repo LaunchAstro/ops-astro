@@ -31,6 +31,8 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: request.email, password: request.password }),
+      // A 307 or 308 would resend the password to wherever it points.
+      redirect: 'error',
     });
   } catch {
     return { ok: false, because: 'The sign-in service did not answer.' };

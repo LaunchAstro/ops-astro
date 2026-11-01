@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the session list and the door agree on a session when an ending and a serving cross on two connections, when either dies before its commit, when both are asked again, and when the provider clock runs ahead inside the minute"
+}

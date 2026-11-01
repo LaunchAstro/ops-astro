@@ -228,7 +228,10 @@ async function match(tx: TenantQuery, kind: IdentifierKind, value: string): Prom
 }
 
 async function matchLocked(tx: TenantQuery, kind: IdentifierKind, value: string): Promise<Match> {
-  // A digest, so the address itself is not the lock's key.
+  // A digest, so the address itself is not the lock's key. The lock is held to
+  // the end of the transaction, so one transaction resolves one first-sighting:
+  // two taken in either order by two transactions would deadlock. A caller that
+  // must resolve several sorts them by this key first.
   const digest = createHash('sha256').update(`${kind}:${value}`).digest('hex');
   await advisoryLock(tx, `person-identifier:${tx.businessId.toLowerCase()}:${digest}`);
   return await match(tx, kind, value);

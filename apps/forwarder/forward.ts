@@ -198,6 +198,9 @@ export function createForwarder(options: ForwarderOptions): {
       [raised.map((alert) => alert.id), raised.map((alert) => alert.kind)],
     );
     await execute('delete from ops.api_events where id = any($1::bigint[])', [spent]);
+    await execute(
+      `delete from ops.security_alert_log where at < clock_timestamp() - interval '90 days'`,
+    );
     return { handled, dropped };
   };
 

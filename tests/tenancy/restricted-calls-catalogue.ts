@@ -148,10 +148,10 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005144947',
     line: `ops_astro_app ${act} ops.subject_resets.${column}`,
   })),
-  // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
-  // application reads kind and time (0069); a second-factor code's rows are
-  // read and written column by column (0072).
+  // Batch 2b's (C55, C59, 0069, 0072): alert kinds and times (the forwarder prunes by time,
+  // 20261012132706) and second-factor code rows are granted column by column.
   { from: '0069', line: 'ops_astro_forwarder INSERT ops.security_alert_log.kind' },
+  { from: '20261012132706', line: 'ops_astro_forwarder SELECT ops.security_alert_log.at' },
   ...['at', 'kind'].map((column) => ({
     from: '0069',
     line: `ops_astro_app SELECT ops.security_alert_log.${column}`,
