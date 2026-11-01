@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A read's grant check, apart from the pipeline that asks it (`dispatch.ts`): at the door,
-// and again after `serve` for a row judged last (`SpineRow.judgedLast`, S2114-3).
+// A read's grant check at the door, apart from the pipeline that asks it (`dispatch.ts`).
 
 import { checkAuthority, subjectsOf, wayfinderFacts } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, ScopeRequest } from '../../../core-records/src/index.ts';

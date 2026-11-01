@@ -55,8 +55,9 @@ export const READ_BODY_FIXES: readonly string[] = [
  * that arrive before an identity, and this is the second thing it carries.
  *
  * It is written after the read rather than before it so the outcome is the
- * outcome, and inside the same transaction so an audited read and its answer
- * commit together or neither does.
+ * outcome, and no answer leaves without its audit row: here inside the same
+ * transaction, and for a read served from one snapshot in the transaction after
+ * it, before the answer is handed back (`executeRead`, ORCH-2114-AUDIT).
  *
  * The one exception is a successful read on a row the surface declares not
  * audited: a person's own preferences (CS-2.8). Its refusals are audited.
@@ -66,13 +67,34 @@ export async function runRead(
   session: Session,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
-  let served: ServedRead;
+  return await auditRead(tx, session, request, await serveUnaudited(tx, session, request));
+}
+
+/** A read admitted and served, its audit event not yet written (`auditRead`). */
+export async function serveUnaudited(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+): Promise<ServedRead> {
   try {
-    served = await serveRead(tx, session, request);
+    return await serveRead(tx, session, request);
   } catch (cause) {
     if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
     throw cause;
   }
+}
+
+/**
+ * Writes a served read's audit event and hands back its outcome. A read served
+ * from one snapshot is audited after it, in a transaction of its own, and no
+ * answer leaves without it (`executeRead`, ORCH-2114-AUDIT).
+ */
+export async function auditRead(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+  served: ServedRead,
+): Promise<ReadResult | CommandRefusal> {
   const outcome = served.outcome;
   const refusal = isCommandRefusal(outcome) ? outcome : undefined;
   if (refusal === undefined && !declarationOf(request.read).audited) return outcome;
@@ -108,7 +130,7 @@ export async function runRead(
  * happened and it looked at nothing, and inventing an identifier to fill the
  * column would make "who read this record" false.
  */
-interface ServedRead {
+export interface ServedRead {
   readonly outcome: ReadResult | CommandRefusal;
   readonly subjectRecordId: string | null;
   /** Only the system-owned keys a payload claimed, with their values. */
@@ -122,9 +144,7 @@ async function serveRead<K extends ReadName>(
 ): Promise<ServedRead> {
   const admission = await admit(tx, session, request);
   if (!('serve' in admission)) return admission;
-  const served = await admission.serve();
-  // A row judged last asks its grant again after its parts (`SpineRow.judgedLast`).
-  const outcome = isCommandRefusal(served) ? served : ((await admission.lastCheck?.()) ?? served);
+  const outcome = await admission.serve();
   const disclosed = isCommandRefusal(outcome) ? undefined : admission.disclosed?.(outcome);
   return { outcome, subjectRecordId: admission.recordId ?? disclosed ?? null };
 }
@@ -206,14 +226,12 @@ async function admit<K extends ReadName>(
   // a share is a record-scoped read, and it opens the shared task, not a list.
   const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
   const judged = row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin;
-  const authority = async (): Promise<CommandRefusal | undefined> =>
-    judged
-      ? await grantRefusal(tx, session, row, declaration, operands, readied.recordId)
-      : undefined;
-  const refusal = await authority();
+  const refusal = judged
+    ? await grantRefusal(tx, session, row, declaration, operands, readied.recordId)
+    : undefined;
   if (refusal !== undefined) return refused(refusal);
   if (!(await readied.admits())) return refused(refuseNotFound());
-  return row.spine && row.judgedLast === true ? { ...readied, lastCheck: authority } : readied;
+  return readied;
 }
 
 /** A read refused before it was served, and what its audit row names. */
@@ -229,8 +247,6 @@ interface Readied {
   /** A list read's own admission (`SpineRow.listRefusal`); absent, it refuses nothing. */
   readonly listRefusal?: () => Promise<CommandRefusal | undefined>;
   readonly serve: () => Promise<ReadResult | CommandRefusal>;
-  /** The grant check asked again after `serve` (`SpineRow.judgedLast`); absent, none is. */
-  readonly lastCheck?: () => Promise<CommandRefusal | undefined>;
   /** A business row's record its answer disclosed (`BusinessRow.disclosed`), for the audit. */
   readonly disclosed?: ((answer: ReadResult) => string | undefined) | undefined;
 }
