@@ -14,6 +14,8 @@ import {
   STEP_UP_WINDOW_SECONDS,
 } from '../../../core-records/src/index.ts';
 import type {
+  BusinessId,
+  Database,
   SecondFactor,
   Session,
   TenantQuery,
@@ -122,15 +124,52 @@ export async function recordCode(
   );
 }
 
-/** A first enrolment's precondition: a password sign-in inside the window. */
-export async function freshSignIn(tx: TenantQuery, session: Session): Promise<boolean> {
-  const signedInAt = session.assurance.signedInAt;
-  if (signedInAt === null) return false;
+/**
+ * A code that never reached the provider's check (`unsent`, or no factor to
+ * send it to) stops counting: its attempt is recorded answered, under the
+ * same lock. Its own transaction, asking nothing of the session, so a session
+ * ended while the code waited still settles it; it changes no factor.
+ */
+export async function settleUnsent(
+  caller: {
+    readonly database: Database;
+    readonly businessId: BusinessId;
+    readonly presented: VerifiedSubject;
+  },
+  attempt: string,
+): Promise<void> {
+  const digest = subjectDigest(caller.presented.subject);
+  await caller.database.withBusiness(caller.businessId, async (tx) => {
+    await advisoryLock(tx, `second-factor-codes:${digest}`);
+    await tx.query(
+      `insert into ops.second_factor_codes (subject_digest, attempt, state) values ($1, $2, 'answered')`,
+      [digest, attempt],
+    );
+  });
+}
+
+const FRESH_FIXES: readonly string[] = [
+  'Sign in again with your password, then set up the authenticator app within 60 minutes.',
+];
+
+/**
+ * A first enrolment's precondition: a password sign-in inside the window, or
+ * `FRESH_SIGN_IN_REQUIRED`. Judged on `clock_timestamp()`, not `now()`, the
+ * transaction's start, so a sign-in that leaves the window while the record
+ * step waits for the login's lock is judged as it stands after the wait.
+ */
+export async function freshSignIn(
+  tx: TenantQuery,
+  session: Session,
+): Promise<CommandRefusal | undefined> {
+  const signedInAt = session.assurance.signedInAt ?? Number.NEGATIVE_INFINITY;
   const rows = await tx.query<{ readonly now: number }>(
-    'select floor(extract(epoch from now()))::float8 as now',
+    'select floor(extract(epoch from clock_timestamp()))::float8 as now',
   );
   const age = (rows[0]?.now ?? Number.POSITIVE_INFINITY) - signedInAt;
-  return age <= STEP_UP_WINDOW_SECONDS && age >= -60;
+  return age <= STEP_UP_WINDOW_SECONDS && age >= -60
+    ? undefined
+    : refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
 }
 
 /** `{ "code": "123456" }` and nothing else: six digits, as authenticator apps show. */
@@ -173,7 +212,7 @@ export async function checkCode(
   if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
   const locked = await wrongCodeLock(tx, caller.presented.subject);
   if (locked !== undefined) return locked;
-  seen.factor = await liveFactor(tx, session.personId);
+  seen.factor = await liveFactor(tx, session.personId, caller.presented.subject);
   if (seen.factor !== undefined) return await enrolledElsewhere(tx, caller, seen.factor);
   seen.held = await loginVerifiedFactors(tx, caller.presented.subject);
   return seen.held.length > 0

@@ -22,6 +22,7 @@ import type { RegistryWorld } from './registry-world.ts';
 const done = Promise.resolve({ ok: true, value: undefined } as const);
 export const provider: FactorProvider = {
   verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+  heldFactors: () => Promise.resolve({ ok: true, value: [] }),
   enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
   verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
   remove: () => done,

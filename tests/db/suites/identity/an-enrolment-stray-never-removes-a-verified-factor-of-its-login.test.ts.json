@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an enrolment's stray factor is removed at the provider only when it is the attempt's own unverified factor; a factor the login holds verified, in the record or at the provider, is never removed or held removed"
+}

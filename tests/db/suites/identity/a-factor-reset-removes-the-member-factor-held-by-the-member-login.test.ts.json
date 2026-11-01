@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor reset finds and removes the member's factor by the member's own login, never the owner's, and leaves the owner's factor verified"
+}

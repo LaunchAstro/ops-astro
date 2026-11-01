@@ -60,7 +60,7 @@ async function enrollingInBoth() {
       const actorId = await insertActor(tx, personId);
       await insertMembership(tx, personId);
       await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      await recordFactorEnrolled(tx, { personId, provider: 'supabase', providerFactorId });
+      await recordFactorEnrolled(tx, { personId, subject, provider: 'supabase', providerFactorId });
     });
     callers[business] = {
       database: wide,
@@ -87,6 +87,7 @@ function gatedProvider(waitFor: number) {
   const done = Promise.resolve({ ok: true, value: undefined } as const);
   const provider: FactorProvider = {
     verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    heldFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async (_token, factorId) => {
       asked.push(factorId);

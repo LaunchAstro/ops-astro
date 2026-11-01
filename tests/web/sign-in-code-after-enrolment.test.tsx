@@ -96,7 +96,7 @@ it('a newly enrolled person can enter their authenticator code on the next web s
     await setup.view.type('[data-step-up="code"]', '123456');
     await setup.view.click('[data-factor="confirm"] button');
     await vi.waitFor(() => expect(setup.view.find('[data-factor="done"]')).not.toBeNull(), DRAWN);
-    expect((await factorOf(world.mia.personId))?.status).toBe('verified');
+    expect((await factorOf(world.mia))?.status).toBe('verified');
   } finally {
     await setup.view.unmount();
   }

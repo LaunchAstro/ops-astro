@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a first enrolment judges its fresh sign-in again after the factor lock wait, on the current clock, so a sign-in that left the window during the wait records no factor"
+}

@@ -148,6 +148,8 @@ describe.skipIf(serverUrl === undefined)(
       const { provider } = namingProvider();
       const failing: FactorProvider = {
         ...provider,
+        // The provider still holds the factor it would not remove.
+        heldFactors: () => Promise.resolve({ ok: true, value: [f.providerFactorId] }),
         remove: async () => {
           await endMembership(person);
           return { ok: false, fault: 'unreachable' };

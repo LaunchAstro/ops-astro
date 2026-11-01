@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor two acts of one login both remove at the provider, or one removal asked again after its answer was lost, is removed once and reported orphaned by neither"
+}

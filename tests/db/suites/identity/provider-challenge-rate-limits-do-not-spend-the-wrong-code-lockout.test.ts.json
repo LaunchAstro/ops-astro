@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "provider challenge rate limits do not spend the wrong code lockout"
+}

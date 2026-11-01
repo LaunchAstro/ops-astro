@@ -58,6 +58,7 @@ async function personWithFactor(): Promise<FactorCaller> {
     await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });
@@ -91,6 +92,7 @@ function countingProvider(good?: string) {
   const done = Promise.resolve({ ok: true, value: undefined } as const);
   const provider: FactorProvider = {
     verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    heldFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async (_token, _factor, code) => {
       asked.push(code);

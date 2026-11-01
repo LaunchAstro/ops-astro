@@ -7,7 +7,9 @@
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /** What can go wrong at the provider, by kind only (TR-SEC4R-5). */
-export type ProviderFault = 'refused' | 'malformed' | 'oversized' | 'slow' | 'unreachable';
+/** `unsent`: the call failed before the code left this server, so the provider checked nothing. */
+export type ProviderFault =
+  'refused' | 'malformed' | 'oversized' | 'slow' | 'unreachable' | 'unsent';
 
 export type ProviderAnswer<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly fault: ProviderFault };
@@ -23,7 +25,7 @@ export interface IssuedFactor {
 
 /**
  * An enrolment's answer. One refused with the id of the factor the provider
- * issued names it, so the factor left there is reported, not lost.
+ * issued names it, so the factor left there is removed, not lost.
  */
 export type EnrolAnswer =
   | ProviderAnswer<IssuedFactor>
@@ -50,6 +52,8 @@ export interface SessionsEnded {
 export interface FactorProvider {
   /** The ids of the factors the provider holds verified for the token's login. */
   verifiedFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
+  /** The ids of every factor the provider holds for the token's login, verified or not. */
+  heldFactors(accessToken: string): Promise<ProviderAnswer<readonly string[]>>;
   enrol(accessToken: string): Promise<EnrolAnswer>;
   verify(
     accessToken: string,

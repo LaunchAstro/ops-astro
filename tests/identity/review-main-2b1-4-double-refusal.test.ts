@@ -52,6 +52,7 @@ async function loginWithFactor(): Promise<string> {
     await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: `factor-${randomUUID()}`,
     });

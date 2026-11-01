@@ -183,6 +183,7 @@ async function mfaLogin() {
   await world.db.app.withBusiness(world.alpha, async (tx) => {
     const local = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: factorId,
     });

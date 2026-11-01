@@ -98,11 +98,14 @@ it.each(EACH)(
       await ending.letGo();
       ending = undefined;
       const result = await acting;
-      const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+      const live = await db.app.withBusiness(business, (tx) =>
+        liveFactor(tx, person, asked.presented.subject),
+      );
       expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
         result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         status: act === 'enrol' ? 'none' : 'verified',
-        removed: [],
+        // A refused enrolment's issued factor goes at the provider; nothing else does.
+        removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       });
     } finally {
       paused.goOn();
@@ -225,12 +228,15 @@ it.each(EACH)(
       const [actResult, endResult] = (await Promise.allSettled([acting, ending])).map((settled) =>
         answer(settled),
       );
-      const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+      const live = await db.app.withBusiness(business, (tx) =>
+        liveFactor(tx, person, asked.presented.subject),
+      );
       expect({ actResult, endResult, status: live?.status ?? 'none', removed }).toMatchObject({
         actResult: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         endResult: { signedOutAtProvider: true },
         status: act === 'enrol' ? 'none' : 'verified',
-        removed: [],
+        // A refused enrolment's issued factor goes at the provider; nothing else does.
+        removed: act === 'enrol' ? [expect.stringMatching(/^factor-/u)] : [],
       });
     } finally {
       stop.release();

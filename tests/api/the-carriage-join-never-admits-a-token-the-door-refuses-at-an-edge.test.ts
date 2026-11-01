@@ -124,6 +124,7 @@ describe.skipIf(serverUrl === undefined)(
       await db.app.withBusiness(factored.id, async (tx) => {
         const factor = await recordFactorEnrolled(tx, {
           personId: factored.owner.person,
+          subject: factored.owner.sub,
           provider: 'supabase',
           providerFactorId: randomUUID(),
         });

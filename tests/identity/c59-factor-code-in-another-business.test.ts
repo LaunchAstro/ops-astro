@@ -63,6 +63,7 @@ async function verifiedInAlpha() {
   const factorId = await db.app.withBusiness(alpha, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
+      subject,
       provider: 'supabase',
       providerFactorId: 'factor-alpha',
     });
@@ -89,6 +90,7 @@ function listingProvider(
       asked.push('list');
       return Promise.resolve({ ok: true, value: listed } as const);
     },
+    heldFactors: () => Promise.resolve({ ok: true, value: [] } as const),
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async (_token, factorId) => {
       asked.push(`verify ${factorId}`);
@@ -169,7 +171,9 @@ describe.skipIf(serverUrl === undefined)('C59 a code in a business holding no fa
     expect(await codeInBravo(mia.subject, provider)).toBe('aal2-access-token');
     expect(asked).toEqual(['list', 'verify factor-alpha']);
     // Nothing is recorded in bravo: the factor stays held, and removed, where it was verified.
-    const live = await db.app.withBusiness(bravo, (tx) => liveFactor(tx, mia.bravoPerson));
+    const live = await db.app.withBusiness(bravo, (tx) =>
+      liveFactor(tx, mia.bravoPerson, mia.subject),
+    );
     expect(live).toBeUndefined();
   });
 
