@@ -12,17 +12,21 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';
+import type { Heard } from './api-1-isolation-surfaces.ts';
 import type { Member } from '../commands/fixture.ts';
 import { LANDING, seedForeignReview } from '../acceptance/c35-bodies.ts';
 import {
   delegatedTask,
   fixture,
   foreignTaskId,
+  label,
+  labelAs,
   other,
   ownLease,
   rows,
+  type Owner,
 } from './api-1-isolation-world.ts';
-import { asAgent } from './api-1-isolation-surfaces.ts';
+import { asAgent, foreign } from './api-1-isolation-surfaces.ts';
 
 interface Lease {
   readonly leaseId: string;
@@ -55,26 +59,33 @@ export const REVIEW_REASONS: Record<string, string> = Object.fromEntries(
   ),
 );
 
-/** A review on `taskId` with its first revision and both widths asked. */
-async function asked(taskId: string, by: Member): Promise<string> {
-  const { revisionId } = await seedForeignReview(fixture.db.admin, fixture.business, taskId, by);
-  for (const width of [1480, 390]) {
+/**
+ * A review on `taskId` with its first revision and both widths asked. Its review, revision and
+ * capture ids are labelled `<owner review>`, so an answer naming one is caught as a leak.
+ */
+async function asked(taskId: string, by: Member, owner: Owner): Promise<string> {
+  const seeded = await seedForeignReview(fixture.db.admin, fixture.business, taskId, by);
+  const captureIds = [randomUUID(), randomUUID()];
+  for (const id of [seeded.reviewId, seeded.revisionId, ...captureIds]) {
+    labelAs(id, `<${owner} review>`);
+  }
+  for (const [index, width] of [1480, 390].entries()) {
     // eslint-disable-next-line no-await-in-loop -- two rows, one connection
     await fixture.db.admin.execute(
       `insert into public.review_captures
          (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
        values ($1, $2, $3, $4, $5, $6)`,
-      [fixture.business, randomUUID(), revisionId, width, by.actorId, by.personId],
+      [fixture.business, captureIds[index], seeded.revisionId, width, by.actorId, by.personId],
     );
   }
-  return revisionId;
+  return seeded.revisionId;
 }
 
 /** Registers the planted reviews; after `useIsolationWorld`, whose picked-up tasks they sit on. */
 export function useReviews(): void {
   beforeAll(async () => {
-    revision.own = await asked(delegatedTask, fixture.member);
-    revision.foreign = await asked(foreignTaskId, other.person);
+    revision.own = await asked(delegatedTask, fixture.member, 'delegated');
+    revision.foreign = await asked(foreignTaskId, other.person, 'other');
   });
 }
 
@@ -86,6 +97,22 @@ const captures = async (revisionId: string) =>
   );
 
 export function reviewCrossingControl(): void {
+  it("API-1 isolation: a refusal naming the other person's review, revision or capture is caught", async () => {
+    const [ids] = await fixture.db.admin.execute<{ review: string; captures: string[] }>(
+      `select v.review_id::text as review, array_agg(k.id::text) as captures
+         from public.review_revisions v join public.review_captures k
+           on k.business_id = v.business_id and k.revision_id = v.id
+        where v.business_id = $1 and v.id = $2 group by v.review_id`,
+      [fixture.business, revision.foreign],
+    );
+    for (const id of [ids?.review, revision.foreign, ...(ids?.captures ?? [])]) {
+      const refused: Heard[] = [
+        { status: 403, code: 'DELEGATION_OUT_OF_PURPOSE', body: label({ names: [id] }) },
+      ];
+      expect(foreign(refused, null), String(label(id))).toEqual(['other']);
+    }
+  });
+
   it('API-1 isolation: the review crossings opened, asked, claimed and landed nothing', async () => {
     const reviews = await fixture.db.admin.execute<{ reviews: number; revisions: number }>(
       `select (select count(*) from public.reviews)::int as reviews,
