@@ -7,6 +7,7 @@ import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 import type { SiteCommandName } from './surface-site-names.ts';
 import type { ReviewCommandName } from './surface-review-names.ts';
+import type { BinCommandName } from './surface-bin-names.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -41,10 +42,7 @@ export type CommandName =
   | 'task.delete_comment'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
-  | 'task.trash'
-  | 'task.delete'
-  | 'task.restore'
-  | 'task.purge'
+  | BinCommandName
   // The reads. They are here because a read is an operation the same surfaces
   // have to expose, and a table that held only the writes would leave the
   // route for reading a task to be invented somewhere else.

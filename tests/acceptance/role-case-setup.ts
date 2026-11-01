@@ -70,6 +70,17 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
     const task = await context.freshTask('a task for task.delete');
     return { body: { recordId: task.id, expectedRevision: task.revision } };
   }
+  // #2351: the admin asks to delete a fresh task, or answers a request made on one first.
+  if (name === 'task.request_delete') {
+    const task = await context.freshTask('a task for task.request_delete');
+    return { body: { recordId: task.id, expectedRevision: task.revision, reason: 'a test' } };
+  }
+  if (name === 'task.confirm_delete' || name === 'task.decline_delete') {
+    const task = await context.freshTask(`a task for ${name}`);
+    const body = { recordId: task.id, expectedRevision: task.revision };
+    await context.asPerson('task.request_delete', { ...body, reason: 'a test' });
+    return { body };
+  }
   // Assign to AI: the admin renames an agent of their own, made first.
   if (name === 'agent.rename') {
     const made = await context.asPerson('agent.create', { name: 'An agent to rename' });

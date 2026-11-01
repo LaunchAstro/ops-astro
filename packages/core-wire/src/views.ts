@@ -12,6 +12,7 @@
 // convert their own `Date`s so the type the server builds is the type a
 // client parses.
 
+import type { DeleteRequestView } from './views-delete-request.ts';
 import type {
   Action,
   DeliveryState,
@@ -247,6 +248,8 @@ export interface TaskDetail extends TaskSummary {
    * Empty for an agent.
    */
   readonly myAgents: readonly AgentOfferView[];
+  /** The open request to delete it (#2351), or null; sent to a reader inside the business alone. */
+  readonly deleteRequest?: DeleteRequestView | null;
 }
 
 /** The agent holding a task, and the person who owns it. */

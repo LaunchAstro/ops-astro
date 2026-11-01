@@ -291,3 +291,4 @@ export {
 export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';
 // What the review reads answer (C35, #2011).
 export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from './views-review.ts';
+export type { DeleteRequestView } from './views-delete-request.ts';

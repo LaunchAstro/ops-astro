@@ -184,6 +184,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-delete.ts', async (orig
   ...(await original<object>()),
   deleteTask: recorder('deleteTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-delete-request.ts', async (original) => ({
+  ...(await original<object>()),
+  answerDeleteRequest: recorder('answerDeleteRequest'),
+  requestDelete: recorder('requestDelete'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (original) => ({
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
@@ -788,6 +793,7 @@ const PINNED_AGENT_SURFACE = [
   'task.propose',
   'task.queue',
   'task.read',
+  'task.request_delete',
   'task.set_adhoc',
   'task.set_category',
   'task.set_scores',
@@ -883,6 +889,9 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
   { command: 'task.trash', operationId: 'op', recordId: 'r' },
   { command: 'task.delete', operationId: 'op', recordId: 'r' },
+  { command: 'task.request_delete', operationId: 'op', recordId: 'r', reason: 'why' },
+  { command: 'task.confirm_delete', operationId: 'op', recordId: 'r' },
+  { command: 'task.decline_delete', operationId: 'op', recordId: 'r' },
   { command: 'task.launch', operationId: 'op', recordId: 'r' },
   { command: 'task.take_launch', operationId: 'op', launchId: 'launch' },
   { command: 'task.restore', operationId: 'op', batchId: 'batch' },
@@ -1198,6 +1207,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.rank': ['rankTask', 'after', null],
   'task.trash': ['trashTask'],
   'task.delete': ['deleteTask'],
+  'task.request_delete': ['requestDelete', 'why'],
+  'task.confirm_delete': ['answerDeleteRequest', 'confirmed'],
+  'task.decline_delete': ['answerDeleteRequest', 'kept'],
   'task.launch': ['launchTask'],
   'task.take_launch': ['takeLaunchAsPerson'],
   'task.restore': ['restoreTasks', 'batch'],
@@ -1389,7 +1401,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same twenty-seven, three of them before a pickup', () => {
+  it('lets an agent reach the same twenty-eight, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

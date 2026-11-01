@@ -24,6 +24,9 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // C35 (20261028142500): a landed picture is written once and removed only through the
   // storage seam, never changed.
   ['sid', 'storage_objects'],
+  // #2351 (20261101090000): a request to delete a task is written once and answered once by
+  // column, never removed but by its task's purge (the key cascades).
+  ['si', 'task_delete_requests'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -68,5 +71,10 @@ export const SITE_UPDATES = [
       'state',
       'updated_at',
     ],
+  },
+  {
+    table: 'public.task_delete_requests',
+    from: '20261101090000',
+    columns: ['answer', 'answered_at', 'answered_by_actor_id'],
   },
 ] as const;
