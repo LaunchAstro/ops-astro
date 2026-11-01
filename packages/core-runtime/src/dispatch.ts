@@ -241,6 +241,24 @@ async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undef
   return rows[0];
 }
 
+/**
+ * `step_settled` for readFacts, over its `att` attempt: an attempt of the step
+ * written off, or settled `completed` other than by a recorded
+ * `happened_differently` (#2305, S2355-1).
+ */
+const STEP_SETTLED = `(${stepWrittenOff('att.business_id', 'att.step_id')}
+              or exists (select 1 from public.attempts done
+                          where done.business_id = att.business_id and done.step_id = att.step_id
+                            and done.state = 'settled' and done.outcome = 'completed'
+                            -- A recorded happened_differently settles its attempt
+                            -- completed and the step goes on (S2355-1).
+                            and not exists (
+                              select 1 from public.operations o
+                               where o.business_id = done.business_id
+                                 and o.command = 'budget.record_outcome' and o.outcome = 'applied'
+                                 and o.result -> 'detail' ->> 'outcome' = 'happened_differently'
+                                 and o.result -> 'detail' ->> 'attemptId' = done.id::text)))`;
+
 /** Re-read, under the locks: the approval, the committed hold, and the step. */
 async function readFacts(
   tx: TenantQuery,
@@ -260,19 +278,7 @@ async function readFacts(
             -- dispatch is this attempt's own mark, never another's.
             case when step.dispatch_attempt_id = att.id then step.dispatched_at end
               as dispatched_at,
-            (${stepWrittenOff('att.business_id', 'att.step_id')}
-              or exists (select 1 from public.attempts done
-                          where done.business_id = att.business_id and done.step_id = att.step_id
-                            and done.state = 'settled' and done.outcome = 'completed'
-                            -- A recorded happened_differently settles its attempt
-                            -- completed and the step goes on (S2355-1).
-                            and not exists (
-                              select 1 from public.operations o
-                               where o.business_id = done.business_id
-                                 and o.command = 'budget.record_outcome' and o.outcome = 'applied'
-                                 and o.result -> 'detail' ->> 'outcome' = 'happened_differently'
-                                 and o.result -> 'detail' ->> 'attemptId' = done.id::text)))
-              as step_settled
+            ${STEP_SETTLED} as step_settled
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
        join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
