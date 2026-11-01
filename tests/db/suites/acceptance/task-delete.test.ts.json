@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2345: task.delete bins a plain task, hides it from reads and lists, audits it and task.restore returns it; a task with money, run or client history, a parent whose subtask has run history, a member without task:decide and an agent credential are refused, leaving the task readable"
+}

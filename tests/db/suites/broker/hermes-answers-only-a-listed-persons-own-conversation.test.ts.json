@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2270: a run's model.call naming Hermes Agent's operation is refused as its step with the provider asked nothing; in a conversation a person OPS_HERMES_PEOPLE does not name, or a message too large for it, is refused before any row or send, and a listed person is answered"
+}

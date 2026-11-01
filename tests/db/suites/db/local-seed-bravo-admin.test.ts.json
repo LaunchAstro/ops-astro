@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2308: the local seed gives business bravo one active administrator holding exactly the admin role's grants, as auth:seed's list names"
+}
