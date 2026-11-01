@@ -60,6 +60,9 @@ const SETTINGS = [
   'DATABASE_URL',
   'DELEGATION_CREDENTIAL_KEYS',
   'DELEGATION_CREDENTIAL_KEY_ID',
+  // #2265, #2361: this deployment's own retired gate signing keys, read only to verify the
+  // decision-chain rows signed under them; a credential like GATE_SIGNING_SECRET, never a worker's.
+  'GATE_RETAINED_KEYS',
   'GATE_SIGNING_KEY_ID',
   'GATE_SIGNING_SECRET',
   'GOTRUE_URL',
