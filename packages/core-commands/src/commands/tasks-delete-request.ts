@@ -47,7 +47,9 @@ export async function requestDelete(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('requestDelete: the envelope read no target');
-  if (typeof reason !== 'string' || reason.trim() === '' || reason.length > REASON_LIMIT) {
+  // Measured trimmed, as it is stored (S2362-1).
+  const said = typeof reason === 'string' ? reason.trim() : '';
+  if (said === '' || said.length > REASON_LIMIT) {
     return refused(invalid('reason', `Say why, in 1 to ${REASON_LIMIT} characters.`));
   }
   await tx.query(
@@ -65,14 +67,7 @@ export async function requestDelete(
              clock_timestamp() + $6::interval)
      on conflict (business_id, task_id) where answer is null do nothing
      returning id, expires_at::text as expires_at`,
-    [
-      tx.businessId,
-      target.id,
-      reason.trim(),
-      context.session.actorId,
-      context.session.personId,
-      OPEN_FOR,
-    ],
+    [tx.businessId, target.id, said, context.session.actorId, context.session.personId, OPEN_FOR],
   );
   const request = made[0];
   if (request === undefined) {

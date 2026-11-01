@@ -33,6 +33,11 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
       DAY_MS;
     expect(days).toBeCloseTo(7, 3);
     expect(await w.readCode(task.id), 'a request deletes nothing').toBe('ok');
+    // The request is the team's to answer: an agent's own read of the task never carries it.
+    const byAgent = await w.asCredential('task.read', { recordId: task.id });
+    expect(byAgent.code, byAgent.text).toBe('ok');
+    expect(byAgent.text).not.toContain('deleteRequest');
+    expect(byAgent.text).not.toContain(CANARY);
 
     // One request at a time.
     const again = await w.ask(task.id);
@@ -49,6 +54,10 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
       );
     }
     expect(await w.pendingOn(task.id)).toBeNull();
+    // S2362-1: the length is the trimmed reason's, so padding never refuses a valid one.
+    const padded = ` ${'x'.repeat(500)} `;
+    okay(await w.ask(task.id, padded), 'a padded 500-character reason');
+    expect((await w.pendingOn(task.id))?.['reason']).toBe('x'.repeat(500));
   });
 
   it("Confirm deletes it, soft, restorable and audited, as the person's own act", async () => {
