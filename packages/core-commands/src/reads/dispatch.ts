@@ -55,9 +55,8 @@ export const READ_BODY_FIXES: readonly string[] = [
  * that arrive before an identity, and this is the second thing it carries.
  *
  * It is written after the read rather than before it so the outcome is the
- * outcome, and no answer leaves without its audit row: here inside the same
- * transaction, and for a read served from one snapshot in the transaction after
- * it, before the answer is handed back (`executeRead`, ORCH-2114-AUDIT).
+ * outcome, and no answer leaves without it: in the same transaction, or for
+ * `task.read`, `given` its snapshot's read, the one after it (ORCH-2114-AUDIT).
  *
  * The one exception is a successful read on a row the surface declares not
  * audited: a person's own preferences (CS-2.8). Its refusals are audited.
@@ -66,35 +65,9 @@ export async function runRead(
   tx: TenantQuery,
   session: Session,
   request: ReadRequest,
+  given?: ServedRead,
 ): Promise<ReadResult | CommandRefusal> {
-  return await auditRead(tx, session, request, await serveUnaudited(tx, session, request));
-}
-
-/** A read admitted and served, its audit event not yet written (`auditRead`). */
-export async function serveUnaudited(
-  tx: TenantQuery,
-  session: Session,
-  request: ReadRequest,
-): Promise<ServedRead> {
-  try {
-    return await serveRead(tx, session, request);
-  } catch (cause) {
-    if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
-    throw cause;
-  }
-}
-
-/**
- * Writes a served read's audit event and hands back its outcome. A read served
- * from one snapshot is audited after it, in a transaction of its own, and no
- * answer leaves without it (`executeRead`, ORCH-2114-AUDIT).
- */
-export async function auditRead(
-  tx: TenantQuery,
-  session: Session,
-  request: ReadRequest,
-  served: ServedRead,
-): Promise<ReadResult | CommandRefusal> {
+  const served = given ?? (await serveUnaudited(tx, session, request));
   const outcome = served.outcome;
   const refusal = isCommandRefusal(outcome) ? outcome : undefined;
   if (refusal === undefined && !declarationOf(request.read).audited) return outcome;
@@ -113,6 +86,20 @@ export async function auditRead(
     attempted: served.attempted ?? null,
   });
   return outcome;
+}
+
+/** A read admitted and served, not yet audited: `runRead` audits it when given it. */
+export async function serveUnaudited(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+): Promise<ServedRead> {
+  try {
+    return await serveRead(tx, session, request);
+  } catch (cause) {
+    if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
+    throw cause;
+  }
 }
 
 /**

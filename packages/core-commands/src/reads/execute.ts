@@ -23,14 +23,11 @@
 
 import { standingOf, withSession, withStanding } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
-import {
-  asCallerVisible,
-  isCommandRefusal,
-  refuseCommand,
-  type CommandRefusal,
-} from '../commands/refusal.ts';
+import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { asCallerVisible, isCommandRefusal, type CommandRefusal } from '../commands/refusal.ts';
+import { refuseCommand } from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
-import { admitRead, auditRead, runRead, serveUnaudited } from './dispatch.ts';
+import { admitRead, runRead, serveUnaudited } from './dispatch.ts';
 import { isInternalReader } from './tasks.ts';
 
 export async function executeRead(
@@ -39,66 +36,50 @@ export async function executeRead(
   presented: VerifiedSubject,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
-  const outcome = ONE_SNAPSHOT.has(request.read)
-    ? await snapshotRead(database, businessId, presented, request)
-    : await withSession(
-        database,
-        businessId,
-        presented,
-        async (tx, session) => await runRead(tx, session, request),
-      );
+  if (request.read === 'task.read') {
+    const read = await snapshotRead(database, businessId, presented, request);
+    return isCommandRefusal(read) ? asCallerVisible(read) : read;
+  }
+  const outcome = await withSession(
+    database,
+    businessId,
+    presented,
+    async (tx, session) => await runRead(tx, session, request),
+  );
   if (isCommandRefusal(outcome)) return asCallerVisible(outcome);
   return outcome;
 }
 
-/** Reads served from one snapshot taken at admission (ORCH-2114-T5): nothing written after it. */
-const ONE_SNAPSHOT: ReadonlySet<ReadRequest['read']> = new Set(['task.read']);
+const SNAPSHOT = { isolation: 'repeatable read' } as const;
 
-/**
- * A one-snapshot read in three transactions (ORCH-2114-AUDIT). Standing and the quota
- * charge first, read committed: the charge is a lock then a count, which a snapshot would
- * miscount. Then admission and the answer, repeatable read: one snapshot, standing asked
- * again inside it; a row changed since the snapshot fails a lock with 40001, which takes
- * the whole read once more, then refuses. Then its audit event, read committed: the chain
- * locks the business and reads its head, which a snapshot would read stale. The answer
- * is handed back only once that event has committed.
- */
+// `task.read` from one snapshot (ORCH-2114-T5, -AUDIT): charged read committed, served repeatable
+// read with standing asked again (a 40001 serves once more, then refuses), audited read committed,
+// as the chain locks then reads its head. No answer leaves before its audit event commits.
 async function snapshotRead(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
-  const charged = await withSession(database, businessId, presented, () =>
-    Promise.resolve('charged' as const),
-  );
-  if (charged !== 'charged') return charged;
-  // Standing asked again inside the snapshot, recording nothing: a login ended since is refused.
-  const view = async () =>
-    await database.withBusiness(
-      businessId,
-      async (tx) => {
-        const session = await standingOf(tx, presented, 'required');
-        if ('refused' in session) return session;
-        return { session, served: await serveUnaudited(tx, session, request) };
-      },
-      { isolation: 'repeatable read' },
-    );
-  // A 40001 takes this step alone once more (the charge stays the first step's), then refuses.
-  const settled = async () =>
-    await view().catch((cause: unknown) => {
-      if ((cause as { readonly code?: unknown }).code !== '40001') throw cause;
-      return null;
-    });
-  const viewed = (await settled()) ?? (await settled());
-  if (viewed !== null && 'refused' in viewed) return viewed;
-  return await database.withBusiness(businessId, async (tx) => {
-    if (viewed !== null) return await auditRead(tx, viewed.session, request, viewed.served);
+  const first = await withSession(database, businessId, presented, (_tx, s) => Promise.resolve(s));
+  if ('refused' in first) return first;
+  const view = async (tx: TenantQuery) => {
     const session = await standingOf(tx, presented, 'required');
     if ('refused' in session) return session;
-    const stale = refuseCommand('VERSION_STALE', [], ['Read the task again.']);
-    return await auditRead(tx, session, request, { outcome: stale, subjectRecordId: null });
-  });
+    return { session, served: await serveUnaudited(tx, session, request) };
+  };
+  const serve = async () =>
+    await database.withBusiness(businessId, view, SNAPSHOT).catch((cause: unknown) => {
+      if ((cause as { readonly code?: unknown }).code !== '40001') throw cause;
+    });
+  const viewed = (await serve()) ?? (await serve());
+  if (viewed !== undefined && 'refused' in viewed) return viewed;
+  const stale = {
+    outcome: refuseCommand('VERSION_STALE', [], ['Read again.']),
+    subjectRecordId: null,
+  };
+  const { session, served } = viewed ?? { session: first, served: stale };
+  return await database.withBusiness(businessId, (tx) => runRead(tx, session, request, served));
 }
 
 /** Where an admission is asked: when a stream is opened, or again on it. */
