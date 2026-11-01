@@ -202,8 +202,8 @@ async function createDatabase(
   let appPool = connect(appUrl, { source: 'runtime', log });
   const app: Database = {
     log,
-    async withBusiness(businessId, run) {
-      return await appPool.withBusiness(businessId, run);
+    async withBusiness(businessId, run, transaction) {
+      return await appPool.withBusiness(businessId, run, transaction);
     },
     async close(): Promise<void> {
       await appPool.close();

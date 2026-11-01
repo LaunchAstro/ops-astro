@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2337: withBusiness runs read committed unless asked, whatever the login default; repeatable read on request fixes one snapshot at the business setting, before the caller's first statement, and still reads it after a lock; the snapshot transaction keeps one business; an isolation it does not offer is refused before the server sees it"
+}
