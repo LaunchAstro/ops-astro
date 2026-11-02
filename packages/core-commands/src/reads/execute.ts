@@ -52,7 +52,7 @@ export async function executeRead(
 
 const SNAPSHOT = { isolation: 'repeatable read' } as const;
 
-// `task.read` from one snapshot (ORCH-2114-T5, -AUDIT): charged read committed, served repeatable
+// `task.read` from one snapshot (contract T5): charged read committed, served repeatable
 // read with standing asked again (a 40001 serves once more, then refuses), audited read committed,
 // as the chain locks then reads its head. No answer leaves before its audit event commits.
 async function snapshotRead(

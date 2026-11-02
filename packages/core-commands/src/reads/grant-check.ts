@@ -38,7 +38,7 @@ export async function grantRefusal<K extends ReadName>(
       : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
   // Read again, held until the read is served: a move that committed since is
   // seen, and none can commit before the answer is read. The map grant is asked
-  // after that read, so a grant that runs out while it waits is not counted (S2114-5).
+  // after that read, so a grant that runs out while it waits is not counted.
   if (
     !authorised.ok &&
     map !== null &&

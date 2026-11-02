@@ -56,7 +56,7 @@ export const READ_BODY_FIXES: readonly string[] = [
  *
  * It is written after the read rather than before it so the outcome is the
  * outcome, and no answer leaves without it: in the same transaction, or for
- * `task.read`, `given` its snapshot's read, the one after it (ORCH-2114-AUDIT).
+ * `task.read`, `given` its snapshot's read, the one after it (`snapshotRead`).
  *
  * The one exception is a successful read on a row the surface declares not
  * audited: a person's own preferences (CS-2.8). Its refusals are audited.
