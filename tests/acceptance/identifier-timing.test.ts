@@ -281,6 +281,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_category': { fields: { category: 'seo' } },
       'task.share_with_client': {},
       'task.revoke_client_share': {},
+      'task.confirm_delete': { requestId: randomUUID() },
+      'task.decline_delete': { requestId: randomUUID() },
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },

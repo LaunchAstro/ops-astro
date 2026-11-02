@@ -123,8 +123,9 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
     }
     expect(await w.readCode(task.id), 'the task is not deleted').toBe('ok');
     expect((await w.pendingOn(task.id))?.['id'], 'B still waits for its own answer').toBe(b);
+    // A malformed id reads as one that does not exist (`refuseMalformedIdentifier`).
     const malformed = await w.answer('task.confirm_delete', task.id, { requestId: 'not-an-id' });
-    expect(malformed.code).toBe('FIELD_VALUE_INVALID');
+    expect(malformed.code).toBe('NOT_FOUND');
     okay(await w.answer('task.decline_delete', task.id, { requestId: b }), 'B answered by its id');
   });
 
