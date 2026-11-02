@@ -261,6 +261,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
         'lineage',
         'launch',
         'signOff',
+        'stepSettled',
       ].toSorted(),
     );
     expect(EFFECT_OPERATIONS['synthetic_comment']).toBe('replay');
