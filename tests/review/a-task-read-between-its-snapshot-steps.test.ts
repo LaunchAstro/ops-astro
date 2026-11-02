@@ -124,11 +124,22 @@ describe.skipIf(serverUrl === undefined)('a task read between its snapshot steps
       read: 'task.read',
       recordId: ticket.id,
     });
+    // Audited with the first step's session (Copilot thread on execute.ts:76): no read without its row.
+    const audited = await w.db.admin.execute<{ outcome: string; refusal_code: string | null }>(
+      `select outcome, refusal_code from public.audit_events
+        where business_id = $1 and command = 'task.read' and actor_id = $2`,
+      [w.business, reader.actorId],
+    );
     expect(ended).toBe(true);
     expect({
       code: codeOf(answer),
       leaked: JSON.stringify(answer).includes(marker),
-    }).toEqual({ code: 'AUTH_NO_MEMBERSHIP', leaked: false });
+      audited,
+    }).toEqual({
+      code: 'AUTH_NO_MEMBERSHIP',
+      leaked: false,
+      audited: [{ outcome: 'refused', refusal_code: 'AUTH_NO_MEMBERSHIP' }],
+    });
   }, 30_000);
 
   it('a 40001 in the snapshot step runs that step again, charged and signed in once', async () => {
