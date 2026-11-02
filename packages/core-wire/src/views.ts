@@ -15,7 +15,6 @@
 import type { DeleteRequestView } from './views-delete-request.ts';
 import type {
   Action,
-  Anchor,
   DeliveryState,
   InboxAccess,
   InboxAlert,
@@ -26,6 +25,7 @@ import type {
   SettingValueType,
 } from '../../core-records/src/index.ts';
 import type { AttemptView, TaskLedgerView } from './views-agent.ts';
+import type { CommentPin } from './views-review.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView, TaskClientFacts } from './views-client.ts';
@@ -377,7 +377,7 @@ export interface SharedTaskView {
  * field names, which is why they are snake_cased. A type alias rather than an
  * interface, so it is also a `CommentView`.
  */
-export type InternalCommentView = {
+export type InternalCommentView = CommentPin & {
   readonly id: string;
   readonly audience: string;
   readonly author: string;
@@ -400,8 +400,6 @@ export type InternalCommentView = {
    * author again; this only saves offering a control that would be refused.
    */
   readonly own: boolean;
-  /** A pin's spot on a review's capture (C35); absent on a comment that is no pin. */
-  readonly anchor?: Anchor;
 };
 
 export interface EvidenceView {
