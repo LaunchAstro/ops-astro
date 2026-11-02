@@ -85,6 +85,10 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   // #1620 P2:
   'apps/model-agent/chatgpt-sign-in.ts':
     "the owner's plan sign-in on the M5: listens on 127.0.0.1 for its one callback, and fetches only its issuer's origin (pinned to https://auth.openai.com by the command); no redirect",
+  // #2361 (the harness came in with #2205, f76785f): a developer command, imported by
+  // no product entry, so never in a deployed bundle; on the owner's plan it goes through custody.
+  'apps/agent-tests/harness.ts':
+    "the agent test harness's replay turn: fetches only the replay fake it started itself, on 127.0.0.1, at the adapter's fixed path",
 };
 
 const MODULES =
