@@ -14,12 +14,17 @@
 // before the handler, so a request and its answers on one task wait for one
 // another. Whether a request is still open is asked of the clock inside the
 // statement that answers it, after that wait.
+//
+// An answer names the request it answers (#2362). Opening a request leaves the
+// task's revision as it was, so a Confirm still on screen for a request that
+// was kept or lapsed would otherwise answer the agent's next one, unseen. A
+// task in the bin takes no request: it reads `NOT_FOUND`, as everywhere else.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { invalid } from './operands.ts';
 import { applied, isRefused, refused, type HandlerOutcome } from './outcome.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { deleteTask } from './tasks-delete.ts';
 
 /** A reason's longest, as the other reasons a task records (`tasks-controls.ts`). */
@@ -47,6 +52,7 @@ export async function requestDelete(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('requestDelete: the envelope read no target');
+  if (target.deleted_at !== null) return refused(refuseNotFound());
   // Measured trimmed, as it is stored (S2362-1).
   const said = typeof reason === 'string' ? reason.trim() : '';
   if (said === '' || said.length > REASON_LIMIT) {
@@ -80,24 +86,25 @@ export async function requestDelete(
 }
 
 /**
- * A person's answer to the target's open request: `confirmed` deletes the task
- * as `task.delete` does, `kept` closes the request and leaves the task.
+ * A person's answer to the target's open request, named by `requestId`: any
+ * other request, answered, lapsed or replaced, is refused. `confirmed` deletes
+ * the task as `task.delete` does, `kept` closes the request and leaves the task.
  */
 export async function answerDeleteRequest(
   tx: TenantQuery,
   context: CommandContext,
   answer: 'confirmed' | 'kept',
-  _requestId: string,
+  requestId: string,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('answerDeleteRequest: the envelope read no target');
   const answered = await tx.query<{ readonly id: string }>(
     `update public.task_delete_requests
         set answer = $3, answered_by_actor_id = $4, answered_at = clock_timestamp()
-      where business_id = $1 and task_id = $2 and answer is null
+      where business_id = $1 and task_id = $2 and id = $5 and answer is null
         and expires_at > clock_timestamp()
       returning id`,
-    [tx.businessId, target.id, answer, context.session.actorId],
+    [tx.businessId, target.id, answer, context.session.actorId, requestId],
   );
   const request = answered[0];
   if (request === undefined) {
