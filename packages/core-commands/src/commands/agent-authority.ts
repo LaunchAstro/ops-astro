@@ -8,6 +8,7 @@ import {
   excludedFromTakenLaunch,
   resolveDelegation,
   isUuid,
+  taskOfRevision,
 } from '../../../core-records/src/index.ts';
 import type { Delegation, ScopeRequest, TenantQuery } from '../../../core-records/src/index.ts';
 import { decideAsAgent } from '../../../core-runtime/src/index.ts';
@@ -207,7 +208,7 @@ function unreachable(): never {
 async function namedTaskId(
   tx: TenantQuery,
   request: AgentRequest,
-  subjectTask: 'lease' | 'record',
+  subjectTask: 'lease' | 'record' | 'revision',
 ): Promise<string | undefined> {
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter.
@@ -218,6 +219,12 @@ async function namedTaskId(
   // a lease, so both are checked on the purpose scope.
   if (subjectTask === 'lease') {
     return isUuid(leaseId) ? await taskOfLease(tx, leaseId) : undefined;
+  }
+  // A pin names its task through its revision (C35): a stored pin replayed under another
+  // task's delegation is judged on the revision's task, never the presenting delegation's.
+  if (subjectTask === 'revision') {
+    const revisionId = request['revisionId'];
+    return isUuid(revisionId) ? (await taskOfRevision(tx, revisionId))?.taskId : undefined;
   }
   const named = request['recordId'];
   if (typeof named !== 'string') return undefined;

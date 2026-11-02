@@ -221,13 +221,13 @@ export async function pinCommentAsAgent(
 }
 
 /**
- * `review.pin_comment`'s agent row: `review:comment` on the task the call is about, the
+ * `review.pin_comment`'s agent row: `review:comment` on the task the revision is on, the
  * delegation's own when the body names none, and served on that task alone. A replay is
- * asked again, as a comment's is.
+ * asked again on that task, as a comment's is, so it never answers another task's pin.
  */
 export const PIN_COMMENT: {
   readonly authority: 'record';
-  readonly subjectTask: 'record';
+  readonly subjectTask: 'revision';
   readonly replay: 'reauthorise';
   readonly operands: () => Readonly<Record<string, never>>;
   readonly serve: (
@@ -242,7 +242,7 @@ export const PIN_COMMENT: {
   ) => Promise<JudgedLast>;
 } = {
   authority: 'record',
-  subjectTask: 'record',
+  subjectTask: 'revision',
   replay: 'reauthorise',
   operands: () => ({}),
   serve: async (tx, call, _operands, delegation) =>
