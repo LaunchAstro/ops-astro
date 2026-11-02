@@ -236,9 +236,10 @@ export function expectedShape(
   // the answer's read of the ledger are each a tenant transaction of their own.
   // An applied operations.read then asks, in a tenant transaction of its own,
   // whether the caller operates the installation (#637), before it adds the
-  // service health.
+  // service health. A resolved task.read is three: charge, snapshot, audit (contract T5).
   const applied: Readonly<Record<string, number>> = { 'model.call': 4, 'operations.read': 2 };
-  const transactions = outcome === 'applied' ? (applied[declaration.name] ?? 1) : 1;
+  const snapshot = declaration.name === 'task.read' && outcome !== 'unresolved' ? 3 : undefined;
+  const transactions = snapshot ?? (outcome === 'applied' ? (applied[declaration.name] ?? 1) : 1);
   return {
     transactions,
     outside: [],

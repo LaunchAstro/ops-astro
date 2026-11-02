@@ -222,12 +222,13 @@ describe.skipIf(serverUrl === undefined)(
         expect(() => expect(one.shape, one.name).toStrictEqual(clean)).toThrow();
         // And fails where it should: the setting is still first after `begin`,
         // but it is the session-wide spelling, and the reader names it.
-        expect(one.shape.sessionWide, one.name).toStrictEqual([
-          `select set_config('app.business_id', $1, false)`,
-        ]);
-        expect(one.shape.afterBegin, one.name).toStrictEqual([
-          `select set_config('app.business_id', $1, false)`,
-        ]);
+        // One per transaction: task.read runs three (`expectedShape`).
+        const leaked = Array.from(
+          { length: clean.transactions },
+          () => `select set_config('app.business_id', $1, false)`,
+        );
+        expect(one.shape.sessionWide, one.name).toStrictEqual(leaked);
+        expect(one.shape.afterBegin, one.name).toStrictEqual(leaked);
         expect({ ...one.shape, sessionWide: [], afterBegin: clean.afterBegin }).toStrictEqual(
           clean,
         );
@@ -299,11 +300,12 @@ describe.skipIf(serverUrl === undefined)(
           code: 'DECISION_INTEGRITY',
         });
         const shape = shapeOf(sent);
+        // Step 1 commits; the snapshot step meets the fault and rolls back whole (contract T5).
         expect(shape).toMatchObject({
-          transactions: 1,
+          transactions: 2,
           outside: [],
-          afterBegin: [`select set_config('app.business_id', $1, true)`],
-          ends: ['rollback'],
+          afterBegin: [1, 2].map(() => `select set_config('app.business_id', $1, true)`),
+          ends: ['commit', 'rollback'],
           work: [],
           schemaChanging: [],
           sessionWide: [],
@@ -311,8 +313,11 @@ describe.skipIf(serverUrl === undefined)(
         const texts = sent.map((entry) => entry.text.replaceAll(/\s+/gu, ' ').trim());
         expect(texts[0]).toMatch(/^begin\b/iu);
         expect(texts.at(-1)).toMatch(/^rollback$/iu);
-        // The work between the setting and the rollback is the read's own.
-        expect(texts.slice(2, -1).join('\n')).toMatch(/gate_decisions/u);
+        // The work between the snapshot's setting and the rollback is the read's own.
+        const snapshot = texts.findIndex((text) =>
+          /^begin isolation level repeatable read$/iu.test(text),
+        );
+        expect(texts.slice(snapshot + 2, -1).join('\n')).toMatch(/gate_decisions/u);
       } finally {
         await observed.close();
       }
