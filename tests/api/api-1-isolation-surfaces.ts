@@ -30,7 +30,7 @@ export function foreign(heard: readonly Heard[], own: Name | null): string[] {
     .flatMap((one) =>
       Array.from(
         JSON.stringify(one.body).matchAll(
-          /<(client1|client2|bravo|other) (?:task|title|lease|run|reservation|business|person)>/gu,
+          /<(client1|client2|bravo|other) (?:task|title|lease|run|reservation|business|person|review)>/gu,
         ),
       ),
     )

@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// API-1 isolation, the delegation crossing: an agent working under a live
-// delegation from another person reaches only the task it picked up, never a
-// second Alpha person's own held reservation, live lease or run; and, as the
-// control, reaches the same lease and run operations on its own task. Registered inside
-// api-1-isolation.test.ts's describe, so it shares that file's world. Made-up
-// names only.
+// API-1 isolation, the delegation crossing: an agent under a live delegation reaches only
+// its picked-up task, never another Alpha person's held reservation, live lease, run or review;
+// the control reaches the lease and run operations on its own. In api-1-isolation.test.ts.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
@@ -28,6 +25,7 @@ import {
 import { SHAPE, asAgent, canonical, foreign, type Heard } from './api-1-isolation-surfaces.ts';
 import { requestBody as correction } from '../site/c80-world.ts';
 import { foreignOnboarding, foreignStep } from './api-1-isolation-steps.ts';
+import { REVIEW_REASONS, reviewBodies, revision } from './api-1-isolation-review.ts';
 
 let attemptedForeignLeaseId = '';
 let attemptedForeignReservationId = '';
@@ -132,6 +130,7 @@ const bodies = (claim: Claim): Record<string, Body> => ({
 
 const withStop = (claim: Claim): Record<string, Body> => ({
   ...bodies(claim),
+  ...reviewBodies(claim.lease, revision.foreign),
   'run.end': () => ({ ...claim.lease, endCode: 'TOOL_REFUSED' }),
 });
 
@@ -194,6 +193,7 @@ export function delegationCrossing(): void {
       'onboarding.step_result': 'DELEGATION_OUT_OF_PURPOSE',
       // A take presents no credential: under one it is refused before a launch is read.
       'task.take_launch': 'SCOPE_NOT_GRANTED',
+      ...REVIEW_REASONS,
     };
     for (const row of agentRows) {
       // A step result's crossing is the other person's ready agent step.
