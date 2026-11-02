@@ -54,7 +54,7 @@ const SNAPSHOT = { isolation: 'repeatable read' } as const;
 
 // `task.read` from one snapshot (contract T5): charged read committed, served repeatable
 // read with standing asked again (a 40001 serves once more, then refuses), audited read committed,
-// as the chain locks then reads its head. No answer leaves before its audit event commits.
+// as the chain locks then reads its head (a refusal with step 1's session). No answer leaves first.
 async function snapshotRead(
   database: Database,
   businessId: BusinessId,
@@ -73,12 +73,16 @@ async function snapshotRead(
       if ((cause as { readonly code?: unknown }).code !== '40001') throw cause;
     });
   const viewed = (await serve()) ?? (await serve());
-  if (viewed !== undefined && 'refused' in viewed) return viewed;
-  const stale = {
-    outcome: refuseCommand('VERSION_STALE', [], ['Read again.']),
-    subjectRecordId: null,
-  };
-  const { session, served } = viewed ?? { session: first, served: stale };
+  const lost = (outcome: CommandRefusal) => ({
+    session: first,
+    served: { outcome, subjectRecordId: null },
+  });
+  const { session, served } =
+    viewed === undefined
+      ? lost(refuseCommand('VERSION_STALE', [], ['Read again.']))
+      : 'refused' in viewed
+        ? lost(viewed)
+        : viewed;
   return await database.withBusiness(businessId, (tx) => runRead(tx, session, request, served));
 }
 
