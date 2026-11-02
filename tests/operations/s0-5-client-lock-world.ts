@@ -155,12 +155,15 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
   return new Map(rows.map((row) => [row.task, row.digest]));
 }
 
-/** The task a body names: itself, through its lease, or through its trash batch. */
+/** The task a body names: itself, through its lease, its trash batch or its review revision. */
 async function taskNamedBy(body: Record<string, unknown>): Promise<string | undefined> {
   const ids = Object.values(body).filter((value): value is string => typeof value === 'string');
   const [row] = await admin<{ task: string }>(
     `select id::text as task from records where id = any($1::uuid[]) or trash_batch_id = any($1::uuid[])
-     union all select task_id::text from leases where id = any($1::uuid[]) limit 1`,
+     union all select task_id::text from leases where id = any($1::uuid[])
+     union all select r.task_id::text from review_revisions v
+       join reviews r on r.business_id = v.business_id and r.id = v.review_id
+      where v.id = any($1::uuid[]) limit 1`,
     [ids.filter((id) => /^[\da-f-]{36}$/u.test(id))],
   );
   return row?.task;

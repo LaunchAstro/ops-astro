@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C35 pin replay: the same agent replaying a pin made under task A's delegation while presenting task B's is refused DELEGATION_OUT_OF_PURPOSE and gets none of A's stored task or comment ids."
+}

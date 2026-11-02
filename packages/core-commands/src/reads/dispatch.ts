@@ -7,8 +7,7 @@
 // read after it, so "denied" and "not there" are answered by different code
 // paths and cannot be confused for each other.
 
-import { checkAuthority, subjectsOf, wayfinderFacts } from '../../../core-records/src/index.ts';
-import type { TenantQuery, Session, ScopeRequest } from '../../../core-records/src/index.ts';
+import type { TenantQuery, Session } from '../../../core-records/src/index.ts';
 import {
   isCommandRefusal,
   refuseCommand,
@@ -30,6 +29,7 @@ import { READ_CATALOGUE, type ReadName, type ReadOf, type ReadRow } from './cata
 import { DecisionIntegrityError } from './verified-decisions.ts';
 import { ReadIntegrityFault } from './integrity-fault.ts';
 import { canonicalIds } from './canonical-ids.ts';
+import { grantRefusal } from './grant-check.ts';
 
 export { ReadIntegrityFault } from './integrity-fault.ts';
 
@@ -55,8 +55,8 @@ export const READ_BODY_FIXES: readonly string[] = [
  * that arrive before an identity, and this is the second thing it carries.
  *
  * It is written after the read rather than before it so the outcome is the
- * outcome, and inside the same transaction so an audited read and its answer
- * commit together or neither does.
+ * outcome, and no answer leaves without it: in the same transaction, or for
+ * `task.read`, `given` its snapshot's read, the one after it (`snapshotRead`).
  *
  * The one exception is a successful read on a row the surface declares not
  * audited: a person's own preferences (CS-2.8). Its refusals are audited.
@@ -65,14 +65,9 @@ export async function runRead(
   tx: TenantQuery,
   session: Session,
   request: ReadRequest,
+  given?: ServedRead,
 ): Promise<ReadResult | CommandRefusal> {
-  let served: ServedRead;
-  try {
-    served = await serveRead(tx, session, request);
-  } catch (cause) {
-    if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
-    throw cause;
-  }
+  const served = given ?? (await serveUnaudited(tx, session, request));
   const outcome = served.outcome;
   const refusal = isCommandRefusal(outcome) ? outcome : undefined;
   if (refusal === undefined && !declarationOf(request.read).audited) return outcome;
@@ -93,6 +88,20 @@ export async function runRead(
   return outcome;
 }
 
+/** A read admitted and served, not yet audited: `runRead` audits it when given it. */
+export async function serveUnaudited(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+): Promise<ServedRead> {
+  try {
+    return await serveRead(tx, session, request);
+  } catch (cause) {
+    if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
+    throw cause;
+  }
+}
+
 /**
  * A read's answer and the record it was about.
  *
@@ -108,7 +117,7 @@ export async function runRead(
  * happened and it looked at nothing, and inventing an identifier to fill the
  * column would make "who read this record" false.
  */
-interface ServedRead {
+export interface ServedRead {
   readonly outcome: ReadResult | CommandRefusal;
   readonly subjectRecordId: string | null;
   /** Only the system-owned keys a payload claimed, with their values. */
@@ -203,43 +212,11 @@ async function admit<K extends ReadName>(
   // between the decision and the answer. An external party is checked here:
   // a share is a record-scoped read, and it opens the shared task, not a list.
   const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
-  if (row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin) {
-    const declared = row.authority === 'declared' || row.authority === 'declared-within';
-    const asked: ScopeRequest = {
-      // The action is the declaration's, and so is the collection unless the
-      // row names the one the request is really about (`preset.plan`).
-      collection: declared ? declaration.collection : row.authority(operands),
-      action: declaration.action,
-      // A record-scoped grant is checked against the record named, exactly as
-      // a targeted command's is. A business-scoped grant covers both, which is
-      // what `effectiveGrants` already means by `scope_kind = 'business'`.
-      scope:
-        readied.recordId === undefined
-          ? { kind: 'business', id: null }
-          : { kind: 'record', id: readied.recordId },
-    };
-    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
-    // A grant scoped to a map covers its tickets too (W12), as on the command path.
-    const recordId = readied.recordId;
-    const map =
-      authorised.ok || recordId === undefined || asked.collection !== 'task'
-        ? null
-        : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
-    if (!authorised.ok && map !== null && recordId !== undefined && map !== recordId) {
-      const again = await checkAuthority(tx, subjectsOf(session), {
-        ...asked,
-        scope: { kind: 'record', id: map },
-      });
-      // Read again, held until the read is served: a move that committed
-      // since is seen, and none can commit before the answer is read.
-      if (again.ok && (await wayfinderFacts(tx, recordId, true))?.mapId === map) authorised = again;
-    }
-    if (!authorised.ok) {
-      // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
-      if (session.roleKey === null && row.outsiderNotFound) return refused(refuseNotFound());
-      return refused(authorised.refusal);
-    }
-  }
+  const judged = row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin;
+  const refusal = judged
+    ? await grantRefusal(tx, session, row, declaration, operands, readied.recordId)
+    : undefined;
+  if (refusal !== undefined) return refused(refusal);
   if (!(await readied.admits())) return refused(refuseNotFound());
   return readied;
 }

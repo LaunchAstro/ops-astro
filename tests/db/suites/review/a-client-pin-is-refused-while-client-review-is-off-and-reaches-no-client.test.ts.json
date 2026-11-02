@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 pins while client review is off (ORCH-S2158-7): a team member's client pin on a task shared with an outside client is refused CLIENT_REVIEW_OFF and writes nothing; the client's read of the shared task shows no pin, and no trace of the internal pin's body, anchor or id."
+}

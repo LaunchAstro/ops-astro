@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C35 task read in three steps (ORCH-2114-WIDEN ii, ORCH-2114-SEAM catch 1): a membership ended between the charge and the snapshot is refused; a 40001 in the snapshot step runs that step alone again, charged and signed in once; a second 40001 refuses VERSION_STALE, audited."
+}

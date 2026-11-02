@@ -21,11 +21,13 @@
 // through this one function, so arming a new one is a declaration and a case
 // rather than a fourth place to edit.
 
-import { withSession, withStanding } from '../../../core-records/src/index.ts';
+import { standingOf, withSession, withStanding } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
+import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { asCallerVisible, isCommandRefusal, type CommandRefusal } from '../commands/refusal.ts';
+import { refuseCommand } from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
-import { admitRead, runRead } from './dispatch.ts';
+import { admitRead, runRead, serveUnaudited } from './dispatch.ts';
 import { isInternalReader } from './tasks.ts';
 
 export async function executeRead(
@@ -34,6 +36,10 @@ export async function executeRead(
   presented: VerifiedSubject,
   request: ReadRequest,
 ): Promise<ReadResult | CommandRefusal> {
+  if (request.read === 'task.read') {
+    const read = await snapshotRead(database, businessId, presented, request);
+    return isCommandRefusal(read) ? asCallerVisible(read) : read;
+  }
   const outcome = await withSession(
     database,
     businessId,
@@ -42,6 +48,42 @@ export async function executeRead(
   );
   if (isCommandRefusal(outcome)) return asCallerVisible(outcome);
   return outcome;
+}
+
+const SNAPSHOT = { isolation: 'repeatable read' } as const;
+
+// `task.read` from one snapshot (contract T5): charged read committed, served repeatable
+// read with standing asked again (a 40001 serves once more, then refuses), audited read committed,
+// as the chain locks then reads its head (a refusal with step 1's session). No answer leaves first.
+async function snapshotRead(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  request: ReadRequest,
+): Promise<ReadResult | CommandRefusal> {
+  const first = await withSession(database, businessId, presented, (_tx, s) => Promise.resolve(s));
+  if ('refused' in first) return first;
+  const view = async (tx: TenantQuery) => {
+    const session = await standingOf(tx, presented, 'required');
+    if ('refused' in session) return session;
+    return { session, served: await serveUnaudited(tx, session, request) };
+  };
+  const serve = async () =>
+    await database.withBusiness(businessId, view, SNAPSHOT).catch((cause: unknown) => {
+      if ((cause as { readonly code?: unknown }).code !== '40001') throw cause;
+    });
+  const viewed = (await serve()) ?? (await serve());
+  const lost = (outcome: CommandRefusal) => ({
+    session: first,
+    served: { outcome, subjectRecordId: null },
+  });
+  const { session, served } =
+    viewed === undefined
+      ? lost(refuseCommand('VERSION_STALE', [], ['Read again.']))
+      : 'refused' in viewed
+        ? lost(viewed)
+        : viewed;
+  return await database.withBusiness(businessId, (tx) => runRead(tx, session, request, served));
 }
 
 /** Where an admission is asked: when a stream is opened, or again on it. */

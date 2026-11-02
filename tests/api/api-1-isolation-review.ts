@@ -7,7 +7,8 @@
 // `task.check` is: another person's live lease refuses for the delegation's reason, and the
 // agent's own lease reaches its own capture. Each picked-up task carries a review with both
 // widths asked, so a crossing names the other person's real revision and the control the
-// agent's own. Registered inside api-1-isolation.test.ts's describe. Made-up names only.
+// agent's own. A pin is refused outside the delegation's own task as the open is. Registered
+// inside api-1-isolation.test.ts's describe. Made-up names only.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
@@ -50,13 +51,27 @@ export const reviewBodies = (
   'review.capture': () => ({ revisionId }),
   'review.capture_claim': () => ({ ...lease, revisionId }),
   'review.capture_land': () => ({ ...lease, revisionId, ...LANDING }),
+  // A pin on the revision's desktop capture, which the planted review has asked (#2012).
+  'review.pin_comment': () => ({
+    revisionId,
+    width: 1480,
+    selector: [{ type: 'FragmentSelector', conformsTo: MEDIA_FRAGMENTS, value: 'xywh=0,0,9,9' }],
+    body: 'a pin across the delegation',
+    audience: 'internal',
+  }),
 });
+
+const MEDIA_FRAGMENTS = 'http://www.w3.org/TR/media-frags/';
 
 /** Every review crossing refuses for the delegation's reason, never a missing record. */
 export const REVIEW_REASONS: Record<string, string> = Object.fromEntries(
-  ['review.open', 'review.capture', 'review.capture_claim', 'review.capture_land'].map(
-    (command) => [command, 'DELEGATION_OUT_OF_PURPOSE'],
-  ),
+  [
+    'review.open',
+    'review.capture',
+    'review.capture_claim',
+    'review.capture_land',
+    'review.pin_comment',
+  ].map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE']),
 );
 
 /**
@@ -113,12 +128,13 @@ export function reviewCrossingControl(): void {
     }
   });
 
-  it('API-1 isolation: the review crossings opened, asked, claimed and landed nothing', async () => {
+  it('API-1 isolation: the review crossings opened, asked, claimed, landed and pinned nothing', async () => {
     const reviews = await fixture.db.admin.execute<{ reviews: number; revisions: number }>(
       `select (select count(*) from public.reviews)::int as reviews,
-              (select count(*) from public.review_revisions)::int as revisions`,
+              (select count(*) from public.review_revisions)::int as revisions,
+              (select count(*) from public.records where data ? 'anchor')::int as pins`,
     );
-    expect(reviews).toEqual([{ reviews: 2, revisions: 2 }]);
+    expect(reviews).toEqual([{ reviews: 2, revisions: 2, pins: 0 }]);
     expect(await captures(revision.foreign)).toEqual([
       { width: 390, state: 'requested', lease_id: null },
       { width: 1480, state: 'requested', lease_id: null },

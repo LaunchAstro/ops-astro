@@ -30,4 +30,14 @@ export type ReviewRequest =
       /** The picture's bytes, base64. */
       readonly picture: string;
       readonly observation: Readonly<Record<string, unknown>>;
+    } & Envelope)
+  | ({
+      readonly command: 'review.pin_comment';
+      readonly revisionId: string;
+      /** The capture's width: 1480 or 390. */
+      readonly width: unknown;
+      /** The Web Annotation selectors that find the spot on that capture. */
+      readonly selector: unknown;
+      readonly body: string;
+      readonly audience: string;
     } & Envelope);

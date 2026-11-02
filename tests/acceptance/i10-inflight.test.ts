@@ -97,8 +97,9 @@ function holding(inner: Database): Database & Holder {
   return {
     log: inner.log,
     close: async () => await inner.close(),
-    withBusiness: async (businessId, run) =>
-      await inner.withBusiness(businessId, async (tx) => await run(wrap(tx))),
+    // The options too: a read that asks for one snapshot gets it through this wrapper.
+    withBusiness: async (businessId, run, options) =>
+      await inner.withBusiness(businessId, async (tx) => await run(wrap(tx)), options),
     arm() {
       let reached!: (pid: number) => void;
       let release!: () => void;
