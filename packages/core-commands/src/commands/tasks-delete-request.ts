@@ -87,6 +87,7 @@ export async function answerDeleteRequest(
   tx: TenantQuery,
   context: CommandContext,
   answer: 'confirmed' | 'kept',
+  _requestId: string,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('answerDeleteRequest: the envelope read no target');

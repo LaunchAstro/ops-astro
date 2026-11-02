@@ -106,6 +106,38 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
     expect(await w.readCode(task.id)).toBe('ok');
   });
 
+  it('a stale answer to request A never answers its replacement B (#2362)', async () => {
+    const task = await h().freshTask('a task asked about twice');
+    okay(await w.ask(task.id, `${CANARY} request A`), 'the agent opens A');
+    const a = await w.requestIdOf(task.id);
+    okay(await w.answer('task.decline_delete', task.id, { requestId: a }), 'Keep answers A');
+    okay(await w.ask(task.id, `${CANARY} request B`), 'the agent opens B');
+    const b = await w.requestIdOf(task.id);
+    expect(b).not.toBe(a);
+    // A's Confirm, still on the person's screen, arrives late: the task's revision is unchanged.
+    for (const name of ['task.confirm_delete', 'task.decline_delete'] as const) {
+      // eslint-disable-next-line no-await-in-loop
+      const stale = await w.answer(name, task.id, { requestId: a });
+      console.log(`a stale ${name} of A once B is open: ${stale.status} ${stale.code}`);
+      expect(stale.code, `a stale ${name} of A`).toBe('DELETE_REQUEST_NOT_PENDING');
+    }
+    expect(await w.readCode(task.id), 'the task is not deleted').toBe('ok');
+    expect((await w.pendingOn(task.id))?.['id'], 'B still waits for its own answer').toBe(b);
+    const malformed = await w.answer('task.confirm_delete', task.id, { requestId: 'not-an-id' });
+    expect(malformed.code).toBe('FIELD_VALUE_INVALID');
+    okay(await w.answer('task.decline_delete', task.id, { requestId: b }), 'B answered by its id');
+  });
+
+  it('refuses a request on a task in the bin, and opens none (#2362)', async () => {
+    const task = await h().freshTask('a task already in the bin');
+    okay(await h().asPerson('task.delete', { recordId: task.id, expectedRevision: task.revision }));
+    expect(await w.readCode(task.id)).toBe('NOT_FOUND');
+    const asked = await w.ask(task.id);
+    console.log(`request on a task in the bin: ${asked.status} ${asked.code}`);
+    expect(asked.code).toBe('NOT_FOUND');
+    expect(await w.requestIdOf(task.id), 'no request row').toBe('');
+  });
+
   it('an agent cannot confirm its own request, nor delete or keep', async () => {
     const task = await h().freshTask('a task an agent tries to finish deleting');
     okay(await w.ask(task.id));
@@ -169,7 +201,7 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
     okay(await w.ask(task.id));
     for (const name of ['task.confirm_delete', 'task.decline_delete'] as const) {
       // eslint-disable-next-line no-await-in-loop
-      const refused = await w.answer(name, task.id, h().world.mia);
+      const refused = await w.answer(name, task.id, { caller: h().world.mia });
       expect(refused.code, name).toBe('SCOPE_NOT_GRANTED');
     }
     expect(await w.readCode(task.id)).toBe('ok');

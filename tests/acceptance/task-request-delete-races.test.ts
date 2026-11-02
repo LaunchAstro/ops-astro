@@ -17,12 +17,14 @@ describe.skipIf(serverUrl === undefined)('a delete request across businesses and
     const task = await h().freshTask('a task bravo tries');
     okay(await w.ask(task.id));
     const body = { recordId: task.id, expectedRevision: await w.revisionOf(task.id) };
+    const answering = { ...body, requestId: await w.requestIdOf(task.id) };
     const answers: Answer[] = [];
     for (const name of ['task.confirm_delete', 'task.decline_delete', 'task.read'] as const) {
+      const sent = name === 'task.read' ? body : answering;
       // Bea, through bravo's prefix with alpha's id, and through alpha's, where she is no member.
       for (const key of ['bravo', 'alpha']) {
         // eslint-disable-next-line no-await-in-loop
-        answers.push(await h().asPerson(name, body, key, h().world.bea));
+        answers.push(await h().asPerson(name, sent, key, h().world.bea));
       }
     }
     // Bravo's agent credential, by alpha's id through bravo's prefix and through alpha's.
@@ -46,12 +48,13 @@ describe.skipIf(serverUrl === undefined)('a delete request across businesses and
   it('two confirms at once delete once', async () => {
     const task = await h().freshTask('a task confirmed twice at once');
     okay(await w.ask(task.id));
-    const expectedRevision = await w.revisionOf(task.id);
+    const body = {
+      recordId: task.id,
+      expectedRevision: await w.revisionOf(task.id),
+      requestId: await w.requestIdOf(task.id),
+    };
     const both = await Promise.all(
-      [1, 2].map(
-        async () =>
-          await w.asAdaWide('task.confirm_delete', { recordId: task.id, expectedRevision }),
-      ),
+      [1, 2].map(async () => await w.asAdaWide('task.confirm_delete', body)),
     );
     expect(both.filter((one) => one.status === 200 && one.code === 'ok')).toHaveLength(1);
     const audit = await h().world.db.admin.execute<{ readonly n: string }>(
@@ -65,8 +68,11 @@ describe.skipIf(serverUrl === undefined)('a delete request across businesses and
   it('Confirm and Keep at once answer once, and the task matches the answer', async () => {
     const task = await h().freshTask('a task confirmed and kept at once');
     okay(await w.ask(task.id));
-    const expectedRevision = await w.revisionOf(task.id);
-    const body = { recordId: task.id, expectedRevision };
+    const body = {
+      recordId: task.id,
+      expectedRevision: await w.revisionOf(task.id),
+      requestId: await w.requestIdOf(task.id),
+    };
     const [confirmed, kept] = await Promise.all([
       w.asAdaWide('task.confirm_delete', body),
       w.asAdaWide('task.decline_delete', body),

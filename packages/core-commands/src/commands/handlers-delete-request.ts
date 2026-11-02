@@ -13,6 +13,8 @@ export const DELETE_REQUEST_HANDLERS: {
 } = {
   'task.delete': (tx, context) => deleteTask(tx, context),
   'task.request_delete': (tx, context, request) => requestDelete(tx, context, request.reason),
-  'task.confirm_delete': (tx, context) => answerDeleteRequest(tx, context, 'confirmed'),
-  'task.decline_delete': (tx, context) => answerDeleteRequest(tx, context, 'kept'),
+  'task.confirm_delete': (tx, context, request) =>
+    answerDeleteRequest(tx, context, 'confirmed', request.requestId),
+  'task.decline_delete': (tx, context, request) =>
+    answerDeleteRequest(tx, context, 'kept', request.requestId),
 };

@@ -41,6 +41,13 @@ export const okay = (answer: Answer, label = 'applied'): void => {
 
 type Answering = 'task.confirm_delete' | 'task.decline_delete';
 
+/** Who answers, through which prefix, and to which request. */
+interface AnswerOptions {
+  readonly caller?: { readonly token: string };
+  readonly businessKey?: string;
+  readonly requestId?: string;
+}
+
 /** The world one test file opens, and the calls its cases make. */
 export interface RequestWorld {
   readonly harness: () => Harness;
@@ -54,12 +61,10 @@ export interface RequestWorld {
   ): Promise<Answer>;
   /** Ada's agent credential asks to delete `recordId` at its current revision. */
   ask(recordId: string, reason?: string): Promise<Answer>;
-  answer(
-    name: Answering,
-    recordId: string,
-    caller?: { readonly token: string },
-    businessKey?: string,
-  ): Promise<Answer>;
+  /** The task's newest request, open or answered, from the database. */
+  requestIdOf(recordId: string): Promise<string>;
+  /** A person's answer; `requestId` defaults to the task's newest request. */
+  answer(name: Answering, recordId: string, options?: AnswerOptions): Promise<Answer>;
   /** The open request the task page is sent, or null. */
   pendingOn(recordId: string): Promise<Record<string, unknown> | null>;
   readCode(recordId: string): Promise<string>;
@@ -82,6 +87,15 @@ export function openRequestWorld(part: string): RequestWorld {
       [recordId],
     );
     return Number(rows[0]?.revision ?? '0');
+  };
+
+  const requestIdOf = async (recordId: string): Promise<string> => {
+    const rows = await harness.world.db.admin.execute<{ readonly id: string }>(
+      `select id::text as id from public.task_delete_requests
+        where task_id = $1 order by requested_at desc limit 1`,
+      [recordId],
+    );
+    return rows[0]?.id ?? '';
   };
 
   const issueCredential = async (token: string, businessKey: string): Promise<string> => {
@@ -156,12 +170,17 @@ export function openRequestWorld(part: string): RequestWorld {
         expectedRevision: await revisionOf(recordId),
         reason,
       }),
-    answer: async (name, recordId, caller = harness.world.ada, businessKey = 'alpha') =>
+    requestIdOf,
+    answer: async (name, recordId, options = {}) =>
       await harness.asPerson(
         name,
-        { recordId, expectedRevision: await revisionOf(recordId) },
-        businessKey,
-        caller,
+        {
+          recordId,
+          expectedRevision: await revisionOf(recordId),
+          requestId: options.requestId ?? (await requestIdOf(recordId)),
+        },
+        options.businessKey ?? 'alpha',
+        options.caller ?? harness.world.ada,
       ),
     pendingOn: async (recordId) => {
       const read = await harness.asPerson('task.read', { recordId });

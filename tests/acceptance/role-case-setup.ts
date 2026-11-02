@@ -78,8 +78,9 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
   if (name === 'task.confirm_delete' || name === 'task.decline_delete') {
     const task = await context.freshTask(`a task for ${name}`);
     const body = { recordId: task.id, expectedRevision: task.revision };
-    await context.asPerson('task.request_delete', { ...body, reason: 'a test' });
-    return { body };
+    const asked = await context.asPerson('task.request_delete', { ...body, reason: 'a test' });
+    const requestId = (asked.body['detail'] as Record<string, unknown>)['requestId'];
+    return { body: { ...body, requestId } };
   }
   // Assign to AI: the admin renames an agent of their own, made first.
   if (name === 'agent.rename') {

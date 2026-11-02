@@ -215,7 +215,11 @@ export type CommandRequest =
   | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
   | ({ readonly command: 'task.trash' | 'task.delete' } & Targeted)
   | ({ readonly command: 'task.request_delete'; readonly reason: unknown } & Targeted)
-  | ({ readonly command: 'task.confirm_delete' | 'task.decline_delete' } & Targeted)
+  | ({
+      readonly command: 'task.confirm_delete' | 'task.decline_delete';
+      /** The open request the person answers, as the task read showed it. */
+      readonly requestId: string;
+    } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
   // The purge's window is the business's setting, not an operand. The field is
   // here only so the refusal of a body that still sends one is reachable, for
