@@ -424,6 +424,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, revision_id, width, asked_by_actor_id, asked_by_person_id)
      select business_id, gen_random_uuid(), id, 1480, created_by_actor_id, created_by_person_id
        from public.review_revisions where business_id = $1 order by id limit 1 returning 1`,
+  // #2351: the journey asks no delete. One open request on the business's first record.
+  'public.task_delete_requests': `insert into public.task_delete_requests
+       (business_id, id, task_id, reason, requested_by_actor_id, requested_for_person_id,
+        requested_at, expires_at)
+     select p.business_id, gen_random_uuid(), r.id, 'seed', a.id, p.id, now(),
+            now() + interval '7 days'
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
   // C35: the journey lands no picture. One stored object of four bytes, as the storage seam
   // writes one.
   'public.storage_objects': `insert into public.storage_objects

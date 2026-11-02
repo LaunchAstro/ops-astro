@@ -58,6 +58,7 @@ import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
 import { historyOf } from './task-history.ts';
 import { readTaskAgents } from './task-agents.ts';
+import { openDeleteRequest } from './delete-request.ts';
 import { NO_AGENTS, readBoardAgents } from './board-agents.ts';
 import { NO_COMMENTS, readBoardComments } from './board-comments.ts';
 
@@ -322,7 +323,7 @@ export async function readTaskDetail(
     description: row.description,
     agentBrief: row.agent_brief,
     ...unslottedOf(row),
-    ...(comments.internal ? scoresOf(row) : {}),
+    ...(comments.internal ? await teamOnly(tx, row) : {}),
     ...(await historyOf(tx, row.id, comments.internal, rankPool, historyEventId)),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
@@ -345,6 +346,11 @@ export async function readTaskDetail(
     tags: await tagsOfTask(tx, row.id),
     ...(await readTaskAgents(tx, row.id, timeReader)),
   };
+}
+
+/** What a reader inside the business alone is sent: the marks, and an open request to delete (#2351). */
+async function teamOnly(tx: TenantQuery, row: TaskRowRead) {
+  return { ...scoresOf(row), deleteRequest: await openDeleteRequest(tx, row.id) };
 }
 
 /** The open envelope a top-up raises (T2e), its totals as numbers. */

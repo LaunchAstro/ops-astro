@@ -888,16 +888,10 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: NONE,
     }),
   ],
-  // An agent credential adds a task (API-2, `credential-envelope.ts`); a
-  // pickup's delegation is one task, and a new one is outside it.
-  [
-    'task.create',
-    row({
-      authority: 'business',
-      replay: 'reauthorise',
-      operands: NONE,
-    }),
-  ],
+  // An agent credential adds a task (API-2, `credential-envelope.ts`) and asks
+  // to delete one (#2351); a pickup's delegation is one task, and both are outside it.
+  ['task.create', row({ authority: 'business', replay: 'reauthorise', operands: NONE })],
+  ['task.request_delete', row({ authority: 'business', replay: 'reauthorise', operands: NONE })],
   ['live_correction.request', row(CORRECTION_REQUEST)],
   ['run.end', row(RUN_END)],
   ...reviewAgentRows(row),

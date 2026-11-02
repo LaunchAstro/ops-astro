@@ -24,4 +24,17 @@ export const TRASH_ROWS = [
     meaning: 'The task or a subtask has money, run or client history, so it is closed instead',
     source: '#2345',
   },
+  // #2351: an agent's request to delete, which a person confirms or keeps.
+  {
+    code: 'DELETE_REQUEST_PENDING',
+    status: 409,
+    meaning: 'The task already has an open request to delete it',
+    source: '#2351',
+  },
+  {
+    code: 'DELETE_REQUEST_NOT_PENDING',
+    status: 409,
+    meaning: 'The task has no open request to delete it: answered, or lapsed after seven days',
+    source: '#2351',
+  },
 ] as const;

@@ -120,6 +120,10 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
   'task.trash': TARGET,
   'task.delete': TARGET,
+  'task.request_delete': { ...TARGET, reason: 'any' },
+  // The request the person was shown: an answer to any other is refused (#2362).
+  'task.confirm_delete': { ...TARGET, requestId: 'id' },
+  'task.decline_delete': { ...TARGET, requestId: 'id' },
   'task.restore': { batchId: 'id' },
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },

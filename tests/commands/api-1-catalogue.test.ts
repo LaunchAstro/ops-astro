@@ -32,6 +32,7 @@ const HANDLER_FILES = [
   'handlers-wayfinder.ts',
   'live-correction-handlers.ts',
   'handlers-review.ts',
+  'handlers-delete-request.ts',
 ];
 const NAMESPACES = new Set(COMMAND_SURFACE.map((one) => one.name.split('.')[0] as string));
 

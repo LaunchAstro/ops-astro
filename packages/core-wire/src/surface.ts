@@ -191,6 +191,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // agent are refused, and the handler refuses a subtree with money, run or
   // client history, which is closed instead. `task.restore` undoes it.
   declare('task.delete', 'decide'),
+  // #2351: an agent asks for a delete, with its reason, and a person answers.
+  // The ask is `task:write`, in an agent credential's reach as `task.create`
+  // is; Confirm and Keep are `task:decide`, a person's alone, and Confirm is
+  // `task.delete`'s bin with its refusals.
+  declare('task.request_delete', 'write', { agent: 'delegated' }),
+  declare('task.confirm_delete', 'decide'),
+  declare('task.decline_delete', 'decide'),
   declare('task.restore', 'write', {
     targetsExistingRecord: false,
     untargetedIdentifiers: ['batchId'],

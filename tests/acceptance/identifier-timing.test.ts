@@ -281,6 +281,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_category': { fields: { category: 'seo' } },
       'task.share_with_client': {},
       'task.revoke_client_share': {},
+      'task.confirm_delete': { requestId: randomUUID() },
+      'task.decline_delete': { requestId: randomUUID() },
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
@@ -700,11 +702,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 127 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 130 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(127);
-    expect(names).toHaveLength(127);
+    expect(new Set(names).size, 'distinct operations').toBe(130);
+    expect(names).toHaveLength(130);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

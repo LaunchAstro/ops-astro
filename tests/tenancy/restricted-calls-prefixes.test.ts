@@ -234,6 +234,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     asked_by_actor_id: randomUUID(),
     asked_by_person_id: randomUUID(),
   },
+  // #2351: the journey asks no delete.
+  'public.task_delete_requests': {
+    task_id: randomUUID(),
+    reason: 'seed',
+    requested_by_actor_id: randomUUID(),
+    requested_for_person_id: randomUUID(),
+    requested_at: '2026-11-01T00:00:00Z',
+    expires_at: '2026-11-08T00:00:00Z',
+  },
   // C35: the journey lands no picture; one stored object of four bytes.
   'public.storage_objects': { digest: SEED_DIGEST, byte_count: 4, body: '\\x73656564' },
   // C80: nothing the journey does asks a revert.

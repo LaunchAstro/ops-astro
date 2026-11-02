@@ -103,6 +103,9 @@ export function probeOperands(name: CommandName): Body {
     return { correctionId: randomUUID() };
   }
   if (name === 'task.set_state') return { stateId: randomUUID() };
+  if (name === 'task.confirm_delete' || name === 'task.decline_delete') {
+    return { requestId: randomUUID() };
+  }
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
   // by type before the delegation, as a handback's are (AW-01).
