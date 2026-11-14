@@ -40,8 +40,16 @@ function sealedValue(request: UncheckedRequest): string | undefined {
   return canonicalPayload(request['value'] ?? null);
 }
 
+/** Names a sealed body's digest input; no request carries it, and every request carries `command`. */
+const SEALED_SHAPE = 'ops-astro/sealed-body-digest/v1';
+
+/**
+ * A sealed body's digest, its value replaced: the body sits under `body`
+ * beside `sealed`, with no `command` at the top, so it never canonicalises to
+ * any plain body, a body whose value is this wrapper included (S2413-1).
+ */
 const withValue = (request: UncheckedRequest, value: unknown): string =>
-  payloadDigest({ ...comparablePayload(request), value });
+  payloadDigest({ sealed: SEALED_SHAPE, body: { ...comparablePayload(request), value } });
 
 /**
  * The digest the register and the audit keep for a request. Every command but
