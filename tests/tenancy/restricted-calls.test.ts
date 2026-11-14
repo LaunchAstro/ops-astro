@@ -223,8 +223,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
       order by p.id, actor.id limit 1 returning 1`,
   // C59: no journey enrols a second factor, so one is written here.
   'public.second_factors': `insert into public.second_factors
-       (business_id, id, person_id, provider, provider_factor_id)
-     select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
+       (business_id, id, person_id, subject_digest, provider, provider_factor_id)
+     select business_id, gen_random_uuid(), id, encode(sha256(convert_to(id::text, 'UTF8')), 'hex'),
+            'supabase', 'restricted-calls-seed'
        from public.people where business_id = $1 order by id limit 1 returning 1`,
   // C55: no journey records a privacy incident, so one is written here.
   'public.privacy_incidents': `insert into public.privacy_incidents
