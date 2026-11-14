@@ -182,7 +182,7 @@ export async function issueCredential(
   const keys = keysOf(request.scope);
   if (keys === undefined) return invalid('scope');
   if (holdsMoney(keys)) return refused(MONEY);
-  if (keys.some(neverCarried)) {
+  if (keys.some((key) => neverCarried(key))) {
     return refused(
       refuseCommand(
         'CREDENTIAL_ACTION_EXCLUDED',
