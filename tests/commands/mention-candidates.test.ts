@@ -79,14 +79,14 @@ it('offers the staff who can read the task, and the server accepts each one', as
 
   const others = ids.filter((id) => id !== owner.personId);
   expect(await mention(owner, task, others), 'every offered person can be mentioned').toMatchObject(
-    { ok: true },
+    { applied: true },
   );
   expect(await mention(owner, task, [blind.personId])).toMatchObject({
     code: 'MENTION_NOT_READABLE',
   });
 });
 
-it('answers a caller who cannot read the task as not found, naming nobody', async () => {
+it('refuses a staff caller who cannot read the task, as task.read does, naming nobody', async () => {
   const task = await taskFor(alpha, owner, 'unread task', clientA);
   const outsider = await person('reads-client-b');
   await db.app.withBusiness(alpha, async (tx) => {
@@ -94,7 +94,7 @@ it('answers a caller who cannot read the task as not found, naming nobody', asyn
     await grantTo(tx, outsider, 'read', WHOLE_BUSINESS, false, 'person');
   });
   const answer = await mentionable(outsider, task);
-  expect(answer['code']).toBe('NOT_FOUND');
+  expect(answer['code']).toBe('SCOPE_NOT_GRANTED');
   expect(JSON.stringify(answer)).not.toContain(owner.personId);
 });
 
