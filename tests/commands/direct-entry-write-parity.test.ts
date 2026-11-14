@@ -4,9 +4,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('a direct state-changing request in the app entry fails parity', async () => {
-  const path = '../../scripts/command-parity.mjs';
-  const { run } = await import(/* @vite-ignore */ path);
+const PARITY = '../../scripts/command-parity.mjs';
+// Loaded here, not in the test: loading probes every API route, about 4-6 s (#2467).
+const { run } = (await import(
+  /* @vite-ignore */
+  PARITY
+)) as { run: (files: Map<string, string>) => { failures: string[] } };
+
+// Parses every web source twice, about 2.5 s at load 70, so it names its own timeout (#2467).
+it('a direct state-changing request in the app entry fails parity', { timeout: 30_000 }, () => {
   const root = join(process.cwd(), 'apps/web/src');
   const files = new Map(
     readdirSync(root, { recursive: true, withFileTypes: true })
