@@ -6,17 +6,12 @@
 // probed route that faults is a parity failure.
 
 import { spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-// @ts-expect-error -- the parity runner is a plain JavaScript module
-import { probeFailures, probeRoutes } from '../../scripts/command-parity.mjs';
 
 const root = join(import.meta.dirname, '../..');
-
-interface Probed {
-  readonly routed: Map<string, unknown>;
-  readonly faulted: readonly { readonly path: string; readonly status: number }[];
-}
 
 it('--check prints no error and exits 0 on this tree', () => {
   const checked = spawnSync(process.execPath, ['scripts/command-parity.mjs', '--check'], {
@@ -27,13 +22,33 @@ it('--check prints no error and exits 0 on this tree', () => {
   expect(checked.status).toBe(0);
 }, 60_000);
 
-it('a route that faults under the probe is named as a parity failure', async () => {
-  // A database with nothing on it: the operations read asks it whether this business
-  // operates the installation, so that route faults.
-  const probed = (await probeRoutes({})) as Probed;
-  const faulted = probed.faulted.map((one) => one.path);
-  expect(faulted).toContain('/api/b/b/operations/read');
-  expect(probeFailures(probed)).toContain(
-    'the route /api/b/b/operations/read faulted under the parity probe (500)',
-  );
-}, 60_000);
+it('a route that faults under the probe fails --check and is named', () => {
+  // A copy of this tree whose operations read faults after its read runs, the way main's did
+  // against the empty stub: the probe records the read, the route answers 500.
+  const copy = mkdtempSync(join(tmpdir(), 'parity-fault-'));
+  try {
+    for (const directory of ['apps', 'packages', 'scripts']) {
+      cpSync(join(root, directory), join(copy, directory), { recursive: true });
+    }
+    symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'), 'dir');
+    const appPath = join(copy, 'apps/api/app.ts');
+    const original = readFileSync(appPath, 'utf8');
+    const head =
+      'async function operatesInstallation(database: Database, businessId: string): Promise<boolean> {';
+    const faulting = original.replace(head, `${head}\n  throw new Error('a probed route faults');`);
+    expect(faulting).not.toBe(original);
+    writeFileSync(appPath, faulting);
+    const checked = spawnSync(process.execPath, ['scripts/command-parity.mjs', '--check'], {
+      cwd: copy,
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    expect(checked.error).toBeUndefined();
+    expect(checked.stdout).toContain(
+      'the route /api/b/b/operations/read faulted under the parity probe (500)',
+    );
+    expect(checked.status).toBe(1);
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
+  }
+}, 120_000);

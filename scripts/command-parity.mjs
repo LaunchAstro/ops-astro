@@ -254,7 +254,7 @@ async function askedBy(declaration) {
 // is a server fault is kept as faulted, a parity failure: its probe may have judged nothing.
 // The stub database answers no row, so the probe's business operates no installation (#2462).
 const PROBE_DATABASE = { withBusiness: (_business, body) => body({ query: () => Promise.resolve([]) }) };
-export async function probeRoutes(database = PROBE_DATABASE) {
+async function probeRoutes(database = PROBE_DATABASE) {
   const calls = [];
   const execute = (...args) => {
     calls.push(args.at(-1).read ?? args.at(-1).command);
@@ -293,7 +293,7 @@ export async function probeRoutes(database = PROBE_DATABASE) {
   }
   return { routed, faulted };
 }
-export const probeFailures = ({ faulted }) =>
+const probeFailures = ({ faulted }) =>
   faulted.map(({ path, status }) => `the route ${path} faulted under the parity probe (${status})`);
 const PROBED = await probeRoutes();
 const ROUTED = PROBED.routed;
