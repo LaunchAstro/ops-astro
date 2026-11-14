@@ -2972,11 +2972,15 @@ which every signed-in person holds and nobody holds on another's
 (`authorisedOn: 'self'`, `packages/core-wire/src/surface.ts`). Neither takes an
 identifier, so a body naming a person, an actor or an account is refused rather
 than read. `session.end` takes only `operationId`, answers
-`{ recordId: null, detail: { ended: 'sign-out' } }`, and writes nothing but its
-audit event, `session.end` on the business's chain naming the actor; the
-browser ends the credential itself at the identity provider, with
-`logout?scope=local`, so the person's other sessions stay signed in. Neither is
-an agent's.
+`{ recordId: null, detail: { ended: 'sign-out' } }`, and ends the caller's own
+session at the door in the same transaction as its audit event, `session.end`
+on the business's chain naming the actor (#2427): from that commit the same
+bearer is refused `AUTH_SESSION_EXPIRED` in every business the login reaches,
+and the person's other sessions stay signed in. A session an ending reached
+first is refused the same way. The identity provider's session is ended by the
+sign-out route, `logout?scope=local`, which the browser calls after it and which
+still signs out there when `session.end` has already ended the session. Neither
+is an agent's.
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
