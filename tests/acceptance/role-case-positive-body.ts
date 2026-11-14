@@ -187,6 +187,8 @@ export function createPositiveBody(
       case 'task.read':
       case 'task.execution':
       case 'trace.read':
+      // #1245: the staff an internal comment on the task may name, asked as `task.read` is.
+      case 'task.mentionable':
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
       case 'client.set_privacy':

@@ -76,6 +76,8 @@ const READS = {
   'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
   'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
+  // #1245: the task page's internal-comment picker asks the task's readers.
+  'task.mentionable': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
     settings: [

@@ -113,7 +113,8 @@ export function taskServer(
 ) {
   const fetch = ((url: string | URL) => {
     const at = String(url);
-    if (at.endsWith('/person/list')) {
+    // #1245: the comment picker and its author names ask the task's readers.
+    if (at.endsWith('/person/list') || at.endsWith('/task/mentionable')) {
       return Promise.resolve(json({ ok: true, persons: [{ personId: 'p-1', name: 'Ada' }] }));
     }
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: taskWith(gate) }));
