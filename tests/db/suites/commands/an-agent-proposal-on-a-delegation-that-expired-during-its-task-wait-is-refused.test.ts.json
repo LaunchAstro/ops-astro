@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1518 agent task.propose: a delegation that expires while the proposal waits on the task lock refuses it DELEGATION_NOT_LIVE; nothing is written."
+}

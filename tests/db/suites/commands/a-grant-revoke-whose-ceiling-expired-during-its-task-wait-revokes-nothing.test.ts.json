@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1517's kind on grant.revoke: a manager ceiling grant that expires while the revoke waits on the task lock of the work the grant carries refuses it SCOPE_NOT_GRANTED; the grant stays live and no applied event is kept."
+}
