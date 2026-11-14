@@ -5,6 +5,8 @@
 // pin, with their own bounded text. It is proposed, held at the review's client, and makes
 // no task: not when filed, not when approved (a worker makes it, #2117). An internal pin,
 // a fabricated or malformed id, unbounded text and a second filing of the pin write nothing.
+// Client review is off (DECISIONS 43), so no command makes a client pin and nothing is filed
+// until it opens; the other proofs rewrite a team pin as a client's (`asClientPin`).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -85,5 +87,16 @@ describe.skipIf(serverUrl === undefined)('C57 filing a change request', () => {
     expect(codeOf(await w.propose(w.ava, clientPin))).toBe('not-a-refusal');
     expect(codeOf(await w.propose(w.ben, clientPin))).toBe('CHANGE_REQUEST_ALREADY_FILED');
     expect((await w.requests(w.world.business)).length).toBe(before + 1);
+  });
+
+  it('C57 while client review is off, no command makes the client pin a filing needs', async () => {
+    const revisionId = String(detailOf(await w.open(w.ava))['revisionId']);
+    await w.capture(w.ava, revisionId);
+    const before = await w.requests(w.world.business);
+    const forClient = await w.pin(w.ava, revisionId, { audience: 'client' });
+    expect(codeOf(forClient)).toBe('CLIENT_REVIEW_OFF');
+    const team = String(detailOf(await w.pin(w.ava, revisionId, {}))['commentId']);
+    expect(codeOf(await w.propose(w.ava, team))).toBe('NOT_FOUND');
+    expect(await w.requests(w.world.business)).toStrictEqual(before);
   });
 });
