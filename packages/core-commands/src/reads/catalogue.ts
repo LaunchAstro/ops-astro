@@ -67,6 +67,7 @@ import { CORRECTION_READS } from './live-correction.ts';
 import { REVIEW_READS } from './review.ts';
 import { BIN_READS } from './bin.ts';
 import { DOCS_READS } from './docs.ts';
+import { MENTIONABLE_READS } from './mentionable.ts';
 import {
   parseHistoryOperands,
   readAutomationHistory,
@@ -953,6 +954,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   ...REVIEW_READS,
   ...BIN_READS,
   ...DOCS_READS,
+  // #1245: the staff an internal comment on this task may name.
+  ...MENTIONABLE_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {

@@ -29,7 +29,8 @@ async function composed(where: 'page' | 'panel') {
   return await draftApp({
     path: where === 'page' ? pathTo('agency:task-detail', { key: item.key }) : '/projects/',
     reply: (sent) => {
-      if (sent.path === '/person/list') return Promise.resolve(response(PEOPLE));
+      if (sent.path === '/person/list' || sent.path === '/task/mentionable')
+        return Promise.resolve(response(PEOPLE));
       if (sent.path === '/task/board')
         return Promise.resolve(response({ ok: true, tasks: [row], viewer: null }));
       if (sent.path === '/task/read')

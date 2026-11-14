@@ -31,7 +31,7 @@ export function transport(businessKey = 'alpha') {
     const path = new URL(String(url), 'http://synthetic.invalid').pathname;
     const body: unknown = JSON.parse(String(init?.body ?? '{}'));
     requests.push({ path, body });
-    if (path.endsWith('/person/list')) return answers.people();
+    if (path.endsWith('/task/mentionable')) return answers.people();
     if (path.endsWith('/task/comment')) return answers.comment();
     throw new Error(`Unexpected request ${path}`);
   };

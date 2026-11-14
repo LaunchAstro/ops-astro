@@ -214,6 +214,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('task.mentionable', TASK_COLLECTION, { authorisedOn: 'record' }),
   // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
   // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
   read('gate.pending', TASK_COLLECTION, { action: 'decide' }),

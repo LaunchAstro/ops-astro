@@ -796,6 +796,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.handback',
   'task.heartbeat',
   'task.ledger',
+  'task.mentionable',
   'task.observe',
   'task.pickup',
   'task.purge',

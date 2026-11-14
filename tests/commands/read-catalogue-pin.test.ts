@@ -68,6 +68,7 @@ const PINNED_IDENTIFIERS = {
   'task.board': ['board', 'person', 'client'],
   'task.execution': ['recordId'],
   'task.ledger': [],
+  'task.mentionable': ['recordId'],
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
@@ -90,6 +91,7 @@ const PINNED_OUTSIDER_NOT_FOUND = [
   'task.board',
   'task.execution',
   'task.ledger',
+  'task.mentionable',
   'task.read',
   'task.receipt',
   'team.list',
@@ -166,6 +168,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'task.board': [BOARD, BOARD, BOARD, null, null, BOARD, BOARD, BOARD, BOARD, BOARD, BOARD],
   // T2a: `task.read`'s recordId check; an absent cursor is the start.
   'task.execution': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
+  'task.mentionable': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
   // AW-13 readers: the task, as `task.execution` takes it.
   'trace.read': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
   // T2c2: the receipt is named by its attempt, which none of these bodies carries.
@@ -261,7 +264,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same fifty reads', () => {
+  it('names the same fifty-one reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -269,7 +272,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same twelve', () => {
+  it('tells an outsider NOT_FOUND on the same thirteen', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 
