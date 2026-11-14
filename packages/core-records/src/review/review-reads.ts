@@ -75,10 +75,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
-  const pins = await readPins(tx, {
-    taskId: review.task_id,
-    revisionIds: revisions.map((revision) => revision.id),
-  });
+  const pins = await readPins(tx, review.task_id, revisions);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,

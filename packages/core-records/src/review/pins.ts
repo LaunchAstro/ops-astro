@@ -73,7 +73,8 @@ export async function lockPinnedReview(
  */
 export async function readPins(
   tx: TenantQuery,
-  review: { readonly taskId: string; readonly revisionIds: readonly string[] },
+  taskId: string,
+  revisions: readonly { readonly id: string }[],
 ): Promise<readonly PinView[]> {
   const rows = await tx.query<{
     readonly id: string;
@@ -91,7 +92,7 @@ export async function readPins(
       order by r.created_at, r.id`,
     // A comment names its task, and an anchor its revision, as lowercase text, so the ids
     // are compared as such.
-    [tx.businessId, review.taskId.toLowerCase(), review.revisionIds.map((id) => id.toLowerCase())],
+    [tx.businessId, taskId.toLowerCase(), revisions.map((revision) => revision.id.toLowerCase())],
   );
   return rows.map((row) => ({
     commentId: row.id,
