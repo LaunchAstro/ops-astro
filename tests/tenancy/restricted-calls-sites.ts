@@ -27,7 +27,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // #2351 (20261101090000): a request to delete a task is written once and answered once by
   // column, never removed but by its task's purge (the key cascades).
   ['si', 'task_delete_requests'],
-  // C57 (20261019160000): a change request is filed once and decided once, by column.
+  // C57 (20261114100000): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
 ];
 
@@ -81,7 +81,7 @@ export const SITE_UPDATES = [
   },
   {
     table: 'public.review_change_requests',
-    from: '20261019160000',
+    from: '20261114100000',
     columns: [
       'state',
       'decided_by_actor_id',
