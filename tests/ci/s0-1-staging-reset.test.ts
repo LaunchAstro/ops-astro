@@ -49,7 +49,6 @@ import {
   users,
 } from './s0-1-staging-reset.fixture.ts';
 
-const AUTH_SEED = new URL('../../scripts/local/auth-seed.mjs', import.meta.url).pathname;
 /** The named test, S0-1 staging reset refuses production, case by case, in order. */
 const live = it.skipIf(serverUrl === undefined);
 const NAME = 'S0-1 staging reset refuses production';
@@ -285,8 +284,15 @@ describe('S0-1 staging reset, invented names only', () => {
     expect(notInvented(outside)).toEqual([outside[0]!.person]);
   });
 
-  it("the local sign-in seed gives Ada a made-up surname, not a real person's", () => {
-    const source = readFileSync(AUTH_SEED, 'utf8');
-    expect(source).toMatch(/email: 'ada@alpha\.local',[^}]*person: 'Ada Alpha'/u);
+  it("the local sign-in seed gives Ada a made-up surname, not a real person's", async () => {
+    // The list auth:seed creates, read as the module it is, not as text.
+    const logins = new URL('../../scripts/local/synthetic-logins.mjs', import.meta.url).href;
+    const { PEOPLE } = (await import(logins)) as {
+      PEOPLE: readonly { email: string; person: string; role: string }[];
+    };
+    const ada = PEOPLE.find((entry) => entry.email === 'ada@alpha.local');
+    expect(ada?.person).toBe('Ada Alpha');
+    const { email, person, role } = ada ?? { email: '', person: '', role: '' };
+    expect(notInvented([{ email, business: 'A', person, role }])).toEqual([]);
   });
 });
