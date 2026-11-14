@@ -139,6 +139,7 @@ import { DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { DeleteTask } from './task/DeleteTask.tsx';
+import { DeleteRequest } from './task/DeleteRequest.tsx';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
@@ -620,6 +621,12 @@ function Loaded(props: LoadedProps): ReactElement {
       <TaskHeader task={task} execution={execution} />
       <TaskFacts task={task} />
       <TaskPresence seen={presence.seen} />
+      <DeleteRequest
+        client={client}
+        task={task}
+        disabled={busy || dirty}
+        onAnswered={props.onChanged}
+      />
 
       <EditNotices
         because={because}
