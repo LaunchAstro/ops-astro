@@ -61,10 +61,7 @@ const BAND_HEAD: Readonly<Record<Exclude<InboxBand, 'done'>, string>> = {
   fyi: 'No response needed',
 };
 
-/**
- * The kind mark, the row's first column (the mockup's `KIND_MARK`), and its
- * axis: a teammate's doing in the second ink, progress muted, the rest faint.
- */
+// The kind mark (`KIND_MARK`) and its axis: a teammate's in second ink, progress muted, rest faint.
 type Mark = readonly [glyph: GlyphName | '@', axis: 'client' | 'team' | 'progress'];
 const MARK: Readonly<Record<InboxItem['reason'], Mark>> = {
   decision: ['check', 'client'],
