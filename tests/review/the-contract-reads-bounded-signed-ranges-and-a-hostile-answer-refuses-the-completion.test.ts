@@ -78,3 +78,33 @@ describe.skipIf(serverUrl === undefined)('C73 the range read', () => {
     expect(await media.rows('review_revisions', w.world.business)).toHaveLength(1);
   });
 });
+
+// S2126-1's kind on the contract's own refusal: a hostile answer abandons the upload only once
+// the store has removed the object; a removal answered false keeps it open, and abandoning it
+// later removes what was stored.
+describe.skipIf(serverUrl === undefined)('C73 a hostile answer the store could not remove', () => {
+  it('C73 a hostile answer whose object stays stored keeps the upload open for cleanup', async () => {
+    const own = mediaStoreDouble(1024 * 1024);
+    const calls = mediaCalls(w, own);
+    const small = mp4Of({ ...LARGE, moovAtEnd: false, padding: 64 });
+    const remove = own.remove.bind(own);
+    own.answer = 'longer';
+    own.remove = () => Promise.resolve(false);
+    const hostile = await calls.upload(w.ava, w.taskA, renderOf(small), small);
+    own.answer = 'honest';
+    expect(hostile.completed).toStrictEqual({ code: 'STORE_REFUSED' });
+    expect(own.objects.size).toBe(1);
+    const state = async () =>
+      (await calls.rows('review_media_assets', w.world.business)).find(
+        (row) => row['id'] === hostile.assetId,
+      )?.['state'];
+    expect(await state()).toBe('started');
+
+    own.remove = remove;
+    expect(await calls.abandon(w.ava, hostile.assetId)).toMatchObject({
+      reviewId: expect.any(String),
+    });
+    expect(own.objects.size).toBe(0);
+    expect(await state()).toBe('abandoned');
+  });
+});
