@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#1517 delegation.revoke: a manager read grant that expires while the revoke waits on the task lock refuses it SCOPE_NOT_GRANTED; the delegation stays live and no applied event is kept."
+}
