@@ -289,6 +289,8 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
       cites: [],
       authors: [],
       created: { snapshot: null, cut: null, sources: [] },
+      // The refusal names no site page (#2100's list, empty on a refusal: #2371).
+      sites: [],
     });
     expect(JSON.stringify(model.provider.seen)).not.toContain(foreignTitle);
   });
