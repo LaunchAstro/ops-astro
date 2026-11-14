@@ -66,10 +66,15 @@ export async function lockPinnedReview(
   return { review, widths: rows.map((row) => row.width) };
 }
 
-/** Every live pin on the review's revisions, oldest first; the caller has judged the review. */
+/**
+ * Every live pin on the revisions the caller has read, oldest first; the caller has judged
+ * the review. The revisions are the caller's own list, not a fresh read, so a revision
+ * committed after the caller read them brings no pin into the answer without it (#2404).
+ */
 export async function readPins(
   tx: TenantQuery,
-  review: { readonly reviewId: string; readonly taskId: string },
+  taskId: string,
+  revisions: readonly { readonly id: string }[],
 ): Promise<readonly PinView[]> {
   const rows = await tx.query<{
     readonly id: string;
@@ -83,12 +88,11 @@ export async function readPins(
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
       where r.business_id = $1 and t.key = 'task_comment' and r.data ->> 'task' = $2
         and r.deleted_at is null and r.data ? 'anchor'
-        and r.data->'anchor'->>'source' in (
-          select v.id::text from public.review_revisions v
-           where v.business_id = $1 and v.review_id = $3)
+        and r.data->'anchor'->>'source' = any($3::text[])
       order by r.created_at, r.id`,
-    // A comment names its task as lowercase text, so the id is compared as one.
-    [tx.businessId, review.taskId.toLowerCase(), review.reviewId],
+    // A comment names its task, and an anchor its revision, as lowercase text, so the ids
+    // are compared as such.
+    [tx.businessId, taskId.toLowerCase(), revisions.map((revision) => revision.id.toLowerCase())],
   );
   return rows.map((row) => ({
     commentId: row.id,
