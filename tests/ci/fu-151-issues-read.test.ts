@@ -102,7 +102,10 @@ function runJob(issue: number, labels = '', text = body(issue)) {
   // Nothing from the machine running the cases answers for the job.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
-      ([k]) => !/^(GH_|GITHUB_|OPEN_ISSUES$|PR_BODY$|PR_LABELS$|BASE_SHA$|CHANGED_FILES$)/u.test(k),
+      ([k]) =>
+        !/^(GH_|GITHUB_|OPEN_ISSUES$|PR_BODY$|PR_LABELS$|BASE_SHA$|CHANGED_FILES$|RANGE_COMMITS$)/u.test(
+          k,
+        ),
     ),
   );
   const perms = Object.entries(granted()).map(([k, v]) => `${k}:${v}`);
@@ -134,6 +137,9 @@ function runJob(issue: number, labels = '', text = body(issue)) {
     ...fired,
     CHANGED_FILES: 'README.md',
     AGENT_MODELS: 'claude-opus-5-5',
+    // The made-up base and head are no commits Git holds, so the range's
+    // commits are given, as the script reads them (#2373).
+    RANGE_COMMITS: '',
   });
   const listed = readFileSync(join(dir, 'open-issues.txt'), 'utf8').split('\n').filter(Boolean);
   return { fetched, checked, listed };
@@ -141,7 +147,9 @@ function runJob(issue: number, labels = '', text = body(issue)) {
 
 const UNFILED = 'names a follow-up that is not an open issue in this repository';
 
-describe('FU-151 the review-evidence job reads open issues', () => {
+// Each case runs the job's three steps as child processes, which outlast the
+// 5 s default when the machine is loaded (#2373).
+describe('FU-151 the review-evidence job reads open issues', { timeout: 60_000 }, () => {
   it('FU-151 permissions: the job gains issues: read and nothing else', () => {
     expect(granted()).toEqual({ contents: 'read', 'pull-requests': 'read', issues: 'read' });
     expect(REVIEW.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target/u)).toBeNull();
@@ -180,7 +188,7 @@ describe('FU-151 the review-evidence job reads open issues', () => {
   });
 });
 
-describe('owed mark: the review-evidence job reads the labels', () => {
+describe('owed mark: the review-evidence job reads the labels', { timeout: 60_000 }, () => {
   // Owner, 1 October 2026: the `needs-sol` label and a `Sol-owed:` line stand in for the record.
   const owed = body(5).replace(/Reviewer:[\s\S]*$/u, 'Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1');
   it('owed mark: the job reads the label GitHub shows and accepts the mark', () => {

@@ -7,6 +7,8 @@ import { expect, test } from 'vitest';
 
 const checker = resolve('scripts/review-evidence-check.mjs');
 const preflight = resolve('scripts/review-preflight.mjs');
+const LEGACY_CLOCK =
+  '--import=data:text/javascript,Date.now=()=>Date.parse("2026-10-14T00:00:00Z")';
 function fixture(
   path: string,
   check: (dir: string, base: string, head: string, checkpoint: string) => void,
@@ -49,7 +51,10 @@ function run(
 ) {
   const env = { ...process.env };
   for (const key of ['CHANGED_FILES', 'AGENT_MODELS', 'RANGE_COMMITS']) delete env[key];
-  return spawnSync(process.execPath, [checker], {
+  // The pasted deferral is the legacy route, refused from 2026-11-01; these
+  // cases prove its reading while it was live, on the clock the checker's
+  // own cases pin (tests/ci/review-evidence-cases.sh) (#2373).
+  return spawnSync(process.execPath, [LEGACY_CLOCK, checker], {
     cwd: dir,
     encoding: 'utf8',
     env: {
@@ -68,6 +73,8 @@ function run(
     },
   });
 }
+// Each case runs Git and the checker several times as child processes, which
+// outlast the 5 s default when the machine is loaded (#2373).
 const both = 'unreviewed\nneeds-sol\nneeds-second-model';
 test('a pasted deferral for a build by both companies owes both debt labels', () => {
   fixture('tests/x/plain.test.ts', (dir, base, head, checkpoint) => {
@@ -78,7 +85,7 @@ test('a pasted deferral for a build by both companies owes both debt labels', ()
       expect(result.status).toBe(1);
     }
   });
-});
+}, 60_000);
 test('a generated checkpoint listing an ASCII approval path passes while a written approval claim refuses', () => {
   fixture('tests/x/approval-at-commit.test.ts', (dir, base, head, checkpoint) => {
     const result = run(dir, base, head, checkpoint, both);
@@ -87,14 +94,14 @@ test('a generated checkpoint listing an ASCII approval path passes while a writt
     expect(claim.stderr).toContain('cannot carry review outcomes, records or approval claims');
     expect(claim.status).toBe(1);
   });
-});
+}, 60_000);
 test('a Git-quoted approval path in the generated checkpoint is not an approval claim', () => {
   fixture('tests/x/approval-café.test.ts', (dir, base, head, checkpoint) => {
     expect(checkpoint).toContain('"tests/x/approval-caf\\303\\251.test.ts"');
     const result = run(dir, base, head, checkpoint, both);
     expect(result.status, result.stderr).toBe(0);
   });
-});
+}, 60_000);
 test('a Git-quoted line in the checkpoint that names no changed file is still an approval claim', () => {
   fixture('tests/x/approval-café.test.ts', (dir, base, head, checkpoint) => {
     const listed = '    "tests/x/approval-caf\\303\\251.test.ts"';
@@ -107,4 +114,4 @@ test('a Git-quoted line in the checkpoint that names no changed file is still an
     expect(result.stderr).toContain('cannot carry review outcomes, records or approval claims');
     expect(result.status).toBe(1);
   });
-});
+}, 60_000);
