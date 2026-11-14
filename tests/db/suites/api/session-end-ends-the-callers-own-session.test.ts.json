@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "session.end ends the caller's own session at the door and nobody else's, and the browser's pair still signs out at the provider (#2427)"
+}
