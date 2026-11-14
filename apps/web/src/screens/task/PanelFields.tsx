@@ -25,7 +25,7 @@ import {
   type InternalTaskDetail as Task,
   type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { useCommand, type Failure } from '../../records/use-command.ts';
+import { useCommand, type Settlement } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { AssigneeField } from './AssigneeField.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
@@ -59,7 +59,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
     command: FieldCommand,
     fields: Readonly<Record<string, unknown>>,
     revision = props.task.revision,
-    unstored?: (failure: Failure) => void,
+    then?: (settlement: Settlement) => void,
   ): void => {
     run(
       () =>
@@ -71,7 +71,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
         }),
       (settlement) => {
         if (settlement.kind === 'ok') props.onChanged();
-        else unstored?.(settlement);
+        then?.(settlement);
       },
     );
   };
@@ -85,8 +85,8 @@ const Refusal = (props: { readonly because: string | null }): ReactElement | nul
     </p>
   );
 
-// The name typed and the revision Rename opened at (a colleague's change since answers stale);
-// a name sent and not stored reopens with Rename on this task only, and stale asks a re-read (#1456).
+// The name typed, at the revision Rename opened at; a name sent is kept for this task until stored,
+// so Rename reopens on it, even while awaited (Enter waits); stale asks a re-read (#1456).
 function useRename(props: Omit<PanelFieldsProps, 'grantKey'>) {
   const { task } = props;
   const { busy, because, write } = useFieldWrite(props);
@@ -100,24 +100,26 @@ function useRename(props: Omit<PanelFieldsProps, 'grantKey'>) {
       setUnsaved(null);
     } else if (event.key === 'Enter' && draft !== null) {
       event.preventDefault();
+      if (busy) return;
       const name = draft.text.trim();
       setDraft(null);
       setUnsaved(null);
       if (name !== '' && name !== task.title) {
-        write('task.update', { title: name }, draft.revision, (failure) => {
-          setUnsaved({ taskId: task.id, text: name });
-          if (failure.kind === 'stale') props.onChanged();
+        setUnsaved({ taskId: task.id, text: name });
+        write('task.update', { title: name }, draft.revision, (settlement) => {
+          if (settlement.kind === 'ok') setUnsaved(null);
+          if (settlement.kind === 'stale') props.onChanged();
         });
       }
     }
   };
-  return { busy, because, draft, setDraft, open, onKeyDown };
+  return { because, draft, setDraft, open, onKeyDown };
 }
 
 /** The task's name in the panel head, edited in place: Enter saves, Escape leaves it. */
 export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactElement {
   const { task } = props;
-  const { busy, because, draft, setDraft, open, onKeyDown } = useRename(props);
+  const { because, draft, setDraft, open, onKeyDown } = useRename(props);
   return (
     <>
       {draft === null ? (
@@ -125,7 +127,6 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           className="sb__name"
           type="button"
           data-panel-field="name"
-          disabled={busy}
           title="Rename"
           onClick={open}
         >
