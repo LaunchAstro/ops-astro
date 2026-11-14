@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// R6 attack on a1320ad09: complete, unlisted addresses the new quote framing
-// or the `}` and quote-only rules exempt. Each case should be refused.
+// Complete, unlisted addresses that the quote framing, or the `}` and
+// quote-only rules, could exempt. Each case should be refused.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
