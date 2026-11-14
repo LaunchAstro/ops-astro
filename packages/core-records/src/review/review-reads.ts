@@ -89,19 +89,8 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
-  const media =
-    review.kind === 'media' ? await mediaOf(tx, reviewId) : new Map<string, MediaView>();
-  const views = revisions.map((revision) =>
-    withMedia(
-      {
-        revisionId: revision.id,
-        number: revision.number,
-        digest: revision.digest,
-        captures: captures.get(revision.id) ?? [],
-      },
-      media.get(revision.id),
-    ),
-  );
+  const media = review.kind === 'media' ? await mediaOf(tx, reviewId) : undefined;
+  const views = revisionViews(revisions, captures, media);
   const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
@@ -133,6 +122,24 @@ async function notesOf(
 
 const withMedia = (view: RevisionView, media: MediaView | undefined): RevisionView =>
   media === undefined ? view : { ...view, media };
+
+/** Each revision with its captures by width and, on a media review, its media. */
+const revisionViews = (
+  revisions: readonly { readonly id: string; readonly number: number; readonly digest: string }[],
+  captures: Awaited<ReturnType<typeof capturesOf>>,
+  media: ReadonlyMap<string, MediaView> | undefined,
+): RevisionView[] =>
+  revisions.map((revision) =>
+    withMedia(
+      {
+        revisionId: revision.id,
+        number: revision.number,
+        digest: revision.digest,
+        captures: captures.get(revision.id) ?? [],
+      },
+      media?.get(revision.id),
+    ),
+  );
 
 interface MediaRow {
   readonly id: string;
