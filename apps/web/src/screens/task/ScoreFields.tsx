@@ -5,6 +5,7 @@ import type {
   InternalTaskDetail,
   TaskScores,
 } from '../../../../../packages/core-wire/src/index.ts';
+import { useReportWrite } from '../../records/page-writes.ts';
 import { HeldScores } from './scores-custody-context.tsx';
 import type { ScoresCustody, ScoreHold } from './scores-custody.ts';
 import { isScoreValue, type ScoreMark } from './scores-slot.ts';
@@ -39,6 +40,8 @@ function useScoreState(custody: ScoresCustody, id: string, onChanged: () => void
     seen.current = hold.changed;
     onChanged();
   }, [hold.changed, onChanged]);
+  // A score change saving is a write in flight on the page (#2359).
+  useReportWrite(hold.pending !== null || hold.busy);
   return hold;
 }
 interface RecoveryProps {

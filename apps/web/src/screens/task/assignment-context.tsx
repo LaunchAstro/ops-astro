@@ -12,6 +12,7 @@ import {
 import type { OperationsClient } from '../../operations/client.ts';
 import { tabOwnerGeneration, type StorageLike } from '../../session/token.ts';
 import { AssignmentCustody, EMPTY_ASSIGNMENT } from './assignment-custody.ts';
+import { useReportWrite } from '../../records/page-writes.ts';
 
 const Assignments = createContext<AssignmentCustody | null>(null);
 
@@ -69,5 +70,7 @@ export function useTaskAssignment(
     if (!assignment.shared && hold.pending === null && hold.failure === null) onChanged();
   }, [assignment, hold, onChanged]);
   const locked = hold.pending !== null || !hold.kept || hold.failure?.kind === 'closed';
+  // An assignment saving is a write in flight on the page (#2359).
+  useReportWrite(hold.pending !== null || hold.busy);
   return { ...assignment, hold, locked };
 }

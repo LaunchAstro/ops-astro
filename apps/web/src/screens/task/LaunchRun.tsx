@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
+import { useReportWrite } from '../../records/page-writes.ts';
 import { isRefusal, isUnavailable } from '../../operations/results.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 
@@ -30,6 +31,8 @@ function useLaunch(props: LaunchRunProps): {
   const { task } = props;
   const [sending, setSending] = useState(false);
   const [words, setWords] = useState<string | null>(null);
+  // A launch sending is a write in flight on the page (#2359).
+  useReportWrite(sending);
   const operation = useRef<{
     readonly taskId: string;
     readonly id: string;
