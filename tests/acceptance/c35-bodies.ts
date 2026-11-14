@@ -71,8 +71,10 @@ export async function c35PositiveBody(name: CommandName, context: BodyContext): 
 }
 
 /**
- * A review of another business's with its first revision, written as its open writes it, for
- * the identifier cases. A media review names no page, so no site of that business is needed.
+ * A review of another business's with a revision, written as its open writes it, for the
+ * identifier cases. A media review names no page, so no site of that business is needed. A
+ * task holds one media review (`reviews_one_media_per_task`, #2126), so a second seed on the
+ * same task opens the next revision of that review, as a second open does.
  */
 export async function seedForeignReview(
   admin: Pick<AdminConnection, 'execute'>,
@@ -80,20 +82,27 @@ export async function seedForeignReview(
   taskId: string,
   by: Pick<Caller, 'actorId' | 'personId'>,
 ): Promise<{ readonly reviewId: string; readonly revisionId: string }> {
-  const [reviewId, revisionId] = [randomUUID(), randomUUID()];
+  const revisionId = randomUUID();
   await admin.execute(
     `insert into public.reviews
        (business_id, id, task_id, kind, opened_by_actor_id, opened_by_person_id)
-     values ($1, $2, $3, 'media', $4, $5)`,
-    [business, reviewId, taskId, by.actorId, by.personId],
+     values ($1, $2, $3, 'media', $4, $5)
+     on conflict (business_id, task_id) where kind = 'media' do nothing`,
+    [business, randomUUID(), taskId, by.actorId, by.personId],
   );
+  const [review] = await admin.execute<{ readonly id: string }>(
+    `select id from public.reviews where business_id = $1 and task_id = $2 and kind = 'media'`,
+    [business, taskId],
+  );
+  if (review === undefined) throw new Error('seedForeignReview: no media review on the task');
   await admin.execute(
     `insert into public.review_revisions
        (business_id, id, review_id, number, digest, created_by_actor_id, created_by_person_id)
-     values ($1, $2, $3, 1, 'sha256:0', $4, $5)`,
-    [business, revisionId, reviewId, by.actorId, by.personId],
+     select $1, $2, $3, coalesce(max(number), 0) + 1, 'sha256:0', $4, $5
+       from public.review_revisions where business_id = $1 and review_id = $3`,
+    [business, revisionId, review.id, by.actorId, by.personId],
   );
-  return { reviewId, revisionId };
+  return { reviewId: review.id, revisionId };
 }
 
 /** The worker's claim and land, and the picture read a land leaves behind. */
