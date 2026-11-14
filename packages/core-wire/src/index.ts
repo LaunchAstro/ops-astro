@@ -289,7 +289,12 @@ export {
   type WorkerEndCode,
 } from './run-outcomes.ts';
 export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } from './turns.ts';
-// What the review reads answer (C35, #2011).
-export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from './views-review.ts';
+// What the review reads answer (C35, #2011), and the Reviews page's list (#2157).
+export type {
+  ReviewCaptureView,
+  ReviewListResult,
+  ReviewPictureResult,
+  ReviewReadResult,
+} from './views-review.ts';
 export type { DeleteRequestView } from './views-delete-request.ts';
 export type { TaskBinResult, TaskBinRow } from './views-bin.ts';

@@ -55,6 +55,7 @@ const PINNED_IDENTIFIERS = {
   'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': ['incidentId'],
+  'review.list': [],
   'review.picture': ['pictureId'],
   'review.read': ['reviewId'],
   'secret.list': [],
@@ -241,6 +242,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // C35's review, which none of these bodies carries.
   'review.read': unsent('reviewId', 'Send reviewId as the review.'),
   'review.picture': unsent('pictureId', 'Send pictureId as the landed picture.'),
+  'review.list': BODIES.map(() => null),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),

@@ -32,6 +32,7 @@ const AT_THE_LEASE = {
 
 export const REVIEW_SURFACE: readonly CommandDeclaration[] = [
   read('review.read', REVIEW_COLLECTION),
+  read('review.list', REVIEW_COLLECTION),
   read('review.picture', REVIEW_COLLECTION),
   declare('review.open', 'write', {
     collection: REVIEW_COLLECTION,

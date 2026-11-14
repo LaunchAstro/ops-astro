@@ -19,8 +19,8 @@ it('the carriage upgrade contains four migrations in its reserved interval', () 
   expect(carriage).toHaveLength(4);
 });
 
-it('the exported catalogue contains the 199 operations covered by the audit matrix', () => {
-  expect(COMMAND_SURFACE).toHaveLength(199);
+it('the exported catalogue contains the 200 operations covered by the audit matrix', () => {
+  expect(COMMAND_SURFACE).toHaveLength(200);
 });
 
 it('the timing matrix covers 134 identifier-bearing operations', () => {

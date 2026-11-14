@@ -121,6 +121,7 @@ const DECLARED_READS = [
   'preference.read',
   'preset.plan',
   'privacy.draft_breach_notices',
+  'review.list',
   'review.picture',
   'review.read',
   'secret.list',
