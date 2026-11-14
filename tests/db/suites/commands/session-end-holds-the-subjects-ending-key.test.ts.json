@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "session.end holds the subject's ending key, so a reset's window or a factor change through another business either commits before its ask (refused) or waits for it (#2427, Sol on #2465)"
+}
