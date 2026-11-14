@@ -487,7 +487,8 @@ const ROWS_HEAD = [
   {
     code: 'CREDENTIAL_ACTION_EXCLUDED',
     status: 403,
-    meaning: 'An agent credential never carries decide, share or manage',
+    meaning:
+      'An agent credential never carries decide, share or manage, nor a key the catalogue says no agent may hold',
     source: 'API-2',
   },
   {
