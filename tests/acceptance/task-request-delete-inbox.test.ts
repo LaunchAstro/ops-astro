@@ -186,10 +186,10 @@ describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => 
       ada,
     );
     okay(asked, 'Ada asks to delete the ticket');
-    const items = await itemsOn(ticketId);
-    expect(items.map((item) => [item.recipient, item.state])).toStrictEqual([
-      [mia.personId, 'open'],
-    ]);
+    // The business-wide decide holders are told as before; Mia, on the map alone, now too.
+    const miaHolds = async () =>
+      (await itemsOn(ticketId)).filter((item) => item.recipient === mia.personId);
+    expect((await miaHolds()).map((item) => item.state)).toStrictEqual(['open']);
     expect(await shownTo(mia, ticketId)).toHaveLength(1);
     const kept = await h().asPerson(
       'task.decline_delete',
@@ -202,7 +202,7 @@ describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => 
       mia,
     );
     okay(kept, 'Mia keeps it through the map');
-    expect((await itemsOn(ticketId)).map((item) => [item.state, item.closedBy])).toStrictEqual([
+    expect((await miaHolds()).map((item) => [item.state, item.closedBy])).toStrictEqual([
       ['cleared', mia.personId],
     ]);
   });
