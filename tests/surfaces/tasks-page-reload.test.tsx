@@ -69,7 +69,7 @@ async function reopened(search: string, keep = false): Promise<Mounted> {
 }
 
 // S2406-2: a saved address reopens as it was through the real Projects screen.
-describe('#2347 a reload of a saved address opens on exactly its own view', () => {
+describe('a reload of a saved address opens on exactly its own view', () => {
   it('no address opens on All tasks; Mine’s address opens on Mine', async () => {
     expect(drawn(await reopened(''))).toStrictEqual([MINE.id, NOBODYS.id]);
     await mounted?.unmount();
@@ -89,7 +89,7 @@ describe('#2347 a reload of a saved address opens on exactly its own view', () =
 
 // S2406-2 (round trip): the address the board itself writes after Clear all
 // and after Review, reopened, shows the same tasks.
-describe('#2347 Clear all and Review reopen from the address the board wrote', () => {
+describe('Clear all and Review reopen from the address the board wrote', () => {
   it('a cleared view and a Review view each reopen showing the same tasks', async () => {
     const board = await reopened(`?f=assignee%3A${ME}`, true);
     expect(drawn(board)).toStrictEqual([MINE.id]);

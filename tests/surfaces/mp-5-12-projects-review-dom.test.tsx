@@ -91,7 +91,7 @@ const one = (board: Mounted, selector: string): Element | null =>
 const VIEWER = `.cbd__preset--viewer`;
 const REVIEW = `.cbd__mode[data-mode="review"]`;
 
-describe('MP-5-12 the viewer preset, one click away (#2347: every board opens on All tasks)', () => {
+describe('the viewer preset, one click away, while every board opens on All tasks', () => {
   it('opens on every task, the viewer’s chip off and named for them', async () => {
     const board = await open();
     expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
@@ -192,7 +192,7 @@ const task = (id: string, key: string, assignee: string | null, awaitingDecision
 });
 
 describe('MP-5-12 drawn from task.board through the Projects screen', () => {
-  it('opens on every task (#2347) and counts what waits on the viewer’s decision', async () => {
+  it('opens on every task and counts what waits on the viewer’s decision', async () => {
     const tasks = [
       task('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'TSK-1', ME, false),
       task('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'TSK-2', ADA, true),

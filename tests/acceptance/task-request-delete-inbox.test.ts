@@ -157,7 +157,7 @@ describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => 
     expect(recipients).not.toContain(mia.personId);
   });
 
-  it('a ticket’s request tells the people who decide on its map (Sol S2418-1)', async () => {
+  it('a ticket’s request tells the people who decide on its map', async () => {
     const { ada, mia } = h().world;
     const map = await h().asPerson(
       'task.create',
