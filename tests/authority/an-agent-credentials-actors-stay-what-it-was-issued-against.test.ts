@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // An agent credential is held by an agent actor and issued by the issuing
-// person's actor (`agent_credentials_held_by_an_agent`, 20261114143200). The
+// person's actor (`agent_credentials_held_by_an_agent`, 20261114112200). The
 // insert reads both actor rows `for share`, so a change to either that has
 // not committed is waited on and judged once it settles: committed, the
 // insert is refused; rolled back, it is stored. Each writer has a connection

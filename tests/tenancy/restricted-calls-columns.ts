@@ -52,7 +52,7 @@ export async function columnUpdateFindings(
  * Tables whose BEFORE UPDATE trigger refuses the own business's no-op update,
  * past privilege and tenancy. 20261006080000 (MP-14-10a): a standing mandate is
  * written once, so an update that does not move its revision by one is refused
- * as a constraint (23001, restrict_violation). 20261114143200: an activation's
+ * as a constraint (23001, restrict_violation). 20261114112200: an activation's
  * change moves its revision one step, so the same (23514). 20261013051839 (C80):
  * a page of a client's site is unbound and bound again, never changed, so every
  * update raises. 20261028142500 (C35): a capture only moves forward, so a
@@ -60,7 +60,7 @@ export async function columnUpdateFindings(
  * migration.
  */
 const OWN_UPDATE_REFUSALS: Readonly<Record<string, { from: string; outcome: string }>> = {
-  'public.activations': { from: '20261114143200', outcome: 'constraint' },
+  'public.activations': { from: '20261114112200', outcome: 'constraint' },
   'public.standing_mandates': { from: '20261006080000', outcome: 'constraint' },
   'public.party_site_pages': { from: '20261013051839', outcome: 'raised' },
   'public.review_captures': { from: '20261028142500', outcome: 'raised' },

@@ -1139,7 +1139,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // security. It answers one number and no id, and only the broker's role
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
-  // codes expiry (20261002105957) and the hook claims expiry (20261114143200) each delete
+  // codes expiry (20261002105957) and the hook claims expiry (20261114112200) each delete
   // only rows past a fixed horizon, and only the upkeep identity runs them. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
   // The reset token lookup (20261005144947, C40B) is the reset's one read
