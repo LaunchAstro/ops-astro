@@ -117,6 +117,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C52-A: a change's last ask after its session takes the business's audit
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  // #1292: availability's own entry point asks its session again after the
+  // audit chain's key, as C52-A's last ask does, so a sign-out still to commit
+  // waits for the write and one committed since the door refuses it.
+  'packages/core-commands/src/commands/availability.ts',
   // Route B's carriage judgement: the subject's and the session's ending keys,
   // shared, held through a carried call's offer and send, as a write's last ask holds them.
   'packages/core-commands/src/commands/carriage-origin.ts',
