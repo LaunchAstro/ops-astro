@@ -146,6 +146,7 @@ export async function openCast(part: string, users?: readonly object[]): Promise
     'scripts/local-seed.mjs',
     'scripts/local-seed-roles.ts',
     'scripts/local/signing-key.mjs',
+    'scripts/local/synthetic-logins.mjs',
   ];
   for (const file of files) {
     copyFileSync(join(repo, file), join(root, file));
