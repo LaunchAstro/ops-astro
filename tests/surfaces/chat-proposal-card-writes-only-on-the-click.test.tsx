@@ -177,7 +177,7 @@ describe('chat proposal card', () => {
     track(page);
     await ask('Rename it');
     expect(page.find('[data-proposal="card"]')).toBeNull();
-    expect(page.find('[data-message-role="ai"]')?.textContent).toBe(EDIT);
+    expect(page.find('[data-message-role="ai"] .aip__body')?.textContent).toBe(EDIT);
     expect(writes()).toHaveLength(0);
   });
 
@@ -187,6 +187,6 @@ describe('chat proposal card', () => {
     track(page);
     await ask('Anything');
     expect(page.find('[data-proposal="card"]')).toBeNull();
-    expect(page.find('[data-message-role="ai"]')?.textContent).toBe(bad);
+    expect(page.find('[data-message-role="ai"] .aip__body')?.textContent).toBe(bad);
   });
 });

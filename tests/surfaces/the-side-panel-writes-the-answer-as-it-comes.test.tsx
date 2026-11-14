@@ -78,7 +78,7 @@ async function asked(client: OperationsClient) {
 
 const answers = (page: Awaited<ReturnType<typeof asked>>) =>
   page.all('[data-message-role="ai"]').map((line) => ({
-    text: line.textContent,
+    text: line.querySelector('.aip__body')?.textContent ?? '',
     writing: (line as HTMLElement).dataset['writing'] !== undefined,
   }));
 
