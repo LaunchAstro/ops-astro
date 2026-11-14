@@ -139,6 +139,21 @@ const MONEY = refuseCommand(
   ],
 );
 
+/**
+ * The permission key catalogue's keys no agent may hold (CAPABILITY-SLICES.md)
+ * that neither the excluded actions nor the money set already cover (#627).
+ */
+const AGENT_NEVER_HOLDS: ReadonlySet<string> = new Set([
+  'account:write',
+  'chat:comment',
+  'conversation:read',
+  'credential:write',
+  'operations:read',
+]);
+
+const neverCarried = (key: { readonly collection: string; readonly action: Action }): boolean =>
+  EXCLUDED.has(key.action) || AGENT_NEVER_HOLDS.has(`${key.collection}:${key.action}`);
+
 const holdsMoney = (keys: readonly { readonly collection: string; readonly action: Action }[]) =>
   keys.some((key) => isMoneyKey(key.collection, key.action));
 
@@ -167,12 +182,15 @@ export async function issueCredential(
   const keys = keysOf(request.scope);
   if (keys === undefined) return invalid('scope');
   if (holdsMoney(keys)) return refused(MONEY);
-  if (keys.some((key) => EXCLUDED.has(key.action))) {
+  if (keys.some((key) => neverCarried(key))) {
     return refused(
       refuseCommand(
         'CREDENTIAL_ACTION_EXCLUDED',
         ['scope'],
-        ['An agent credential never carries decide, share or manage. Untick them.'],
+        [
+          'An agent credential never carries decide, share or manage.',
+          `Nor ${[...AGENT_NEVER_HOLDS].join(', ')}: no agent may hold them. Untick them.`,
+        ],
       ),
     );
   }

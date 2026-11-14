@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a sign-out of the session that sent a write either commits first and refuses the write, or waits for the write to commit, through the envelope and through availability"
+}
