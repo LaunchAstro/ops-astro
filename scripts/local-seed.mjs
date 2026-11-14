@@ -36,6 +36,7 @@ import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
 import { GRANTS_BY_ROLE } from './local-seed-roles.ts';
+import { PEOPLE } from './local/synthetic-logins.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 // The staging reset names a new owner-only folder of its own (OPS_SEED_DIR), so
@@ -57,15 +58,13 @@ function fromEnvFile(name) {
  * person has to be a real member or the case tests the membership check
  * instead. `orphan` is a verified login with no membership at all, which is
  * the other half of N2 and is why it has no person here.
+ *
+ * It is auth:seed's own list (#2417). The seed finds a person by display name,
+ * so a placeholder run followed by auth:seed and a second run made a second
+ * person for anyone the two lists named differently, and a grant given to the
+ * first never reached the login mapped to the second.
  */
-const CAST = [
-  { email: 'ada@alpha.local', business: 'A', person: 'Ada Alpha', role: 'admin' },
-  { email: 'mia@alpha.local', business: 'A', person: 'Mia Alpha', role: 'member' },
-  { email: 'noah@alpha.local', business: 'A', person: 'Noah Alpha', role: 'member', grants: [] },
-  { email: 'orphan@alpha.local', business: 'A', person: 'Orphan Alpha', role: 'none' },
-  { email: 'bea@bravo.local', business: 'B', person: 'Bea Bravo', role: 'member' },
-  { email: 'ben@bravo.local', business: 'B', person: 'Ben Bravo', role: 'admin' },
-];
+const CAST = PEOPLE;
 
 const BUSINESS_KEYS = { A: 'alpha', B: 'bravo' };
 

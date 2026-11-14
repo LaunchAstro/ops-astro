@@ -246,7 +246,7 @@ async function revokingWorld(cast: Cast) {
 /** Ada gives Mia conversation:write through the product. */
 async function grantMia(): Promise<void> {
   const [held] = await world.db.admin.execute<{ id: string }>(
-    `select id from public.people where business_id = $1 and display_name = 'Mia Alpha'`,
+    `select id from public.people where business_id = $1 and display_name = 'Mia Chen'`,
     [world.business],
   );
   const granted = await executeCommand(world.db.app, world.business, ada(world), 'api', {
@@ -264,7 +264,7 @@ async function grantBea(bravo: string): Promise<void> {
   const [bea] = await world.db.admin.execute<{ person: string; actor: string }>(
     `select p.id as person, a.id as actor from public.people p
        join public.actors a on a.business_id = p.business_id and a.person_id = p.id
-      where p.business_id = $1 and p.display_name = 'Bea Bravo'`,
+      where p.business_id = $1 and p.display_name = 'Bea Rivera'`,
     [bravo],
   );
   // Write lists her own tab row; read-any would read any conversation of bravo.

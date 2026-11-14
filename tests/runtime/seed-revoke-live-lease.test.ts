@@ -129,8 +129,8 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
     for (const file of ['scripts/local-seed.mjs', 'scripts/local-seed-roles.ts'])
       copyFileSync(join(repo, file), join(root, file));
     symlinkSync(join(repo, 'scripts/ops'), join(root, 'scripts/ops'));
-    const signer = 'scripts/local/signing-key.mjs';
-    copyFileSync(join(repo, signer), join(root, signer));
+    for (const file of ['scripts/local/signing-key.mjs', 'scripts/local/synthetic-logins.mjs'])
+      copyFileSync(join(repo, file), join(root, file));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
     symlinkSync(join(repo, 'node_modules'), join(root, 'node_modules'));
 

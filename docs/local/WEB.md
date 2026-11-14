@@ -976,9 +976,11 @@ leave the agent's delegation live, and the next run's pickup would be refused
 `cases-b.mjs` assigns the task to noah's person, chosen by id rather than by
 label. It finds that person through the login whose subject is noah's in
 `.local/synthetic-users.json`, which is the same link the seed makes. The seed
-takes the display name from that file (`Noah Patel`), and the live database
-still has the older `Noah Alpha`. B2 passes on either, because the name is only
-quoted in its row.
+takes the display name from that file (`Noah Patel`), and its placeholder cast
+is auth:seed's own list, so a seed run before auth:seed names him the same
+(#2417). A database seeded before that change may still hold an older
+`Noah Alpha` as well. B2 passes on either, because the name is only quoted in
+its row.
 
 S5 reads the conflict block only once `conflict-server` shows `999` and
 `conflict-draft` shows `1200`. The block draws as soon as the refusal arrives
