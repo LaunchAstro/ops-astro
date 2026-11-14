@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2165 beside #2404: a pin on a revision committed while the carry reads is neither carried nor counted; the carry writes the read revisions' pins alone"
+}
