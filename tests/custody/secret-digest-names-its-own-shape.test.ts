@@ -39,26 +39,27 @@ interface Stored {
 /** One register row and the audit lines, as the envelope's statements write them. */
 function registerOf(planted?: Stored) {
   let seen = planted;
+  const answer = (sql: string, params: readonly unknown[]): readonly unknown[] => {
+    if (sql.includes('select command, payload_digest')) return seen === undefined ? [] : [seen];
+    if (sql.includes('insert into operations')) {
+      seen = {
+        command: String(params[3]),
+        payload_digest: String(params[5]),
+        outcome: params[6],
+        result: params[7],
+      };
+      return [];
+    }
+    if (sql.includes('insert into audit_events'))
+      return [{ id: 'audit', seq: '1', hash: '0'.repeat(64) }];
+    return [];
+  };
   const tx = {
     businessId: owner.businessId,
-    query: async (sql: string, params: readonly unknown[] = []) => {
-      if (sql.includes('select command, payload_digest')) return seen === undefined ? [] : [seen];
-      if (sql.includes('insert into operations')) {
-        seen = {
-          command: String(params[3]),
-          payload_digest: String(params[5]),
-          outcome: params[6],
-          result: params[7],
-        };
-        return [];
-      }
-      if (sql.includes('insert into audit_events'))
-        return [{ id: 'audit', seq: '1', hash: '0'.repeat(64) }];
-      return [];
-    },
+    query: (sql: string, params: readonly unknown[] = []) => Promise.resolve(answer(sql, params)),
   } as unknown as TenantQuery;
   const entry = {
-    release: async () => undefined,
+    release: () => Promise.resolve(),
     attempt: async (request: UncheckedRequest, digest: string) => {
       await register(tx, owner, request as never, digest, success as never, null);
       return success;
