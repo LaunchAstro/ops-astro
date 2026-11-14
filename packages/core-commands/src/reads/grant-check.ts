@@ -36,21 +36,21 @@ export async function grantRefusal<K extends ReadName>(
     authorised.ok || recordId === undefined || asked.collection !== 'task'
       ? null
       : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
-  // Read again, held until the read is served: a move that committed since is
-  // seen, and none can commit before the answer is read. The map grant is asked
-  // after that read, so a grant that runs out while it waits is not counted.
-  if (
-    !authorised.ok &&
-    map !== null &&
-    recordId !== undefined &&
-    map !== recordId &&
-    (await wayfinderFacts(tx, recordId, true))?.mapId === map
-  ) {
-    const again = await checkAuthority(tx, subjectsOf(session), {
-      ...asked,
-      scope: { kind: 'record', id: map },
-    });
-    if (again.ok) authorised = again;
+  if (!authorised.ok && map !== null && recordId !== undefined && map !== recordId) {
+    const onMap: ScopeRequest = { ...asked, scope: { kind: 'record', id: map } };
+    // The map grant is asked first, unlocked: a caller holding none is refused
+    // here, as for an id that names nothing, without waiting on a writer that
+    // holds the ticket (#2403). Then the ticket is read again, held until the
+    // read is served: a move that committed since is seen, and none can commit
+    // before the answer is read. The map grant is asked once more after that
+    // read, so a grant that runs out while it waits is not counted (S2114-5).
+    if (
+      (await checkAuthority(tx, subjectsOf(session), onMap)).ok &&
+      (await wayfinderFacts(tx, recordId, true))?.mapId === map
+    ) {
+      const again = await checkAuthority(tx, subjectsOf(session), onMap);
+      if (again.ok) authorised = again;
+    }
   }
   if (authorised.ok) return undefined;
   // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
