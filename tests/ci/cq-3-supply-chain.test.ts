@@ -127,7 +127,10 @@ async function install(workspace: string, want: (url: string) => string): Promis
   const tree = scratch();
   mkdirSync(join(tree, 'c/package'), { recursive: true });
   writeFileSync(join(tree, 'c/package/package.json'), '{"name":"c","version":"1.0.1"}');
-  await run('tar', ['czf', 'c.tgz', '-C', 'c', 'package'], tree);
+  // macOS tar adds an AppleDouble `._package` entry for a file's extended
+  // attributes, which pnpm cannot install from; COPYFILE_DISABLE leaves it out
+  // there, and GNU tar ignores it (#2381).
+  await run('tar', ['czf', 'c.tgz', '-C', 'c', 'package'], tree, { COPYFILE_DISABLE: '1' });
   const tarball = readFileSync(join(tree, 'c.tgz'));
   const server = createServer((request, response) => {
     response.end(request.url?.endsWith('.tgz') === true ? tarball : packument(url));
