@@ -61,6 +61,7 @@ const REASON: Readonly<Record<UnattendedView['reason'], string>> = {
   mention: 'Mention',
   incident: 'Incident',
   client_comment: 'Client comment',
+  delete_request: 'Request to delete a task',
 };
 
 const UNATTENDED_COLUMNS = [

@@ -17,7 +17,8 @@ export interface InboxItem {
     | 'assignment'
     | 'mention'
     | 'incident'
-    | 'client_comment';
+    | 'client_comment'
+    | 'delete_request';
   readonly workState: 'open' | 'cleared' | 'withdrawn';
   /** Derived by INB-1 at every read: only `readable` items name their task. */
   readonly access: 'readable' | 'withheld' | 'gone';

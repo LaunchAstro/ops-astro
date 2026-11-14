@@ -48,6 +48,7 @@ const REASON: Readonly<Record<InboxItem['reason'], string>> = {
   mention: 'Mentioned you',
   incident: 'Incident',
   client_comment: 'Client comment',
+  delete_request: 'Asks to delete',
 };
 
 const TABS: readonly { readonly id: InboxTab; readonly label: string; readonly empty: string }[] = [
@@ -60,10 +61,7 @@ const BAND_HEAD: Readonly<Record<Exclude<InboxBand, 'done'>, string>> = {
   fyi: 'No response needed',
 };
 
-/**
- * The kind mark, the row's first column (the mockup's `KIND_MARK`), and its
- * axis: a teammate's doing in the second ink, progress muted, the rest faint.
- */
+// The kind mark (`KIND_MARK`) and its axis: a teammate's in second ink, progress muted, rest faint.
 type Mark = readonly [glyph: GlyphName | '@', axis: 'client' | 'team' | 'progress'];
 const MARK: Readonly<Record<InboxItem['reason'], Mark>> = {
   decision: ['check', 'client'],
@@ -73,6 +71,7 @@ const MARK: Readonly<Record<InboxItem['reason'], Mark>> = {
   mention: ['@', 'team'],
   incident: ['bolt', 'client'],
   client_comment: ['comment-alt', 'client'],
+  delete_request: ['cross-small', 'team'],
 };
 
 function KindMark(props: { readonly reason: InboxItem['reason'] }): ReactElement {

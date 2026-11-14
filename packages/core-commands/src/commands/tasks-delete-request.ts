@@ -19,8 +19,17 @@
 // task's revision as it was, so a Confirm still on screen for a request that
 // was kept or lapsed would otherwise answer the agent's next one, unseen. A
 // task in the bin takes no request: it reads `NOT_FOUND`, as everywhere else.
+//
+// The inbox (#2360): a request raises its item in its own transaction, an
+// answer clears it in the answer's, and a lapse recorded here withdraws it
+// (`inbox/delete-request.ts`).
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  clearDeleteRequest,
+  raiseDeleteRequest,
+  withdrawLapsedDeleteRequests,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { invalid } from './operands.ts';
 import { applied, isRefused, refused, type HandlerOutcome } from './outcome.ts';
@@ -65,6 +74,7 @@ export async function requestDelete(
         and expires_at <= clock_timestamp()`,
     [tx.businessId, target.id],
   );
+  await withdrawLapsedDeleteRequests(tx, target.id);
   const made = await tx.query<{ readonly id: string; readonly expires_at: string }>(
     `insert into public.task_delete_requests
        (business_id, id, task_id, reason, requested_by_actor_id, requested_for_person_id,
@@ -79,6 +89,7 @@ export async function requestDelete(
   if (request === undefined) {
     return refused(refuseCommand('DELETE_REQUEST_PENDING', ['recordId'], PENDING_FIXES));
   }
+  await raiseDeleteRequest(tx, { taskId: target.id, requestId: request.id });
   return applied(target.id, target.revision, {
     requestId: request.id,
     expiresAt: request.expires_at,
@@ -110,6 +121,11 @@ export async function answerDeleteRequest(
   if (request === undefined) {
     return refused(refuseCommand('DELETE_REQUEST_NOT_PENDING', ['recordId'], NOT_PENDING_FIXES));
   }
+  await clearDeleteRequest(tx, {
+    taskId: target.id,
+    requestId: request.id,
+    personId: context.session.personId,
+  });
   if (answer === 'kept') {
     return applied(target.id, target.revision, { requestId: request.id, answer });
   }
