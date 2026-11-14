@@ -69,9 +69,12 @@ async function changeBody(
 ): Promise<Prepared> {
   const pin = await pinBody(context, revisionId);
   if (!('body' in pin)) return pin;
-  const pinned = await context.asPerson('review.pin_comment', { ...pin.body, audience: 'client' });
+  if (context.asClientPin === undefined) throw new Error('matrix: no client pin seeder');
+  // Client review is off: the pin is made for the team and rewritten as a client's.
+  const pinned = await context.asPerson('review.pin_comment', pin.body);
   if (pinned.code !== 'ok') throw new Error(`matrix: review.pin_comment refused ${pinned.code}`);
   const { commentId } = pinned.body['detail'] as Readonly<Record<string, unknown>>;
+  await context.asClientPin(String(commentId));
   const filing = { commentId, text: 'a change asked for' };
   if (name === 'review.propose_change') return { body: filing };
   const filed = await context.asPerson('review.propose_change', filing);

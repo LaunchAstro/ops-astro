@@ -228,13 +228,13 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CAPTURE_NOT_CLAIMED', 409, 'caller'],
   ['PICTURE_TOO_LARGE', 422, 'caller'],
   ['CLIENT_REVIEW_OFF', 409, 'caller'],
+  ['CHANGE_REQUEST_ALREADY_FILED', 409, 'caller'],
+  ['CHANGE_REQUEST_ALREADY_DECIDED', 409, 'caller'],
   ['PARENT_TRASHED', 409, 'caller'],
   ['ALREADY_TRASHED', 409, 'caller'],
   ['TASK_NOT_DELETABLE', 409, 'caller'],
   ['DELETE_REQUEST_PENDING', 409, 'caller'],
   ['DELETE_REQUEST_NOT_PENDING', 409, 'caller'],
-  ['CHANGE_REQUEST_ALREADY_FILED', 409, 'caller'],
-  ['CHANGE_REQUEST_ALREADY_DECIDED', 409, 'caller'],
 ];
 
 /**

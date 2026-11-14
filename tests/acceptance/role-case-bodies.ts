@@ -102,6 +102,8 @@ export interface BodyContext extends C80Seeds {
    * only needs the body shape, and the share is refused on authority anyway.
    */
   clientTask?(title: string): Promise<Task>;
+  /** C57: a team pin rewritten as a client's, as client review is off (`asClientPin`). */
+  asClientPin?(commentId: string): Promise<void>;
   /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
   ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
   /**

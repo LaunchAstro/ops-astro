@@ -23,6 +23,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import { revertBody, reviewBody } from './c80-revert-body.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
+import { asClientPin } from '../review/client-pin-seed.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
@@ -144,7 +145,12 @@ export const taskBodyContext = (
 ): Required<
   Pick<
     BodyContext,
-    'alphaTaskId' | 'adminPersonId' | 'seedCorrection' | 'seedLiveCorrection' | 'bindClientSite'
+    | 'alphaTaskId'
+    | 'adminPersonId'
+    | 'seedCorrection'
+    | 'seedLiveCorrection'
+    | 'bindClientSite'
+    | 'asClientPin'
   >
 > => {
   // Asked for by a member of its own, holding the run:write the request rests on,
@@ -171,6 +177,7 @@ export const taskBodyContext = (
         world.alpha,
         async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
       ),
+    asClientPin: async (commentId) => await asClientPin(world.db.admin, world.alpha, commentId),
   };
 };
 

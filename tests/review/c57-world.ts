@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C57's command-layer world (#2016), on C35's: a client pin and an internal pin on task A's
-// captured review, and the proposal keys. ava holds `proposal:write` and `proposal:decide`
+// C57's command-layer world (#2016), on C35's: a client pin (`asClientPin`, as client review is
+// off) and an internal pin on task A's captured review, and the proposal keys. ava holds `proposal:write` and `proposal:decide`
 // business-wide; ben `proposal:write` alone; dee both on party B only; eve both in beta. cal
 // holds neither.
 
@@ -11,6 +11,7 @@ import type { Scope } from '../../packages/core-records/src/authority/grants.ts'
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { detailOf } from '../commands/agent-fixture.ts';
 import { c35World, spot, type C35World } from './c35-world.ts';
+import { asClientPin } from './client-pin-seed.ts';
 
 export interface Pins {
   readonly revisionId: string;
@@ -94,13 +95,15 @@ export async function c57World(part: string): Promise<C57World> {
     pins: async (clientBody = 'Can the heading sit above the photo?') => {
       const revisionId = String(detailOf(await w.open(w.ava))['revisionId']);
       await w.capture(w.ava, revisionId);
-      const clientPin = detailOf(
-        await w.pin(w.ava, revisionId, { audience: 'client', body: clientBody }),
-      )['commentId'];
+      // Client review is off, so the pin is made for the team and rewritten as a client's.
+      const clientPin = String(
+        detailOf(await w.pin(w.ava, revisionId, { body: clientBody }))['commentId'],
+      );
+      await asClientPin(w.world.db.admin, alpha, clientPin);
       const internalPin = detailOf(
         await w.pin(w.ava, revisionId, { selector: [spot('xywh=10,10,20,20')] }),
       )['commentId'];
-      return { revisionId, clientPin: String(clientPin), internalPin: String(internalPin) };
+      return { revisionId, clientPin, internalPin: String(internalPin) };
     },
     propose: async (member, commentId, overrides = {}, business = alpha) =>
       await w.asIn(business, member, {
