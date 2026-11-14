@@ -620,7 +620,11 @@ function Loaded(props: LoadedProps): ReactElement {
   return (
     <PageWrites>
       <div className="stack" data-task={task.id} data-revision={task.revision}>
-        <TaskHeader task={task} execution={execution} />
+        <TaskHeader
+          task={task}
+          execution={execution}
+          restart={{ client, onRestarted: props.onChanged }}
+        />
         <TaskFacts task={task} />
         <TaskPresence seen={presence.seen} />
         <DeleteRequest

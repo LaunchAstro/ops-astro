@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ProposalView, TaskExecution } from '../../../../../packages/core-wire/src/index.ts';
 import { isReadable, type TaskExecutionRead } from '../../views/task-execution.ts';
+import { outcomeWords, restartable } from './outcome-words.ts';
 
 export type RunShape = 'queued' | 'running' | 'waiting' | 'finished' | 'none' | 'unknown';
 interface RunLine {
   readonly shape: RunShape;
   readonly words: string;
+  /** The lineage a person may restart, after a stop that was not a finish (#1719). */
+  readonly restart?: string;
 }
 const unknown = (words = 'Run status is unavailable.'): RunLine => ({ shape: 'unknown', words });
 
@@ -46,6 +49,10 @@ export function runLineOf(
       !['planned', 'claimed', 'waiting_budget', 'handed_back', 'cancelled'].includes(state),
   );
   if (unfamiliar !== undefined) return unknown(`Engine run state: ${unfamiliar}`);
+  // A stored stop is said before the run's state: a stop releases its lease but leaves the run
+  // `claimed` (`retireAttempt`), so the state alone would still read as running (#1719).
+  const stopped = stoppedLine(execution);
+  if (stopped !== null) return stopped;
   const attempts = proposals
     ?.flatMap((proposal) => proposal.reservations)
     .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
@@ -74,5 +81,30 @@ export function runLineOf(
       : states.length > 0
         ? 'Engine work was handed back.'
         : 'Every run on this task has finished.',
+  };
+}
+
+/**
+ * The newest run's stop in its words (#1719), restartable unless it finished; null when it has
+ * none, or while another run is still queued, claimed or waiting.
+ */
+function stoppedLine(execution: TaskExecution): RunLine | null {
+  const [newest, ...older] = execution.runs.toSorted((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  const stop = newest?.runOutcome ?? null;
+  if (newest === undefined || stop === null) return null;
+  if (
+    older.some(
+      (run) =>
+        ['planned', 'claimed', 'waiting_budget'].includes(run.state) &&
+        (run.runOutcome ?? null) === null,
+    )
+  )
+    return null;
+  return {
+    shape: 'finished',
+    words: outcomeWords(stop),
+    ...(restartable(stop) ? { restart: newest.lineageId } : {}),
   };
 }
