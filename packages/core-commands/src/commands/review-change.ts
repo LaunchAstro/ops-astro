@@ -114,7 +114,8 @@ export async function proposeChange(
   // An agent key of the person's own is still an agent reading the client's words.
   if (context.session.credentialScope !== undefined) return refused(WAITS_ON_A_LOCAL_MODEL);
   const { text } = request;
-  if (typeof text !== 'string' || text.trim() === '' || text.length > TEXT_LIMIT) {
+  // Counted in code points, as the column's `char_length` check counts them (S2122-3).
+  if (typeof text !== 'string' || text.trim() === '' || [...text].length > TEXT_LIMIT) {
     return refused(
       refuseCommand(
         'FIELD_VALUE_INVALID',
