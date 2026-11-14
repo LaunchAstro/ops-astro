@@ -18,6 +18,8 @@ import {
   CAPTURE_WIDTHS,
   DATABASE_STORAGE,
   MOST_STORED_BYTES,
+  advisoryLock,
+  carryDueOnto,
   checkDelegatedAuthority,
   claimLockedCaptures,
   isUuid,
@@ -36,7 +38,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { personClaimant } from './tasks-claimant.ts';
 
 /** The observation's cap once serialised, so a land fits the API's body limit with its picture. */
@@ -89,13 +91,13 @@ export const personCaller = (context: CommandContext): CaptureCaller => {
   };
 };
 
-interface LeaseFields {
+export interface LeaseFields {
   readonly leaseId: unknown;
   readonly fence: unknown;
   readonly revisionId: unknown;
 }
 
-const invalidLease = (fields: LeaseFields): string[] => [
+export const invalidLease = (fields: LeaseFields): string[] => [
   ...(typeof fields.fence === 'number' && Number.isSafeInteger(fields.fence) ? [] : ['fence']),
   ...(isUuid(fields.revisionId) ? [] : ['revisionId']),
 ];
@@ -112,7 +114,7 @@ const leaseCallerOf = (caller: CaptureCaller, leaseId: string, fence: number): L
     : { ...caller, leaseId, fence };
 
 /** The lease held and re-checked, or the refusal; a malformed id is a lease not owned. */
-async function holdLease(
+export async function holdLease(
   tx: TenantQuery,
   fields: LeaseFields,
   caller: CaptureCaller,
@@ -128,16 +130,18 @@ async function holdLease(
 }
 
 /**
- * After the capture rows' lock wait, at a fresh instant: the lease is still the caller's, live
- * and current, a person's own write on the task still stands, and an agent's delegating person
- * still holds the write its call was checked for (`checkDelegatedAuthority` judges grants as
- * its statement runs). The refusal, or `null` when the write may go ahead.
+ * After the capture rows' lock wait and then the audit chain's, taken here as the envelope's
+ * last wait, at a fresh instant: the lease is still the caller's, live and current, a person's
+ * own write on the task still stands, and an agent's delegating person still holds the write
+ * its call was checked for (`checkDelegatedAuthority` judges grants as its statement runs).
+ * The refusal, or `null` when the write may go ahead.
  */
-async function stillHeld(
+export async function stillHeld(
   tx: TenantQuery,
   lease: CaptureLease,
   caller: CaptureCaller,
 ): Promise<CommandRefusal | null> {
+  await advisoryLock(tx, tx.businessId.toLowerCase());
   const at = await lockedInstant(tx);
   const owner = await recheckOwner(
     tx,
@@ -165,7 +169,7 @@ export const judgedAgain =
   async (): Promise<CommandRefusal | undefined> =>
     (await stillHeld(tx, lease, caller)) ?? undefined;
 
-const fieldsRefused = (wrong: readonly string[], fix: string): HandlerOutcome =>
+export const fieldsRefused = (wrong: readonly string[], fix: string): Refused =>
   refused(refuseCommand('FIELD_VALUE_INVALID', wrong, [fix]));
 
 export async function claimCapture(
@@ -266,6 +270,7 @@ export async function landCapture(
       width,
       pictureId: stored.id,
       pictureDigest: stored.digest,
+      carryDue: await carryDueOnto(tx, revisionId),
     }),
     lastCheck: judgedAgain(tx, held.lease, caller),
   };

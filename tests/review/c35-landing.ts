@@ -63,14 +63,19 @@ export const claimUnder = async (
 export const landUnder = async (
   w: C35World,
   lease: Lease,
-  at: { readonly revisionId: string; readonly width: number; readonly picture: Uint8Array },
+  at: {
+    readonly revisionId: string;
+    readonly width: number;
+    readonly picture: Uint8Array;
+    readonly observation?: Readonly<Record<string, unknown>>;
+  },
 ): Promise<{ readonly operationId: string; readonly result: CommandResult }> =>
   await underLease(w, lease, {
     command: 'review.capture_land',
     revisionId: at.revisionId,
     width: at.width,
     picture: Buffer.from(at.picture).toString('base64'),
-    observation: observationOf(at.width),
+    observation: at.observation ?? observationOf(at.width),
   });
 
 /** `review.picture`, as `member` reads it in `business`. */

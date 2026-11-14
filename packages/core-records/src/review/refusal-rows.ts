@@ -40,4 +40,10 @@ export const REVIEW_ROWS = [
     meaning: 'Client review is switched off; a pin for the client is refused',
     source: 'C35, the pin (DECISIONS 43)',
   },
+  {
+    code: 'CARRY_NOT_READY',
+    status: 409,
+    meaning: 'The revision has not landed at every width, so its pins cannot be carried yet',
+    source: 'C35-X, the pin carry',
+  },
 ] as const;

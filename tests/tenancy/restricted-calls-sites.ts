@@ -29,6 +29,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   // #2351 (20261101090000): a request to delete a task is written once and answered once by
   // column, never removed but by its task's purge (the key cascades).
   ['si', 'task_delete_requests'],
+  // C35-X (20261114152700): a pin's carry onto a revision is written once and never changed.
+  ['si', 'review_pin_carries'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
