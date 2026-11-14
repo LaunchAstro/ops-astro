@@ -12,7 +12,35 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { envelopeOf, lockedOrDefault } from '../../packages/core-custody/src/broker-hold.ts';
+import { insertStarted } from '../../packages/core-custody/src/broker-message-call.ts';
+import { slotOf, TASK_SPINE } from '../../packages/core-records/src/index.ts';
+import type { ModelOperation } from '../../packages/core-connectors/src/index.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { serverUrl, type Answer } from './world.ts';
+
+/** The broker's route for the call, a local replay that sends nothing. */
+const ROUTE = {
+  key: 'test_local_replay',
+  reach: 'local',
+  provider: 'replay',
+  credentialRef: 'test_replay',
+  credentialKind: 'api_key',
+  installation: 'here',
+  ceiling: 100,
+} as const;
+
+/** Its first character percent-encoded, as a browser may send it. */
+const encodedFirst = (ref: string): string =>
+  `%${(ref.codePointAt(0) ?? 0).toString(16).toUpperCase()}${ref.slice(1)}`;
+
+/** Every spelling of a task's page the exchange reads as that task (`taskPageRef`). */
+const spellings = {
+  id: (id: string) => id,
+  upperId: (id: string) => id.toUpperCase(),
+  encodedId: (id: string) => encodedFirst(id),
+  key: (_id: string, key: string) => key,
+  encodedKey: (_id: string, key: string) => encodedFirst(key),
+} as const;
 
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cases that share it
 describe.skipIf(serverUrl === undefined)('task.delete', () => {
@@ -143,6 +171,79 @@ describe.skipIf(serverUrl === undefined)('task.delete', () => {
       expect((await harness.asPerson('task.read', { recordId: task.id })).code).toBe('ok');
     },
   );
+
+  /** A model call with no planning envelope, written as the broker writes one. */
+  const modelCall = async (business: string, ownerPersonId: string, started: Answer) => {
+    const detail = started.body['detail'] as Record<string, unknown>;
+    const conversationId = String(detail['conversationId']);
+    const request = {
+      conversation: { id: conversationId, businessId: business, ownerPersonId },
+      messageId: String(detail['messageId']),
+      fields: [],
+      operation: 'model.conversation',
+    };
+    // The insert reads the operation's key alone; the call carries nothing (no carrier).
+    const operation = { key: 'model.conversation' } as ModelOperation;
+    const call = await harness.world.db.app.withBusiness(
+      business,
+      async (tx) =>
+        // oxlint-disable-next-line no-useless-undefined -- the carrier parameter is required
+        await insertStarted(tx, request, operation, ROUTE, null, undefined),
+    );
+    expect(typeof call, 'the model call').toBe('string');
+    const envelopes = await harness.world.db.admin.execute(
+      `select 1 from public.planning_envelopes where business_id = $1 and conversation_id = $2`,
+      [business, conversationId],
+    );
+    expect(envelopes, 'no planning envelope').toStrictEqual([]);
+  };
+
+  /** A conversation with `address` as its added page, and a model call on its first message. */
+  const modelCallOnPage = async (address: string, businessKey: 'alpha' | 'bravo' = 'alpha') => {
+    const { world } = harness;
+    const [business, caller] =
+      businessKey === 'alpha' ? [world.alpha, world.ada] : [world.bravo, world.bea];
+    const started = await harness.asPerson(
+      'conversation.start',
+      { body: 'Plan this task', page: { address, shows: 'the task' } },
+      businessKey,
+      caller,
+    );
+    expect(started.code, 'the conversation').toBe('ok');
+    await modelCall(business, String(caller.personId), started);
+  };
+
+  const keyOf = async (recordId: string): Promise<string> => {
+    const rows = await harness.world.db.admin.execute<{ readonly key: string }>(
+      `select ${slotOf(TASK_SPINE, 'key')} as key from public.records
+        where business_id = $1 and id = $2`,
+      [harness.world.alpha, recordId],
+    );
+    return String(rows[0]?.key);
+  };
+
+  // #2350: a model call with no planning envelope is spend too, on a conversation naming the
+  // task by its page in any spelling the exchange reads.
+  it.each(Object.keys(spellings) as (keyof typeof spellings)[])(
+    'refuses a task with a model call on a conversation paging it by its %s',
+    async (spelling) => {
+      const task = await harness.freshTask(`a deletable task paged by its ${spelling}`);
+      await modelCallOnPage(`/task/${spellings[spelling](task.id, await keyOf(task.id))}`);
+      const refused = await remove(task.id);
+      expect(refused.code).toBe('TASK_NOT_DELETABLE');
+      expect(refused.status).toBe(409);
+      expect((await harness.asPerson('task.read', { recordId: task.id })).code).toBe('ok');
+    },
+  );
+
+  it('deletes a task another business pages by its id', async () => {
+    await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+      await grantTo(tx, harness.world.bea as Member, 'write', undefined, false, 'conversation');
+    });
+    const task = await harness.freshTask('a deletable task paged from another business');
+    await modelCallOnPage(`/task/${task.id}`, 'bravo');
+    expect((await remove(task.id)).code).toBe('ok');
+  });
 
   it('refuses a task linked to a client', async () => {
     const task = await clientTask('a deletable client task');
