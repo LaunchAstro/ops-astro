@@ -155,6 +155,28 @@ describe.skipIf(serverUrl === undefined)('a task read names when its snapshot wa
         distinct?.['plus'],
       ]).size,
     ).toBe(5);
+    // Every microsecond Postgres can store hashes apart from its neighbour, at both ends of
+    // the range, around the epoch and past year 9999.
+    const times = [
+      '294276-12-31 23:59:59.999999+00',
+      '294276-12-31 23:59:59.999998+00',
+      '10000-01-01 00:00:00.000000+00',
+      '9999-12-31 23:59:59.999999+00',
+      '1970-01-01 00:00:00.000001+00',
+      '1970-01-01 00:00:00.000000+00',
+      '1969-12-31 23:59:59.999999+00',
+      '0001-01-01 00:00:00.000000+00',
+      '0001-12-31 23:59:59.999999+00 BC',
+      '4713-01-01 00:00:00.000001+00 BC',
+      '4713-01-01 00:00:00.000000+00 BC',
+    ];
+    const hashes = await w.db.admin.execute<{ readonly hash: string }>(
+      `select ${hashAt('t::timestamptz')} as hash
+         from public.audit_events a, unnest($3::text[]) t
+        where a.business_id = $1 and a.seq = $2`,
+      [w.business, row.seq, times],
+    );
+    expect(new Set(hashes.map((one) => one.hash)).size).toBe(times.length);
   });
 
   it('hashes a row without a snapshot time exactly as before', async () => {
