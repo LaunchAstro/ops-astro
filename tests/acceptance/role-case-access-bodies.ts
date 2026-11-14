@@ -33,6 +33,7 @@ export async function factorMember(database: Database, businessId: string): Prom
   await database.withBusiness(businessId, async (tx) => {
     const factor = await recordFactorEnrolled(tx, {
       personId: member.personId,
+      subject: member.presented.subject,
       provider: 'supabase',
       providerFactorId: randomUUID(),
     });

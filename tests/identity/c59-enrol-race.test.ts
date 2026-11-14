@@ -60,7 +60,7 @@ async function enrollingInBoth() {
       const actorId = await insertActor(tx, personId);
       await insertMembership(tx, personId);
       await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      await recordFactorEnrolled(tx, { personId, provider: 'supabase', providerFactorId });
+      await recordFactorEnrolled(tx, { personId, subject, provider: 'supabase', providerFactorId });
     });
     callers[business] = {
       database: wide,

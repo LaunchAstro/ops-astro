@@ -53,6 +53,7 @@ async function readyFor(act: ActName) {
     await db.app.withBusiness(business, (tx) =>
       recordFactorEnrolled(tx, {
         personId: person,
+        subject: caller.presented.subject,
         provider: 'supabase',
         providerFactorId: `factor-${randomUUID()}`,
       }),
@@ -78,7 +79,7 @@ function gated(act: ActName, removed: string[]) {
 }
 
 /** The person's live factor, and how many applied events of `act` they have. */
-async function left(act: ActName, person: string) {
+async function left(act: ActName, person: string, subject: string) {
   const [events] = await db.admin.execute<{ readonly applied: number }>(
     `select count(*)::int as applied from public.audit_events e
        join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
@@ -86,7 +87,7 @@ async function left(act: ActName, person: string) {
         and e.outcome = 'applied'`,
     [business, person, `account.factor_${act}`],
   );
-  const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+  const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person, subject));
   return { status: live?.status ?? 'none', applied: events?.applied };
 }
 
@@ -94,7 +95,7 @@ it.each(['enrol', 'verify', 'remove'] as const)(
   'a factor %s whose record transaction dies after its check and before commit changes nothing',
   async (act) => {
     const { caller: asked, person } = await readyFor(act);
-    const before = await left(act, person);
+    const before = await left(act, person, asked.presented.subject);
     const removed: string[] = [];
     const { to, reached, go } = gated(act, removed);
     const actor = connect(db.appUrl);
@@ -121,7 +122,11 @@ it.each(['enrol', 'verify', 'remove'] as const)(
         go.release();
         await ending.letGo();
       }
-      expect({ outcome: await acting, left: await left(act, person), removed }).toEqual({
+      expect({
+        outcome: await acting,
+        left: await left(act, person, asked.presented.subject),
+        removed,
+      }).toEqual({
         outcome: 'failed',
         left: { ...before, applied: 0 },
         removed: [],

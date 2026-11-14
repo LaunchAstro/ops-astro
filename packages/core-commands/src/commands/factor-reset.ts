@@ -181,9 +181,10 @@ async function outranks(tx: TenantQuery, personId: string, callerId: string): Pr
 }
 
 /**
- * The member's verified factor and the one sign-in login that holds it, the
- * login's subject locked first (`liveFactor`). None or several logins, or a
- * login live in another business, is refused in the one set of words.
+ * The member's verified factor and the one sign-in login that holds it, found
+ * and locked by that login's subject (`liveFactor`), never the caller's. None
+ * or several logins, or a login live in another business, is refused in the
+ * one set of words.
  */
 async function heldFactor(
   tx: TenantQuery,
@@ -205,7 +206,7 @@ async function heldFactor(
   );
   const login = logins.length === 1 ? logins[0] : undefined;
   if (login === undefined) return resetRefused();
-  const factor = await liveFactor(tx, personId, { lock: login.subject });
+  const factor = await liveFactor(tx, personId, login.subject, { lock: true });
   if (factor?.status !== 'verified') {
     return refused(refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES));
   }

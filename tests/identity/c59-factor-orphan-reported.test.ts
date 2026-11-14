@@ -47,6 +47,7 @@ describe.skipIf(serverUrl === undefined)(
       await db.app.withBusiness(alpha, (tx) =>
         recordFactorEnrolled(tx, {
           personId: alphaPerson,
+          subject,
           provider: 'supabase',
           providerFactorId: `factor-${randomUUID()}`,
         }),
@@ -99,6 +100,7 @@ describe.skipIf(serverUrl === undefined)(
           await recordFactorRemoved(tx, { personId: person, factorId: f.id, subject });
           await recordFactorEnrolled(tx, {
             personId: person,
+            subject,
             provider: 'supabase',
             providerFactorId: `factor-${randomUUID()}`,
           });
