@@ -72,7 +72,9 @@ secret by name.
    Use it for the first daylight start, before any publish.
 
 5. **The build.** A deployed main build at a released commit, never a lane
-   checkout. Fill the `@…@` values in `deploy/m5/ops-astro-site-runner.plist`
+   checkout. The review captures need Playwright's pinned headless shell in
+   that build: `pnpm exec playwright install --only-shell chromium`. Without
+   it each capture fails `CAPTURE_FAILED` and the corrections run as before. Fill the `@…@` values in `deploy/m5/ops-astro-site-runner.plist`
    and copy it to `~/Library/LaunchAgents/`.
 6. **Start (the owner's daylight go).**
    `launchctl bootstrap gui/501 ~/Library/LaunchAgents/ops-astro-site-runner.plist`.
