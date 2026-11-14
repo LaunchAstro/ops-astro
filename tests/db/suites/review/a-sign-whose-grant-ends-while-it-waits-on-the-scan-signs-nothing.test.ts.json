@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 sign: a playback sign whose review grant ends while it waits on the asset lock of a landing scan answers NOT_FOUND and asks the store to sign nothing."
+}

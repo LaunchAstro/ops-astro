@@ -108,3 +108,34 @@ describe.skipIf(serverUrl === undefined)('C73 a hostile answer the store could n
     expect(await state()).toBe('abandoned');
   });
 });
+
+// Sol round 1 on #2484: an MP4 whose own box points past the object's end is the file's fault,
+// not the store's. The contract asks no range outside the object and refuses the asset as
+// unreadable, keeping its revision, rather than calling the store hostile.
+describe.skipIf(serverUrl === undefined)('C73 a probe that points past the object', () => {
+  it('C73 a timecode sample past the object asks the store nothing outside it and is unreadable', async () => {
+    const own = mediaStoreDouble(1024 * 1024);
+    const calls = mediaCalls(w, own);
+    const body = mp4Of({
+      codec: 'avc1',
+      timescale: 25,
+      delta: 1,
+      frames: 10,
+      timecode: { nominal: 25, dropFrame: false, start: 0 },
+    });
+    const stco = Buffer.from(body).indexOf('stco');
+    if (stco < 0) throw new Error('the render carries a timecode chunk offset');
+    new DataView(body.buffer, body.byteOffset).setUint32(stco + 12, 1_000_000);
+
+    const outside = await calls.upload(w.ava, w.taskA, renderOf(body), body);
+    expect(outside.completed).toMatchObject({
+      admission: { verdict: 'refused', refusal: 'PROBE_UNREADABLE' },
+    });
+    expect(own.ranges.length).toBeGreaterThan(0);
+    expect(
+      own.ranges.filter(
+        (range) => range.length === 0 || range.from + range.length > body.byteLength,
+      ),
+    ).toStrictEqual([]);
+  });
+});
