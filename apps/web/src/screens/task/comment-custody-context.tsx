@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
+import { useReportWrite } from '../../records/page-writes.ts';
 import { tabOwnerGeneration, type StorageLike } from '../../session/token.ts';
 import { CommentCustody } from './comment-custody.ts';
 import { HeldComments } from './held-operations.ts';
@@ -55,5 +56,7 @@ export function useCommentCustody(
     () => own.snapshot(id),
     () => own.snapshot(id),
   );
+  // A comment sending is a write in flight on the page (#2359).
+  useReportWrite(hold.pending !== null || hold.busy);
   return { custody: own, hold };
 }
