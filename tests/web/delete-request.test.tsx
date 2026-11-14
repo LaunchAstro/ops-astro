@@ -122,41 +122,49 @@ it('the task page shows the request its read carries, and nothing without one', 
   expect(plain.find('[data-delete-request]')).toBeNull();
 });
 
+const EXECUTION = {
+  ok: true,
+  execution: {
+    taskId: TASK_ID,
+    outcome: 'no-run',
+    sourceRevision: 0,
+    complete: true,
+    next: null,
+    runs: [],
+    events: [],
+  },
+};
+const SETTLED = { ok: true, recordId: TASK_ID, revision: 5, detail: {} };
+
 /**
  * The real task page over a server that answers `task.read` from a queue (the
  * last answer repeats) and Keep or Confirm with `answer`, counting reads.
  */
-async function livePage(reads: readonly unknown[], answer: { body: unknown; status: number }) {
+async function livePage(
+  reads: readonly unknown[],
+  answer: { body: unknown; status: number },
+  held: string | null = null,
+) {
   const sent: string[] = [];
   let read = 0;
+  const waiting: (() => void)[] = [];
   const fetch = ((url: string | URL) => {
     const at = String(url);
     const name = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
     sent.push(name);
     if (name === 'person.list') return Promise.resolve(json({ ok: true, persons: [] }, 200));
-    if (name === 'task.execution') {
-      return Promise.resolve(
-        json(
-          {
-            ok: true,
-            execution: {
-              taskId: TASK_ID,
-              outcome: 'no-run',
-              sourceRevision: 0,
-              complete: true,
-              next: null,
-              runs: [],
-              events: [],
-            },
-          },
-          200,
-        ),
-      );
-    }
+    if (name === 'task.execution') return Promise.resolve(json(EXECUTION, 200));
     if (name === 'task.read') {
       const body = reads[Math.min(read, reads.length - 1)];
       read += 1;
       return Promise.resolve(json({ ok: true, task: body }, 200));
+    }
+    if (name === held) {
+      return new Promise<Response>((resolve) => {
+        waiting.push(() => {
+          resolve(json(SETTLED, 200));
+        });
+      });
     }
     return Promise.resolve(json(answer.body, answer.status));
   }) as unknown as typeof globalThis.fetch;
@@ -165,7 +173,7 @@ async function livePage(reads: readonly unknown[], answer: { body: unknown; stat
     <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
   );
   await tick();
-  return { view, sent, reads: () => read };
+  return { view, sent, reads: () => read, release: () => waiting.splice(0).forEach((go) => go()) };
 }
 
 const buttons = (view: Awaited<ReturnType<typeof mount>>): readonly boolean[] =>
@@ -211,4 +219,24 @@ it('an answer that loses a race to another write is refused stale and quoted (S2
   await tick();
   expect(view.find('[data-delete-request-refused]')?.textContent).toContain('Read it again');
   expect(answered.count).toBe(0);
+});
+
+it('the task page holds the answers while another control’s write is in flight (S2405-1)', async () => {
+  const mine = [{ agentId: 'd-mine-2', name: 'Inbox triage' }];
+  const { view, sent, release } = await livePage(
+    [task({ deleteRequest: REQUEST, myAgents: mine })],
+    APPLIED,
+    'task.assign',
+  );
+  expect(buttons(view)).toStrictEqual([false, false]);
+  await view.choose('#page-assign-ai', 'd-mine-2');
+  await tick();
+  expect(sent).toContain('task.assign');
+  expect(buttons(view), 'held while the assignment is in flight').toStrictEqual([true, true]);
+  await view.click('[data-act="confirm-delete"] button');
+  await tick();
+  expect(sent).not.toContain('task.confirm_delete');
+  release();
+  await tick();
+  expect(buttons(view), 'free once it settles').toStrictEqual([false, false]);
 });
