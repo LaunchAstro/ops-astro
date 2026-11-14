@@ -9,25 +9,14 @@
 import { afterEach, expect, it } from 'vitest';
 import { DeleteRequest } from '../../apps/web/src/screens/task/DeleteRequest.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
-import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
+import { json, mount, unmountAll } from './perspective-support.tsx';
 import { TASK_ID, found, page as taskPage, task, tick } from './task-page-stub.tsx';
-import { ScoresCustodyProvider } from '../../apps/web/src/screens/task/scores-custody-context.tsx';
-import { chooseHouse } from './p08-rank-marks-select-support.tsx';
+import { APPLIED, REQUEST, buttons, livePage } from './delete-request-support.tsx';
 
 interface Sent {
   readonly command: string;
   readonly body: Readonly<Record<string, unknown>>;
 }
-
-const REQUEST = {
-  id: '6a1f6d2e-0d7b-4c3e-9a51-2f4b8c9d0e11',
-  reason: 'It was a test task.',
-  byAgent: true,
-  requestedBy: 'Hermes',
-  requestedAt: '2026-11-01T00:00:00.000Z',
-  expiresAt: '2026-11-08T00:00:00.000Z',
-};
 
 async function page(
   answer: { readonly body: unknown; readonly status: number },
@@ -56,8 +45,6 @@ async function page(
   );
   return { view, sent, answered };
 }
-
-const APPLIED = { body: { ok: true, recordId: TASK_ID, revision: 8, detail: {} }, status: 200 };
 
 afterEach(unmountAll);
 
@@ -123,76 +110,6 @@ it('the task page shows the request its read carries, and nothing without one', 
   const plain = await taskPage('Proj-Verity-Pacing', found({ deleteRequest: null }));
   expect(plain.find('[data-delete-request]')).toBeNull();
 });
-
-const EXECUTION = {
-  ok: true,
-  execution: {
-    taskId: TASK_ID,
-    outcome: 'no-run',
-    sourceRevision: 0,
-    complete: true,
-    next: null,
-    runs: [],
-    events: [],
-  },
-};
-const SETTLED = { ok: true, recordId: TASK_ID, revision: 5, detail: {} };
-
-/**
- * The real task page over a server that answers `task.read` from a queue (the
- * last answer repeats) and Keep or Confirm with `answer`, counting reads.
- */
-async function livePage(
-  reads: readonly unknown[],
-  answer: { body: unknown; status: number },
-  held: string | null = null,
-) {
-  const sent: string[] = [];
-  let read = 0;
-  const waiting: (() => void)[] = [];
-  const fetch = ((url: string | URL) => {
-    const at = String(url);
-    const name = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
-    sent.push(name);
-    if (name === 'person.list') return Promise.resolve(json({ ok: true, persons: [] }, 200));
-    if (name === 'task.execution') return Promise.resolve(json(EXECUTION, 200));
-    if (name === 'task.read') {
-      const body = reads[Math.min(read, reads.length - 1)];
-      read += 1;
-      return Promise.resolve(json({ ok: true, task: body }, 200));
-    }
-    if (name === held) {
-      return new Promise<Response>((resolve) => {
-        waiting.push(() => {
-          resolve(json(SETTLED, 200));
-        });
-      });
-    }
-    return Promise.resolve(json(answer.body, answer.status));
-  }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
-  // The app's own scores owner over this tab's storage, so the page's score fields work as in the app.
-  const kept = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => kept.get(key) ?? null,
-    setItem: (key: string, value: string) => void kept.set(key, value),
-    removeItem: (key: string) => void kept.delete(key),
-  };
-  const view = await mount(
-    <ScoresCustodyProvider client={client} grantKey="alpha:member" storage={storage}>
-      <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />
-    </ScoresCustodyProvider>,
-  );
-  await tick();
-  return { view, sent, reads: () => read, release: () => waiting.splice(0).forEach((go) => go()) };
-}
-
-const buttons = (view: Awaited<ReturnType<typeof mount>>): readonly boolean[] =>
-  ['confirm-delete', 'keep'].map(
-    (act) =>
-      (view.find(`[data-act="${act}"] button`) as HTMLButtonElement | null)?.disabled ?? true,
-  );
-
 it('the task page holds the answers while the page has an unsaved edit (S2405-2)', async () => {
   const { view, sent } = await livePage([task({ deleteRequest: REQUEST })], APPLIED);
   expect(buttons(view)).toStrictEqual([false, false]);
@@ -231,81 +148,3 @@ it('an answer that loses a race to another write is refused stale and quoted (S2
   expect(view.find('[data-delete-request-refused]')?.textContent).toContain('Read it again');
   expect(answered.count).toBe(0);
 });
-
-it('the task page holds the answers while another control’s write is in flight (S2405-1)', async () => {
-  const mine = [{ agentId: 'd-mine-2', name: 'Inbox triage' }];
-  const { view, sent, release } = await livePage(
-    [task({ deleteRequest: REQUEST, myAgents: mine })],
-    APPLIED,
-    'task.assign',
-  );
-  expect(buttons(view)).toStrictEqual([false, false]);
-  await view.choose('#page-assign-ai', 'd-mine-2');
-  await tick();
-  expect(sent).toContain('task.assign');
-  expect(buttons(view), 'held while the assignment is in flight').toStrictEqual([true, true]);
-  await view.click('[data-act="confirm-delete"] button');
-  await tick();
-  expect(sent).not.toContain('task.confirm_delete');
-  release();
-  await tick();
-  expect(buttons(view), 'free once it settles').toStrictEqual([false, false]);
-});
-
-const AGENT = {
-  agent: {
-    agentId: 'a-1',
-    name: 'Reply drafter',
-    owner: { personId: 'p-ada', name: 'Ada' },
-    live: false,
-    run: null,
-  },
-  myAgents: [],
-};
-
-it.each([
-  [
-    'task.comment',
-    {},
-    async (view: Awaited<ReturnType<typeof mount>>) => {
-      await typeInto(view, '#comment-body', 'A note while the request waits.');
-      await view.click('[data-comment="post"]');
-    },
-  ],
-  [
-    'task.launch',
-    AGENT,
-    async (view: Awaited<ReturnType<typeof mount>>) => {
-      await view.click('[data-launch-run]');
-    },
-  ],
-  [
-    'task.set_scores',
-    { scores: { impact: 7, confidence: 9, ease: 8 } },
-    async (view: Awaited<ReturnType<typeof mount>>) => {
-      const trigger = view.host.querySelector<HTMLButtonElement>('#page-score-impact button');
-      if (trigger === null) throw new Error('no page score editor for impact');
-      await chooseHouse(trigger, '5');
-    },
-  ],
-] as const)(
-  'the task page holds the answers while %s is in flight (Sol r3 coverage)',
-  async (command, over, write) => {
-    const { view, sent, release } = await livePage(
-      [task({ deleteRequest: REQUEST, ...over })],
-      APPLIED,
-      command,
-    );
-    expect(buttons(view)).toStrictEqual([false, false]);
-    await write(view);
-    await tick();
-    expect(sent, JSON.stringify(sent)).toContain(command);
-    expect(buttons(view), `held while ${command} is in flight`).toStrictEqual([true, true]);
-    await view.click('[data-act="confirm-delete"] button');
-    await tick();
-    expect(sent).not.toContain('task.confirm_delete');
-    release();
-    await tick();
-    expect(buttons(view), 'free once it settles').toStrictEqual([false, false]);
-  },
-);
