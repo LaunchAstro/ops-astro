@@ -5,7 +5,7 @@
 // re-reads. Projects.tsx draws the board through `RecordState` without
 // `keep`, so every re-read (`begin()` publishes loading) draws the loading
 // line in place of the board and unmounts it. The remounted board opens again
-// on the viewer preset and drops whatever the person had open: a Clear all
+// on its first address and drops whatever the person had open: a Clear all
 // comes undone after an edit, and a rename draft is lost under a live change.
 // Fixed when the board's `RecordState` keeps the last answer drawn while its
 // re-read is in flight (`keep`, as the inbox does).
@@ -152,10 +152,12 @@ const open = async (answers: Server): Promise<Mounted> => {
 };
 
 describe('REVIEW-2C1-20 the Projects board stays mounted while it re-reads: Clear all', () => {
-  it('REVIEW-2C1-20: an edit after Clear all re-reads the board, and the remounted board reopens on the viewer preset, hiding the row just edited', async () => {
+  it('REVIEW-2C1-20: an edit after Clear all re-reads the board, and the remounted board drops the cleared view, hiding the row just edited', async () => {
     const answers = server();
     mounted = await open(answers);
-    // Opens on the viewer preset: Ada's row only.
+    // Opens on All tasks (#2347); the viewer's chip narrows to Ada's row only.
+    await mounted.click('.cbd__preset--viewer');
+    await settleAll();
     expect(mounted.find(`${ROW(THEIRS)}`)).toBeNull();
     await mounted.click('button.cbd__clear');
     await settleAll();

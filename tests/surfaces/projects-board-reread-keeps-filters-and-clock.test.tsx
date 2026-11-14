@@ -52,7 +52,6 @@ it('a reread that drops the last row of an active filter shows no task, and keep
       stages={[]}
       href={(one) => `/tasks/${one.id}`}
       address={new URLSearchParams({ f: viewerFacetId(ben.id) }).toString()}
-      viewerOn={false}
       now={new Date(2026, 9, 4)}
       width={1400}
       viewport={1480}
@@ -81,7 +80,6 @@ const clockBoard = (rows: readonly ProjectRow[], changedAt: string) => (
     stages={[]}
     href={(one) => `/tasks/${one.id}`}
     address={new URLSearchParams({ f: 'due:overdue' }).toString()}
-    viewerOn={false}
     changedAt={changedAt}
     width={1400}
     viewport={1480}
@@ -110,7 +108,6 @@ it('Review still drops a held assignee filter', async () => {
       stages={[]}
       href={(one) => `/tasks/${one.id}`}
       address={new URLSearchParams({ f: viewerFacetId(ben.id) }).toString()}
-      viewerOn={false}
       now={new Date(2026, 9, 4)}
       width={1400}
       viewport={1480}

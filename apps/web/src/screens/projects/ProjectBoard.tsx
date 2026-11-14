@@ -248,12 +248,6 @@ function ProjectBoardRead(
               changedAt={admitted ? (answer.changedAt ?? null) : null}
               stages={STAGES}
               viewer={admitted ? (answer.viewer ?? null) : null}
-              viewerOn={
-                !scopedView &&
-                !rows.some(
-                  (task) => task.id === props.scope.target || task.key === props.scope.target,
-                )
-              }
               {...(answer.owed === undefined ? {} : { owed: admitted ? answer.owed : 0 })}
               href={(row) => pathTo('agency:task-detail', { key: row.key })}
               actions={rowActions({

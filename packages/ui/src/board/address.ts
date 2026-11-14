@@ -47,12 +47,7 @@ function queryParam(search: string, name: string): string | null {
   return null;
 }
 
-/**
- * The address for a view. `f` is always written, empty when no filter is on,
- * so a reload after Clear all or a mode that dropped the viewer's filter keeps
- * none on: only an address with no `f` at all opens on the viewer preset
- * (REVIEW-2C1-5, `openWithViewer`).
- */
+/** The address for a view. `f` is always written, empty when no filter is on. */
 export function writeView(view: BoardView): string {
   const params = new URLSearchParams();
   params.set('f', view.ids.join(','));

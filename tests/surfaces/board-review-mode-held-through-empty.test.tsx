@@ -39,7 +39,6 @@ const board = (rows: readonly ProjectRow[]) => (
     stages={[]}
     href={(one) => `/tasks/${one.id}`}
     address="f="
-    viewerOn={false}
     now={new Date(2026, 9, 4)}
     width={1400}
     viewport={1480}
