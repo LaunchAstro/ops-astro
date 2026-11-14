@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentCall, Answer } from '../../apps/site-runner/claims.ts';
 import { passes, passFor } from '../../apps/site-runner/main.ts';
 import { reviewCaptures } from '../../apps/site-runner/review-captures.ts';
-import { AGENCY_POOL, PAGE, publicResolver, replay } from './c35-runner-world.ts';
+import { AGENCY_POOL, PAGE, publicResolver, replay } from './c35-runner-site.ts';
 
 afterEach(() => vi.restoreAllMocks());
 

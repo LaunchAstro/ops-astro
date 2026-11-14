@@ -12,7 +12,7 @@ import type { AgentCall, Answer } from '../../apps/site-runner/claims.ts';
 import { passFor } from '../../apps/site-runner/main.ts';
 import { CAPTURE_PURPOSE, reviewCaptures } from '../../apps/site-runner/review-captures.ts';
 import type { PictureBrowser } from '../../packages/core-connectors/src/index.ts';
-import { AGENCY_POOL, PAGE, publicResolver, replay } from './c35-runner-world.ts';
+import { AGENCY_POOL, PAGE, publicResolver, replay } from './c35-runner-site.ts';
 
 const REVISION = '5f0e8a8e-6f0c-4d8e-9a55-3c1d2b4a6e70';
 const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);

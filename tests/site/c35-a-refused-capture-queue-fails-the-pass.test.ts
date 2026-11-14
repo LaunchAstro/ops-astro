@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentCall, Answer } from '../../apps/site-runner/claims.ts';
 import { passes, passFor } from '../../apps/site-runner/main.ts';
 import { reviewCaptures } from '../../apps/site-runner/review-captures.ts';
-import { AGENCY_POOL, publicResolver, replay } from './c35-runner-world.ts';
+import { AGENCY_POOL, publicResolver, replay } from './c35-runner-site.ts';
 
 const PASSWORD = 'fixture-canary-password-6c21d8';
 

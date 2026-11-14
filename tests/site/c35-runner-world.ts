@@ -13,61 +13,14 @@ import {
   type Captured,
   type SizedBrowser,
 } from '../../apps/site-runner/review-captures.ts';
-import type {
-  CapturePool,
-  Transport,
-  TransportAnswer,
-  TransportRequest,
-} from '../../packages/core-connectors/src/index.ts';
+import type { CapturePool, Transport } from '../../packages/core-connectors/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { PAGE, type C35World, type Reviewed } from '../review/c35-world.ts';
-import { CSS, PAGE as PAGE_HTML, publicResolver } from './c80-picture-world.ts';
+import type { C35World, Reviewed } from '../review/c35-world.ts';
+import { AGENCY_POOL, PAGE, SHEET, publicResolver, replay } from './c35-runner-site.ts';
 
-export { PAGE, publicResolver };
-
-/** The agency's about page and its stylesheet, as the replay serves them. */
-export const SHEET: string = new URL('/_astro/site.css', PAGE).href;
-
-/** The fence's pool on the agency's own site: its about page alone. */
-export const AGENCY_POOL: CapturePool = {
-  agencyPages: [PAGE],
-  otherPages: [],
-  closedPoolReviews: [],
-};
-
-const answer = (type: string, body: string): TransportAnswer => ({
-  kind: 'answer',
-  status: 200,
-  headers: { 'content-type': type },
-  body: new TextEncoder().encode(body),
-});
-
-const MISSING: TransportAnswer = {
-  kind: 'answer',
-  status: 404,
-  headers: {},
-  body: new Uint8Array(),
-};
-
-/** The agency's about page and its stylesheet, as the replay serves them unless told otherwise. */
-const ABOUT_SITE: Readonly<Record<string, TransportAnswer>> = {
-  [PAGE]: answer('text/html; charset=utf-8', PAGE_HTML),
-  [SHEET]: answer('text/css', CSS),
-};
-
-/** The replay site: every request it is asked, and the pages it serves. */
-export function replay(
-  pages: Readonly<Record<string, TransportAnswer>> = ABOUT_SITE,
-): Transport & { readonly asked: TransportRequest[] } {
-  const asked: TransportRequest[] = [];
-  const transport = (request: TransportRequest) => {
-    asked.push(request);
-    return Promise.resolve(pages[request.url.href] ?? MISSING);
-  };
-  return Object.assign(transport, { asked });
-}
+export { AGENCY_POOL, PAGE, SHEET, publicResolver, replay };
 
 const need = (result: CommandResult, what: string): Record<string, unknown> => {
   if (isCommandRefusal(result)) throw new Error(`c35 runner world: ${what} refused ${result.code}`);
