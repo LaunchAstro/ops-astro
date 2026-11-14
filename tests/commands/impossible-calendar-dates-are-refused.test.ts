@@ -8,7 +8,7 @@
 // one asked for.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
@@ -85,30 +85,58 @@ it.skipIf(serverUrl === undefined)('an incident found on a real day is recorded'
   expect(answerOf(await send(incident('2026-02-28T09:00:00Z')))).toBe('applied');
 });
 
-/** Day 31 of the next month that has 30 days, a day no calendar has, within the credential limit. */
-function thirtyFirstOfAShortMonth(): string {
+const DAY_MS = 86_400_000;
+
+/**
+ * Day 31 of the next month that has 30 days, a day no calendar has, at least
+ * two days ahead so its day 30 has not passed either.
+ */
+function thirtyFirstOfAShortMonth(): { readonly missing: string; readonly real: string } {
   const at = new Date();
-  for (let ahead = 1; ahead <= 3; ahead += 1) {
+  for (let ahead = 0; ; ahead += 1) {
     const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + ahead, 1));
     const last = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0));
-    if (last.getUTCDate() === 30) {
-      const mm = String(month.getUTCMonth() + 1).padStart(2, '0');
-      return `${month.getUTCFullYear()}-${mm}-31T00:00:00Z`;
+    const day = `${String(month.getUTCFullYear())}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (last.getUTCDate() === 30 && last.getTime() > at.getTime() + DAY_MS) {
+      return { missing: `${day}-31T00:00:00Z`, real: `${day}-30T00:00:00Z` };
     }
   }
-  throw new Error('no 30-day month in the next three');
 }
+
+/**
+ * Runs `act` with the command's clock moved so `day` is ten days out, well
+ * inside the credential limit, so a refusal is the missing day's and never
+ * the limit's. Only `Date.now()` moves, by one fixed amount; the database's
+ * clock does not.
+ */
+async function tenDaysBefore<T>(day: string, act: () => Promise<T>): Promise<T> {
+  const offset = Date.parse(day) - 10 * DAY_MS - Date.now();
+  const real = Date.now.bind(Date);
+  const moved = vi.spyOn(Date, 'now').mockImplementation(() => real() + offset);
+  try {
+    return await act();
+  } finally {
+    moved.mockRestore();
+  }
+}
+
+const issue = (expiresAt: string) => ({
+  command: 'credential.issue',
+  operationId: randomUUID(),
+  scope: [{ collection: 'task', action: 'write' }],
+  purpose: 'expires on a day that is not there',
+  expiresAt,
+});
 
 it.skipIf(serverUrl === undefined)(
   'a credential asked to expire on a day the month does not have is refused',
   async () => {
-    const answer = await send({
-      command: 'credential.issue',
-      operationId: randomUUID(),
-      scope: [{ collection: 'task', action: 'write' }],
-      purpose: 'expires on a day that is not there',
-      expiresAt: thirtyFirstOfAShortMonth(),
-    });
+    const { missing, real } = thirtyFirstOfAShortMonth();
+    // The month's own last day, as far out on the same clock, is accepted.
+    expect(answerOf(await tenDaysBefore(missing, async () => await send(issue(real))))).toBe(
+      'applied',
+    );
+    const answer = await tenDaysBefore(missing, async () => await send(issue(missing)));
     expect(answerOf(answer)).toStrictEqual({ code: 'FIELD_VALUE_INVALID', names: ['expiresAt'] });
   },
 );
