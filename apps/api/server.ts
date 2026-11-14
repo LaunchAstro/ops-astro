@@ -309,7 +309,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
       notificationQueue = row?.usage ?? null;
       reachable = true;
     } catch (cause) {
-      detail = cause instanceof Error ? cause.message : 'unknown';
+      // Anyone may ask, so the answer is one fixed sentence; the cause goes to
+      // this API's own log by its bounded code, never its words (#1326).
+      detail = 'The database did not answer.';
+      console.error(`api: health: the database did not answer (${faultCode(cause)})`);
     }
     return context.json(
       {
