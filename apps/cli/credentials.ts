@@ -88,9 +88,17 @@ export function saveUnlessSignedOut(
   });
 }
 
-/** Logout: a new epoch, then each file removed. Answers the files it could not remove, and why. */
-export function signOut(bearerFile: string, files: readonly string[]): readonly string[] {
+/**
+ * Logout: under the lock, the bearer as it stands, a new epoch, then each file removed.
+ * Answers that bearer (the one whose session the server should end, never an earlier
+ * one read outside the lock) and the files it could not remove, and why.
+ */
+export function signOut(
+  bearerFile: string,
+  files: readonly string[],
+): { readonly bearer: string | undefined; readonly failed: readonly string[] } {
   return underLock(bearerFile, () => {
+    const bearer = readOptional(bearerFile);
     publishSecret(`${bearerFile}.epoch`, randomBytes(16).toString('hex'));
     const failed: string[] = [];
     for (const file of files) {
@@ -100,7 +108,7 @@ export function signOut(bearerFile: string, files: readonly string[]): readonly 
         failed.push(`${file}: ${(cause as Error).message}`);
       }
     }
-    return failed;
+    return { bearer, failed };
   });
 }
 

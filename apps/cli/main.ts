@@ -502,14 +502,15 @@ export async function main(argv: readonly string[], env: Environment, given: Io)
     if (verb === 'login') return await login(parsed, env, io, connectionOf(parsed.flags, env));
     if (verb === 'logout') {
       const { api, tokenFile, delegationFile } = connectionOf(parsed.flags, env);
-      // The bearer is read before the files go, and the session is then ended at the
-      // server with it (#2425): a server that never answers cannot keep the token on disk.
-      const bearer = readOptional(tokenFile);
+      // The bearer is read under the lock that removes it (S2444-1), and its session is
+      // then ended at the server (#2425): a server that never answers cannot keep it on disk.
       let failed: readonly string[];
+      let bearer: string | undefined;
       try {
-        failed = signOut(tokenFile, [tokenFile, delegationFile]);
+        ({ bearer, failed } = signOut(tokenFile, [tokenFile, delegationFile]));
       } catch (cause) {
         if (cause instanceof CredentialsBusy) throw cause;
+        bearer = undefined;
         failed = [`${tokenFile}: ${(cause as Error).message}`];
       }
       const business = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
