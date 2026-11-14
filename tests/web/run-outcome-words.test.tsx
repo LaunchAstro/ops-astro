@@ -53,8 +53,9 @@ const executionOf = (stop: Stop) => ({
           endCode: stop.endCode,
         },
       },
-      ...(stop.restarted !== undefined
-        ? [
+      ...(stop.restarted === undefined
+        ? []
+        : [
             {
               runId: '88888888-8888-4888-8888-888888888888',
               lineageId: '99999999-9999-4999-8999-999999999999',
@@ -64,8 +65,7 @@ const executionOf = (stop: Stop) => ({
               createdAt: '2026-11-14T11:00:00Z',
               runOutcome: null,
             },
-          ]
-        : []),
+          ]),
     ],
   },
 });
@@ -191,6 +191,13 @@ describe('Restart after a stop', () => {
     expect(view.find('[data-run-restart]')).toBeNull();
   });
 
+  it('a finished run offers no restart', async () => {
+    const { view } = await opened({ outcome: 'success', endCode: 'COMPLETED' });
+    expect(view.find('[data-run-restart]')).toBeNull();
+  });
+});
+
+describe('an older stopped run beside a newer run', () => {
   // #2473: the older run stays `claimed` after its stop, so it must not make the newer
   // run, only planned, read as running.
   it('an older stopped run beside a newer planned run reads queued, not running', async () => {
@@ -202,11 +209,6 @@ describe('Restart after a stop', () => {
     expect(line()).toContain('Engine work · queued');
     expect(line()).not.toContain('running');
     expect(line()).not.toContain(SIGN_IN_WORDS);
-    expect(view.find('[data-run-restart]')).toBeNull();
-  });
-
-  it('a finished run offers no restart', async () => {
-    const { view } = await opened({ outcome: 'success', endCode: 'COMPLETED' });
     expect(view.find('[data-run-restart]')).toBeNull();
   });
 });

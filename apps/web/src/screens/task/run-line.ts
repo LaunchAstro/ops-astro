@@ -42,7 +42,6 @@ export function runLineOf(
   if (read.outcome === 'denied') return unknown('The server withheld run status.');
   const execution = completedExecution(read, taskId);
   if (execution === null) return unknown();
-
   const states = execution.runs.map((run) => run.state);
   const unfamiliar = states.find(
     (state) =>
@@ -53,11 +52,7 @@ export function runLineOf(
   // `claimed` (`retireAttempt`), so the state alone would still read as running (#1719).
   const stopped = stoppedLine(execution);
   if (stopped !== null) return stopped;
-  // A run with a stored stop is not live whatever its state, so an older stopped run left
-  // `claimed` does not make a newer planned run read as running (#2473).
-  const live = new Set(
-    execution.runs.filter((run) => (run.runOutcome ?? null) === null).map((run) => run.state),
-  );
+  const live = liveStates(execution);
   const attempts = proposals
     ?.flatMap((proposal) => proposal.reservations)
     .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
@@ -87,6 +82,16 @@ export function runLineOf(
         ? 'Engine work was handed back.'
         : 'Every run on this task has finished.',
   };
+}
+
+/**
+ * The states of the runs with no stored stop. A stopped run is not live whatever its state, so an
+ * older run its stop left `claimed` does not make a newer planned run read as running (#2473).
+ */
+function liveStates(execution: TaskExecution): ReadonlySet<string> {
+  return new Set(
+    execution.runs.filter((run) => (run.runOutcome ?? null) === null).map((run) => run.state),
+  );
 }
 
 /**
