@@ -81,12 +81,7 @@ export async function readCoveredReview(
     digest: revision.digest,
     captures: captures.get(revision.id) ?? [],
   }));
-  const notes = await notesOf(
-    tx,
-    { reviewId, taskId: review.task_id },
-    revisions,
-    views.at(-1) ?? null,
-  );
+  const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
     reviewId,
@@ -106,12 +101,12 @@ export async function readCoveredReview(
 async function notesOf(
   tx: TenantQuery,
   held: { readonly reviewId: string; readonly taskId: string },
-  revisions: readonly { readonly id: string }[],
-  latest: RevisionView | null,
+  views: readonly RevisionView[],
 ): Promise<Pick<ReviewView, 'pins' | 'carried' | 'carryDue'>> {
+  const read = views.map((view) => ({ id: view.revisionId }));
   return {
-    pins: await readPins(tx, held.taskId, revisions),
-    ...(await readCarried(tx, held, latest)),
+    pins: await readPins(tx, held.taskId, read),
+    ...(await readCarried(tx, held, views.at(-1) ?? null)),
   };
 }
 
