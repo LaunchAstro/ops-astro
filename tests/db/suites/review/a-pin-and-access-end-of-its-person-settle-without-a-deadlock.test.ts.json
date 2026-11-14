@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2402: a pin holds its covering grants before its task, the order access.end takes them, so a pin and access.end of the same person crossing at the task lock both finish with no 40P01."
+}
