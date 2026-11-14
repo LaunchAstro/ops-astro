@@ -32,7 +32,7 @@ import type { AgentCall } from './agent-call.ts';
 import { readTaskSpine, type CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { applied, isRefused, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, isRefused, refused, type HandlerOutcome, type JudgedLast } from './outcome.ts';
 import { createTask } from './tasks-write.ts';
 
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
@@ -73,8 +73,24 @@ interface Maker {
   readonly entryPoint: EntryPoint;
 }
 
-const made = (held: { readonly id: string }, taskId: string, revision: number | null) =>
-  applied(taskId, revision, { changeRequestId: held.id, taskId });
+/**
+ * The task made, or the one already made, judged once more after the agent path's last waits
+ * on its actor, login and audit chain (`agent-standing.ts`): the lease, its delegation and the
+ * person's grants held again, so one that lapsed there answers no task and rolls back any made.
+ */
+const made = (
+  tx: TenantQuery,
+  at: LeaseAt,
+  held: { readonly id: string },
+  taskId: string,
+  revision: number | null,
+) => ({
+  ...applied(taskId, revision, { changeRequestId: held.id, taskId }),
+  lastCheck: async () => {
+    const after = await holdApprovedChange(tx, at, held.id);
+    return after.ok ? undefined : REFUSALS[after.code];
+  },
+});
 
 async function makeTask(
   tx: TenantQuery,
@@ -82,7 +98,7 @@ async function makeTask(
   at: LeaseAt,
   held: Extract<HeldChange, { pending: true }>,
   operationId: string,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const context: CommandContext = {
     ...maker,
     spine: await readTaskSpine(tx),
@@ -105,14 +121,7 @@ async function makeTask(
   if (!still.ok) return refused(REFUSALS[still.code]);
   const taskId = String(created.recordId);
   await linkChangeTask(tx, held.id, taskId);
-  // The agent path waits on its actor, login and audit chain after this returns (its last waits,
-  // `agent-standing.ts`), so the lease, its delegation and the person's grants are judged once
-  // more after them: a lapsed one rolls the task and its link back.
-  const lastCheck = async () => {
-    const after = await holdApprovedChange(tx, at, held.id);
-    return after.ok ? undefined : REFUSALS[after.code];
-  };
-  return { ...made(held, taskId, created.revision), lastCheck };
+  return made(tx, at, held, taskId, created.revision);
 }
 
 /** The one path: the request held under the lease, then its task made or the one already made. */
@@ -120,7 +129,7 @@ export async function makeChangeTask(
   tx: TenantQuery,
   maker: Maker,
   request: MakeChangeTask,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const { leaseId, fence, changeRequestId } = request;
   // An id left out is the caller's to send; a malformed one names nothing, as a fabricated one.
   if (typeof changeRequestId !== 'string') return refused(MISSING_REQUEST);
@@ -136,7 +145,7 @@ export async function makeChangeTask(
   const held = await holdApprovedChange(tx, at, changeRequestId.toLowerCase());
   if (!held.ok) return refused(REFUSALS[held.code]);
   const change = held.subject;
-  if (!change.pending) return made(change, change.createdTaskId, null);
+  if (!change.pending) return made(tx, at, change, change.createdTaskId, null);
   return await makeTask(tx, maker, at, change, request.operationId);
 }
 
@@ -160,7 +169,7 @@ export async function serveMakeChangeTask(
   { session, request, declaration }: AgentCall,
   _operands: object,
   delegation: Delegation,
-): Promise<HandlerOutcome> {
+): Promise<JudgedLast> {
   const maker: Maker = {
     session: {
       businessId: tx.businessId,
