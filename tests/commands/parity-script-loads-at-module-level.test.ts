@@ -23,6 +23,11 @@ interface Node {
   readonly expression?: Node;
   readonly span?: { readonly start: number };
   readonly body?: unknown;
+  readonly stmts?: unknown;
+  readonly declaration?: Node;
+  readonly declarations?: Node[];
+  readonly expressions?: unknown[];
+  readonly quasis?: { readonly cooked?: string | null }[];
 }
 
 const FUNCTIONS = new Set([
@@ -36,22 +41,36 @@ const FUNCTIONS = new Set([
   'SetterProperty',
 ]);
 
-/** Every `const NAME = '<string>'` in the file, at any depth, so `import(NAME)` resolves. */
-function constants(node: unknown, named = new Map<string, string>()): Map<string, string> {
-  if (Array.isArray(node)) {
-    for (const one of node) constants(one, named);
-    return named;
-  }
-  if (node === null || typeof node !== 'object') return named;
-  const here = node as Node;
-  if (here.type === 'VariableDeclarator') {
-    const { id, init } = here;
-    if (id?.type === 'Identifier' && init?.type === 'StringLiteral') {
-      named.set(id.value as string, init.value as string);
+/** The `const NAME = '<string>'` (or `let`, `var`) bindings a block declares itself. */
+function declared(statements: unknown): Map<string, string> {
+  const named = new Map<string, string>();
+  for (const statement of Array.isArray(statements) ? (statements as Node[]) : []) {
+    const declaration = statement.type === 'ExportDeclaration' ? statement.declaration : statement;
+    if (declaration?.type !== 'VariableDeclaration') continue;
+    for (const { id, init } of declaration.declarations ?? []) {
+      if (id?.type === 'Identifier' && init?.type === 'StringLiteral') {
+        named.set(id.value as string, init.value as string);
+      }
     }
   }
-  for (const [key, value] of Object.entries(here)) if (key !== 'span') constants(value, named);
   return named;
+}
+
+// A name resolves in the innermost block that declares it, so a same-named local in a
+// sibling test neither hides nor stands in for this one (S2468-1).
+function target(argument: Node | undefined, scopes: Map<string, string>[]): string | undefined {
+  if (argument?.type === 'StringLiteral') return argument.value as string;
+  if (argument?.type === 'TemplateLiteral' && argument.expressions?.length === 0) {
+    return argument.quasis?.[0]?.cooked ?? undefined;
+  }
+  if (argument?.type === 'Identifier') {
+    const scope = scopes.findLast((one) => one.has(argument.value as string));
+    return scope?.get(argument.value as string);
+  }
+  if (argument?.type === 'TsAsExpression' || argument?.type === 'ParenthesisExpression') {
+    return target(argument.expression, scopes);
+  }
+  return undefined;
 }
 
 /** Each dynamic import of the parity script made inside a function, by its source offset. */
@@ -61,35 +80,28 @@ function loadsInsideAFunction(source: string, file: string): number[] {
     tsx: file.endsWith('.tsx'),
     target: 'es2022',
   }) as unknown as Node;
-  const named = constants(module.body);
   const found: number[] = [];
-  const target = (argument: Node | undefined): string | undefined => {
-    if (argument?.type === 'StringLiteral') return argument.value as string;
-    if (argument?.type === 'Identifier') return named.get(argument.value as string);
-    if (argument?.type === 'TsAsExpression' || argument?.type === 'ParenthesisExpression') {
-      return target(argument.expression);
-    }
-    return undefined;
-  };
-  const walk = (node: unknown, depth: number): void => {
+  const walk = (node: unknown, depth: number, scopes: Map<string, string>[]): void => {
     if (Array.isArray(node)) {
-      for (const one of node) walk(one, depth);
+      for (const one of node) walk(one, depth, scopes);
       return;
     }
     if (node === null || typeof node !== 'object') return;
     const here = node as Node;
     const inner = FUNCTIONS.has(here.type ?? '') ? depth + 1 : depth;
+    // A block or a function body (swc's `FunctionBody`) holds its statements in `stmts`.
+    const visible = Array.isArray(here.stmts) ? [...scopes, declared(here.stmts)] : scopes;
     if (here.type === 'CallExpression' && here.callee?.type === 'Import' && depth > 0) {
-      const path = target(here.arguments?.[0]?.expression);
+      const path = target(here.arguments?.[0]?.expression, visible);
       if (path !== undefined && SCRIPT.test(path) && here.span !== undefined) {
         found.push(here.span.start);
       }
     }
     for (const [key, value] of Object.entries(here)) {
-      if (key !== 'span') walk(value, inner);
+      if (key !== 'span') walk(value, inner, visible);
     }
   };
-  walk(module.body, 0);
+  walk(module.body, 0, [declared(module.body)]);
   return found;
 }
 
@@ -113,6 +125,20 @@ it('the check finds a parity load inside a test body and passes one at module le
     "it('x', () => { run(); });",
   ].join('\n');
   const other = "it('x', async () => { await import('./another-module.ts'); });";
+  // S2468-1: a same-named local in a sibling test does not hide the first one's load.
+  const siblings = [
+    "it('parity', async () => {",
+    "  const path = '../../scripts/command-parity.mjs';",
+    '  await import(path);',
+    '});',
+    "it('unrelated', async () => {",
+    "  const path = './another-module.ts';",
+    '  await import(path);',
+    '});',
+  ].join('\n');
+  const template = "it('x', async () => { await import(`../../scripts/command-parity.mjs`); });";
+  expect(loadsInsideAFunction(siblings, 'a.test.ts')).toHaveLength(1);
+  expect(loadsInsideAFunction(template, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(inside, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(direct, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(named, 'a.test.ts')).toHaveLength(1);
