@@ -29,7 +29,7 @@ const MARKER = 'pin-on-a-revision-committed-between-the-two-reads';
 
 interface Answered {
   readonly revisions: readonly { readonly revisionId: string }[];
-  readonly pins: readonly { readonly anchor: { readonly source: string } }[];
+  readonly pins: readonly { readonly anchor: { readonly source: string }; readonly body: string }[];
 }
 
 describe.skipIf(serverUrl === undefined)('the team review read between its statements', () => {
@@ -106,10 +106,21 @@ describe.skipIf(serverUrl === undefined)('the team review read between its state
         pins: review.pins.length,
         leaked: JSON.stringify(answer).includes(MARKER),
       }).toEqual({ revisions: [first['revisionId']], orphans: 0, pins: 1, leaked: false });
-      // The next read holds both revisions and both pins.
+      // The next read holds both revisions, in order, and a pin on each: the earlier one and
+      // the marker on the later revision.
       const after = await w.read(w.ava, String(first['reviewId']));
-      expect(JSON.stringify(after)).toContain(later);
-      expect(JSON.stringify(after)).toContain(MARKER);
+      if (!('review' in after)) throw new Error(`review.read refused: ${JSON.stringify(after)}`);
+      const next = after.review as unknown as Answered;
+      expect({
+        revisions: next.revisions.map((revision) => revision.revisionId),
+        pins: next.pins.map((pin) => ({ source: pin.anchor.source, marked: pin.body === MARKER })),
+      }).toEqual({
+        revisions: [first['revisionId'], later],
+        pins: [
+          { source: first['revisionId'], marked: false },
+          { source: later, marked: true },
+        ],
+      });
     } finally {
       await writer.close();
     }
