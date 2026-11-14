@@ -241,6 +241,27 @@ export function surfacesOf(
 }
 
 /**
+ * #2478: whether the people are due to sign in again, and if so, signing them
+ * in. A bearer lasts an hour and `d06-generated` runs for hours, so it asks
+ * this before every cell. Due once `everyMs` has passed on `clock` since the
+ * last sign-in (the schedule's own start the first time); answers whether it
+ * signed in.
+ */
+export function signInSchedule(
+  signIn: () => Promise<void>,
+  everyMs: number,
+  clock: () => number = Date.now,
+): () => Promise<boolean> {
+  let at = clock();
+  return async () => {
+    if (clock() - at < everyMs) return false;
+    await signIn();
+    at = clock();
+    return true;
+  };
+}
+
+/**
  * A spending cap wide enough for the run.
  *
  * `world.ts` writes the seed's cap, 500000 minor units, and every approval here
