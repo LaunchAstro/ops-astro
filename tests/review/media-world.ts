@@ -116,16 +116,16 @@ export function mediaCalls(w: C35World, store: MediaStoreDouble): MediaCalls {
       }),
     // A plain array: the driver's result carries its own fields, which a strict match counts.
     rows: async (table, business) => [
-      ...(await w.world.db.admin.execute<Record<string, unknown>>(
-        table === 'reviews'
-          ? `select id, kind from public.reviews where business_id = $1 and kind = 'media'`
-          : table === 'review_revisions'
-            ? `select v.id, v.number, v.digest from public.review_revisions v
-                 join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
-                where v.business_id = $1 and c.kind = 'media' order by v.number`
-            : `select id, state, revision_id from public.review_media_assets where business_id = $1`,
-        [business],
-      )),
+      ...(await w.world.db.admin.execute<Record<string, unknown>>(MEDIA_ROWS[table], [business])),
     ],
   };
 }
+
+/** The administrator's read of each media table, for one business. */
+const MEDIA_ROWS = {
+  reviews: `select id, kind from public.reviews where business_id = $1 and kind = 'media'`,
+  review_revisions: `select v.id, v.number, v.digest from public.review_revisions v
+                       join public.reviews c on c.business_id = v.business_id and c.id = v.review_id
+                      where v.business_id = $1 and c.kind = 'media' order by v.number`,
+  review_media_assets: `select id, state, revision_id from public.review_media_assets where business_id = $1`,
+} as const;
