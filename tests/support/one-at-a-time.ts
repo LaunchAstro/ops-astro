@@ -7,13 +7,14 @@
 /** A runner whose bodies run strictly in the order they were handed in. */
 export function oneAtATime(): <T>(body: () => Promise<T>) => Promise<T> {
   let previous: Promise<unknown> = Promise.resolve();
-  return async <T>(body: () => Promise<T>): Promise<T> => {
-    await previous;
-    const turn = body();
+  return <T>(body: () => Promise<T>): Promise<T> => {
+    // The chain moves on before this body waits, so a body handed in later
+    // always waits for this one, never only for the one before it.
+    const turn = previous.then(body);
     previous = turn.then(
-      () => undefined,
-      () => undefined,
+      () => null,
+      () => null,
     );
-    return await turn;
+    return turn;
   };
 }

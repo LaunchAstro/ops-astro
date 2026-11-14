@@ -80,6 +80,7 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { oneAtATime } from '../support/one-at-a-time.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
@@ -989,23 +990,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
   };
 
   // A case past its timeout is failed but not stopped: its body still holds
-  // sessions and seeds rows. The next case waits for it to end before it
-  // closes sessions and migrates, so a slow prefix fails alone instead of
-  // refusing the next migration and seeding its rows twice (#2385).
-  let previous: Promise<boolean> = Promise.resolve(true);
+  // sessions and seeds rows. Each case waits until every earlier body has ended
+  // before it closes sessions and migrates, so a slow prefix fails alone instead
+  // of refusing the next migration and seeding its rows twice (#2385).
+  const inTurn = oneAtATime();
   for (const [index, migration] of onDisk.entries()) {
     if (!inPart(index, PART)) continue;
     it(
       `answers every caller as the contract says after ${migration.version}`,
-      async () => {
-        await previous;
-        const thisCase = proveAfter(index, migration);
-        previous = thisCase.then(
-          () => true,
-          () => false,
-        );
-        await thisCase;
-      },
+      () => inTurn(() => proveAfter(index, migration)),
       PREFIX_TIMEOUT,
     );
   }
