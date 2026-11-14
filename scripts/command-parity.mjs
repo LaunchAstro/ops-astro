@@ -250,15 +250,18 @@ async function askedBy(declaration) {
 
 // What the real API runs at each path on both prefixes, by name and the grants it asks. Every
 // executor call is kept, bearer by bearer: a path runs one command once for each bearer it
-// takes, the agent prefix a session's and an agent credential's (API-2).
-async function routedByApi() {
+// takes, the agent prefix a session's and an agent credential's (API-2). A path whose answer
+// is a server fault is kept as faulted, a parity failure: its probe may have judged nothing.
+// The stub database answers no row, so the probe's business operates no installation (#2462).
+const PROBE_DATABASE = { withBusiness: (_business, body) => body({ query: () => Promise.resolve([]) }) };
+async function probeRoutes(database = PROBE_DATABASE) {
   const calls = [];
   const execute = (...args) => {
     calls.push(args.at(-1).read ?? args.at(-1).command);
     return Promise.resolve({ recordId: 'r', revision: 1 });
   };
   const api = createApi({
-    database: {},
+    database,
     verify: () => Promise.resolve({ subject: 'parity' }),
     resolveBusiness: () => Promise.resolve('business'),
     executeRead: execute,
@@ -267,13 +270,16 @@ async function routedByApi() {
     executeCredentialCommand: execute,
   });
   const routed = new Map();
+  const faulted = [];
   for (const path of [...under(ROOT), ...under(AGENT)]) {
     const bearers = ['parity.probe.token', ...(path.startsWith(AGENT) ? ['c'.repeat(43)] : [])];
     const ran = [];
     for (const bearer of bearers) {
       const headers = { 'content-type': 'application/json', authorization: `Bearer ${bearer}` };
+      const asked = new Request(`http://parity${path}`, { method: 'POST', headers, body: '{}' });
       // eslint-disable-next-line no-await-in-loop -- one route at a time, its calls recorded
-      await api.fetch(new Request(`http://parity${path}`, { method: 'POST', headers, body: '{}' }));
+      const { status } = await api.fetch(asked);
+      if (status >= 500 && !faulted.some((one) => one.path === path)) faulted.push({ path, status });
       ran.push(calls.splice(0));
     }
     // Each bearer runs the one command exactly once: a count shared between them hides one
@@ -285,9 +291,12 @@ async function routedByApi() {
     const authority = await askedBy(runs);
     routed.set(path, { name: runs.name, profile: { ...profileOf(runs), authority } });
   }
-  return routed;
+  return { routed, faulted };
 }
-const ROUTED = await routedByApi();
+const probeFailures = ({ faulted }) =>
+  faulted.map(({ path, status }) => `the route ${path} faulted under the parity probe (${status})`);
+const PROBED = await probeRoutes();
+const ROUTED = PROBED.routed;
 
 // Each name sent through a surface (clients post before any await) reaches its path's profile
 // only when the API runs that very command there; a path that runs another reaches nothing.
@@ -325,7 +334,12 @@ export function run(
   const unparsed = [];
   const uses = scanUses(files, namespaces, unparsed);
   const rows = buildCatalogue(uses);
-  const failures = [...unparsed, ...checkParity(rows, realSurfaces(uses)), ...handoffFailures()];
+  const failures = [
+    ...unparsed,
+    ...checkParity(rows, realSurfaces(uses)),
+    ...handoffFailures(),
+    ...probeFailures(PROBED),
+  ];
   return { rows, failures };
 }
 
