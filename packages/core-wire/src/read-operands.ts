@@ -69,6 +69,7 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'task.execution': { ...RECORD, cursor: 'count?' },
   'definition.attribution': { digest: 'text' },
   'gate.pending': NONE,
+  'task.bin': NONE,
   'preset.plan': {
     recordTypeKey: 'text',
     presetKey: 'text',

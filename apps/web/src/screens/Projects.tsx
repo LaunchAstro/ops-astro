@@ -4,6 +4,7 @@ import { Icon, TabPanel, usePageToolbar } from '@launchastro/ui';
 import { createPortal } from 'react-dom';
 import { ProjectBoard, type ProjectsProps } from './projects/ProjectBoard.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
+import { DeletedTasks } from './projects/DeletedTasks.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, useProjectsTab } from './projects/tab-address.ts';
 import { useProjectBoardAddress } from './projects/board-address.ts';
@@ -45,6 +46,11 @@ export function Projects(props: ProjectsProps): ReactElement {
             address={props.address}
             inPanel={inPanel === true}
           />
+        ) : null}
+      </TabPanel>
+      <TabPanel name="projects" tab="deleted" selected={tab}>
+        {tab === 'deleted' ? (
+          <DeletedTasks client={props.client} grantKey={props.grantKey} />
         ) : null}
       </TabPanel>
     </div>

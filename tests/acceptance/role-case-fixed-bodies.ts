@@ -22,6 +22,8 @@ const EMPTY: readonly CommandName[] = [
   // The pending gates the admin may decide: the admin holds `decide` on the
   // whole business, so the list answers (MP-6-1).
   'gate.pending',
+  // The bin (#2346), asked as `gate.pending` is: the admin's `decide` answers it.
+  'task.bin',
   'task.queue',
   'person.list',
   'team.list',

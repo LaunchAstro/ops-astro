@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "#2346: task.bin lists each delete once at the deleted task (key, title, deleter, when, batch, subtask count) to a task:decide holder, filtered by that grant in the query; task.restore from the row brings it back; a member without decide, another business, a record-scoped decider on another task, an outside party and an agent see no planted canary"
+}

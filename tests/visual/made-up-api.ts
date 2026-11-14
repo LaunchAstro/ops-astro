@@ -36,6 +36,7 @@ import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS_READS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
+import { BIN_READS } from './made-up-bin.ts';
 import { AUTOMATION_HISTORY, AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { CONVERSATIONS, DIRECT_MESSAGES, messagesOf } from './made-up-chat.ts';
 import { CONNECTION_READS } from './made-up-connections.ts';
@@ -197,6 +198,7 @@ const READS = {
   ...CONNECTION_READS,
   ...COST_READS,
   ...WAYFINDER_READS,
+  ...BIN_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

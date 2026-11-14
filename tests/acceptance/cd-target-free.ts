@@ -40,6 +40,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ],
   ['task.queue', {}],
   ['gate.pending', {}],
+  ['task.bin', {}],
   ['task.ledger', { timeZone: 'UTC' }],
   ['person.list', {}],
   ['team.list', {}],

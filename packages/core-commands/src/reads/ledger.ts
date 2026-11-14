@@ -26,7 +26,7 @@ export const LEDGER_DAYS_PER_PAGE = 7;
 const NOT_A_CHANGE: readonly string[] = [...READS, 'task.heartbeat'];
 
 /** What an actor with no person of its own is called in the ledger. */
-const ACTOR_KIND_NAME: Readonly<Record<string, string>> = {
+export const ACTOR_KIND_NAME: Readonly<Record<string, string>> = {
   agent: 'An agent',
   worker: 'A worker',
 };

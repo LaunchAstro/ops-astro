@@ -52,6 +52,8 @@ export type CommandName =
   | 'task.execution'
   // The gate engine's pending decisions a person may make (MP-6-1).
   | 'gate.pending'
+  // The deleted tasks a person who can delete may restore (#2346).
+  | 'task.bin'
   // AW-04: which runs read an instruction file, by digest, and what they
   // reached: a pre-review projection, the team's only.
   | 'definition.attribution'

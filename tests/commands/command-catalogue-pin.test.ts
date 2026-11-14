@@ -738,6 +738,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'tag.list',
   'task.accept_plan',
   'task.add_tag',
+  'task.bin',
   'task.board',
   'task.cancel',
   'task.check',

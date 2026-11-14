@@ -45,6 +45,7 @@ export const PINNED_SHAPE = {
   'session.person': { spine: false, subject: false, authority: 'self' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'tag.list': { spine: false, subject: false, authority: 'declared' },
+  'task.bin': { spine: true, subject: false, authority: 'holds-any-grant' },
   'task.board': { spine: true, subject: false, authority: 'declared-within' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },

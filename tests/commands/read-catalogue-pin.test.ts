@@ -62,6 +62,7 @@ const PINNED_IDENTIFIERS = {
   'session.person': [],
   'settings.read': [],
   'tag.list': [],
+  'task.bin': [],
   'task.board': ['board', 'person', 'client'],
   'task.execution': ['recordId'],
   'task.ledger': [],
@@ -76,13 +77,14 @@ const PINNED_IDENTIFIERS = {
 };
 
 // MP-7-10: `team.list` is staff only; a client is told NOT_FOUND. So are
-// C71-D's two conversation reads.
+// C71-D's two conversation reads, and the bin (#2346).
 const PINNED_OUTSIDER_NOT_FOUND = [
   'chat.conversations',
   'chat.messages',
   'map.frontier',
   'map.list',
   'map.view',
+  'task.bin',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -158,19 +160,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.list': BODIES.map(() => null),
-  'task.read': [
-    RECORD_ID,
-    null,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-    RECORD_ID,
-  ],
+  'task.read': BODIES.map(([label]) => (label === 'recordId string' ? null : RECORD_ID)),
   'task.board': [BOARD, BOARD, BOARD, null, null, BOARD, BOARD, BOARD, BOARD, BOARD, BOARD],
   // T2a: `task.read`'s recordId check; an absent cursor is the start.
   'task.execution': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
@@ -199,6 +189,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   ],
   'task.queue': BODIES.map(() => null),
   'gate.pending': BODIES.map(() => null),
+  'task.bin': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'tag.list': BODIES.map(() => null),
   'task.todos': BODIES.map(() => null),

@@ -292,3 +292,4 @@ export { AGENT_MODEL_CALL_LIMIT, AGENT_TOOLS, type ToolCall, type TurnPart } fro
 // What the review reads answer (C35, #2011).
 export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from './views-review.ts';
 export type { DeleteRequestView } from './views-delete-request.ts';
+export type { TaskBinResult, TaskBinRow } from './views-bin.ts';
