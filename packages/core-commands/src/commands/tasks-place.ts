@@ -335,7 +335,6 @@ export async function moveTask(
   if (target === undefined) throw new Error('moveTask: the envelope read no target');
   // The stored side too, and its spelling kept on a section change.
   const storedBoard = (target.data['board'] as string | undefined) ?? null;
-  const sameBoard = isSameBoard(storedBoard, board);
   const isSubtask = (target.data['parent'] ?? null) !== null;
   if (isSubtask && boardSection !== null) {
     return refused(
@@ -358,6 +357,8 @@ export async function moveTask(
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const mistyped = refuseWrongValueType(definitions, { board, board_section: boardSection });
   if (mistyped !== undefined) return refused(mistyped);
+  // Compared only once the board is known to be text or null: a wrong-type one answered 500 (#197).
+  const sameBoard = isSameBoard(storedBoard, board);
 
   if (board !== null) {
     const unreached = await refuseUnreachedRecord(tx, context, board);
