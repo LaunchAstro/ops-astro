@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ProposalView, TaskExecution } from '../../../../../packages/core-wire/src/index.ts';
 import { isReadable, type TaskExecutionRead } from '../../views/task-execution.ts';
+import { outcomeWords, restartable } from './outcome-words.ts';
 
 export type RunShape = 'queued' | 'running' | 'waiting' | 'finished' | 'none' | 'unknown';
 interface RunLine {
   readonly shape: RunShape;
   readonly words: string;
+  /** The lineage a person may restart, after a stop that was not a finish (#1719). */
+  readonly restart?: string;
 }
 const unknown = (words = 'Run status is unavailable.'): RunLine => ({ shape: 'unknown', words });
 
@@ -67,6 +70,8 @@ export function runLineOf(
     return execution.outcome === 'no-run'
       ? { shape: 'none', words: 'No agent has run this task. It is a person’s work so far.' }
       : unknown();
+  const stopped = stoppedLine(execution);
+  if (stopped !== null) return stopped;
   return {
     shape: 'finished',
     words: states.includes('cancelled')
@@ -74,5 +79,17 @@ export function runLineOf(
       : states.length > 0
         ? 'Engine work was handed back.'
         : 'Every run on this task has finished.',
+  };
+}
+
+/** The newest run's stop in its words (#1719), restartable unless it finished; null without one. */
+function stoppedLine(execution: TaskExecution): RunLine | null {
+  const newest = execution.runs.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const stop = newest?.runOutcome ?? null;
+  if (newest === undefined || stop === null) return null;
+  return {
+    shape: 'finished',
+    words: outcomeWords(stop),
+    ...(restartable(stop) ? { restart: newest.lineageId } : {}),
   };
 }

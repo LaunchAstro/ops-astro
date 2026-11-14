@@ -28,6 +28,8 @@ import {
 import { pathTo } from '../../routes.ts';
 import { drawTaskState } from '../../views/task-state.ts';
 import { runLineOf } from './run-line.ts';
+import { RunRestart } from './RunRestart.tsx';
+import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskExecutionRead } from '../../views/task-execution.ts';
 export { runLineOf, type RunShape } from './run-line.ts';
 import { titleOf } from '../../views/task-title.ts';
@@ -36,10 +38,14 @@ import { owningBoardAddress } from './board-door.tsx';
 /** How long the tick stays after a copy that worked (TP-05). */
 export const COPIED_FOR_MS = 1200;
 
-export function TaskHeader(props: {
+interface TaskHeaderProps {
   readonly task: InternalTaskDetail;
   readonly execution: TaskExecutionRead;
-}): ReactElement {
+  /** Restart's door (#1719); without it no Restart is drawn. */
+  readonly restart?: { readonly client: OperationsClient; readonly onRestarted: () => void };
+}
+
+export function TaskHeader(props: TaskHeaderProps): ReactElement {
   const { task } = props;
   const title = usePageTitle();
   const run = runLineOf(task.proposals, props.execution, task.id);
@@ -82,7 +88,7 @@ export function TaskHeader(props: {
           </a>
         </p>
       )}
-      <RunStatus task={task} run={run} />
+      <RunStatus task={task} run={run} restart={props.restart} />
     </header>
   );
 }
@@ -188,8 +194,9 @@ function CopyAddress(props: { readonly path: string }): ReactElement {
 function RunStatus(props: {
   readonly task: InternalTaskDetail;
   readonly run: ReturnType<typeof runLineOf>;
+  readonly restart: TaskHeaderProps['restart'];
 }): ReactElement {
-  const { task, run } = props;
+  const { task, run, restart } = props;
   return (
     <>
       {run === null ? null : (
@@ -201,6 +208,17 @@ function RunStatus(props: {
           >
             · Revision {task.revision}
           </span>
+          {run.restart === undefined || restart === undefined ? null : (
+            <>
+              {' '}
+              <RunRestart
+                client={restart.client}
+                recordId={task.id}
+                lineageId={run.restart}
+                onRestarted={restart.onRestarted}
+              />
+            </>
+          )}
         </p>
       )}
       {run === null ? (
