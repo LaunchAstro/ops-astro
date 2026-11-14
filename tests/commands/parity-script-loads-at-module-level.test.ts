@@ -56,21 +56,49 @@ function declared(statements: unknown): Map<string, string> {
   return named;
 }
 
+/** Every string a name is bound to anywhere in the file, for a name no visible block holds. */
+function everywhere(node: unknown, named = new Map<string, string[]>()): Map<string, string[]> {
+  if (Array.isArray(node)) {
+    for (const one of node) everywhere(one, named);
+    return named;
+  }
+  if (node === null || typeof node !== 'object') return named;
+  const here = node as Node;
+  if (here.type === 'VariableDeclarator') {
+    const { id, init } = here;
+    if (id?.type === 'Identifier' && init?.type === 'StringLiteral') {
+      const name = id.value as string;
+      named.set(name, [...(named.get(name) ?? []), init.value as string]);
+    }
+  }
+  for (const [key, value] of Object.entries(here)) if (key !== 'span') everywhere(value, named);
+  return named;
+}
+
 // A name resolves in the innermost block that declares it, so a same-named local in a
-// sibling test neither hides nor stands in for this one (S2468-1).
-function target(argument: Node | undefined, scopes: Map<string, string>[]): string | undefined {
-  if (argument?.type === 'StringLiteral') return argument.value as string;
+// sibling test neither hides nor stands in for this one (S2468-1). A name no visible block
+// declares directly (a loop header, a switch case) takes every value it has in the file, and
+// counts if any is the script: the check fails loudly rather than miss a load (S2468-2).
+function targets(
+  argument: Node | undefined,
+  scopes: Map<string, string>[],
+  file: Map<string, string[]>,
+): string[] {
+  if (argument?.type === 'StringLiteral') return [argument.value as string];
   if (argument?.type === 'TemplateLiteral' && argument.expressions?.length === 0) {
-    return argument.quasis?.[0]?.cooked ?? undefined;
+    const cooked = argument.quasis?.[0]?.cooked;
+    return typeof cooked === 'string' ? [cooked] : [];
   }
   if (argument?.type === 'Identifier') {
-    const scope = scopes.findLast((one) => one.has(argument.value as string));
-    return scope?.get(argument.value as string);
+    const name = argument.value as string;
+    const scope = scopes.findLast((one) => one.has(name));
+    if (scope !== undefined) return [scope.get(name) as string];
+    return file.get(name) ?? [];
   }
   if (argument?.type === 'TsAsExpression' || argument?.type === 'ParenthesisExpression') {
-    return target(argument.expression, scopes);
+    return targets(argument.expression, scopes, file);
   }
-  return undefined;
+  return [];
 }
 
 /** Each dynamic import of the parity script made inside a function, by its source offset. */
@@ -81,6 +109,7 @@ function loadsInsideAFunction(source: string, file: string): number[] {
     target: 'es2022',
   }) as unknown as Node;
   const found: number[] = [];
+  const bound = everywhere(module.body);
   const walk = (node: unknown, depth: number, scopes: Map<string, string>[]): void => {
     if (Array.isArray(node)) {
       for (const one of node) walk(one, depth, scopes);
@@ -92,8 +121,8 @@ function loadsInsideAFunction(source: string, file: string): number[] {
     // A block or a function body (swc's `FunctionBody`) holds its statements in `stmts`.
     const visible = Array.isArray(here.stmts) ? [...scopes, declared(here.stmts)] : scopes;
     if (here.type === 'CallExpression' && here.callee?.type === 'Import' && depth > 0) {
-      const path = target(here.arguments?.[0]?.expression, visible);
-      if (path !== undefined && SCRIPT.test(path) && here.span !== undefined) {
+      const paths = targets(here.arguments?.[0]?.expression, visible, bound);
+      if (paths.some((path) => SCRIPT.test(path)) && here.span !== undefined) {
         found.push(here.span.start);
       }
     }
@@ -138,6 +167,13 @@ it('the check finds a parity load inside a test body and passes one at module le
   ].join('\n');
   const template = "it('x', async () => { await import(`../../scripts/command-parity.mjs`); });";
   expect(loadsInsideAFunction(siblings, 'a.test.ts')).toHaveLength(1);
+  // S2468-2: a binding no block holds directly (a loop header, a switch case) still resolves.
+  const loop =
+    "it('x', async () => { for (const path = '../../scripts/command-parity.mjs';;) { await import(path); break; } });";
+  const cases =
+    "it('x', async () => { switch (1) { case 1: const path = '../../scripts/command-parity.mjs'; await import(path); break; } });";
+  expect(loadsInsideAFunction(loop, 'a.test.ts')).toHaveLength(1);
+  expect(loadsInsideAFunction(cases, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(template, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(inside, 'a.test.ts')).toHaveLength(1);
   expect(loadsInsideAFunction(direct, 'a.test.ts')).toHaveLength(1);
