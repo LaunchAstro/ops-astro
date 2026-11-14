@@ -60,11 +60,11 @@ interface Person {
 
 /** A day is the most one entry can hold (0078's check). */
 const MAX_MINUTES = 1440;
-
+/** A running entry's end: the clock, or its own start if the clock stepped back (#2386). */
+const END = 'greatest(c.at, started_at)';
 /**
- * A stopped timer's minutes to `at`: elapsed, rounded up, at least one, at most
- * a day ($1). `at` is the clock, never the transaction's start, which can fall
- * before a timer a newer transaction started, or short of a wait on the row.
+ * A stopped timer's minutes to `at` (END): elapsed, rounded up, at least one, at most a
+ * day ($1). Never the transaction's start: it can precede a newer timer or a wait on the row.
  */
 const elapsedMinutes = (at: string): string =>
   `least($1::int, greatest(1, ceil(extract(epoch from ${at} - started_at) / 60)::int))`;
@@ -156,7 +156,7 @@ export async function stopTimer(
   const entry = held[0];
   if (entry === undefined) return { kind: 'none' };
   const rows = await tx.query<{ readonly minutes: number }>(
-    `update public.time_entries set ended_at = c.at, minutes = ${elapsedMinutes('c.at')}
+    `update public.time_entries set ended_at = ${END}, minutes = ${elapsedMinutes(END)}
        from (select clock_timestamp() as at) c
       where business_id = $2 and id = $3
       returning minutes`,
@@ -175,8 +175,8 @@ export async function detachTaskTime(tx: TenantQuery, taskIds: readonly string[]
   await tx.query(
     `update public.time_entries
         set task_id = null,
-            minutes = coalesce(minutes, ${elapsedMinutes('c.at')}),
-            ended_at = coalesce(ended_at, c.at)
+            minutes = coalesce(minutes, ${elapsedMinutes(END)}),
+            ended_at = coalesce(ended_at, ${END})
        from (select clock_timestamp() as at) c
       where business_id = $2 and task_id = any ($3::uuid[])`,
     [MAX_MINUTES, tx.businessId, taskIds],
