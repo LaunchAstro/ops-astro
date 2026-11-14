@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2370 upgrade: a chain written before served_at existed keeps every event and hash, gets no snapshot time after the fact, and a task read after the upgrade names its snapshot time with the chain verifying"
+}
