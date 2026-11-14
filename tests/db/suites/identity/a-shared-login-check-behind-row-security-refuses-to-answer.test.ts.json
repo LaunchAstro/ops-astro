@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the live-elsewhere check refuses to answer on an owner that does not see past row security, so an ending never bans a login live in another business (#643); it makes and drops a cluster role"
+}
