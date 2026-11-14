@@ -133,15 +133,15 @@ export async function completeMediaUpload(
   const stored = await completeAtStore(asset, store);
   if ('code' in stored) return stored;
   if (stored.byteCount !== declared.byteCount || stored.digest !== asset.declared_digest) {
-    // Abandoned only once the store no longer holds the object; otherwise the upload stays
-    // open, so abandoning it later can still remove what was stored.
+    // Here and on a hostile answer below: abandoned only once the store no longer holds the
+    // object; otherwise the upload stays open, so abandoning it later can still remove it.
     if ((await store.remove(asset.object_key)) !== true) return mediaRefusal('STORE_REFUSED');
     await abandonUpload(tx, asset.id);
     return mediaRefusal('UPLOAD_MISMATCH');
   }
   const admission = await admitted(store, asset.object_key, declared);
   if (admission === undefined) {
-    await store.remove(asset.object_key);
+    if ((await store.remove(asset.object_key)) !== true) return mediaRefusal('STORE_REFUSED');
     await abandonUpload(tx, asset.id);
     return mediaRefusal('STORE_ANSWER_REFUSED');
   }
