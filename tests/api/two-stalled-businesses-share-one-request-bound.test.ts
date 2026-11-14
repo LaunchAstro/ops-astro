@@ -10,7 +10,7 @@ import { TEST_ISSUER } from '../support/sign-in.ts';
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'the hosted request bound across businesses',
   () => {
-    it('Sol proof, criterion 2: two stalled businesses share one request bound', async () => {
+    it('two stalled businesses share one request bound', async () => {
       const s = await openSchedules('sol2243a', 100_000);
       await seedSchedules(s.db, 'sol2243b', 100_000);
       const url = new URL(databaseUrlFromEnvironment() ?? '');

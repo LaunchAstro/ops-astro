@@ -9,7 +9,7 @@
 // relation or advisory locks, one row after another in one statement), and
 // the transaction rolls back on the same connection, which stays in the pool.
 // The session is never ended by the server: a session the server ends
-// crashes the process through postgres.js 3.4.9 (Sol's design check on #2243).
+// crashes the process through postgres.js 3.4.9.
 //
 // **A cancel request is waited for once sent.** The server applies one to
 // whatever the session is running when it lands. One still on its way when

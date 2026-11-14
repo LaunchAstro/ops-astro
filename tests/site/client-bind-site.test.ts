@@ -260,25 +260,25 @@ async function malformedFieldsAreRefused(): Promise<void> {
   expect(await sitesOf(harness.world.alpha)).toEqual(before);
 }
 
-describe.skipIf(serverUrl === undefined)('#2316 client.bind_site', () => {
+describe.skipIf(serverUrl === undefined)('client.bind_site', () => {
   it(
-    "#2316 bind: a holder of operations:manage binds a client's site and its pages; the same bind again changes nothing",
+    "bind: a holder of operations:manage binds a client's site and its pages; the same bind again changes nothing",
     bindsAndBindsAgain,
   );
   it(
-    '#2316 refusal operations:manage: a task holder, a member with nothing, a teammate without the key, a client and a delegated agent are refused, with nothing written',
+    'refusal operations:manage: a task holder, a member with nothing, a teammate without the key, a client and a delegated agent are refused, with nothing written',
     peopleWithoutTheKeyAreRefused,
   );
   it(
-    "#2316 isolation: another client of the same business is refused, another business's client answers as a made-up one, and another business's person is no member; nothing is written",
+    "isolation: another client of the same business is refused, another business's client answers as a made-up one, and another business's person is no member; nothing is written",
     threeCrossings,
   );
   it(
-    "#2316 store: another business's repository or project, and another client's page, are refused as bound elsewhere, naming no other client",
+    "store: another business's repository or project, and another client's page, are refused as bound elsewhere, naming no other client",
     aBoundSiteOrPageStaysItsOwners,
   );
   it(
-    '#2316 fields: each malformed field is refused naming that field, with nothing written',
+    'fields: each malformed field is refused naming that field, with nothing written',
     malformedFieldsAreRefused,
   );
 });

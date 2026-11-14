@@ -124,7 +124,7 @@ describe('a Hermes Agent stream becomes a reply only when whole', () => {
   );
 
   it.each(['length', 'cancelled'])(
-    'Sol proof, criterion 5: a non-stop finish cannot be erased (%s, then stop)',
+    'a non-stop finish cannot be erased (%s, then stop)',
     async (finish) => {
       const body = await folded([chunk({ content: 'partial reply' }, finish), STOP, DONE]);
       expect(body['finish_reason']).toBe(finish);
@@ -149,7 +149,7 @@ describe('a Hermes Agent stream becomes a reply only when whole', () => {
     ['a choice that is no object', event({ model: 'hermes-agent', choices: ['lost'] })],
     ['a finish that is no name', chunk({}, 7 as unknown as string)],
   ])(
-    'Sol proof, criterion 5: a malformed nested event cannot become a reply (%s)',
+    'a malformed nested event cannot become a reply (%s)',
     async (_name, strange) => {
       const body = await folded([chunk({ content: 'partial reply' }), strange, STOP, DONE]);
       expect(body['error']).toBe('stream_malformed');
@@ -159,7 +159,7 @@ describe('a Hermes Agent stream becomes a reply only when whole', () => {
   );
 
   it(
-    'Sol proof, correctness: a later error finish is never masked by an earlier length',
+    'a later error finish is never masked by an earlier length',
     async () => {
       const hermes = await folded([
         chunk({ content: 'partial reply' }, 'length'),
@@ -188,7 +188,7 @@ describe('a Hermes Agent stream becomes a reply only when whole', () => {
     ['a delta whose content is an object', chunk({ content: { not: 'text' } })],
     ['a delta whose content is a number', chunk({ content: 42 })],
   ])(
-    'Sol proof, criterion 5: malformed Hermes events cannot become a reply (%s)',
+    'malformed Hermes events cannot become a reply (%s)',
     async (_name, strange) => {
       const body = await folded([chunk({ content: 'partial reply' }), strange, STOP, DONE]);
       expect(body['error']).toBe('stream_malformed');

@@ -54,7 +54,7 @@ export const usableReply = (text: string): boolean =>
 /**
  * The operation the conversation's model answers on: a paid or plan model's
  * provider has its own. An id two providers share (the laptop's GPT runner and
- * the plan both name `gpt-6.1-sol`) is the install's own model where `provider`
+ * the plan can name one GPT model) is the install's own model where `provider`
  * runs it, else the other provider's.
  */
 export function operationFor(model: string | undefined | null, provider?: string): string {

@@ -106,7 +106,7 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
     expect(await w.readCode(task.id)).toBe('ok');
   });
 
-  it('a stale answer to request A never answers its replacement B (#2362)', async () => {
+  it('a stale answer to request A never answers its replacement B', async () => {
     const task = await h().freshTask('a task asked about twice');
     okay(await w.ask(task.id, `${CANARY} request A`), 'the agent opens A');
     const a = await w.requestIdOf(task.id);
@@ -129,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('task.request_delete, confirmed by a pe
     okay(await w.answer('task.decline_delete', task.id, { requestId: b }), 'B answered by its id');
   });
 
-  it('refuses a request on a task in the bin, and opens none (#2362)', async () => {
+  it('refuses a request on a task in the bin, and opens none', async () => {
     const task = await h().freshTask('a task already in the bin');
     okay(await h().asPerson('task.delete', { recordId: task.id, expectedRevision: task.revision }));
     expect(await w.readCode(task.id)).toBe('NOT_FOUND');

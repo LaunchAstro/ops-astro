@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('a lost cancel', () => {
-  it('Sol proof, criterion 2: a lost cancel cannot hold hosted health past the shared request bound', async () => {
+  it('a lost cancel cannot hold hosted health past the shared request bound', async () => {
     let relay: CancelRelay | undefined;
     const world = await boundWorld('lostcancelhost', async (appUrl) => {
       relay = await cancelRelay(appUrl, 'lost');

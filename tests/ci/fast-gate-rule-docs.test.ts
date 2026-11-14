@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 const flat = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8').replaceAll(/\s+/gu, ' ');
 
-it('Sol proof, criterion 2: CONTRIBUTING.md names no superseded gate as current', () => {
+it('CONTRIBUTING.md names no superseded gate as current', () => {
   const text = flat('CONTRIBUTING.md');
   expect(text).toContain('fast gate and DCO, not full CI');
   expect(text).not.toContain('`review evidence for this revision` is a required check');

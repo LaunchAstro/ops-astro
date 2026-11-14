@@ -32,7 +32,7 @@ it("auth:seed's list has an administrator of bravo", async () => {
 
 let cast: Cast;
 
-describe.skipIf(serverUrl === undefined)("#2308 local-seed's bravo administrator", () => {
+describe.skipIf(serverUrl === undefined)("local-seed's bravo administrator", () => {
   beforeAll(async () => {
     cast = await openCast('ls2308bravoadmin');
   }, 300_000);

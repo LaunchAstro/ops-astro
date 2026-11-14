@@ -9,7 +9,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { boundWorld, request, sleep, withinBound } from './recovery-pass-bound-world.ts';
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('the hosted request bound', () => {
-  it('Sol proof, criterion 2: successive waits in one transaction share the request deadline', async () => {
+  it('successive waits in one transaction share the request deadline', async () => {
     const world = await boundWorld('sol2243successive');
     const { s } = world;
     try {

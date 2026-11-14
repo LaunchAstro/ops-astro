@@ -240,7 +240,7 @@ const existing = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('S0-1 staging logins: a transaction left idle on a Vercel login ends (#2240)', () => {
+describe('S0-1 staging logins: a transaction left idle on a Vercel login ends', () => {
   it("sets each Vercel login to end a transaction idle 60 s, and leaves the M5's session logins alone", () => {
     for (const step of ['before-reset', 'after-reset'] as const) {
       const addresses = loginAddresses(admin(STAGING), STAGING, step, () => 'pw');
