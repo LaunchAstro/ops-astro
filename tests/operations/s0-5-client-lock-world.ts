@@ -214,11 +214,22 @@ export async function allMarkerFaults(): Promise<string[]> {
   return found;
 }
 
-/** The client change on a task holding content: refused alike through the CLI and the API, nothing written. */
-export async function lockFaults(
-  name: CommandName,
+/** The bin batch holding the task, or null while it is out of the bin. */
+async function binBatchOf(taskId: string): Promise<string | null> {
+  const rows = await admin<{ batch: string | null }>(
+    `select trash_batch_id::text as batch from records where id = $1`,
+    [taskId],
+  );
+  return rows[0]?.batch ?? null;
+}
+
+/** One client change through the CLI and the API, checked for its refusal and for writing nothing. */
+async function changeRefused(
+  label: string,
   taskId: string,
   client: string,
+  status: number,
+  code: string,
 ): Promise<string[]> {
   const before = await fingerprint();
   const pair = await both(
@@ -229,16 +240,35 @@ export async function lockFaults(
   );
   const found: string[] = [];
   try {
-    // A trashed task is answered as a missing one, before any lock or history.
-    if (name === 'task.trash') refusedAlike(pair, 404, 'NOT_FOUND');
-    else refusedAlike(pair, 409, 'CLIENT_LOCKED');
+    refusedAlike(pair, status, code);
   } catch {
-    found.push(`${name}: set_party answered ${pair.api.status} ${String(pair.api.body['code'])}`);
+    found.push(`${label}: set_party answered ${pair.api.status} ${String(pair.api.body['code'])}`);
   }
   return [
     ...found,
-    ...changed(before, await fingerprint()).map((table) => `${name}: wrote ${table}`),
+    ...changed(before, await fingerprint()).map((table) => `${label}: wrote ${table}`),
   ];
+}
+
+/**
+ * The client change on a task holding content: refused alike through the CLI
+ * and the API, nothing written. A kind that leaves its task in the bin
+ * (`task.trash`, and since #2348 `task.delete` and `task.confirm_delete`) is
+ * answered as a missing task, before any lock (#2372); restored from the bin,
+ * the task is held by the client lock like any other.
+ */
+export async function lockFaults(
+  name: CommandName,
+  taskId: string,
+  client: string,
+): Promise<string[]> {
+  const batch = await binBatchOf(taskId);
+  if (batch === null) return await changeRefused(name, taskId, client, 409, 'CLIENT_LOCKED');
+  const found = await changeRefused(`${name} (in the bin)`, taskId, client, 404, 'NOT_FOUND');
+  const restored = await harness.asPerson('task.restore', { batchId: batch });
+  if (restored.code !== 'ok') found.push(`${name}: restore answered ${restored.code}`);
+  found.push(...(await changeRefused(`${name} (restored)`, taskId, client, 409, 'CLIENT_LOCKED')));
+  return found;
 }
 
 /** Every task-content kind no fixture reached; a kind with no case fails. */
