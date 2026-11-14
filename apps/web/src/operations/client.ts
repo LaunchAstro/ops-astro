@@ -251,10 +251,12 @@ export class OperationsClient {
 
     let response: Response;
     try {
+      // A 307 or 308 never resends a factor code or a body to another origin (#1356).
       response = await this.#options.fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
+        redirect: 'error',
       });
     } catch (error) {
       // A transport failure is unavailable and is never dressed as a refusal.
