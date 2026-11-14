@@ -109,6 +109,10 @@ export const GRANTS_BY_ROLE: Readonly<
     ['review', 'write'],
     ['review', 'read'],
     ['review', 'comment'],
+    // A client pin filed as a change request and decided (C57, #2016): `proposal:write`
+    // and `proposal:decide`, the owner's and administrators'.
+    ['proposal', 'write'],
+    ['proposal', 'decide'],
   ],
   member: [
     ['task', 'read'],

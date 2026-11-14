@@ -524,6 +524,9 @@ export async function purgeTrashedRecords(
              -- A review (C35) keys to its task the same way and is kept with it.
              or exists (select 1 from public.reviews v
                          where v.business_id = r.business_id and v.task_id = r.id)
+             -- A change request (C57) keeps the pin it was filed from.
+             or exists (select 1 from public.review_change_requests q
+                         where q.business_id = r.business_id and q.comment_id = r.id)
              -- An onboarding's step (C41-A) keys to its task and keeps it: the
              -- onboarding counts its steps, so the task stays with its step.
              or exists (select 1 from public.onboarding_steps o

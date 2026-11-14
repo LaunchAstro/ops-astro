@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import type { C80Seeds } from './c80-seeds.ts';
+import type { C57Seeds } from './c57-bodies.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -81,7 +82,7 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext extends C80Seeds {
+export interface BodyContext extends C80Seeds, C57Seeds {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */

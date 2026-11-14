@@ -7,8 +7,9 @@
 // `task.check` is: another person's live lease refuses for the delegation's reason, and the
 // agent's own lease reaches its own capture. Each picked-up task carries a review with both
 // widths asked, so a crossing names the other person's real revision and the control the
-// agent's own. A pin is refused outside the delegation's own task as the open is. Registered
-// inside api-1-isolation.test.ts's describe. Made-up names only.
+// agent's own. A pin is refused outside the delegation's own task as the open is, and so is a
+// change request filed from the other person's client pin (C57, #2016). Registered inside
+// api-1-isolation.test.ts's describe. Made-up names only.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it } from 'vitest';
@@ -37,6 +38,9 @@ interface Lease {
 /** The planted revision on each picked-up task: the agent's own, and the other person's. */
 export const revision = { own: '', foreign: '' };
 
+/** The client pin planted on the other person's revision, a change request's crossing (C57). */
+const clientPin = { foreign: '' };
+
 /** Each review command's body, at `lease` and `revisionId`; an open names the crossing's task. */
 export const reviewBodies = (
   lease: Lease,
@@ -59,6 +63,8 @@ export const reviewBodies = (
     body: 'a pin across the delegation',
     audience: 'internal',
   }),
+  // A change request filed from the other person's client pin (#2016).
+  'review.propose_change': () => ({ commentId: clientPin.foreign, text: 'a change across' }),
 });
 
 const MEDIA_FRAGMENTS = 'http://www.w3.org/TR/media-frags/';
@@ -71,6 +77,7 @@ export const REVIEW_REASONS: Record<string, string> = Object.fromEntries(
     'review.capture_claim',
     'review.capture_land',
     'review.pin_comment',
+    'review.propose_change',
   ].map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE']),
 );
 
@@ -96,11 +103,32 @@ async function asked(taskId: string, by: Member, owner: Owner): Promise<string> 
   return seeded.revisionId;
 }
 
+/**
+ * A client pin on `revisionId` of `taskId`, as client review's open switch would write it
+ * (`client-pin-seed.ts`), labelled `<other review>`.
+ */
+async function clientPinOn(taskId: string, revisionId: string): Promise<string> {
+  const id = randomUUID();
+  const planted = await fixture.db.admin.execute(
+    `insert into public.records (business_id, id, record_type_id, data)
+     select $1, $2, t.id, jsonb_build_object(
+       'task', $3::text, 'body', 'a client pin', 'audience', 'client', 'comment_type', 'client',
+       'anchor', jsonb_build_object('source', $4::text, 'width', 1480))
+       from public.record_types t where t.business_id = $1 and t.key = 'task_comment'
+     returning id`,
+    [fixture.business, id, taskId, revisionId],
+  );
+  if (planted.length !== 1) throw new Error('api-1 isolation: no client pin planted');
+  labelAs(id, '<other review>');
+  return id;
+}
+
 /** Registers the planted reviews; after `useIsolationWorld`, whose picked-up tasks they sit on. */
 export function useReviews(): void {
   beforeAll(async () => {
     revision.own = await asked(delegatedTask, fixture.member, 'delegated');
     revision.foreign = await asked(foreignTaskId, other.person, 'other');
+    clientPin.foreign = await clientPinOn(foreignTaskId, revision.foreign);
   });
 }
 
@@ -128,13 +156,15 @@ export function reviewCrossingControl(): void {
     }
   });
 
-  it('API-1 isolation: the review crossings opened, asked, claimed, landed and pinned nothing', async () => {
+  it('API-1 isolation: the review crossings opened, asked, claimed, landed, pinned and filed nothing', async () => {
     const reviews = await fixture.db.admin.execute<{ reviews: number; revisions: number }>(
       `select (select count(*) from public.reviews)::int as reviews,
               (select count(*) from public.review_revisions)::int as revisions,
-              (select count(*) from public.records where data ? 'anchor')::int as pins`,
+              (select count(*) from public.records where data ? 'anchor')::int as pins,
+              (select count(*) from public.review_change_requests)::int as requests`,
     );
-    expect(reviews).toEqual([{ reviews: 2, revisions: 2, pins: 0 }]);
+    // The one pin is the planted client pin.
+    expect(reviews).toEqual([{ reviews: 2, revisions: 2, pins: 1, requests: 0 }]);
     expect(await captures(revision.foreign)).toEqual([
       { width: 390, state: 'requested', lease_id: null },
       { width: 1480, state: 'requested', lease_id: null },

@@ -31,6 +31,8 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'task_delete_requests'],
   // C35-X (20261114152700): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
+  // C57 (20261114162900): a change request is filed once and decided once, by column.
+  ['si', 'review_change_requests'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -86,5 +88,17 @@ export const SITE_UPDATES = [
     table: 'public.task_delete_requests',
     from: '20261101090000',
     columns: ['answer', 'answered_at', 'answered_by_actor_id'],
+  },
+  {
+    table: 'public.review_change_requests',
+    from: '20261114162900',
+    columns: [
+      'state',
+      'decided_by_actor_id',
+      'decided_by_person_id',
+      'decided_at',
+      'created_task_id',
+      'updated_at',
+    ],
   },
 ] as const;
