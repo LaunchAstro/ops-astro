@@ -52,6 +52,10 @@ beforeAll(async () => {
     // eslint-disable-next-line no-await-in-loop -- four grants, one at a time
     await db.admin.execute(`grant select on public.${table} to ${behind}`);
   }
+  // The tables' policies call app_business_id(); every role behind row security
+  // runs it (0001, 0097 and the path roles), so the owner-like role does too.
+  // Without it the read fails on the grant, not on row security, and proves nothing.
+  await db.admin.execute(`grant execute on function public.app_business_id() to ${behind}`);
 }, 120_000);
 
 afterAll(async () => {
