@@ -39,6 +39,11 @@ export interface AuditEvent {
   /** The field names an applied write actually changed (P20). Absent is unknown, not unchanged. */
   readonly fieldChanges?: FieldChanges | null;
   /**
+   * When a one-snapshot read's snapshot was taken (#2370): `task.read` only, and only the time
+   * its own snapshot transaction read from the database, never a value from a request.
+   */
+  readonly servedAt?: Date | null;
+  /**
    * Offered by a caller and ignored by the server. They are here so a test can
    * present them and watch them not persist; nothing in the product supplies
    * them, and the trigger overwrites all three.
@@ -148,12 +153,13 @@ export async function writeAuditEvent(
   // column the insert never mentioned could not have been shown to be
   // overwritten.
   //
-  // The origin conversation (0093) and the changed field names (P20) are
-  // named only when there are some: without them the insert is the one every
+  // The origin conversation (0093), the changed field names (P20) and a
+  // one-snapshot read's snapshot time (#2370) are named only when there are some: without them the insert is the one every
   // earlier schema takes, and each column's null is its default.
   const columns: readonly (readonly [column: string, type: string, value: unknown])[] = [
     ['origin_conversation_id', 'uuid', event.originConversationId ?? null],
     ['field_changes', 'jsonb', event.fieldChanges ?? null],
+    ['served_at', 'timestamptz', event.servedAt ?? null],
   ];
   const optional = columns.filter(([, , value]) => value !== null);
   const rows = await tx.query<WrittenAuditEvent>(
@@ -243,7 +249,8 @@ export async function verifyAuditChain(tx: TenantQuery): Promise<ChainReport> {
             a.hash,
             public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
               a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-              a.payload_digest, a.attempted, a.origin_conversation_id, a.field_changes) as recomputed,
+              a.payload_digest, a.attempted, a.origin_conversation_id, a.field_changes,
+              a.served_at) as recomputed,
             a.prev_hash,
             lag(a.hash) over (order by a.seq) as previous_hash
        from audit_events a

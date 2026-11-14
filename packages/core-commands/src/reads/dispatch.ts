@@ -84,6 +84,7 @@ export async function runRead(
     // what to remove, and echoing the values back would confirm to a prober
     // that the server read what it sent (T1-N4).
     attempted: served.attempted ?? null,
+    servedAt: served.servedAt ?? null,
   });
   return outcome;
 }
@@ -122,6 +123,8 @@ export interface ServedRead {
   readonly subjectRecordId: string | null;
   /** Only the system-owned keys a payload claimed, with their values. */
   readonly attempted?: Readonly<Record<string, unknown>> | undefined;
+  /** When the snapshot it was served from was taken: `task.read` only (`snapshotRead`, #2370). */
+  readonly servedAt?: Date | undefined;
 }
 
 async function serveRead<K extends ReadName>(
