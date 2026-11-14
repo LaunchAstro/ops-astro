@@ -41,7 +41,7 @@ export function PageWrites(props: { readonly children: ReactNode }): ReactElemen
 export function useReportWrite(busy: boolean): void {
   const report = use(Report);
   useEffect(() => {
-    if (!busy || report === null) return undefined;
+    if (!busy || report === null) return;
     report(1);
     return () => {
       report(-1);
