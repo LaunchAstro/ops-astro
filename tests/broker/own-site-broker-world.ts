@@ -18,9 +18,13 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import {
   callModel,
+  reserveModelCall,
+  sendReservedCall,
   type Broker,
   type BrokerRoute,
+  type ModelCaller,
   type ModelCallField,
+  type ModelCallRequest,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import { bindPartySite } from '../../packages/core-records/src/site/party-sites.ts';
@@ -115,34 +119,65 @@ export const freeText = (taskId: string): readonly ModelCallField[] => [
 ];
 
 /** The agent's model call on the picked-up work, attended by the person it works for. */
-export async function ask(
+async function callOf(
   picked: PickedUp,
-  fields: readonly ModelCallField[] = freeText(picked.taskId),
-  routes: readonly BrokerRoute[] = [SEAT],
-): Promise<ModelCallResult> {
+  fields: readonly ModelCallField[],
+): Promise<{ readonly caller: ModelCaller; readonly request: ModelCallRequest }> {
   const leaseId = String(picked.detail['leaseId']);
   const [step] = await w.world.db.admin.execute<{ readonly id: string }>(
     `select st.id from public.planned_steps st join public.leases l on l.run_id = st.run_id
       where l.id = $1 order by st.ordinal limit 1`,
     [leaseId],
   );
-  return await callModel(
-    w.world.db.app,
-    w.world.business,
-    {
+  return {
+    caller: {
       actorId: w.world.agentActorId,
       delegationId: String(picked.detail['delegationId']),
       attendedByPersonId: w.ava.personId,
     },
-    {
+    request: {
       leaseId,
       fence: Number(picked.detail['fence']),
       stepId: String(step?.id),
       operation: REPLAY_COMPOSE.key,
       fields,
     },
-    { ...broker, routes },
+  };
+}
+
+/** That call, held and sent in one go. */
+export async function ask(
+  picked: PickedUp,
+  fields: readonly ModelCallField[] = freeText(picked.taskId),
+  routes: readonly BrokerRoute[] = [SEAT],
+): Promise<ModelCallResult> {
+  const { caller, request } = await callOf(picked, fields);
+  return await callModel(w.world.db.app, w.world.business, caller, request, {
+    ...broker,
+    routes,
+  });
+}
+
+/**
+ * That call in its two halves: the hold, committed here, and then `send`, which
+ * starts and sends it in a transaction of its own (`sendReservedCall`).
+ */
+export async function askHeld(
+  picked: PickedUp,
+  fields: readonly ModelCallField[] = freeText(picked.taskId),
+): Promise<{ readonly callId: string; readonly send: () => Promise<ModelCallResult> }> {
+  const { caller, request } = await callOf(picked, fields);
+  const reserving = await w.world.db.app.withBusiness(
+    w.world.business,
+    async (tx) => await reserveModelCall(tx, caller, request, broker),
   );
+  if (!reserving.ok) throw new Error(`own site: the hold was refused ${reserving.code}`);
+  const { reserved } = reserving;
+  return {
+    callId: reserved.callId,
+    send: async () =>
+      await sendReservedCall(w.world.db.app, w.world.business, caller, request, reserved, broker),
+  };
 }
 
 /** The agent's request on the business's own about page, under its delegation. */

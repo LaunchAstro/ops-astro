@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R6 part 2: a held model call's start reads the task's source after its last lock wait, so a non-owner write committed while the start waits on the run, the lease, the delegation or the held step's reservation releases the call unsent and never started (LOCAL_MODEL_REQUIRED); the same waits with nothing written send the owner's work, and a write before the call is refused at once."
+}
