@@ -194,6 +194,15 @@ export function saveAttempt(
 
 export function dropDraft(storage: Storage | null, person: string): void {
   if (draftProblem(storage, person) !== null) return;
+  discardDraft(storage, person);
+}
+
+/**
+ * Cancel's discard (#1461): the person's own act removes the saved copy even
+ * when it cannot be read, which `dropDraft` holds; else the next New task stays
+ * refused by the same copy.
+ */
+export function discardDraft(storage: Storage | null, person: string): void {
   unstored.delete(person);
   try {
     storage?.removeItem(keyOf(person));
