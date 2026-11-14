@@ -289,12 +289,9 @@ export async function answerMadeUp(
 ): Promise<void> {
   await context.route('**/api/b/**', async (route) => {
     const request = route.request();
-    const body: unknown = request.method() === 'POST' ? request.postDataJSON() : {};
-    const answer = madeUpAnswer(
-      new URL(request.url()).pathname,
-      variant,
-      typeof body === 'object' && body !== null ? body : {},
-    );
+    const posted: unknown = request.method() === 'POST' ? request.postDataJSON() : {};
+    const body = typeof posted === 'object' && posted !== null ? posted : {};
+    const answer = madeUpAnswer(new URL(request.url()).pathname, variant, body);
     if (answer !== undefined && 'pending' in answer) return;
     await (answer === undefined ? route.fallback() : route.fulfill(answer));
   });
