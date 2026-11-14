@@ -44,7 +44,8 @@ const { psqlOn, reachArgs, reachEnv } = (await import(
 )) as ReachModule;
 const PURGE =
   "set lock_timeout = '30s';\nset statement_timeout = '2min';\n" +
-  'set role ops_astro_upkeep;\nselect ops.expire_second_factor_codes();\n';
+  'set role ops_astro_upkeep;\nselect ops.expire_second_factor_codes();\n' +
+  'select ops.expire_auth_hook_messages();\n';
 
 const STORE = 'postgres://retention@backups:5432/backups';
 const UPKEEP = 'postgres://upkeep@example.test:5432/postgres';
@@ -67,16 +68,20 @@ const standIn =
     return url === UPKEEP ? await codes() : '{"count":1,"fresh":true}';
   };
 
-it('records the count of second-factor codes the upkeep deleted, as the upkeep identity, its locks and statement bounded', async () => {
+it('records the count of second-factor codes and hook claims the upkeep deleted, as the upkeep identity, its locks and statement bounded', async () => {
   const sent: string[] = [];
   const record = await expireBackups({
     storeUrl: STORE,
     upkeepUrl: UPKEEP,
-    reach: standIn(() => Promise.resolve('3'), sent),
+    reach: standIn(() => Promise.resolve('3\n5'), sent),
     send,
   });
   expect(record).toMatchObject({ outcome: 'recorded', count: 1, restoreHeartbeat: 'sent' });
-  expect(record['secondFactorCodes']).toStrictEqual({ outcome: 'recorded', count: 3 });
+  expect(record['secondFactorCodes']).toStrictEqual({
+    outcome: 'recorded',
+    count: 3,
+    hookMessages: 5,
+  });
   expect(sent).toContain(PURGE);
 });
 
@@ -94,10 +99,14 @@ it('purges only once the backup expiry and the heartbeat are done, so a purge th
   const refused = await expireBackups({
     storeUrl: STORE,
     upkeepUrl: UPKEEP,
-    reach: async (url) => (url === UPKEEP ? '2' : await Promise.reject(new Error('down'))),
+    reach: async (url) => (url === UPKEEP ? '2\n0' : await Promise.reject(new Error('down'))),
   });
   expect(refused).toMatchObject({ outcome: 'failed', stage: 'store' });
-  expect(refused['secondFactorCodes']).toStrictEqual({ outcome: 'recorded', count: 2 });
+  expect(refused['secondFactorCodes']).toStrictEqual({
+    outcome: 'recorded',
+    count: 2,
+    hookMessages: 0,
+  });
 });
 
 it('records a failed second-factor purge without stopping the backup expiry or the heartbeat', async () => {
