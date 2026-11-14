@@ -100,13 +100,14 @@ export async function withFactor(
 ): Promise<string> {
   const providerFactorId = randomUUID();
   await harness.world.db.app.withBusiness(businessId, async (tx) => {
+    const subject = member.presented.subject;
     const factor = await recordFactorEnrolled(tx, {
       personId: member.personId,
+      subject,
       provider: 'supabase',
       providerFactorId,
     });
     if (!verified) return;
-    const subject = member.presented.subject;
     await recordFactorVerified(tx, { personId: member.personId, factorId: factor.id, subject });
   });
   return providerFactorId;

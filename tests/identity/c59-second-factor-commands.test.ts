@@ -261,6 +261,7 @@ describe.skipIf(serverUrl === undefined)('C59 on the command path', () => {
     await db.app.withBusiness(alpha, async (tx) => {
       const enrolled = await recordFactorEnrolled(tx, {
         personId: milo.personId,
+        subject: milo.presented.subject,
         provider: 'supabase',
         providerFactorId: `factor-${randomUUID()}`,
       });

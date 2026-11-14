@@ -111,6 +111,7 @@ async function verifyFactor(tx: TenantQuery, party: Party): Promise<string> {
   await lockLoginFactors(tx, party.sub);
   const factor = await recordFactorEnrolled(tx, {
     personId: party.person,
+    subject: party.sub,
     provider: 'supabase',
     providerFactorId: randomUUID(),
   });

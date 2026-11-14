@@ -79,6 +79,7 @@ describe.skipIf(serverUrl === undefined)(
       const f = await db.app.withBusiness(alpha, (tx) =>
         recordFactorEnrolled(tx, {
           personId: alphaPerson,
+          subject,
           provider: 'supabase',
           providerFactorId: `factor-${randomUUID()}`,
         }),

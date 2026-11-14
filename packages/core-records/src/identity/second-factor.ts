@@ -43,9 +43,9 @@ const shaped = (row: FactorRow): SecondFactor => ({
 });
 
 /**
- * The person's live factor. With `lock`, the subject of the login the person
- * signs in with, the login and then the person's own row are locked for the
- * rest of the transaction first, so an enrolment, a verification and a
+ * The person's live factor, asked for the login `subject` the person signs in
+ * with. With `lock`, that login and then the person's own row are locked for
+ * the rest of the transaction first, so an enrolment, a verification and a
  * removal for the same person queue behind each other instead of
  * interleaving, and so do two businesses completing enrolments for the one
  * login: the second then reads the first's verified factor (0064).
@@ -61,10 +61,11 @@ const shaped = (row: FactorRow): SecondFactor => ({
 export async function liveFactor(
   tx: TenantQuery,
   personId: string,
-  options: { readonly lock?: string } = {},
+  subject: string,
+  options: { readonly lock?: boolean } = {},
 ): Promise<SecondFactor | undefined> {
-  if (options.lock !== undefined) {
-    await lockLoginFactors(tx, options.lock);
+  if (options.lock === true) {
+    await lockLoginFactors(tx, subject);
     await tx.query(
       'select 1 from public.people where business_id = $1 and id = $2 for no key update',
       [tx.businessId, personId],
@@ -101,6 +102,7 @@ export async function recordFactorEnrolled(
   tx: TenantQuery,
   factor: {
     readonly personId: string;
+    readonly subject: string;
     readonly provider: string;
     readonly providerFactorId: string;
   },

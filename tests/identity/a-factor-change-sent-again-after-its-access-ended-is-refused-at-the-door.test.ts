@@ -51,11 +51,14 @@ it.each(['enrol', 'verify', 'remove'] as const)(
       await db.app.withBusiness(business, (tx) =>
         recordFactorEnrolled(tx, {
           personId: person,
+          subject: asked.presented.subject,
           provider: 'supabase',
           providerFactorId: `factor-${randomUUID()}`,
         }),
       );
-    const before = (await db.app.withBusiness(business, (tx) => liveFactor(tx, person)))?.status;
+    const before = (
+      await db.app.withBusiness(business, (tx) => liveFactor(tx, person, asked.presented.subject))
+    )?.status;
     const body = { command: 'access.end', operationId: randomUUID(), holderId: person };
     const ended = await executeCommand(db.app, business, ada.presented, 'api', body as never);
     expect(isCommandRefusal(ended)).toBe(false);
@@ -79,7 +82,9 @@ it.each(['enrol', 'verify', 'remove'] as const)(
           and e.outcome = 'applied'`,
       [business, person, `account.factor_${act}`],
     );
-    const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+    const live = await db.app.withBusiness(business, (tx) =>
+      liveFactor(tx, person, asked.presented.subject),
+    );
     expect({ sent, again, calls, applied: events?.applied, status: live?.status }).toMatchObject({
       sent: { refused: true, code: 'AUTH_ACCESS_ENDED' },
       again: { refused: true, code: 'AUTH_ACCESS_ENDED' },

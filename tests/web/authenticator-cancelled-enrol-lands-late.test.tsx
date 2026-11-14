@@ -106,7 +106,7 @@ it('a cancelled enrolment cannot invalidate the displayed replacement when it fi
     await vi.waitFor(() =>
       expect(view.find('[data-factor="secret"]')?.textContent).toBe('DISPLAYED-SECRET'),
     );
-    expect((await factorOf(clientD.personId))?.providerFactorId).toBe('factor-two');
+    expect((await factorOf(clientD))?.providerFactorId).toBe('factor-two');
     releaseCancelled?.();
     await vi.waitFor(() => expect(completed).toBe(2));
     await settle();
@@ -120,7 +120,7 @@ it('a cancelled enrolment cannot invalidate the displayed replacement when it fi
     // cancelled request must not replace its database target afterwards.
     expect(
       view.find('[data-factor="done"]'),
-      `live target=${(await factorOf(clientD.personId))?.providerFactorId}; panel=${view.text()}`,
+      `live target=${(await factorOf(clientD))?.providerFactorId}; panel=${view.text()}`,
     ).not.toBeNull();
   } finally {
     await view.unmount();

@@ -79,7 +79,9 @@ it.each(['enrol', 'verify', 'remove'] as const)(
         await factorLock.letGo();
       }
       const result = await acting;
-      const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+      const live = await db.app.withBusiness(business, (tx) =>
+        liveFactor(tx, person, asked.presented.subject),
+      );
       expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
         result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
         status: act === 'enrol' ? 'none' : 'verified',
@@ -132,7 +134,9 @@ it('a factor removal whose session was signed out during the audit wait is refus
       await chain.letGo();
     }
     const result = await removing;
-    const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+    const live = await db.app.withBusiness(business, (tx) =>
+      liveFactor(tx, person, asked.presented.subject),
+    );
     expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
       result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
       status: 'verified',

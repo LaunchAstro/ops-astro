@@ -205,7 +205,7 @@ async function heldFactor(
   );
   const login = logins.length === 1 ? logins[0] : undefined;
   if (login === undefined) return resetRefused();
-  const factor = await liveFactor(tx, personId, { lock: login.subject });
+  const factor = await liveFactor(tx, personId, login.subject, { lock: true });
   if (factor?.status !== 'verified') {
     return refused(refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES));
   }

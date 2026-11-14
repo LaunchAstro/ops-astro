@@ -32,6 +32,7 @@ it('a factor verified on one login asks no code of another login mapped to the s
     await insertMapping(tx, await insertLogin(tx, otherSubject), person.personId, person.actorId);
     const factor = await recordFactorEnrolled(tx, {
       personId: person.personId,
+      subject: person.presented.subject,
       provider: 'supabase',
       providerFactorId: randomUUID(),
     });
