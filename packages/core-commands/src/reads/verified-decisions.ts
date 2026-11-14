@@ -149,6 +149,8 @@ interface BoundEvidence {
   readonly gate_evidence_pack_id: string | null;
   readonly dv_version: number | null;
   readonly dv_lineage_id: string | null;
+  /** The task the version's lineage names now, which the signed evidence must name too (#1294). */
+  readonly dl_task_id: string | null;
   readonly dv_maximum_minor: string | null;
   readonly dv_currency: string | null;
   readonly dv_purpose: string | null;
@@ -287,6 +289,7 @@ function splitShown({
   gate_evidence_pack_id,
   dv_version,
   dv_lineage_id,
+  dl_task_id,
   dv_maximum_minor,
   dv_currency,
   dv_purpose,
@@ -297,7 +300,7 @@ function splitShown({
   dp_rendered_digest,
   ...row
 }: ChainRow): readonly [VerifiedDecisionRow, BoundEvidence] {
-  const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id };
+  const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id, dl_task_id };
   const version = { dv_maximum_minor, dv_currency, dv_purpose, dv_payload, dv_payload_digest };
   return [row, { ...shown, ...version, dp_id, dp_rendered, dp_rendered_digest }];
 }
@@ -331,6 +334,7 @@ function unboundEvidence(row: VerifiedDecision, shown: BoundEvidence | undefined
   const fields = [
     ['version', shown.dv_version, rendered['version']],
     ['lineage_id', shown.dv_lineage_id, rendered['lineage']],
+    ['task', shown.dl_task_id, rendered['task']],
     ['maximum_minor', Number(shown.dv_maximum_minor), signed?.['maximumMinor']],
     ['currency', shown.dv_currency, signed?.['currency']],
     ['purpose', shown.dv_purpose, rendered['purpose']],
@@ -552,6 +556,7 @@ async function readSnapshot(
                 d.payload, d.payload_digest, d.signing_key_id, d.signature, d.prev_hash, d.hash,
                 g.version_id as gate_version_id, g.evidence_pack_id as gate_evidence_pack_id,
                 dv.version as dv_version, dv.lineage_id as dv_lineage_id,
+                dl.task_id::text as dl_task_id,
                 dv.maximum_minor::text as dv_maximum_minor, dv.currency as dv_currency,
                 dv.purpose as dv_purpose, dv.payload as dv_payload,
                 dv.payload_digest as dv_payload_digest,
@@ -565,6 +570,8 @@ async function readSnapshot(
            left join public.proposal_versions dv
              on dv.business_id = d.business_id and dv.id = d.version_id
             and d.lineage_id in (select lineage_id from lineages)
+           left join public.proposal_lineages dl
+             on dl.business_id = dv.business_id and dl.id = dv.lineage_id
            left join public.evidence_packs dp
              on dp.business_id = d.business_id and dp.version_id = d.version_id
             and d.lineage_id in (select lineage_id from lineages)
