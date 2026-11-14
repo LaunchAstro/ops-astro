@@ -149,9 +149,9 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     line: `ops_astro_app ${act} ops.subject_resets.${column}`,
   })),
   // Batch 2b's (C55, C59, 0069, 0072): alert kinds and times (the forwarder prunes by time,
-  // 20261114143100) and second-factor code rows are granted column by column.
+  // 20261114112100) and second-factor code rows are granted column by column.
   { from: '0069', line: 'ops_astro_forwarder INSERT ops.security_alert_log.kind' },
-  { from: '20261114143100', line: 'ops_astro_forwarder SELECT ops.security_alert_log.at' },
+  { from: '20261114112100', line: 'ops_astro_forwarder SELECT ops.security_alert_log.at' },
   ...['at', 'kind'].map((column) => ({
     from: '0069',
     line: `ops_astro_app SELECT ops.security_alert_log.${column}`,

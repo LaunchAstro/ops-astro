@@ -767,7 +767,7 @@ the alert in `ops.api_alerts` (0048), so a pass that fails writes neither and
 an alert kept already is not written twice; the send that deletes the
 `ops.api_alerts` row leaves the log alone. The log keeps ninety days (owner,
 #1435): each forwarder pass deletes older rows, judging age by
-`clock_timestamp()` after it holds the forwarder lock (20261114143100). The
+`clock_timestamp()` after it holds the forwarder lock (20261114112100). The
 forwarder may insert the kind column, select `at` and delete, nothing else.
 The application group may select `kind` and `at` only, and
 changes nothing; it still holds nothing on `ops.api_alerts`. The table belongs
