@@ -73,7 +73,7 @@ export const SITE_UPDATES = [
   // quarantined with its probe until a scan's verdict lands.
   {
     table: 'public.review_media_assets',
-    from: '20261114060000',
+    from: '20261114231600',
     columns: [
       'probe_codec',
       'probe_duration',
