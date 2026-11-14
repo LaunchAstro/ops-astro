@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // #2344: the Tasks page shows every task, a board-less one with no assignee
-// included. The page reads the tasks on no board (`board: null`) and opens on
-// the viewer's own (P-11), so a task nobody holds was out of sight (T-6). The
-// All tasks chip, beside the viewer's, turns every filter off and is on while
-// none is; its count is every task the reader was handed.
+// included. The page reads the tasks on no board (`board: null`). The All
+// tasks chip, beside the viewer's, turns every filter off and is on while none
+// is; its count is every task the reader was handed. #2347 (DECISIONS 91):
+// the page opens on All tasks, so a task nobody holds (T-6) shows at first
+// look, and the viewer's own are one click away.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -93,14 +94,25 @@ const open = async (address?: string): Promise<Mounted> => {
 };
 
 describe('#2344 the All tasks chip shows every task', () => {
-  it('sits first, counts every task, and is off while the viewer preset is on', async () => {
+  it('sits first, counts every task, and is on at load with every task drawn (#2347)', async () => {
     const board = await open();
     const chips = board.all('.cbd__preset').map((chip) => (chip as HTMLElement).dataset['preset']);
     expect(chips[0]).toBe('all');
     expect(one(board, ALL)?.textContent).toContain('All tasks');
     expect(one(board, `${ALL} .cbd__count`)?.textContent).toBe('2');
+    expect(one(board, ALL)?.classList.contains('is-on')).toBe(true);
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(drawn(board)).toStrictEqual(['5', '6']);
+  });
+
+  it('the viewer’s own tasks are one click away, and All tasks brings the rest back', async () => {
+    const board = await open();
+    await board.click(VIEWER);
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(true);
     expect(one(board, ALL)?.classList.contains('is-on')).toBe(false);
     expect(drawn(board)).toStrictEqual(['5']);
+    await board.click(ALL);
+    expect(drawn(board)).toStrictEqual(['5', '6']);
   });
 
   it('pressing it turns every filter off and draws the task nobody holds', async () => {
@@ -115,6 +127,8 @@ describe('#2344 the All tasks chip shows every task', () => {
 
   it('a stacked press turns every filter off too', async () => {
     const board = await open();
+    await board.click(VIEWER);
+    expect(drawn(board)).toStrictEqual(['5']);
     await stack(board, ALL);
     expect(drawn(board)).toStrictEqual(['5', '6']);
   });
@@ -148,7 +162,7 @@ const json = (body: unknown): Response =>
   });
 
 describe('#2344 a task on no board with no assignee shows on the Tasks page', () => {
-  it('is read with the tasks on no board and drawn once All tasks is pressed', async () => {
+  it('is read with the tasks on no board and drawn on first load (#2347)', async () => {
     const t6 = {
       id: '66666666-6666-4666-8666-666666666666',
       key: 'T-6',
@@ -183,10 +197,8 @@ describe('#2344 a task on no board with no assignee shows on the Tasks page', ()
     mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:nathan" />);
     await settle();
     expect(sent).toContainEqual(expect.objectContaining({ board: null }));
-    expect(drawn(mounted)).toStrictEqual([]);
-    await mounted.click(ALL);
-    await settle();
     expect(drawn(mounted)).toStrictEqual([t6.id]);
+    expect(one(mounted, ALL)?.classList.contains('is-on')).toBe(true);
   });
 });
 
