@@ -53,14 +53,18 @@ const backendOf = async (db: Database): Promise<number> =>
     )
   )[0]!.pid;
 
-/** Until every one of `pids` waits on `blocker`. */
+/**
+ * Until every one of `pids` waits, each on `blocker` or on another of `pids`: Postgres queues a
+ * second waiter for a row behind the first, so only the first names the holder directly.
+ */
 async function allWaitOn(blocker: number, pids: readonly number[]): Promise<boolean> {
   for (let i = 0; i < 400; i += 1) {
     // oxlint-disable-next-line no-await-in-loop -- one probe at a time, each read after the last
     const [row] = await w.world.db.admin.execute<{ n: number }>(
       `select count(*)::int as n from pg_stat_activity
         where datname = current_database() and pid = any($2::int[])
-          and $1::int = any(pg_blocking_pids(pid))`,
+          and cardinality(pg_blocking_pids(pid)) > 0
+          and pg_blocking_pids(pid) <@ ($2::int[] || $1::int)`,
       [blocker, pids],
     );
     if (row?.n === pids.length) return true;
@@ -154,7 +158,7 @@ describe.skipIf(serverUrl === undefined)('C73 completions at once', () => {
       async () => {
         await w.world.db.admin.execute(
           `update public.grants set revoked_at = now()
-          where business_id = $1 and holder_id = any($2::uuid[]) and collection = 'review'
+          where business_id = $1 and subject_id = any($2::uuid[]) and collection = 'review'
             and revoked_at is null`,
           [w.world.business, [w.ava.personId, w.ava.actorId]],
         );
