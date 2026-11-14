@@ -765,8 +765,11 @@ and the database's time alone: no sink id, scope, business, client, person,
 secret or record content. The forwarder writes it in the statement that keeps
 the alert in `ops.api_alerts` (0048), so a pass that fails writes neither and
 an alert kept already is not written twice; the send that deletes the
-`ops.api_alerts` row leaves the log alone. The forwarder may insert the kind
-column only. The application group may select `kind` and `at` only, and
+`ops.api_alerts` row leaves the log alone. The log keeps ninety days (owner,
+#1435): each forwarder pass deletes older rows, judging age by
+`clock_timestamp()` after it holds the forwarder lock (20261114143100). The
+forwarder may insert the kind column, select `at` and delete, nothing else.
+The application group may select `kind` and `at` only, and
 changes nothing; it still holds nothing on `ops.api_alerts`. The table belongs
 to no business, so the operations view reads it only for the business that
 operates the installation (`ops.installation.operator_business_id`), newest
