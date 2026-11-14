@@ -16,6 +16,7 @@
 
 import {
   delegatingSubjects,
+  holdCoveringGrants,
   lockPinnedReview,
   REVIEW_COLLECTION,
   subjectsOf,
@@ -137,14 +138,16 @@ async function pin(tx: TenantQuery, by: Pinner, sent: Sent): Promise<JudgedLast>
   if (by.delegation !== undefined && by.delegation.purposeScope.id !== named.taskId) {
     return refused(OUT_OF_PURPOSE);
   }
-  const spine = await readTaskSpine(tx);
-  const task = await lockTask(tx, spine.taskTypeId, named.taskId);
-  if (task === undefined) return refused(refuseNotFound());
   const covering: Covering = {
     subjects: by.subjects,
     collection: REVIEW_COLLECTION,
     action: 'comment',
   };
+  // The covering grants before the task, the order `access.end` takes them (#2402).
+  await holdCoveringGrants(tx, covering);
+  const spine = await readTaskSpine(tx);
+  const task = await lockTask(tx, spine.taskTypeId, named.taskId);
+  if (task === undefined) return refused(refuseNotFound());
   const locked = await lockPinnedReview(tx, named.reviewId, anchor.source, covering);
   if (locked === undefined) return refused(refuseNotFound());
   if (!locked.widths.includes(anchor.width)) return refused(NO_CAPTURE);
