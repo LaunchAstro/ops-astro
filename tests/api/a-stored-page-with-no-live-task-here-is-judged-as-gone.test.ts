@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The edges of `pageTaskOf` (#2407, S1930-2) that Sol's round 1 on #2410
+// The edges of `pageTaskOf` (#2407, S1930-2) that Sol's rounds on #2410
 // found without a runtime case. A stored page that names no live task of this
 // business (an undecodable reference, a task in the bin, an id no task here
-// holds) is judged as a task that is gone: nothing is offered and no model is
-// asked. A page that is not a task's leaves the task the conversation was
-// opened on, so an internal opening is still offered models and a client's
-// opening is still refused. A conversation opened on a task gone since, given
-// an internal page, is judged as gone too: never as no client's. Through the
-// server's own composition root, the replay stand-in on loopback and a fresh
-// Postgres.
+// holds, or a real task of another business) is judged as a task that is
+// gone: nothing is offered and no model is asked. A page that is not a task's
+// leaves the task the conversation was opened on, so an internal opening is
+// still offered models and a client's opening is still refused. A
+// conversation opened on a task gone since, given an internal page, is judged
+// as gone too: never as no client's. Through the server's own composition
+// root, the replay stand-in on loopback and a fresh Postgres.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { pageTaskOf } from '../../packages/core-commands/src/commands/conversation-page-task.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
+import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { conversationWorld, started, type ConversationWorld } from './aw-03-fixture.ts';
 import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
@@ -98,6 +100,8 @@ async function judged(conversationId: string): Promise<{ offered: number; asked:
 }
 
 const GONE = { offered: 0, asked: false };
+/** The id `pageTaskOf` answers for a page naming no live task of this business. */
+const NO_TASK = '00000000-0000-4000-8000-000000000000';
 
 describe.skipIf(serverUrl === undefined)('a stored page with no live task here', () => {
   it('an internal opening given an undecodable task page is judged as gone', async () => {
@@ -140,5 +144,33 @@ describe.skipIf(serverUrl === undefined)('a stored page with no live task here',
     await trash(opening);
     await givePage(conversationId, `/task/${(await aTask()).id}`);
     expect(await judged(conversationId)).toStrictEqual(GONE);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)("a page naming another business's task", () => {
+  it('a page naming a real task of another business is judged as gone there, by id or key, whatever the opening', async () => {
+    const foreign = await aTask();
+    const [row] = await w.fixture.db.admin.execute<{ readonly key: string }>(
+      'select txt_1 as key from public.records where id = $1',
+      [foreign.id],
+    );
+    const other = await insertBusiness(w.fixture.db.app, `other-${randomUUID()}`);
+    const judgedThere: unknown[] = [];
+    for (const opening of [null, randomUUID()]) {
+      for (const ref of [foreign.id, String(row?.key)]) {
+        // oxlint-disable-next-line no-await-in-loop -- each opening and spelling in turn, in the other business
+        const task = await w.fixture.db.app.withBusiness(
+          other,
+          async (tx) => await pageTaskOf(tx, opening, `/task/${ref}`),
+        );
+        judgedThere.push(task);
+      }
+    }
+    expect(judgedThere, 'never the foreign task, always gone').toStrictEqual([
+      NO_TASK,
+      NO_TASK,
+      NO_TASK,
+      NO_TASK,
+    ]);
   });
 });
