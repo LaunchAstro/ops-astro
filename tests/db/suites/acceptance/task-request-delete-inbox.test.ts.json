@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "task.request_delete raises one delete_request inbox item, to the person the agent acts for or else the task's decide holders, never to the asker; Confirm and Keep clear it naming who answered; a lapsed request's item is neither shown nor counted; a request in another business tells only that business's people"
+}
