@@ -36,6 +36,7 @@ describe('API-1 command catalogue', () => {
   agentDecideAndPersonOnly();
   stricterSurfaces();
   writeEnforcementRemoved();
+  handlerEnforcementRemoved();
 });
 
 function replacesDiscovery(): void {
@@ -154,10 +155,10 @@ function stricterSurfaces(): void {
 
 const PREPARE = 'packages/core-commands/src/commands/prepare.ts';
 
-/** A node `--import` that serves `PREPARE` with `from` replaced by `to`, its file untouched. */
-function planted(from: string, to: string): string {
+/** A node `--import` that serves `file` with `from` replaced by `to`, the file untouched. */
+function planted(from: string, to: string, file = PREPARE): string {
   const hook = `import { registerHooks } from 'node:module';
-    const [file, from, to] = ${JSON.stringify([PREPARE, from, to])};
+    const [file, from, to] = ${JSON.stringify([file, from, to])};
     registerHooks({ load(url, context, nextLoad) {
       const loaded = nextLoad(url, context);
       if (!url.endsWith(file)) return loaded;
@@ -228,4 +229,28 @@ function writeEnforcementRemoved(): void {
     },
     120_000,
   );
+}
+
+const DUPLICATE_HANDLER = 'packages/core-commands/src/commands/tasks-duplicate.ts';
+
+/**
+ * A key a write's declaration names beyond its own is asked by its handler, after
+ * preparation: `task.duplicate` asks `task:read` on the old task there. Planted out of the
+ * handler, the real parity script must see it skipped, not take it from the declaration.
+ */
+function handlerEnforcementRemoved(): void {
+  it('parity fails when a write’s handler stops asking a key its declaration names', () => {
+    const hook = [
+      planted(
+        "(await ask('read', { kind: 'record', id: oldId }, at)) ?? (await ask('write', there, at));",
+        "await ask('write', there, at);",
+        DUPLICATE_HANDLER,
+      ),
+    ];
+    const run = parity(hook);
+    expect(run.stderr).not.toContain('PLANT-MISSED');
+    expect(run.status, 'parity passed with the handler’s task:read removed').toBe(1);
+    expect(run.stdout).toContain('API task.duplicate skips the grant check task:read');
+    expect(run.stdout).not.toContain('task.duplicate skips the grant check task:write');
+  }, 120_000);
 }
