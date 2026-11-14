@@ -9,9 +9,11 @@
 import { afterEach, expect, it } from 'vitest';
 import { DeleteRequest } from '../../apps/web/src/screens/task/DeleteRequest.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { json, mount, unmountAll } from './perspective-support.tsx';
+import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TASK_ID, found, page as taskPage, task, tick } from './task-page-stub.tsx';
+import { ScoresCustodyProvider } from '../../apps/web/src/screens/task/scores-custody-context.tsx';
+import { chooseHouse } from './p08-rank-marks-select-support.tsx';
 
 interface Sent {
   readonly command: string;
@@ -169,8 +171,17 @@ async function livePage(
     return Promise.resolve(json(answer.body, answer.status));
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+  // The app's own scores owner over this tab's storage, so the page's score fields work as in the app.
+  const kept = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => kept.get(key) ?? null,
+    setItem: (key: string, value: string) => void kept.set(key, value),
+    removeItem: (key: string) => void kept.delete(key),
+  };
   const view = await mount(
-    <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
+    <ScoresCustodyProvider client={client} grantKey="alpha:member" storage={storage}>
+      <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />
+    </ScoresCustodyProvider>,
   );
   await tick();
   return { view, sent, reads: () => read, release: () => waiting.splice(0).forEach((go) => go()) };
@@ -240,3 +251,61 @@ it('the task page holds the answers while another control’s write is in flight
   await tick();
   expect(buttons(view), 'free once it settles').toStrictEqual([false, false]);
 });
+
+const AGENT = {
+  agent: {
+    agentId: 'a-1',
+    name: 'Reply drafter',
+    owner: { personId: 'p-ada', name: 'Ada' },
+    live: false,
+    run: null,
+  },
+  myAgents: [],
+};
+
+it.each([
+  [
+    'task.comment',
+    {},
+    async (view: Awaited<ReturnType<typeof mount>>) => {
+      await typeInto(view, '#comment-body', 'A note while the request waits.');
+      await view.click('[data-comment="post"]');
+    },
+  ],
+  [
+    'task.launch',
+    AGENT,
+    async (view: Awaited<ReturnType<typeof mount>>) => {
+      await view.click('[data-launch-run]');
+    },
+  ],
+  [
+    'task.set_scores',
+    { scores: { impact: 7, confidence: 9, ease: 8 } },
+    async (view: Awaited<ReturnType<typeof mount>>) => {
+      const trigger = view.host.querySelector<HTMLButtonElement>('#page-score-impact button');
+      if (trigger === null) throw new Error('no page score editor for impact');
+      await chooseHouse(trigger, '5');
+    },
+  ],
+] as const)(
+  'the task page holds the answers while %s is in flight (Sol r3 coverage)',
+  async (command, over, write) => {
+    const { view, sent, release } = await livePage(
+      [task({ deleteRequest: REQUEST, ...over })],
+      APPLIED,
+      command,
+    );
+    expect(buttons(view)).toStrictEqual([false, false]);
+    await write(view);
+    await tick();
+    expect(sent, JSON.stringify(sent)).toContain(command);
+    expect(buttons(view), `held while ${command} is in flight`).toStrictEqual([true, true]);
+    await view.click('[data-act="confirm-delete"] button');
+    await tick();
+    expect(sent).not.toContain('task.confirm_delete');
+    release();
+    await tick();
+    expect(buttons(view), 'free once it settles').toStrictEqual([false, false]);
+  },
+);
