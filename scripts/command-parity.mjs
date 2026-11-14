@@ -16,6 +16,7 @@ import {
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
+import { handleCommand } from '../packages/core-commands/src/commands/handlers.ts';
 import { prepareCommand } from '../packages/core-commands/src/commands/prepare.ts';
 import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
@@ -213,10 +214,22 @@ const OPERANDS = {
   'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
+// A write whose declaration names a key beyond its own asks it in its handler, after
+// preparation, so the probe runs that handler too, with the operands it needs to reach its
+// grant checks. A new write declaring such a key and missing here fails the check, never passes.
+const HANDLER_OPERANDS = {
+  'task.duplicate': {
+    recordId: '00000000-0000-4000-8000-000000000000',
+    title: 't',
+    stepNames: [],
+    client: null,
+  },
+};
+
 // The grants a command really asks, on a transaction that holds none: a read by its real read
-// path, a write by its real preparation (prepare.ts; the handler not run). Preparation asks a
-// write's own key, or none when self-scoped, and with no grant held refuses for that; its handler
-// asks any other its declaration names.
+// path, a write by its real preparation (prepare.ts) and, when its declaration names a key beyond
+// its own, by its real handler too. Preparation asks a write's own key, or none when
+// self-scoped, and with no grant held refuses for that; the handler asks the rest.
 async function askedBy(declaration) {
   const asked = [];
   const spine = [
@@ -228,6 +241,7 @@ async function askedBy(declaration) {
     query: (sql, params) => {
       // Only the grant check names a collection and action ($1, $2); a client list asks no key.
       if (sql.includes('where e.collection = $1')) asked.push(`${params[0]}:${params[1]}`);
+      if (sql.includes('clock_timestamp()::text as at')) return Promise.resolve([{ at: 'now' }]);
       return Promise.resolve(sql.includes('from record_types') ? spine : []);
     },
   };
@@ -245,7 +259,18 @@ async function askedBy(declaration) {
   // nothing, so the write reports no key and its declared one reads as skipped. A later refusal
   // (an operand this probe leaves out) proves nothing.
   if (own !== '' && prepared?.refusal?.code !== 'SCOPE_NOT_GRANTED') return [];
-  return asked.join() === own ? profileOf(declaration).authority : asked;
+  const declared = profileOf(declaration).authority;
+  if (asked.join() !== own) return asked;
+  if (declared.every((key) => key === own)) return declared;
+  // The handler, on the same transaction: each grant it asks is recorded, and holding none,
+  // it stops at the first refusal. A write missing its operands is reported as asking only its
+  // own key, so each further key it declares reads as skipped.
+  const operands = HANDLER_OPERANDS[name];
+  if (operands === undefined) return asked;
+  const spineRead = { taskTypeId: 't', stateTypeId: 's', states: [] };
+  const context = { session, declaration, entryPoint: 'api', spine: spineRead, target: undefined };
+  await handleCommand(tx, context, { ...operands, command: name }).catch(() => null);
+  return [...new Set(asked)];
 }
 
 // What the real API runs at each path on both prefixes, by name and the grants it asks. Every
@@ -253,7 +278,9 @@ async function askedBy(declaration) {
 // takes, the agent prefix a session's and an agent credential's (API-2). A path whose answer
 // is a server fault is kept as faulted, a parity failure: its probe may have judged nothing.
 // The stub database answers no row, so the probe's business operates no installation (#2462).
-const PROBE_DATABASE = { withBusiness: (_business, body) => body({ query: () => Promise.resolve([]) }) };
+const PROBE_DATABASE = {
+  withBusiness: (_business, body) => body({ query: () => Promise.resolve([]) }),
+};
 async function probeRoutes(database = PROBE_DATABASE) {
   const calls = [];
   const execute = (...args) => {
@@ -279,7 +306,8 @@ async function probeRoutes(database = PROBE_DATABASE) {
       const asked = new Request(`http://parity${path}`, { method: 'POST', headers, body: '{}' });
       // eslint-disable-next-line no-await-in-loop -- one route at a time, its calls recorded
       const { status } = await api.fetch(asked);
-      if (status >= 500 && !faulted.some((one) => one.path === path)) faulted.push({ path, status });
+      if (status >= 500 && !faulted.some((one) => one.path === path))
+        faulted.push({ path, status });
       ran.push(calls.splice(0));
     }
     // Each bearer runs the one command exactly once: a count shared between them hides one
