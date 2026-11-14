@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#2417: the local seed run before auth:seed and again after it adds no person with a membership, and each cast login maps to the person the first run made"
+}
