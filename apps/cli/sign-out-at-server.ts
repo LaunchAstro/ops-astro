@@ -10,13 +10,15 @@
 //
 // Logout removes the files before it asks, and the ask has a time limit, so a
 // server that is slow or never answers neither keeps the token on disk nor
-// keeps logout waiting. A redirect is never followed (#780): it would resend
-// the bearer to whatever origin it names.
+// keeps logout waiting. It goes through the CLI's one transport module
+// (`unredirected`, AW-01), so a redirect is never followed (#780): it would
+// resend the bearer to whatever origin it names.
 //
 // The answer is only whether the server confirmed. Nothing it says is printed,
 // and the bearer never is.
 
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
+import { unredirected } from './client.ts';
 
 export type ServerEnd =
   { readonly ended: true } | { readonly ended: false; readonly because: string | undefined };
@@ -43,9 +45,8 @@ export async function signOutAtServer(
   }
   const path = `${PREFIX.person}${encodeURIComponent(businessKey)}/account/sessions/sign-out`;
   try {
-    const answer = await fetch(`${api}${path}`, {
+    const answer = await unredirected(`${api}${path}`, {
       method: 'POST',
-      redirect: 'manual',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
       body: '{}',
       signal: AbortSignal.timeout(limitMs),
