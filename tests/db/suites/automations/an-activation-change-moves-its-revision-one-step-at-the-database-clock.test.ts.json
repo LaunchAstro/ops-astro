@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an activation change rolling its revision back, skipping ahead or back-dating is refused by the database as the application role"
+}
