@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-5-12: the Projects board's viewer preset, category chips and Review
-// mode, pure. The viewer preset narrows to the signed-in person's own tasks
-// and is on at load agency-wide; a category chip is offered only for a
+// mode, pure. The viewer preset narrows to the signed-in person's own tasks,
+// one click away (off at load, #2347); a category chip is offered only for a
 // category some row in scope has, flagged (never counted) when a client or a
 // mention waits there; the Review mode's count is the rows waiting on the
 // viewer's decision, and opening it drops every assignee filter (P-10,

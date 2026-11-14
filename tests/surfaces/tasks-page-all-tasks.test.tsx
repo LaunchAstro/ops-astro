@@ -202,6 +202,59 @@ describe('#2344 a task on no board with no assignee shows on the Tasks page', ()
   });
 });
 
+const boardTask = (id: string, key: string, assignee: string | null) => ({
+  id,
+  key,
+  title: `Task ${key}`,
+  state: { id: `s-${key}`, key: 'active', label: 'Active', machineCategory: 'started' },
+  assignee: assignee === null ? null : { personId: assignee, name: 'Nathan' },
+  due: null,
+  priority: null,
+  completedAt: null,
+  revision: 1,
+  rank: { number: null, score: null, calc: 'not ranked: missing ease' },
+  stage: null,
+  clientSet: false,
+  statePosition: 2000,
+  awaitingDecision: assignee === null,
+});
+const MINE = boardTask('55555555-5555-4555-8555-555555555555', 'T-5', ME);
+const NOBODYS = boardTask('66666666-6666-4666-8666-666666666666', 'T-6', null);
+
+/** The real Projects screen, opened at a saved address, as a reload opens it. */
+async function reopened(search: string): Promise<Mounted> {
+  window.history.replaceState(null, '', `/projects/${search}`);
+  const fetch = (() =>
+    Promise.resolve(
+      json({ ok: true, tasks: [MINE, NOBODYS], changedAt: null, viewer: ME, withheld: 0 }),
+    )) as unknown as typeof globalThis.fetch;
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
+  mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:nathan" />);
+  await settle();
+  window.history.replaceState(null, '', '/');
+  return mounted;
+}
+
+// S2406-2: a saved address reopens as it was through the real Projects screen.
+describe('#2347 a reload of a saved address opens on exactly its own view', () => {
+  it('no address opens on All tasks; Mine’s address opens on Mine', async () => {
+    expect(drawn(await reopened(''))).toStrictEqual([MINE.id, NOBODYS.id]);
+    await mounted?.unmount();
+    const mine = await reopened(`?f=assignee%3A${ME}`);
+    expect(drawn(mine)).toStrictEqual([MINE.id]);
+    expect(one(mine, VIEWER)?.classList.contains('is-on')).toBe(true);
+  });
+
+  it('a cleared view (empty f) reopens with every filter off, and Review reopens in Review', async () => {
+    expect(drawn(await reopened(`?f=`))).toStrictEqual([MINE.id, NOBODYS.id]);
+    await mounted?.unmount();
+    const review = await reopened('?f=&mode=review');
+    expect(one(review, '[data-mode="review"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(one(review, ALL)?.classList.contains('is-on')).toBe(false);
+  });
+});
+
 describe('#2344 the section reads Tasks at its old address', () => {
   it('names the page, its rail section, its tab and the dock tab Tasks', () => {
     expect(section().label).toBe('Tasks');

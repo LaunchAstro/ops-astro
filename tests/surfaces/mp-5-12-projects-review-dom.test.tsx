@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-5-12: the Projects board's viewer preset, category chips and Review
-// mode drawn, on synthetic rows. The viewer's chip is on at load and a
-// plain click on it alone clears it; a client's board opens with it off.
+// mode drawn, on synthetic rows. Every board opens on All tasks (#2347): the
+// viewer's chip is off at load, and a plain click narrows to their own.
 // Category chips come only for categories in scope, carry no count, and are
 // flagged where a client or a mention waits. The Review chip carries the
 // live count of tasks waiting on the viewer's decision; pressing it narrows

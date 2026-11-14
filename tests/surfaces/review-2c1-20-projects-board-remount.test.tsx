@@ -152,7 +152,7 @@ const open = async (answers: Server): Promise<Mounted> => {
 };
 
 describe('REVIEW-2C1-20 the Projects board stays mounted while it re-reads: Clear all', () => {
-  it('REVIEW-2C1-20: an edit after Clear all re-reads the board, and the remounted board reopens on the viewer preset, hiding the row just edited', async () => {
+  it('REVIEW-2C1-20: an edit after Clear all re-reads the board, and the remounted board drops the cleared view, hiding the row just edited', async () => {
     const answers = server();
     mounted = await open(answers);
     // Opens on All tasks (#2347); the viewer's chip narrows to Ada's row only.
