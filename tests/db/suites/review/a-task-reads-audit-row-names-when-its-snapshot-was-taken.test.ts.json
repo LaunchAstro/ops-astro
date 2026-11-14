@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#2370 a task read's audit row names when its snapshot was taken (served_at, before the row's own time) and the hash covers it; no other row carries one, a row without one hashes as before, and a caller cannot set it."
+}
