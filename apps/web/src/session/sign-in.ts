@@ -208,10 +208,12 @@ async function toApi(
   const json = body === undefined ? {} : { 'content-type': 'application/json' };
   const headers = { ...extra, ...json, [CSRF_HEADER]: '1' };
   try {
+    // A bearer or a cookie trade never follows a redirect to another origin (#1356).
     const response = await request.fetch(`${request.apiOrigin}${path}`, {
       method: 'POST',
       headers,
       ...(body === undefined ? {} : { body }),
+      redirect: 'error',
     });
     return response.ok ? response : undefined;
   } catch {

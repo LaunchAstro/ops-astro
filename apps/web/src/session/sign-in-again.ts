@@ -78,9 +78,11 @@ async function signOutAtProvider(
 ): Promise<void> {
   const url = `${gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`;
   try {
+    // The token never follows a redirect to another origin (#1356).
     await fetch(url, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
+      redirect: 'error',
     });
   } catch {
     // Unreachable: the token is held nowhere, and runs out within the hour.

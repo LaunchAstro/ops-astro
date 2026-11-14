@@ -27,10 +27,12 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
   const url = `${request.gotrueUrl.replace(/\/$/u, '')}/token?grant_type=password`;
   let response: Response;
   try {
+    // The password never follows a redirect to another origin (#1356).
     response = await request.fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: request.email, password: request.password }),
+      redirect: 'error',
     });
   } catch {
     return { ok: false, because: 'The sign-in service did not answer.' };
