@@ -38,7 +38,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'docs_folders'],
   ['si', 'docs_pages'],
   ['si', 'docs_page_versions'],
-  // C35 (#2018, 20261114050000): a closed capture pool review, installation-wide, written once
+  // C35 (#2018, 20261114120000): a closed capture pool review, installation-wide, written once
   // and never changed or removed; its column grants are in `SITE_GRANTS`.
   ['si', 'ops.capture_pool_reviews'],
 ];
@@ -48,11 +48,11 @@ export const SITE_GRANTS: readonly { readonly from: string; readonly line: strin
   'pool_version',
   'review',
 ].map((column) => ({
-  from: '20261114050000',
+  from: '20261114120000',
   line: `ops_astro_app SELECT ops.capture_pool_reviews.${column}`,
 }));
 
-/** Installation-wide tables under row security. C35 (#2018, 20261114050000). */
+/** Installation-wide tables under row security. C35 (#2018, 20261114120000). */
 const SITE_ROW_SECURED: ReadonlySet<string> = new Set(['ops.capture_pool_reviews']);
 
 /**
