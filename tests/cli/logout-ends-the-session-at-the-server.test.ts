@@ -30,7 +30,7 @@ const env = (extra: Readonly<Record<string, string>> = {}) => ({
   ...extra,
 });
 
-const answering = (route: Route) => {
+const answering = (route?: Route) => {
   const stand = standIn(route);
   seen = stand.seen;
   vi.stubGlobal('fetch', stand.fetch);
@@ -42,7 +42,7 @@ beforeEach(() => {
   delegation = join(folder, 'pickup');
   writeFileSync(token, `${BEARER}\n`, { mode: 0o600 });
   writeFileSync(delegation, 'pickup-canary\n', { mode: 0o600 });
-  answering(() => undefined);
+  answering();
 });
 
 afterEach(() => {

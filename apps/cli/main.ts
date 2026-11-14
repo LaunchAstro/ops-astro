@@ -48,6 +48,7 @@ import {
   verbHelp,
 } from './verbs.ts';
 import { stepUp } from './second-factor.ts';
+import { signOutAtServer } from './sign-out-at-server.ts';
 import {
   beginSave,
   CredentialsBusy,
@@ -209,7 +210,7 @@ const HELP = [
   '         or a prompt with echo off at a terminal)',
   '       ops-astro login --email <address> --second-factor   (then the authenticator',
   '         code: the next stdin line, or a hidden prompt)',
-  '       ops-astro logout',
+  '       ops-astro logout [--business <key>]   (ends the session at the server too)',
   '       (from a checkout without the link, pnpm cli in place of ops-astro)',
   '',
   'environment: OPS_ASTRO_ENV, OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
@@ -500,7 +501,16 @@ export async function main(argv: readonly string[], env: Environment, given: Io)
     if (extra.length > 0) throw new UsageError(`unexpected argument ${extra[0] as string}`);
     if (verb === 'login') return await login(parsed, env, io, connectionOf(parsed.flags, env));
     if (verb === 'logout') {
-      const { tokenFile, delegationFile } = connectionOf(parsed.flags, env);
+      const { api, tokenFile, delegationFile } = connectionOf(parsed.flags, env);
+      // The session ends at the server first (#2425); the files go whatever it answers.
+      const business = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
+      const server = await signOutAtServer(httpTransport(api), business, readOptional(tokenFile));
+      if (!server.ended && server.because !== undefined) {
+        io.err(
+          `logout: the server did not confirm the session ended (${server.because}); ` +
+            'it stays usable until it expires',
+        );
+      }
       let failed: readonly string[];
       try {
         failed = signOut(tokenFile, [tokenFile, delegationFile]);
@@ -510,7 +520,7 @@ export async function main(argv: readonly string[], env: Environment, given: Io)
       }
       for (const one of failed) io.err(`cli: logout could not remove ${one}`);
       if (failed.length > 0) return EXIT.fault;
-      io.out(JSON.stringify({ ok: true }));
+      io.out(JSON.stringify({ ok: true, ended: server.ended }));
       return EXIT.ok;
     }
     // AW-09: a visual operation's answer is the app's page, and nothing is sent.
