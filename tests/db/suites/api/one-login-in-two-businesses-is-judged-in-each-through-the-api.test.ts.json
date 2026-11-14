@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2454: through the composed API, one login mapped into two businesses is served in each; access ended in alpha refuses it there and leaves bravo serving it."
+}

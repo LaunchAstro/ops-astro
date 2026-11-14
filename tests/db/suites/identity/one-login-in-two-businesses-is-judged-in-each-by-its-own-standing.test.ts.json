@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "#2454: one provider login mapped into two businesses is served in each by its own rows; access ended in one refuses it there and leaves the other serving it."
+}
