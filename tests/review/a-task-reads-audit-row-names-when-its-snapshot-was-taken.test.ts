@@ -63,6 +63,12 @@ const pausing = (): Database => ({
   },
 });
 
+/** The audit hash of row `a` with `at` as its snapshot time. */
+const hashAt = (at: string) =>
+  `public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
+     a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
+     a.payload_digest, a.attempted, a.origin_conversation_id, a.field_changes, ${at})`;
+
 describe.skipIf(serverUrl === undefined)('a task read names when its snapshot was taken', () => {
   it('records the snapshot time on the task read row, before the row was written', async () => {
     const ticket = await w.create(owner, { title: 'Served-at ticket' });
@@ -127,6 +133,28 @@ describe.skipIf(serverUrl === undefined)('a task read names when its snapshot wa
       [w.business, row.seq],
     );
     expect(moved?.moved).not.toBe(moved?.stored);
+    // Every distinct time hashes distinctly: the same clock reading in another era, and an
+    // infinite time against none at all.
+    const [distinct] = await w.db.admin.execute<Readonly<Record<string, string>>>(
+      `select ${hashAt('a.served_at')} as ad,
+              ${hashAt("a.served_at + interval '0'")} as same,
+              ${hashAt("(a.served_at::text || ' BC')::timestamptz")} as bc,
+              ${hashAt('null')} as none,
+              ${hashAt("'-infinity'::timestamptz")} as minus,
+              ${hashAt("'infinity'::timestamptz")} as plus
+         from public.audit_events a where a.business_id = $1 and a.seq = $2`,
+      [w.business, row.seq],
+    );
+    expect(distinct?.['same']).toBe(distinct?.['ad']);
+    expect(
+      new Set([
+        distinct?.['ad'],
+        distinct?.['bc'],
+        distinct?.['none'],
+        distinct?.['minus'],
+        distinct?.['plus'],
+      ]).size,
+    ).toBe(5);
   });
 
   it('hashes a row without a snapshot time exactly as before', async () => {
@@ -154,7 +182,7 @@ describe.skipIf(serverUrl === undefined)('a task read names when its snapshot wa
     expect(changed).toEqual([]);
   });
 
-  it('refuses a snapshot time later than the row, or on a row that is no task read', async () => {
+  it('refuses a snapshot time later than the row, far before it, infinite, or on a row that is no task read', async () => {
     const attempt = async (command: string, servedAt: string) =>
       await w.db.admin
         .execute(
@@ -171,5 +199,8 @@ describe.skipIf(serverUrl === undefined)('a task read names when its snapshot wa
         );
     expect(await attempt('task.read', "now() + interval '1 hour'")).toBe('23514');
     expect(await attempt('task.update', 'now()')).toBe('23514');
+    expect(await attempt('task.read', "(now()::text || ' BC')::timestamptz")).toBe('23514');
+    expect(await attempt('task.read', "'-infinity'::timestamptz")).toBe('23514');
+    expect(await attempt('task.read', "now() - interval '2 days'")).toBe('23514');
   });
 });
