@@ -47,6 +47,7 @@ import {
   readsThroughMap,
 } from './access.ts';
 import { HELD } from './read.ts';
+import { LIVE_DELETE_REQUEST } from './delete-request.ts';
 import { assignedTo } from '../tasks/assignee.ts';
 import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
@@ -120,7 +121,7 @@ export async function readUnattended(
        from public.inbox_items i
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
-      where i.business_id = $1 and i.work_state = 'open'
+      where i.business_id = $1 and i.work_state = 'open' and ${LIVE_DELETE_REQUEST}
         and (case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')} else ${HELD} end)
       order by i.raised_at, i.id`,
     [tx.businessId, viewerPersonId, INTERNAL_ROLE_KEYS],

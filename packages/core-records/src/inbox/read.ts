@@ -12,6 +12,7 @@ import { inConversation, IS_CONVERSATION, REACH, type InboxAccess } from './acce
 import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { LIVE_DELETE_REQUEST } from './delete-request.ts';
 
 /** The newest closed items the list carries, after every open one. */
 export const INBOX_HISTORY_PAGE = 50;
@@ -86,7 +87,8 @@ const openOf = (chats: boolean): string => `select ${COLUMNS}, ${NAMES},
               r.deleted_at is not null as trashed, ${heldOf(chats)} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-        where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
+        where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'
+          and ${LIVE_DELETE_REQUEST}`;
 
 /**
  * The page: the newest $3 closed items about a task the recipient reads now,
@@ -270,7 +272,8 @@ export async function countOwedItems(
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
       where i.business_id = $1 and i.recipient_person_id = $2
-        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${heldOf(chats)}`,
+        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${heldOf(chats)}
+        and ${LIVE_DELETE_REQUEST}`,
     [tx.businessId, recipientPersonId],
   );
   return rows[0]?.owed ?? 0;

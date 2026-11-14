@@ -37,4 +37,10 @@ export {
 } from './raise.ts';
 export { raiseMentions, readMentions, seenBy, type Mentioned } from './mentions.ts';
 export { clearDecision, withdrawEndedGates } from './clear.ts';
+export {
+  clearDeleteRequest,
+  LIVE_DELETE_REQUEST,
+  raiseDeleteRequest,
+  withdrawLapsedDeleteRequests,
+} from './delete-request.ts';
 export { readUnattended, type UnattendedItem } from './unattended.ts';

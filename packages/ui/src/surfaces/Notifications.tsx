@@ -48,6 +48,7 @@ const REASON: Readonly<Record<InboxItem['reason'], string>> = {
   mention: 'Mentioned you',
   incident: 'Incident',
   client_comment: 'Client comment',
+  delete_request: 'Asks to delete',
 };
 
 const TABS: readonly { readonly id: InboxTab; readonly label: string; readonly empty: string }[] = [
@@ -73,6 +74,7 @@ const MARK: Readonly<Record<InboxItem['reason'], Mark>> = {
   mention: ['@', 'team'],
   incident: ['bolt', 'client'],
   client_comment: ['comment-alt', 'client'],
+  delete_request: ['cross-small', 'team'],
 };
 
 function KindMark(props: { readonly reason: InboxItem['reason'] }): ReactElement {

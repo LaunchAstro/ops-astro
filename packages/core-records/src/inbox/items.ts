@@ -22,12 +22,13 @@ export const INBOX_REASONS = [
   'mention',
   'incident',
   'client_comment',
+  'delete_request',
 ] as const;
 
 export type InboxReason = (typeof INBOX_REASONS)[number];
 
 /** Where the fact lives. The item holds its identifier and nothing of it. */
-export type InboxFactKind = 'gate' | 'planned_run' | 'record' | 'operation';
+export type InboxFactKind = 'gate' | 'planned_run' | 'record' | 'operation' | 'delete_request';
 
 export type InboxWorkState = 'open' | 'cleared' | 'withdrawn';
 
