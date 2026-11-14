@@ -10,7 +10,8 @@ import { afterEach, expect, it } from 'vitest';
 import { DeleteRequest } from '../../apps/web/src/screens/task/DeleteRequest.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { json, mount, unmountAll } from './perspective-support.tsx';
-import { TASK_ID, found, page as taskPage, tick } from './task-page-stub.tsx';
+import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
+import { TASK_ID, found, page as taskPage, task, tick } from './task-page-stub.tsx';
 
 interface Sent {
   readonly command: string;
@@ -119,4 +120,95 @@ it('the task page shows the request its read carries, and nothing without one', 
   unmountAll();
   const plain = await taskPage('Proj-Verity-Pacing', found({ deleteRequest: null }));
   expect(plain.find('[data-delete-request]')).toBeNull();
+});
+
+/**
+ * The real task page over a server that answers `task.read` from a queue (the
+ * last answer repeats) and Keep or Confirm with `answer`, counting reads.
+ */
+async function livePage(reads: readonly unknown[], answer: { body: unknown; status: number }) {
+  const sent: string[] = [];
+  let read = 0;
+  const fetch = ((url: string | URL) => {
+    const at = String(url);
+    const name = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
+    sent.push(name);
+    if (name === 'person.list') return Promise.resolve(json({ ok: true, persons: [] }, 200));
+    if (name === 'task.execution') {
+      return Promise.resolve(
+        json(
+          {
+            ok: true,
+            execution: {
+              taskId: TASK_ID,
+              outcome: 'no-run',
+              sourceRevision: 0,
+              complete: true,
+              next: null,
+              runs: [],
+              events: [],
+            },
+          },
+          200,
+        ),
+      );
+    }
+    if (name === 'task.read') {
+      const body = reads[Math.min(read, reads.length - 1)];
+      read += 1;
+      return Promise.resolve(json({ ok: true, task: body }, 200));
+    }
+    return Promise.resolve(json(answer.body, answer.status));
+  }) as unknown as typeof globalThis.fetch;
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+  const view = await mount(
+    <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
+  );
+  await tick();
+  return { view, sent, reads: () => read };
+}
+
+const buttons = (view: Awaited<ReturnType<typeof mount>>): readonly boolean[] =>
+  ['confirm-delete', 'keep'].map(
+    (act) =>
+      (view.find(`[data-act="${act}"] button`) as HTMLButtonElement | null)?.disabled ?? true,
+  );
+
+it('the task page holds the answers while the page has an unsaved edit (S2405-2)', async () => {
+  const { view, sent } = await livePage([task({ deleteRequest: REQUEST })], APPLIED);
+  expect(buttons(view)).toStrictEqual([false, false]);
+  await view.type('#task-title', 'Renamed, not yet saved');
+  expect(buttons(view)).toStrictEqual([true, true]);
+  await view.click('[data-act="keep"] button');
+  await tick();
+  expect(sent).not.toContain('task.decline_delete');
+});
+
+it('a kept request reads the task page again, and the banner goes (S2405-2)', async () => {
+  const { view, sent, reads } = await livePage(
+    [task({ deleteRequest: REQUEST }), task({ revision: 4, deleteRequest: null })],
+    APPLIED,
+  );
+  expect(reads()).toBe(1);
+  await view.click('[data-act="keep"] button');
+  await tick();
+  expect(sent).toContain('task.decline_delete');
+  expect(reads()).toBe(2);
+  expect(view.find('[data-delete-request]')).toBeNull();
+});
+
+it('an answer that loses a race to another write is refused stale and quoted (S2405-1)', async () => {
+  const { view, answered } = await page({
+    body: {
+      refused: true,
+      code: 'VERSION_STALE',
+      names: ['expectedRevision'],
+      fixes: ['Someone changed this task. Read it again.'],
+    },
+    status: 409,
+  });
+  await view.click('[data-act="confirm-delete"] button');
+  await tick();
+  expect(view.find('[data-delete-request-refused]')?.textContent).toContain('Read it again');
+  expect(answered.count).toBe(0);
 });
