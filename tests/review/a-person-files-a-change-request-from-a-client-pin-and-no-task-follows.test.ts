@@ -89,6 +89,23 @@ describe.skipIf(serverUrl === undefined)('C57 filing a change request', () => {
     expect((await w.requests(w.world.business)).length).toBe(before + 1);
   });
 
+  it('C57 text is bounded in characters, as the database counts them (S2122-3)', async () => {
+    const wide = '\u{1F600}';
+    const over = await w.pins();
+    const before = (await w.requests(w.world.business)).length;
+    // 2,001 characters, one of them outside the basic plane: refused, nothing filed.
+    expect(
+      codeOf(await w.propose(w.ava, over.clientPin, { text: `${'x'.repeat(2000)}${wide}` })),
+    ).toBe('FIELD_VALUE_INVALID');
+    expect((await w.requests(w.world.business)).length).toBe(before);
+    // 2,000 characters (2,001 UTF-16 units): filed, as `char_length` counts it.
+    const text = `${'x'.repeat(1999)}${wide}`;
+    expect(codeOf(await w.propose(w.ava, over.clientPin, { text }))).toBe('not-a-refusal');
+    const rows = await w.requests(w.world.business);
+    expect(rows.length).toBe(before + 1);
+    expect(rows.find((row) => row.comment_id === over.clientPin)?.request_text).toBe(text);
+  });
+
   it('C57 while client review is off, no command makes the client pin a filing needs', async () => {
     const revisionId = String(detailOf(await w.open(w.ava))['revisionId']);
     await w.capture(w.ava, revisionId);
