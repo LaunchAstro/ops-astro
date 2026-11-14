@@ -70,4 +70,41 @@ describe.skipIf(serverUrl === undefined)('C73 completion', () => {
       code: 'UPLOAD_NOT_OPEN',
     });
   });
+
+  // S2126-1: a mismatched object the store could not remove is not left stored behind an
+  // abandoned upload; the upload stays open, and abandoning it removes the object.
+  it.each([
+    ['false', () => Promise.resolve(false)],
+    ['a refusal', () => Promise.resolve({ refused: 'STORE_UNAVAILABLE' as const })],
+  ])(
+    'C73 a mismatch the store could not remove stays open until abandon removes it (%s)',
+    async (_, failing) => {
+      const own = mediaStoreDouble();
+      const calls = mediaCalls(w, own);
+      const started = await calls.start(w.ava, w.taskA, renderOf(BODY, { byteCount: 9 }));
+      if ('code' in started) throw new Error(`start refused ${started.code}`);
+      const parts = await calls.parts(w.ava, started.assetId, 4);
+      if ('code' in parts) throw new Error(`parts refused ${parts.code}`);
+      calls.send(parts.signed, BODY);
+      const remove = own.remove.bind(own);
+      own.remove = failing as typeof own.remove;
+      expect(await calls.complete(w.ava, started.assetId)).toStrictEqual({ code: 'STORE_REFUSED' });
+      expect(own.objects.size).toBe(1);
+      const state = async () =>
+        (await calls.rows('review_media_assets', w.world.business)).find(
+          (row) => row['id'] === started.assetId,
+        )?.['state'];
+      expect(await state()).toBe('started');
+
+      own.remove = remove;
+      expect(await calls.abandon(w.ava, started.assetId)).toMatchObject({
+        reviewId: started.reviewId,
+      });
+      expect(own.objects.size).toBe(0);
+      expect(await state()).toBe('abandoned');
+      expect(
+        (await calls.rows('review_revisions', w.world.business)).map((row) => row['number']),
+      ).toStrictEqual([1]);
+    },
+  );
 });
