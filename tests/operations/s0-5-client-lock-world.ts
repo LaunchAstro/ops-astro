@@ -121,6 +121,7 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
     ['task_tags', 'task_id'],
     ['live_corrections', 'task_id'],
     ['reviews', 'task_id'],
+    ['task_delete_requests', 'task_id'],
   ]
     .map(
       ([table, column]) =>

@@ -62,4 +62,8 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'review.pin_comment',
   // Launch from the task: a launch row and its delegation name the task; the task keeps its revision.
   'task.launch',
+  // #2351: a request to delete, and Keep, write the request's row naming the task; the
+  // task keeps its revision (a Confirm still on screen names its request instead, #2362).
+  'task.request_delete',
+  'task.decline_delete',
 ]);
