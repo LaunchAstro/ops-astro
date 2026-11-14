@@ -10,7 +10,7 @@ import { TEST_ISSUER } from '../support/sign-in.ts';
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'a timed-out reconciliation pass',
   () => {
-    it('Sol proof, criterion 2: a timed-out pass applies nothing', async () => {
+    it('a timed-out pass applies nothing', async () => {
       const s = await openSchedules('sol2243rollback', 100_000);
       const other = await seedSchedules(s.db, 'sol2243other', 100_000);
       const work = await liveWork(s, 'Synthetic rollback proof', 1_000);

@@ -415,7 +415,7 @@ const leaseRefused = [
 ];
 
 it.skipIf(serverUrl === undefined)(
-  "a person's check replayed after its own lease expired in the audit wait is refused (#2332)",
+  "a person's check replayed after its own lease expired in the audit wait is refused",
   async () => {
     const decider = await world.decider('person-checker');
     const { first } = await personPickup(decider, 'a person check replayed across its lease end');
@@ -434,7 +434,7 @@ it.skipIf(serverUrl === undefined)(
 );
 
 it.skipIf(serverUrl === undefined)(
-  "an agent's check replayed after its lease alone expired in the audit wait is refused (#2332)",
+  "an agent's check replayed after its lease alone expired in the audit wait is refused",
   async () => {
     const decider = await world.decider('agent-checker');
     const picked = await world.pickUp(decider, 'an agent check replayed across its lease end');

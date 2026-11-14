@@ -93,8 +93,8 @@ const open = async (address?: string): Promise<Mounted> => {
   return mounted;
 };
 
-describe('#2344 the All tasks chip shows every task', () => {
-  it('sits first, counts every task, and is on at load with every task drawn (#2347)', async () => {
+describe('the All tasks chip shows every task', () => {
+  it('sits first, counts every task, and is on at load with every task drawn', async () => {
     const board = await open();
     const chips = board.all('.cbd__preset').map((chip) => (chip as HTMLElement).dataset['preset']);
     expect(chips[0]).toBe('all');
@@ -135,7 +135,7 @@ describe('#2344 the All tasks chip shows every task', () => {
 });
 
 // S2349-1: search words and Review narrow the list as filters do.
-describe('#2344 All tasks also turns search words and Review off', () => {
+describe('All tasks also turns search words and Review off', () => {
   it.each([
     ['search words', 'f=&q=cover', false],
     ['search words', 'f=&q=cover', true],
@@ -161,8 +161,8 @@ const json = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   });
 
-describe('#2344 a task on no board with no assignee shows on the Tasks page', () => {
-  it('is read with the tasks on no board and drawn on first load (#2347)', async () => {
+describe('a task on no board with no assignee shows on the Tasks page', () => {
+  it('is read with the tasks on no board and drawn on first load', async () => {
     const t6 = {
       id: '66666666-6666-4666-8666-666666666666',
       key: 'T-6',
@@ -202,7 +202,7 @@ describe('#2344 a task on no board with no assignee shows on the Tasks page', ()
   });
 });
 
-describe('#2344 the section reads Tasks at its old address', () => {
+describe('the section reads Tasks at its old address', () => {
   it('names the page, its rail section, its tab and the dock tab Tasks', () => {
     expect(section().label).toBe('Tasks');
     expect(section().tabs[0]?.label).toBe('Tasks');

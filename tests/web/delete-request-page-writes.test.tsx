@@ -70,7 +70,7 @@ it.each([
     },
   ],
 ] as const)(
-  'the task page holds the answers while %s is in flight (Sol r3 coverage)',
+  'the task page holds the answers while %s is in flight',
   async (command, over, write) => {
     const { view, sent, release } = await livePage(
       [task({ deleteRequest: REQUEST, ...over })],

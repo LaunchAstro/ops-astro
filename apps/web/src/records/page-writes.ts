@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One page's writes in flight, across its controls (#2359, Sol S2405-1).
+// One page's writes in flight, across its controls (#2359).
 //
 // Each control's write runs through its own `useCommand`, so one control could
 // not see another's: a Confirm delete could be pressed while the person's own

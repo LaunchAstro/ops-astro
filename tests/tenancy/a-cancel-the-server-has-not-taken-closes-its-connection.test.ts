@@ -138,12 +138,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     });
 
     it(
-      'Sol proof, criterion 4: a late cancel cannot cancel the next transaction on the pooled session',
+      'a late cancel cannot cancel the next transaction on the pooled session',
       lateCancel,
       15_000,
     );
     it(
-      'Sol proof, criterion 2: a lost cancel still bounds a late-starting statement to the shared deadline',
+      'a lost cancel still bounds a late-starting statement to the shared deadline',
       lostCancel,
       15_000,
     );

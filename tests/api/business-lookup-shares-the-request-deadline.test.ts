@@ -10,7 +10,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { boundWorld, request, withinBound } from './recovery-pass-bound-world.ts';
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('the hosted request bound', () => {
-  it('Sol proof, criterion 2: business lookup shares the request deadline', async () => {
+  it('business lookup shares the request deadline', async () => {
     const world = await boundWorld('sol2243lookup');
     try {
       const holder = world.holder();

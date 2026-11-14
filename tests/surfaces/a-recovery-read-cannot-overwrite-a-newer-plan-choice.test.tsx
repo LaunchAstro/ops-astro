@@ -30,7 +30,7 @@ async function ask(page: Mounted, body: string) {
 }
 
 // oxlint-disable-next-line max-lines-per-function -- the proof's client double, kept as written
-it('Sol proof, criterion 1: a recovery read cannot overwrite a newer accepted plan choice', async () => {
+it('a recovery read cannot overwrite a newer accepted plan choice', async () => {
   let kept = LOCAL;
   let lost = false;
   let readsSinceLoss = 0;

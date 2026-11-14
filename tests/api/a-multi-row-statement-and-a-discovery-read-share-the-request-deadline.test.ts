@@ -76,7 +76,7 @@ async function heldInTurn(
 }
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'Sol proof, criterion 2: a multi-row statement and a discovery read share the request deadline',
+  'a multi-row statement and a discovery read share the request deadline',
   () => {
     it('a multi-row UPDATE waiting on two held rows', async () => {
       const world = await boundWorld('sol2243multirow');

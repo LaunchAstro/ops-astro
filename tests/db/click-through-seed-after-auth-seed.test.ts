@@ -32,7 +32,7 @@ let people: readonly Login[];
 let cast: Cast;
 let ran: Ran;
 
-describe.skipIf(serverUrl === undefined)('#2298 click-through seed after auth:seed', () => {
+describe.skipIf(serverUrl === undefined)('click-through seed after auth:seed', () => {
   beforeAll(async () => {
     ({ PEOPLE: people } = (await import(logins)) as { PEOPLE: readonly Login[] });
     // The file auth:seed writes: its people, each with a password and subject.
@@ -71,7 +71,7 @@ describe.skipIf(serverUrl === undefined)('#2298 click-through seed after auth:se
 // S2309-1: a subject is unique only within its provider. Another provider's
 // login carrying Ada's subject, mapped to Noah, while Ada's own mapping is
 // off, is not Ada: the seed refuses before its first write.
-describe.skipIf(serverUrl === undefined)('#2298 click-through seed, one provider', () => {
+describe.skipIf(serverUrl === undefined)('click-through seed, one provider', () => {
   let other: Cast;
 
   beforeAll(async () => {

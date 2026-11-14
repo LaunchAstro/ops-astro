@@ -63,7 +63,7 @@ describe('a correction ready to go live', () => {
     }
   });
 
-  it('asks nothing while Launch is held for a missing Astra review of the version shown (#1781)', async () => {
+  it('asks nothing while Launch is held for a missing Astra review of the version shown', async () => {
     const view = await drawn({ ...WAITING, reviewMissingFor: 'v-1' });
     expect(view.find('[data-correction-ready]')).toBeNull();
     expect(view.find('[data-correction-launch-held]')).not.toBeNull();
