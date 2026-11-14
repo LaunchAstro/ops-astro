@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { serverUrl } from './world.ts';
 import { CANARY, okay, openRequestWorld } from './task-request-delete-world.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 
 const w = openRequestWorld('task_request_delete_inbox_2360');
 const h = w.harness;
@@ -154,6 +155,56 @@ describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => 
     const recipients = (await itemsOn(task.id)).map((item) => item.recipient);
     expect(recipients).not.toContain(ada.personId);
     expect(recipients).not.toContain(mia.personId);
+  });
+
+  it('a ticket’s request tells the people who decide on its map (Sol S2418-1)', async () => {
+    const { ada, mia } = h().world;
+    const map = await h().asPerson(
+      'task.create',
+      { fields: { title: 'a map whose ticket is asked about' }, taskType: 'map' },
+      'alpha',
+      ada,
+    );
+    okay(map, 'the map');
+    const mapId = String(map.body['recordId']);
+    const ticket = await h().asPerson(
+      'task.create',
+      { fields: { title: 'a ticket on the map, for the inbox' }, parentId: mapId },
+      'alpha',
+      ada,
+    );
+    okay(ticket, 'the ticket');
+    const ticketId = String(ticket.body['recordId']);
+    // Mia decides on the map alone: the command admits her answer there (W12).
+    await h().world.db.app.withBusiness(h().world.alpha, async (tx) => {
+      await grantTo(tx, mia as unknown as Member, 'decide', { kind: 'record', id: mapId });
+    });
+    const asked = await h().asPerson(
+      'task.request_delete',
+      { recordId: ticketId, expectedRevision: await w.revisionOf(ticketId), reason: 'a ticket' },
+      'alpha',
+      ada,
+    );
+    okay(asked, 'Ada asks to delete the ticket');
+    const items = await itemsOn(ticketId);
+    expect(items.map((item) => [item.recipient, item.state])).toStrictEqual([
+      [mia.personId, 'open'],
+    ]);
+    expect(await shownTo(mia, ticketId)).toHaveLength(1);
+    const kept = await h().asPerson(
+      'task.decline_delete',
+      {
+        recordId: ticketId,
+        expectedRevision: await w.revisionOf(ticketId),
+        requestId: await w.requestIdOf(ticketId),
+      },
+      'alpha',
+      mia,
+    );
+    okay(kept, 'Mia keeps it through the map');
+    expect((await itemsOn(ticketId)).map((item) => [item.state, item.closedBy])).toStrictEqual([
+      ['cleared', mia.personId],
+    ]);
   });
 
   it('a request in another business tells only that business’s people', async () => {
