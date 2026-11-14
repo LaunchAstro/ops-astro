@@ -59,6 +59,8 @@ export const READ_NAMES = [
   'finance.agent_costs',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
+  // The deleted tasks the caller may restore (#2346).
+  'task.bin',
   // A conversation at its address (AW-03).
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).

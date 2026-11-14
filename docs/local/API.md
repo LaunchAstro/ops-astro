@@ -2249,6 +2249,18 @@ sees only its own records' gates, and a caller holding no `decide` anywhere is
 refused `SCOPE_NOT_GRANTED` 403 rather than answered with an empty list
 (`reads/awaiting-review.ts`; `tests/api/mp-6-1-isolation.test.ts`).
 
+`task.bin` (#2346) is the deleted tasks a person may restore, newest first, at
+most 100 with `more` saying whether older ones lie past them. Each row is one
+delete at the task the person deleted (a subtask deleted with its parent has no
+row of its own): `batchId`, which `task.restore` takes, `taskId`, `key`,
+`title`, `deletedAt` and `deletedBy`, the deleter's name. It asks `decide` on
+tasks, `task.delete`'s grant, inside the statement as `gate.pending` does: a
+record-scoped decider sees only the deletes of its own records, and a caller
+holding no `decide` is refused `SCOPE_NOT_GRANTED` 403. It is staff's: an
+outside party is answered `NOT_FOUND`, as the ledger answers them. No agent
+route (`reads/bin.ts`; `tests/acceptance/task-bin.test.ts`). The Tasks page
+draws it as its Deleted tab, with Restore on each row.
+
 `definition.attribution` (AW-04) is attribution across runs, by an
 instruction file's digest (`{ digest }`, 64 lowercase hex, else
 `FIELD_VALUE_INVALID` naming `digest`): the runs whose read ledger holds the
@@ -2813,7 +2825,7 @@ delegation.
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `gate.pending`, `task.ledger`, `task.search`,
+`task.read`, `task.board`, `task.queue`, `gate.pending`, `task.bin`, `task.ledger`, `task.search`,
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `conversation.models`, `definition.attribution`,

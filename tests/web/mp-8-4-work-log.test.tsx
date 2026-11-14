@@ -35,7 +35,7 @@ describe('MP-8-4 a tab reaches it', () => {
     await tick();
 
     const tabs = view.all(TAB).map((t) => t.textContent);
-    expect(tabs).toEqual(['Board', 'Work log']);
+    expect(tabs).toEqual(['Board', 'Work log', 'Deleted']);
     expect(view.find('[role="tab"][aria-selected="true"]')?.textContent).toBe('Board');
     expect(api.asked).toHaveLength(0);
     expect(view.all('.act__row')).toHaveLength(0);

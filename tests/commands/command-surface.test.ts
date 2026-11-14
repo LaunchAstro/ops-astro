@@ -128,6 +128,7 @@ const DECLARED_READS = [
   'session.person',
   'settings.read',
   'tag.list',
+  'task.bin',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -152,9 +153,7 @@ describe('the surface as a table', () => {
       }
     }
   });
-});
 
-describe('the surface as a table', () => {
   it('gives every declaration the collection its authority is checked against', () => {
     // The collection used to be written into `prepareCommand` as `'task'`,
     // which was true while every operation was a task operation. A caller

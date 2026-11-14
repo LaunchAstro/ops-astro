@@ -216,6 +216,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
   // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
   read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // The bin (#2346): `decide`, `task.delete`'s grant, asked per row in the query (`reads/bin.ts`).
+  read('task.bin', TASK_COLLECTION, { action: 'decide' }),
   // `read` on tasks, asked per run inside the query, so a record-scoped reader
   // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
   read('definition.attribution', TASK_COLLECTION),
