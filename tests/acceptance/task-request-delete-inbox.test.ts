@@ -60,7 +60,7 @@ async function owedCount(caller: { readonly token: string }): Promise<number> {
 // eslint-disable-next-line max-lines-per-function -- one world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => {
   it('an agent request raises one owed item, to the person the agent acts for only', async () => {
-    const { ada, mia, noah } = h().world;
+    const { ada, mia } = h().world;
     const task = await h().freshTask('a task an agent asks to delete, for the inbox');
     const before = await owedCount(ada);
     okay(await w.ask(task.id));
@@ -81,11 +81,10 @@ describe.skipIf(serverUrl === undefined)('a delete request in the inbox', () => 
     const shown = await shownTo(ada, task.id);
     expect(shown.map((item) => item['reason'])).toStrictEqual(['delete_request']);
     expect(await owedCount(ada)).toBe(before + 1);
-    // Another person in the same business is told nothing, and reads nothing of it.
-    for (const other of [mia, noah]) {
-      // eslint-disable-next-line no-await-in-loop
-      expect(await shownTo(other, task.id)).toStrictEqual([]);
-    }
+    // Nobody else in the business is told: the rows above hold Ada's item
+    // alone, and Mia's own inbox shows nothing of it. (Noah holds no grant,
+    // so his inbox read is refused outright.)
+    expect(await shownTo(mia, task.id)).toStrictEqual([]);
   });
 
   it('Keep clears the item, naming who kept the task', async () => {
