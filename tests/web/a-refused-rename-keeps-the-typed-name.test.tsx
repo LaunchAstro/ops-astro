@@ -16,6 +16,12 @@ afterEach(unmountAll);
 
 type Answer = 'stale' | 'refused' | 'unreachable' | 'ok';
 
+const OTHER = {
+  id: '22222222-2222-4222-8222-222222222222',
+  key: 'Other-Task',
+  title: 'Other task',
+};
+
 function serving(answer: Answer) {
   const updates: Record<string, unknown>[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
@@ -30,7 +36,15 @@ function serving(answer: Answer) {
     }
     if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
     if (where.endsWith('/task/read')) {
-      return Promise.resolve(json({ ok: true, task: task({ title: 'Original', revision: 4 }) }));
+      const asked = String(init?.body ?? '');
+      return Promise.resolve(
+        json({
+          ok: true,
+          task: asked.includes(OTHER.key)
+            ? task({ ...OTHER, revision: 2 })
+            : task({ title: 'Original', revision: 4 }),
+        }),
+      );
     }
     if (where.endsWith('/task/update')) {
       updates.push(
@@ -59,18 +73,19 @@ function serving(answer: Answer) {
 async function renameTo(answer: Answer, name: string) {
   const { client, updates } = serving(answer);
   let changed = 0;
-  const view = await mount(
+  const panel = (taskKey: string) => (
     <TaskPanel
       client={client}
       grantKey="alpha:member"
-      opening={{ taskKey: 'Proj-Verity-Pacing', door: 'open', tab: null }}
+      opening={{ taskKey, door: 'open', tab: null }}
       changes={0}
       onChanged={() => {
         changed += 1;
       }}
       onClose={() => {}}
-    />,
+    />
   );
+  const view = await mount(panel('Proj-Verity-Pacing'));
   await tick();
   await view.click('[data-panel-field="name"]');
   await typeInto(view, '#panel-field-name', name);
@@ -79,7 +94,7 @@ async function renameTo(answer: Answer, name: string) {
   expect(updates, 'the rename is sent once').toHaveLength(1);
   await view.click('[data-panel-field="name"]');
   const typed = (view.find('#panel-field-name') as HTMLInputElement | null)?.value;
-  return { typed, changed: () => changed };
+  return { typed, changed: () => changed, view, panel };
 }
 
 describe('a rename the server did not store', () => {
@@ -94,6 +109,15 @@ describe('a rename the server did not store', () => {
   it('a stale refusal asks for the task to be read again', async () => {
     const { changed } = await renameTo('stale', 'The new name');
     expect(changed()).toBe(1);
+  });
+
+  it('the kept name does not reopen on another task in the same panel', async () => {
+    const { view, panel } = await renameTo('refused', 'The new name');
+    await view.render(panel(OTHER.key));
+    await tick();
+    expect(view.find('[data-panel-field="name"]')?.textContent).toBe(OTHER.title);
+    await view.click('[data-panel-field="name"]');
+    expect((view.find('#panel-field-name') as HTMLInputElement | null)?.value).toBe(OTHER.title);
   });
 
   it('a stored rename opens next time on the stored title, not the typed one', async () => {
