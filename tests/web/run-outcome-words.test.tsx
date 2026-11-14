@@ -24,6 +24,8 @@ const json = (body: unknown, status = 200): Response =>
 interface Stop {
   readonly outcome: RunOutcome;
   readonly endCode: string;
+  /** A newer run the restart opened, claimed and with no stop yet. */
+  readonly restarted?: boolean;
 }
 
 /** The execution read of a task whose one run stopped as `stop`, as the stop stored it. */
@@ -41,11 +43,29 @@ const executionOf = (stop: Stop) => ({
         runId: '55555555-5555-4555-8555-555555555555',
         lineageId: LINEAGE,
         versionId: '66666666-6666-4666-8666-666666666666',
-        state: stop.outcome === 'success' ? 'handed_back' : 'cancelled',
+        // As the server leaves it: a stop releases the lease, the run stays claimed (`retireAttempt`).
+        state: stop.outcome === 'success' ? 'handed_back' : 'claimed',
         taskRevisionAtRequest: 1,
         createdAt: '2026-11-14T10:00:00Z',
-        runOutcome: { attemptId: '77777777-7777-4777-8777-777777777777', ...stop },
+        runOutcome: {
+          attemptId: '77777777-7777-4777-8777-777777777777',
+          outcome: stop.outcome,
+          endCode: stop.endCode,
+        },
       },
+      ...(stop.restarted === true
+        ? [
+            {
+              runId: '88888888-8888-4888-8888-888888888888',
+              lineageId: '99999999-9999-4999-8999-999999999999',
+              versionId: '66666666-6666-4666-8666-666666666666',
+              state: 'claimed',
+              taskRevisionAtRequest: 2,
+              createdAt: '2026-11-14T11:00:00Z',
+              runOutcome: null,
+            },
+          ]
+        : []),
     ],
   },
 });
@@ -158,6 +178,17 @@ describe('Restart after a stop', () => {
     expect(view.find('[data-run-restart-refusal]')?.textContent).toContain(
       'Ask for decide on this task.',
     );
+  });
+
+  it('after a restart the newer run is drawn, not the old stop', async () => {
+    const { view, line } = await opened({
+      outcome: 'cancelled',
+      endCode: 'SUBSCRIPTION_SIGN_IN_NEEDED',
+      restarted: true,
+    });
+    expect(line()).toContain('running');
+    expect(line()).not.toContain(SIGN_IN_WORDS);
+    expect(view.find('[data-run-restart]')).toBeNull();
   });
 
   it('a finished run offers no restart', async () => {

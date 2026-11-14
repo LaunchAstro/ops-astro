@@ -49,6 +49,10 @@ export function runLineOf(
       !['planned', 'claimed', 'waiting_budget', 'handed_back', 'cancelled'].includes(state),
   );
   if (unfamiliar !== undefined) return unknown(`Engine run state: ${unfamiliar}`);
+  // A stored stop is said before the run's state: a stop releases its lease but leaves the run
+  // `claimed` (`retireAttempt`), so the state alone would still read as running (#1719).
+  const stopped = stoppedLine(execution);
+  if (stopped !== null) return stopped;
   const attempts = proposals
     ?.flatMap((proposal) => proposal.reservations)
     .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
@@ -70,8 +74,6 @@ export function runLineOf(
     return execution.outcome === 'no-run'
       ? { shape: 'none', words: 'No agent has run this task. It is a person’s work so far.' }
       : unknown();
-  const stopped = stoppedLine(execution);
-  if (stopped !== null) return stopped;
   return {
     shape: 'finished',
     words: states.includes('cancelled')
@@ -82,11 +84,24 @@ export function runLineOf(
   };
 }
 
-/** The newest run's stop in its words (#1719), restartable unless it finished; null without one. */
+/**
+ * The newest run's stop in its words (#1719), restartable unless it finished; null when it has
+ * none, or while another run is still queued, claimed or waiting.
+ */
 function stoppedLine(execution: TaskExecution): RunLine | null {
-  const newest = execution.runs.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const [newest, ...older] = execution.runs.toSorted((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
   const stop = newest?.runOutcome ?? null;
   if (newest === undefined || stop === null) return null;
+  if (
+    older.some(
+      (run) =>
+        ['planned', 'claimed', 'waiting_budget'].includes(run.state) &&
+        (run.runOutcome ?? null) === null,
+    )
+  )
+    return null;
   return {
     shape: 'finished',
     words: outcomeWords(stop),
