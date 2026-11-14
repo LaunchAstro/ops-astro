@@ -143,6 +143,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C35-X (#2165): a review capture's claim, land and pin carry judge their lease again
   // after the audit chain's key, so the lease is checked after the envelope's last wait.
   'packages/core-commands/src/commands/review-captures.ts',
+  // C57 part B (#2117): the worker's change-request task takes the audit chain's key after
+  // placing its task, so the lease is judged after the envelope's last wait.
+  'packages/core-commands/src/commands/review-change-task.ts',
   // #1224: assigning another person's agent takes the audit chain's key after
   // its write, so its `agent:assign` re-ask comes after every wait.
   'packages/core-commands/src/commands/tasks-agent.ts',
