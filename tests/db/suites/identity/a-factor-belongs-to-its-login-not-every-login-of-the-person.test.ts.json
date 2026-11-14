@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
   "isolation": false,
-  "why": "a second factor verified on one login asks no code of another login mapped to the same person"
+  "why": "a second factor verified on one login asks no code of another login mapped to the same person, which sets up, completes and removes its own factor beside the first login's, touching no other person's or business's rows"
 }

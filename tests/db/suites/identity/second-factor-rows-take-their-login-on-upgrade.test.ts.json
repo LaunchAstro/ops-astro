@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "upgrade to one login per factor row: a live row takes the one subject that verified it, else the person's one login; a removed row keeps no login; an unattributable live row is ended and held removed for every login it could be"
+}
