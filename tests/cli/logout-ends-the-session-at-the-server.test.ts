@@ -4,14 +4,16 @@
 // Removing the bearer file alone leaves the session open: a copy of the token
 // elsewhere keeps working until it expires. With a business named, logout
 // posts the person's own `account/sessions/sign-out` (C58) with the stored
-// bearer, the route the web's sign-out and a left code step already use, then
-// removes the files whatever the answer. It says whether the server ended the
-// session, and never prints the bearer.
+// bearer, the route the web's sign-out and a left code step already use. The
+// files go first, so a server that is slow or never answers cannot leave the
+// token on disk, and the request has a time limit, so logout always returns.
+// It says whether the server ended the session, and never prints the bearer.
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { signOutAtServer } from '../../apps/cli/sign-out-at-server.ts';
 import { run, standIn, type Route, type Seen } from './preset-stand-in.ts';
 
 const API = 'https://api.example.test';
@@ -52,16 +54,20 @@ afterEach(() => {
 
 const gone = () => [existsSync(token), existsSync(delegation)];
 
-it('with a business named, logout signs the stored bearer out at the server, then removes the files', async () => {
-  answering((url) =>
-    url.href === SIGN_OUT ? Response.json({ ended: 1, provider: 'confirmed' }) : undefined,
-  );
+it('with a business named, logout removes the files, then signs the read bearer out at the server', async () => {
+  const onDisk: boolean[][] = [];
+  answering((url) => {
+    if (url.href !== SIGN_OUT) return;
+    onDisk.push(gone());
+    return Response.json({ ended: 1, provider: 'confirmed' });
+  });
   const out = await run(['logout'], env({ OPS_ASTRO_BUSINESS: 'alpha' }));
   expect(out.code, out.err).toBe(0);
   expect(
     seen.map((one) => [one.url, one.headers['authorization'] === `Bearer ${BEARER}`, one.body]),
   ).toStrictEqual([[SIGN_OUT, true, '{}']]);
   expect(seen[0]?.redirect).toBe('manual');
+  expect(onDisk).toStrictEqual([[false, false]]);
   expect(gone()).toStrictEqual([false, false]);
   expect(JSON.parse(out.out)).toStrictEqual({ ok: true, ended: true });
   expect(`${out.out}${out.err}`).not.toContain(BEARER);
@@ -104,4 +110,22 @@ it('with no saved bearer, logout sends nothing and has nothing to end', async ()
   expect(seen).toStrictEqual([]);
   expect(JSON.parse(out.out)).toStrictEqual({ ok: true, ended: false });
   expect(out.err).toBe('');
+});
+
+it('a server that never answers is given up on at the limit, and says so', async () => {
+  vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+    await new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason);
+      });
+    });
+    return new Response(null);
+  });
+  const started = Date.now();
+  const answer = await signOutAtServer(API, 'alpha', BEARER, 50);
+  expect(answer).toStrictEqual({
+    ended: false,
+    because: 'the account route did not answer in time',
+  });
+  expect(Date.now() - started).toBeLessThan(5_000);
 });

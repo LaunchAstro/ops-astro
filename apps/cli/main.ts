@@ -502,21 +502,23 @@ export async function main(argv: readonly string[], env: Environment, given: Io)
     if (verb === 'login') return await login(parsed, env, io, connectionOf(parsed.flags, env));
     if (verb === 'logout') {
       const { api, tokenFile, delegationFile } = connectionOf(parsed.flags, env);
-      // The session ends at the server first (#2425); the files go whatever it answers.
-      const business = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
-      const server = await signOutAtServer(httpTransport(api), business, readOptional(tokenFile));
-      if (!server.ended && server.because !== undefined) {
-        io.err(
-          `logout: the server did not confirm the session ended (${server.because}); ` +
-            'it stays usable until it expires',
-        );
-      }
+      // The bearer is read before the files go, and the session is then ended at the
+      // server with it (#2425): a server that never answers cannot keep the token on disk.
+      const bearer = readOptional(tokenFile);
       let failed: readonly string[];
       try {
         failed = signOut(tokenFile, [tokenFile, delegationFile]);
       } catch (cause) {
         if (cause instanceof CredentialsBusy) throw cause;
         failed = [`${tokenFile}: ${(cause as Error).message}`];
+      }
+      const business = text(parsed.flags, 'business') ?? env['OPS_ASTRO_BUSINESS'];
+      const server = await signOutAtServer(api, business, bearer);
+      if (!server.ended && server.because !== undefined) {
+        io.err(
+          `logout: the server did not confirm the session ended (${server.because}); ` +
+            'it stays usable until it expires',
+        );
       }
       for (const one of failed) io.err(`cli: logout could not remove ${one}`);
       if (failed.length > 0) return EXIT.fault;
