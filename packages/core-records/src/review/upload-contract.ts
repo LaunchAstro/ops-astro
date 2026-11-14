@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// U89's upload contract (#2039, C73, TR-SEC-6): the one gate every upload
+// U89's upload contract (#2039, C73): the one gate every upload
 // goes through. A start is refused when its declared type is not one its kind
 // takes or its size is past its kind's limit, before the store is asked
 // anything. On completion the object's own bytes are read back in bounded
