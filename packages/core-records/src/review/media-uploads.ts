@@ -130,7 +130,9 @@ export async function completeMediaUpload(
     stored.byteCount !== Number(asset.declared_bytes) ||
     stored.digest !== asset.declared_digest
   ) {
-    await store.remove(asset.object_key);
+    // Abandoned only once the store no longer holds the object; otherwise the upload stays
+    // open, so abandoning it later can still remove what was stored.
+    if ((await store.remove(asset.object_key)) !== true) return mediaRefusal('STORE_REFUSED');
     await markUpload(tx, asset.id, 'abandoned', null);
     return mediaRefusal('UPLOAD_MISMATCH');
   }
@@ -149,7 +151,11 @@ export async function completeMediaUpload(
   };
 }
 
-/** Abort a started upload at the store and mark it abandoned. */
+/**
+ * Abort a started upload at the store and mark it abandoned. An upload the store already
+ * completed (a mismatch whose object it did not remove) has no upload to abort, so its object
+ * is removed instead; either way it is abandoned only once the store holds nothing of it.
+ */
 export async function abandonMediaUpload(
   tx: TenantQuery,
   input: { readonly assetId: string; readonly covering: Covering },
@@ -157,8 +163,9 @@ export async function abandonMediaUpload(
 ): Promise<{ readonly reviewId: string } | MediaRefusal> {
   const locked = await lockStartedUpload(tx, input.assetId, input.covering);
   if ('code' in locked) return locked;
-  const aborted = await store.abort(locked.asset.object_key, locked.asset.upload_id);
-  if (aborted !== true) return mediaRefusal('STORE_REFUSED');
+  const { object_key: key, upload_id: uploadId } = locked.asset;
+  const gone = (await store.abort(key, uploadId)) === true || (await store.remove(key)) === true;
+  if (!gone) return mediaRefusal('STORE_REFUSED');
   await markUpload(tx, locked.asset.id, 'abandoned', null);
   return { reviewId: locked.review.id };
 }
