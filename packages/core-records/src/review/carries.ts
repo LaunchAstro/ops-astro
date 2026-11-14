@@ -46,7 +46,7 @@ async function reviewState(tx: TenantQuery, review: CarriedReview) {
   );
   const numbers = new Map(revisions.map((one) => [one.id, one.number]));
   const pages = new Map(landed.map((one) => [`${one.revision_id}/${one.width}`, one.observation]));
-  return { numbers, carries, pages, pins: await readPins(tx, review) };
+  return { numbers, carries, pages, pins: await readPins(tx, review.taskId, revisions) };
 }
 
 export interface CarriedReview {
