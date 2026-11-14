@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.request_delete: an agent's request shows on its task with a reason and a seven-day expiry; Confirm deletes softly as the person's own act and Keep closes it; a stale, expired, binned, own, money-holding or unauthorised answer changes nothing; a pickup agent asks nothing outside its own task"
+}
