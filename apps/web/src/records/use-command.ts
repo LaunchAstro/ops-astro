@@ -23,6 +23,7 @@ import {
   type WireRefusal,
 } from '../operations/client.ts';
 import { describeRefusal } from './submit.ts';
+import { useReportWrite } from './page-writes.ts';
 
 /** A write that did not store, in the terms a screen acts on. */
 export type Failure =
@@ -84,6 +85,7 @@ export interface Command {
 
 export function useCommand(): Command {
   const [busy, setBusy] = useState(false);
+  useReportWrite(busy);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [closed, setClosed] = useState(false);
 

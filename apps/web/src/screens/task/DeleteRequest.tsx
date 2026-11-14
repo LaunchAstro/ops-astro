@@ -14,6 +14,7 @@ import { Button, Card } from '@launchastro/ui';
 import type { DeleteRequestView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
+import { usePageBusy } from '../../records/page-writes.ts';
 
 export interface DeleteRequestProps {
   readonly client: OperationsClient;
@@ -30,6 +31,7 @@ type Answer = 'task.confirm_delete' | 'task.decline_delete';
 
 export function DeleteRequest(props: DeleteRequestProps): ReactElement | null {
   const { busy, because, locked, run } = useCommand();
+  const elsewhere = usePageBusy();
   const request = props.task.deleteRequest ?? null;
   if (request === null) return null;
   const answer = (command: Answer): void => {
@@ -53,7 +55,7 @@ export function DeleteRequest(props: DeleteRequestProps): ReactElement | null {
         title={`${who} asks to delete this task`}
         sub={`${request.reason} Nothing is erased, and a deleted task can be restored. The request lapses on ${lapses}.`}
       >
-        <Answers busy={busy} disabled={props.disabled || locked} onAnswer={answer} />
+        <Answers busy={busy} disabled={props.disabled || locked || elsewhere} onAnswer={answer} />
       </Card>
       {because === null ? null : (
         <p className="card__sub" role="alert" data-delete-request-refused>

@@ -140,6 +140,7 @@ import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { DeleteTask } from './task/DeleteTask.tsx';
 import { DeleteRequest } from './task/DeleteRequest.tsx';
+import { PageWrites } from '../records/page-writes.ts';
 import { Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
 import { ScoreFields } from './task/ScoreFields.tsx';
@@ -617,55 +618,57 @@ function Loaded(props: LoadedProps): ReactElement {
   });
 
   return (
-    <div className="stack" data-task={task.id} data-revision={task.revision}>
-      <TaskHeader task={task} execution={execution} />
-      <TaskFacts task={task} />
-      <TaskPresence seen={presence.seen} />
-      <DeleteRequest
-        client={client}
-        task={task}
-        disabled={busy || dirty}
-        onAnswered={props.onChanged}
-      />
+    <PageWrites>
+      <div className="stack" data-task={task.id} data-revision={task.revision}>
+        <TaskHeader task={task} execution={execution} />
+        <TaskFacts task={task} />
+        <TaskPresence seen={presence.seen} />
+        <DeleteRequest
+          client={client}
+          task={task}
+          disabled={busy || dirty}
+          onAnswered={props.onChanged}
+        />
 
-      <EditNotices
-        because={because}
-        moved={props.moved}
-        conflict={conflict}
-        base={base.revision}
-        title={title}
-        due={due}
-        dirty={dirty}
-        busy={busy}
-        changed={
-          props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
-        }
-        onDiscard={props.onDiscard}
-      />
+        <EditNotices
+          because={because}
+          moved={props.moved}
+          conflict={conflict}
+          base={base.revision}
+          title={title}
+          due={due}
+          dirty={dirty}
+          busy={busy}
+          changed={
+            props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
+          }
+          onDiscard={props.onDiscard}
+        />
 
-      <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
-      <TeamControls
-        props={props}
-        people={people}
-        writes={writes}
-        form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
-      />
+        <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
+        <TeamControls
+          props={props}
+          people={people}
+          writes={writes}
+          form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
+        />
 
-      <Perspectives
-        counts={counts}
-        selected={props.perspective}
-        onSelect={props.onPerspective}
-        team={<TeamSide props={props} />}
-        agent={
-          <AgentSide
-            execution={execution}
-            props={props}
-            persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
-            outages={<Outages state={outages.state} taskId={task.id} />}
-          />
-        }
-      />
-    </div>
+        <Perspectives
+          counts={counts}
+          selected={props.perspective}
+          onSelect={props.onPerspective}
+          team={<TeamSide props={props} />}
+          agent={
+            <AgentSide
+              execution={execution}
+              props={props}
+              persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+              outages={<Outages state={outages.state} taskId={task.id} />}
+            />
+          }
+        />
+      </div>
+    </PageWrites>
   );
 }
 
