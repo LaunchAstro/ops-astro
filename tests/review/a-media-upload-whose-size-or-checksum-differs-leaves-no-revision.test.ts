@@ -110,3 +110,37 @@ describe.skipIf(serverUrl === undefined)('C73 a mismatch the store could not rem
     },
   );
 });
+
+describe.skipIf(serverUrl === undefined)('C73 an abandon the store could not abort', () => {
+  // S2126-1 follow-up: abandon falls back to removing the object only when the store no longer
+  // knows the upload. A store that is unavailable keeps the upload open, even where its delete
+  // answers success for a key it does not hold (as R2's delete does), so no parts are left behind.
+  it('C73 an abandon the store could not abort stays open, its parts kept for the retry', async () => {
+    const own = mediaStoreDouble();
+    const calls = mediaCalls(w, own);
+    const started = await calls.start(w.ava, w.taskA, renderOf(BODY));
+    if ('code' in started) throw new Error(`start refused ${started.code}`);
+    const parts = await calls.parts(w.ava, started.assetId, 4);
+    if ('code' in parts) throw new Error(`parts refused ${parts.code}`);
+    calls.send(parts.signed, BODY);
+    const abort = own.abort.bind(own);
+    const remove = own.remove.bind(own);
+    own.abort = (() =>
+      Promise.resolve({ refused: 'STORE_UNAVAILABLE' as const })) as unknown as typeof own.abort;
+    own.remove = (() => Promise.resolve(true)) as typeof own.remove;
+    expect(await calls.abandon(w.ava, started.assetId)).toStrictEqual({ code: 'STORE_REFUSED' });
+    const state = async () =>
+      (await calls.rows('review_media_assets', w.world.business)).find(
+        (row) => row['id'] === started.assetId,
+      )?.['state'];
+    expect(await state()).toBe('started');
+
+    own.abort = abort;
+    own.remove = remove;
+    expect(await calls.abandon(w.ava, started.assetId)).toMatchObject({
+      reviewId: started.reviewId,
+    });
+    expect(own.calls.filter((call) => call === 'abort')).toHaveLength(1);
+    expect(await state()).toBe('abandoned');
+  });
+});
