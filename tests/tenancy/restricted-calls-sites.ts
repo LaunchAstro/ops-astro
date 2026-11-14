@@ -31,7 +31,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'task_delete_requests'],
   // C35-X (20261114152700): a pin's carry onto a revision is written once and never changed.
   ['si', 'review_pin_carries'],
-  // C57 (20261114100000): a change request is filed once and decided once, by column.
+  // C57 (20261114162900): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
 ];
 
@@ -91,7 +91,7 @@ export const SITE_UPDATES = [
   },
   {
     table: 'public.review_change_requests',
-    from: '20261114100000',
+    from: '20261114162900',
     columns: [
       'state',
       'decided_by_actor_id',
