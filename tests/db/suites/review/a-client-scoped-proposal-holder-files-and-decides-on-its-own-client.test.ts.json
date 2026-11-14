@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C57 client crossing, positive half: a person whose proposal keys reach party B only files and decides a change request on party B's own review, recorded as its filer and decider."
+}
