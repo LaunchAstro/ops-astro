@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C35 (#2121, Sol S2121-4): a person's claim or land under their own lease judges that lease
-// again after the envelope's last wait. Held on the business's audit chain after the capture
-// update until the lease has run out, the claim takes no width and the land keeps no picture.
+// again after the envelope's last wait. Held on the business's audit chain, where the call first
+// asks for it, until the lease has run out, the claim takes no width and the land keeps no
+// picture. Since #2165 the call first asks for the chain in `stillHeld`, before its capture
+// update, so the lease is judged after that wait; the hold is taken just before that ask, so it
+// never waits on the call. (Before #2165 the call first took the chain inside its audit write's
+// own statement, which this proof's query wrapper does not see; it held the chain after the
+// capture update instead.)
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -91,9 +96,9 @@ async function waitedPastExpiry(blocker: () => number | undefined, lease: Person
 }
 
 /**
- * `body` as ava, under her lease cut to four seconds. Once the handler's capture update has run,
- * a connection of its own takes the business's audit chain and holds it until the call waits
- * there past the expiry.
+ * `body` as ava, under her lease cut to four seconds. Just before the call first asks for the
+ * business's audit chain, a connection of its own takes the chain and holds it until the call
+ * waits there past the expiry.
  */
 // eslint-disable-next-line max-lines-per-function -- the hold and the call it holds, together
 async function heldOnTheAuditChain(
@@ -110,8 +115,9 @@ async function heldOnTheAuditChain(
   const holding = (tx: TransactionQuery): TransactionQuery => ({
     businessId: tx.businessId,
     async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
-      const rows = await tx.query<Row>(text, parameters);
-      if (held === undefined && text.includes('update public.review_captures')) {
+      const chain =
+        text.includes('pg_advisory_xact_lock') && parameters?.[0] === tx.businessId.toLowerCase();
+      if (held === undefined && chain) {
         let locked!: () => void;
         const ready = new Promise<void>((resolve) => {
           locked = resolve;
@@ -125,7 +131,7 @@ async function heldOnTheAuditChain(
         });
         await ready;
       }
-      return rows;
+      return await tx.query<Row>(text, parameters);
     },
     savepoint: async (work) =>
       await tx.savepoint(async (inner) => {
