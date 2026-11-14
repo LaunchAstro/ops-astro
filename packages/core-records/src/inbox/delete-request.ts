@@ -8,14 +8,17 @@
 // Who is told: an agent asks for a person (`requested_for_person_id`), and
 // that person is told when they hold `task:decide` on the task, since only a
 // decide holder can answer. Otherwise, and when a person asked for
-// themselves, the task's decide holders are told, the asker aside. Nobody
-// outside the business is: every statement binds `tx.businessId`.
+// themselves, the task's decide holders are told, the asker aside. A decide
+// grant on a ticket's covering map answers the ticket too (W12, as the
+// command's own check admits it), so its holders count. Nobody outside the
+// business is: every statement binds `tx.businessId`.
 //
 // A request lapses by the clock, with no command to close its item, so an
 // open item whose request is no longer open is neither shown nor counted
 // (`LIVE_DELETE_REQUEST`), and it is withdrawn when the lapse is recorded.
 
 import { grantHolders } from '../authority/grant-reach.ts';
+import { wayfinderFacts } from '../tasks/wayfinder.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { raiseInboxItem } from './items.ts';
 
@@ -27,6 +30,16 @@ export const LIVE_DELETE_REQUEST = `(i.reason <> 'delete_request' or exists (
          select 1 from public.task_delete_requests q
           where q.business_id = i.business_id and q.id = i.fact_id
             and q.answer is null and q.expires_at > clock_timestamp()))`;
+
+/** Who can answer the task's request: decide on the task, or on the map that covers it (W12). */
+async function decideHolders(tx: TenantQuery, taskId: string): Promise<readonly string[]> {
+  const on = (id: string) =>
+    grantHolders(tx, { collection: 'task', action: 'decide', scope: { kind: 'record', id } });
+  const map = (await wayfinderFacts(tx, taskId))?.mapId ?? null;
+  const holders = await on(taskId);
+  if (map === null || map === taskId) return holders;
+  return [...new Set([...holders, ...(await on(map))])].toSorted();
+}
 
 /** The people told of a new request, read in the request's own transaction. */
 async function toldOf(
@@ -42,11 +55,7 @@ async function toldOf(
   );
   const asked = rows[0];
   if (asked === undefined) throw new Error('raiseDeleteRequest: the request is not here');
-  const holders = await grantHolders(tx, {
-    collection: 'task',
-    action: 'decide',
-    scope: { kind: 'record', id: request.taskId },
-  });
+  const holders = await decideHolders(tx, request.taskId);
   if (asked.byAgent && holders.includes(asked.forPerson)) return [asked.forPerson];
   return holders.filter((person) => person !== asked.forPerson);
 }
