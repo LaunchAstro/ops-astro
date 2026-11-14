@@ -52,7 +52,7 @@ import type { Classification } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { declarationOf } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 
 const NOT_FOUND = refused(refuseNotFound());
 
@@ -97,6 +97,14 @@ export async function lockAccessAsManager(
   context: CommandContext,
 ): Promise<HandlerOutcome | undefined> {
   await lockAccess(tx);
+  return await stillManagesAccess(tx, context);
+}
+
+/** The caller's business-wide `access:manage`, asked now: its refusal, or undefined. */
+async function stillManagesAccess(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<Refused | undefined> {
   const still = await checkAuthority(tx, subjectsOf(context.session), {
     collection: 'access',
     action: 'manage',
@@ -305,6 +313,17 @@ async function revokeGrantRow(
   }
 
   const candidates = await dependents(tx, grantId);
+  // The ceiling, or the access manager, was asked before the runtime's locks on the work the
+  // grant carries, and a grant of the caller's can expire while it waits on them. It is asked
+  // again under those locks, before the revocation: asked after it, it would read the act's
+  // own change, and a manager could not revoke a grant their own ceiling rests on.
+  const stillEntitled = async (): Promise<Refused | undefined> =>
+    authority === 'access'
+      ? await stillManagesAccess(tx, context)
+      : (await withinCeiling(tx, context, grant.collection, grant.action, scope))
+        ? undefined
+        : OUTSIDE_CEILING;
+  let lapsed: Refused | undefined;
   const loss = await classifyAuthorityLoss(tx, {
     delegationIds: candidates.flatMap((each) =>
       each.delegation_id === null ? [] : [each.delegation_id],
@@ -324,6 +343,8 @@ async function revokeGrantRow(
         current,
         'grant.revoke: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
       );
+      lapsed = await stillEntitled();
+      if (lapsed !== undefined) return { applied: false, value: null };
       const revokedAt = await revokeGrant(tx, grantId);
       if (revokedAt === null) return { applied: false, value: null };
       // Re-evaluated after the revocation and under the locks: only an
@@ -340,6 +361,7 @@ async function revokeGrantRow(
       return { applied: true, value: revokedAt, lost, lostLeases };
     },
   });
+  if (lapsed !== undefined) return lapsed;
   if (!loss.applied || loss.value === null) return already;
   await raiseIncident(tx, loss.classified);
   return applied(grantId, null, {
@@ -374,16 +396,20 @@ export async function revokeDelegationAsManager(
   const delegation = rows[0];
   if (delegation === undefined) return NOT_FOUND;
   const scope: Scope = { kind: delegation.purpose_scope_kind, id: delegation.purpose_scope_id };
-  // Run reach exists only inside a task delegation on its purpose task, and
-  // no one holds `run:manage`, so its pair is judged on the claim's collection
-  // at that scope (ORCH34): each run pair so judged is a task pair it also asks.
-  for (const collection of delegation.collections) {
-    const judged = collection === 'run' ? claimCollection() : collection;
-    for (const action of delegation.actions) {
-      // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
-      if (!(await withinCeiling(tx, context, judged, action, scope))) return OUTSIDE_CEILING;
+  const withinAll = async (): Promise<boolean> => {
+    // Run reach exists only inside a task delegation on its purpose task, and
+    // no one holds `run:manage`, so its pair is judged on the claim's collection
+    // at that scope (ORCH34): each run pair so judged is a task pair it also asks.
+    for (const collection of delegation.collections) {
+      const judged = collection === 'run' ? claimCollection() : collection;
+      for (const action of delegation.actions) {
+        // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
+        if (!(await withinCeiling(tx, context, judged, action, scope))) return false;
+      }
     }
-  }
+    return true;
+  };
+  if (!(await withinAll())) return OUTSIDE_CEILING;
 
   const loss = await classifyAuthorityLoss(tx, {
     delegationIds: [delegationId],
@@ -417,11 +443,16 @@ export async function revokeDelegationAsManager(
     );
   }
   await raiseIncident(tx, loss.classified);
-  return applied(delegationId, null, {
-    delegationId,
-    revokedAt: revokedAt.toISOString(),
-    classifiedHolds: classifiedHolds(loss.classified),
-  });
+  return {
+    ...applied(delegationId, null, {
+      delegationId,
+      revokedAt: revokedAt.toISOString(),
+      classifiedHolds: classifiedHolds(loss.classified),
+    }),
+    // The ceiling was asked before the runtime's task lock and the waits after it; a grant of
+    // it that ended during them refuses the revoke at its last judgement, and nothing is kept.
+    lastCheck: async () => ((await withinAll()) ? undefined : OUTSIDE_CEILING.refusal),
+  };
 }
 
 /**
