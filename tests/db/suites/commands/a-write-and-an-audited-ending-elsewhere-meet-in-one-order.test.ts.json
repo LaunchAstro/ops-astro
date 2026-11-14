@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a save through the envelope and an audited ending of its session through another business (a sign-out, or an ending of every other session of the login) meet in one key order: the ending first refuses the save and keeps nothing, the save first makes the ending wait for its commit"
+}
