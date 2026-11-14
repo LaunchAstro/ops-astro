@@ -234,6 +234,7 @@ export class OperationsClient {
     }
   }
 
+  /** One command's POST; it follows no redirect, so a 307 or 308 never resends a code or body elsewhere (#1356). */
   async #post<T>(
     path: string,
     body: Readonly<Record<string, unknown>>,
@@ -248,10 +249,8 @@ export class OperationsClient {
     };
     if (this.#options.sessionId !== undefined) headers[SESSION_HEADER] = this.#options.sessionId;
     if (onPiece !== undefined) headers['accept'] = 'text/event-stream';
-
     let response: Response;
     try {
-      // A 307 or 308 never resends a factor code or a body to another origin (#1356).
       response = await this.#options.fetch(url, {
         method: 'POST',
         headers,

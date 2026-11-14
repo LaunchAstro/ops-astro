@@ -53,7 +53,9 @@ it("a sign-in again dropped before its trade sends the new session's token to no
       businessKey: 'alpha',
       from: undefined,
       current: () => false,
-      adopt: () => undefined,
+      adopt: () => {
+        throw new Error('a dropped sign-in again never adopts');
+      },
     });
     expect(answer).toMatchObject({ ok: false });
     expect(asked).toEqual(['POST /token?grant_type=password', 'POST /logout?scope=local']);
