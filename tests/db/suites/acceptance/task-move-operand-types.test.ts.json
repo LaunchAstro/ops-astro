@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.move refuses a wrong-type board or board section with a typed 4xx through the real route, and the task does not move"
+}
