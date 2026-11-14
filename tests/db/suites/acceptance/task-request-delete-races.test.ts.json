@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "another business never sees, confirms, keeps or asks about a business's task delete request; two confirms at once delete once; Confirm and Keep at once answer once and the task matches the answer"
+}

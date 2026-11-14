@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a replacement kept for its in-flight model call is refused task.dispatch under the step lock once its step is written off, with a refused audit row and the envelope, cap and step mark unchanged; a step recorded as happened differently still dispatches; another business's replacement still dispatches"
+}
