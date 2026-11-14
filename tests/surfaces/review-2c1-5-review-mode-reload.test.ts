@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // REVIEW-2C1-5, red proof: opening Review drops every assignee filter (P-10),
-// so `writeView` writes `mode=review` with no `f`; on reload `openWithViewer`
-// sees no `f` and puts the viewer's own assignee filter back, so a gate
-// waiting on someone else's task vanishes from Review. Fixed when a reload of
+// so `writeView` writes `mode=review` with no `f`; on reload the board put
+// the viewer's own assignee filter back, so a gate
+// waiting on someone else’s task vanished from Review. Fixed when a reload of
 // the Review address shows the same rows as before it. Synthetic rows only.
 
 import { describe, expect, it } from 'vitest';
@@ -11,11 +11,7 @@ import { readView, writeView } from '../../packages/ui/src/board/address.ts';
 import { narrowRows } from '../../packages/ui/src/board/filters.ts';
 import { initialMachine, reduceBoard } from '../../packages/ui/src/board/machine.ts';
 import { projectFacets } from '../../packages/ui/src/board/project-facets.ts';
-import {
-  openWithViewer,
-  projectPresets,
-  REVIEW_MODE,
-} from '../../packages/ui/src/board/project-presets.ts';
+import { projectPresets, REVIEW_MODE } from '../../packages/ui/src/board/project-presets.ts';
 import type { ProjectRow } from '../../packages/ui/src/board/projects.ts';
 import type { BoardContext, BoardView } from '../../packages/ui/src/board/types.ts';
 
@@ -74,12 +70,11 @@ function shown(view: BoardView): readonly string[] {
   return (keep === undefined ? narrowed : narrowed.filter((one) => keep(one))).map((one) => one.id);
 }
 
-const reload = (view: BoardView): BoardView =>
-  readView(openWithViewer(writeView(view), ME), CONTEXT);
+const reload = (view: BoardView): BoardView => readView(writeView(view), CONTEXT);
 
 describe('REVIEW-2C1-5 Review mode survives a reload', () => {
   it('REVIEW-2C1-5: after pressing Review, a reload of its address still shows the gate on someone else’s task', () => {
-    const opened = initialMachine(readView(openWithViewer('', ME), CONTEXT));
+    const opened = initialMachine(readView(`f=assignee%3A${ME}`, CONTEXT));
     expect(opened.view.ids).toStrictEqual([`assignee:${ME}`]);
     const review = reduceBoard(opened, { type: 'mode', id: 'review' }, CONTEXT).view;
     expect(shown(review)).toStrictEqual(['mine-gated', 'theirs-gated']);

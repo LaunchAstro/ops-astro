@@ -91,25 +91,22 @@ const one = (board: Mounted, selector: string): Element | null =>
 const VIEWER = `.cbd__preset--viewer`;
 const REVIEW = `.cbd__mode[data-mode="review"]`;
 
-describe('MP-5-12 the viewer preset is on by default for the signed-in person', () => {
-  it('opens on the viewer’s own tasks, the chip on and named for them', async () => {
+describe('MP-5-12 the viewer preset, one click away (#2347: every board opens on All tasks)', () => {
+  it('opens on every task, the viewer’s chip off and named for them', async () => {
     const board = await open();
-    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(true);
-    expect(one(board, VIEWER)?.textContent).toContain('Sam Reed');
-    expect(drawn(board)).toStrictEqual(['m1', 'm2']);
-  });
-
-  it('a plain click on it alone clears it, and every task shows', async () => {
-    const board = await open();
-    await board.click(VIEWER);
     expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(one(board, VIEWER)?.textContent).toContain('Sam Reed');
     expect(drawn(board)).toStrictEqual(['m1', 'm2', 'a1', 'a2']);
   });
 
-  it('is off at load on a client’s board', async () => {
-    const board = await open({ viewerOn: false });
+  it('a plain click narrows to the viewer’s own tasks, and a second clears it', async () => {
+    const board = await open();
+    await board.click(VIEWER);
+    expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(true);
+    expect(drawn(board)).toStrictEqual(['m1', 'm2']);
+    await board.click(VIEWER);
     expect(one(board, VIEWER)?.classList.contains('is-on')).toBe(false);
-    expect(drawn(board)).toHaveLength(4);
+    expect(drawn(board)).toStrictEqual(['m1', 'm2', 'a1', 'a2']);
   });
 });
 
@@ -129,7 +126,7 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
   });
 
   it('pressing a chip narrows to the category', async () => {
-    const board = await open({ viewerOn: false });
+    const board = await open();
     await board.click('.cbd__preset--cat[data-preset="cat-seo"]');
     expect(drawn(board)).toStrictEqual(['m1', 'a2']);
   });
@@ -195,7 +192,7 @@ const task = (id: string, key: string, assignee: string | null, awaitingDecision
 });
 
 describe('MP-5-12 drawn from task.board through the Projects screen', () => {
-  it('opens on the signed-in person’s tasks and counts what waits on their decision', async () => {
+  it('opens on every task (#2347) and counts what waits on the viewer’s decision', async () => {
     const tasks = [
       task('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'TSK-1', ME, false),
       task('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'TSK-2', ADA, true),
@@ -215,8 +212,8 @@ describe('MP-5-12 drawn from task.board through the Projects screen', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
     mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
     await settle();
-    expect(one(mounted, VIEWER)?.classList.contains('is-on')).toBe(true);
-    expect(drawn(mounted)).toStrictEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
+    expect(one(mounted, VIEWER)?.classList.contains('is-on')).toBe(false);
+    expect(drawn(mounted)).toStrictEqual(tasks.map((each) => each.id));
     expect(one(mounted, `${REVIEW} .cbd__count`)?.textContent).toBe('2');
     await mounted.click(REVIEW);
     await settle();

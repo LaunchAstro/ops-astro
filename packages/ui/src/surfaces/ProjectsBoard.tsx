@@ -6,9 +6,9 @@
 // the sort's third press, the board's own order, is the work order too. The
 // Client column drops when one client is shown (P-23). The rows gather under
 // their statuses in the workflow's order, each banner with its waiting
-// reasons (MP-5-11). The chip row carries the viewer's own chip (on at load
-// unless `viewerOn` is false, as on a client's board), a chip per category in
-// scope, and the Review mode with its live count (MP-5-12).
+// reasons (MP-5-11). The chip row carries All tasks, on at load (#2347), the
+// viewer's own chip, a chip per category in scope, and the Review mode with
+// its live count (MP-5-12).
 
 import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { usePageToolbar } from './PageToolbar.tsx';
@@ -23,12 +23,7 @@ import {
   type RowActions,
 } from '../board/projects.ts';
 import { clientFiltersIn, projectFacets } from '../board/project-facets.ts';
-import {
-  openWithViewer,
-  projectPresets,
-  reviewBadge,
-  REVIEW_MODE,
-} from '../board/project-presets.ts';
+import { projectPresets, reviewBadge, REVIEW_MODE } from '../board/project-presets.ts';
 import { sortRows } from '../board/sort.ts';
 
 export interface ProjectsBoardProps {
@@ -51,8 +46,6 @@ export interface ProjectsBoardProps {
   readonly viewer?: string | null;
   /** The reader's owed count (INB-1), Review's count; the rows' own count when not given. */
   readonly owed?: number;
-  /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
-  readonly viewerOn?: boolean;
   readonly toolbar?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
@@ -135,10 +128,8 @@ function useCells(props: ProjectsBoardProps, now: Date): CellContext {
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const viewer = props.viewer ?? null;
   const toolbar = usePageToolbar();
-  // The viewer preset is on at load agency-wide and off on a client's board (P-11).
-  const [opening] = useState(() =>
-    withWorkOrder(openWithViewer(props.address ?? '', props.viewerOn === false ? null : viewer)),
-  );
+  // Every board opens on All tasks: only the address's own filters are on (#2347).
+  const [opening] = useState(() => withWorkOrder(props.address ?? ''));
   const [address, setAddress] = useState(opening);
   // The real clock is taken again with every fresh read, so a day that turned is judged as the new one.
   const now = useMemo(() => props.now ?? new Date(), [props.now, props.rows, props.changedAt]);

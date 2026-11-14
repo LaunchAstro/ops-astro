@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The Projects board's presets and its Review mode (MP-5-12). The viewer
-// preset narrows to the signed-in person's own tasks and is on at load
-// agency-wide (P-11); a client's board opens without it. A category chip is
+// preset narrows to the signed-in person's own tasks, one click away; every
+// board opens on All tasks, with no filter on (#2347, DECISIONS 91), so a task
+// nobody holds shows at first look. A category chip is
 // offered only for a category some row in scope has (P-13, M-04), and it is
 // flagged, never counted, when a client or a mention waits in it. Review
 // narrows the table to the tasks waiting at a gate for the viewer's decision
@@ -76,18 +77,6 @@ export function projectPresets(
     },
     ...chips,
   ];
-}
-
-/**
- * The address a board opens on: the viewer preset on when it has no `f` at
- * all. An empty `f` is a view with every filter off, written by the board
- * (`writeView`), and stays off.
- */
-export function openWithViewer(address: string, viewer: string | null): string {
-  const params = new URLSearchParams(address.startsWith('?') ? address.slice(1) : address);
-  if (viewer === null || params.has('f')) return params.toString();
-  params.set('f', viewerFacetId(viewer));
-  return params.toString();
 }
 
 /**

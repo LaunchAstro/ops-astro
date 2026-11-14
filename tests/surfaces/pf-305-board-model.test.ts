@@ -12,11 +12,7 @@ import { readView, writeView } from '../../packages/ui/src/board/address.ts';
 import { narrowRows } from '../../packages/ui/src/board/filters.ts';
 import { initialMachine, reduceBoard } from '../../packages/ui/src/board/machine.ts';
 import { clientFiltersIn, projectFacets } from '../../packages/ui/src/board/project-facets.ts';
-import {
-  openWithViewer,
-  projectPresets,
-  REVIEW_MODE,
-} from '../../packages/ui/src/board/project-presets.ts';
+import { projectPresets, REVIEW_MODE } from '../../packages/ui/src/board/project-presets.ts';
 import { projectColumns, type ProjectRow } from '../../packages/ui/src/board/projects.ts';
 import { nextSort, sortRows } from '../../packages/ui/src/board/sort.ts';
 import type { BoardContext } from '../../packages/ui/src/board/types.ts';
@@ -89,10 +85,10 @@ describe('REVIEW-BATCH #305 4: facet ids', () => {
 
 describe('REVIEW-BATCH #305 5: the viewer preset after a reload', () => {
   it('Clear all, then a reload, keeps every filter off', () => {
-    const opened = initialMachine(readView(openWithViewer('', ME), CONTEXT));
+    const opened = initialMachine(readView(`f=assignee%3A${ME}`, CONTEXT));
     expect(opened.view.ids).toStrictEqual([`assignee:${ME}`]);
     const cleared = reduceBoard(opened, { type: 'clear' }, CONTEXT).view;
-    const reloaded = readView(openWithViewer(writeView(cleared), ME), CONTEXT);
+    const reloaded = readView(writeView(cleared), CONTEXT);
     expect(reloaded.ids).toStrictEqual([]);
   });
 });

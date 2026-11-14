@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 import { initialMachine, reduceBoard } from '../../packages/ui/src/board/machine.ts';
 import { projectFacets } from '../../packages/ui/src/board/project-facets.ts';
 import {
-  openWithViewer,
   projectPresets,
   reviewBadge,
   REVIEW_MODE,
@@ -70,7 +69,7 @@ const contextOf = (rows: readonly ProjectRow[]): BoardContext<ProjectRow> => ({
   modes: [REVIEW_MODE],
 });
 
-describe('MP-5-12 the viewer preset is on by default for the signed-in person', () => {
+describe('MP-5-12 the viewer preset narrows to the signed-in person (off at load, #2347)', () => {
   it('is a preset over the viewer’s own person, named as the rows name them', () => {
     const viewer = projectPresets(ROWS, ME).find((preset) => preset.variant === 'viewer');
     expect(viewer).toStrictEqual({
@@ -93,12 +92,6 @@ describe('MP-5-12 the viewer preset is on by default for the signed-in person', 
     const facet = projectFacets(others, NOW, ME).find((one) => one.id === `assignee:${ME}`);
     expect(facet?.test(ROWS[0] as ProjectRow)).toBe(true);
     expect(projectPresets(others, ME).find((one) => one.variant === 'viewer')?.label).toBe('Mine');
-  });
-
-  it('is on at load agency-wide, and an address already naming filters is left alone', () => {
-    expect(openWithViewer('sort=rank.asc', ME)).toBe(`sort=rank.asc&f=assignee%3A${ME}`);
-    expect(openWithViewer(`f=status%3Aactive`, ME)).toBe('f=status%3Aactive');
-    expect(openWithViewer('', null)).toBe('');
   });
 
   it('a plain click on it alone clears it', () => {
