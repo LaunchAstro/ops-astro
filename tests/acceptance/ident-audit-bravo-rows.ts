@@ -89,10 +89,10 @@ export async function bravoRecords(world: World): Promise<BravoRows & BravoManda
     `insert into public.agent_credentials
        (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
         credential_hash, credential_scheme, credential_key_id, expires_at)
-     values ($1, gen_random_uuid(), $2, $3, $2, 'A bravo credential.', array['task:read'],
+     values ($1, gen_random_uuid(), $2, $3, $4, 'A bravo credential.', array['task:read'],
              repeat('0', 64), 'hmac-sha256-v1', 'bravo', now() + interval '1 day')
      returning id`,
-    [world.bravo, world.bea.actorId, world.bea.personId],
+    [world.bravo, await bravoAgent(world), world.bea.personId, world.bea.actorId],
   );
 
   // C32: a client of bravo's, for the grant an alpha caller could name it in.
