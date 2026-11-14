@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a running timer whose start is ahead of the database clock (a clock stepped back) stops through time.stop at its own start, one minute, and the timer is off, never a 500 on time_entries_ends_after_start"
+}
