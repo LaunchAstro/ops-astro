@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 media store: completions racing on separate connections behind the review's row lock number their revisions once each, complete one upload once, and re-judge the review grant after the wait."
+}

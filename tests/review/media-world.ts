@@ -12,6 +12,7 @@ import {
   startMediaUpload,
   type Covering,
   type DeclaredAsset,
+  type ReviewWriter,
   type SignedPart,
 } from '../../packages/core-records/src/index.ts';
 import type { Member } from '../commands/fixture.ts';
@@ -31,7 +32,7 @@ export const renderOf = (body: Uint8Array, over: Partial<DeclaredAsset> = {}): D
   ...over,
 });
 
-const coveringOf = (member: Member): Covering => ({
+export const coveringOf = (member: Member): Covering => ({
   subjects: [
     { kind: 'person', id: member.personId },
     { kind: 'actor', id: member.actorId },
@@ -40,7 +41,7 @@ const coveringOf = (member: Member): Covering => ({
   action: 'write',
 });
 
-const writerOf = (member: Member) => ({
+export const writerOf = (member: Member): ReviewWriter => ({
   actorId: member.actorId,
   personId: member.personId,
   delegationId: null,

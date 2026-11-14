@@ -70,7 +70,9 @@ describe.skipIf(serverUrl === undefined)('C73 completion', () => {
       code: 'UPLOAD_NOT_OPEN',
     });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C73 a mismatch the store could not remove', () => {
   // S2126-1: a mismatched object the store could not remove is not left stored behind an
   // abandoned upload; the upload stays open, and abandoning it removes the object.
   it.each([
