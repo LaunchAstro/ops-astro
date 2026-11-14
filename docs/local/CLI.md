@@ -21,7 +21,7 @@ pnpm cli login --email ada@alpha.local --second-factor   # then the authenticato
 pnpm cli task.board --business alpha --json '{"board":null}'
 pnpm cli task.create --business alpha --json '{"fields":{"title":"Call the supplier"}}'
 pnpm cli task.read --business alpha --body-file ./read.json
-pnpm cli logout
+pnpm cli logout --business alpha        # removes the files, then ends that session at the server
 ```
 
 `node apps/cli/main.ts` runs the same entry without pnpm. `pnpm cli` prints
@@ -135,6 +135,16 @@ processes can share them:
   `<bearer file>.lock`. A command waits up to 3 seconds for it, then stops
   with exit 2 and names it. A lock is only held for local file work, so one
   that stays is left by a crash: remove it if no `ops-astro` is running.
+- `logout` removes the files, then ends at the server the session whose bearer
+  it removed: it reads that bearer under the same lock, so a login that
+  publishes a new one meanwhile is the one ended. With a business named
+  (`--business` or `OPS_ASTRO_BUSINESS`) it posts the person's own
+  `account/sessions/sign-out` with it, as the web's sign-out does, so a copy
+  of the token stops working at once, and gives up after 10 seconds. It
+  prints `{"ok":true,"ended":true}` when the server confirmed. With no
+  business named, or when the server refuses, redirects or does not answer,
+  it prints `"ended":false` and says on stderr that the session stays usable
+  until it expires (#2425).
 - `logout` records a new sign-out mark (`<bearer file>.epoch`). A `login`,
   pickup or hand-over that was waiting for its answer when a `logout`
   completed saves nothing and says so; a pickup or hand-over names its
