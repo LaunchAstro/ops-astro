@@ -60,7 +60,8 @@ async function projectsCapturedFrom(html: string) {
 }
 
 it('the Projects board drawn under its own title counts as the page', async () => {
-  const shot = await projectsCapturedFrom(shell('Projects', '<table></table>'));
+  // The board's route has been titled Tasks since #2344.
+  const shot = await projectsCapturedFrom(shell('Tasks', '<table></table>'));
   expect(shot?.wrongScreen).toBeUndefined();
 });
 
@@ -68,7 +69,7 @@ it('the component gallery drawn at the Projects address is a wrong screen', asyn
   const shot = await projectsCapturedFrom(
     shell('Component gallery', '<section class="gallery"></section>'),
   );
-  expect(shot?.wrongScreen).toBe('drew the page titled Component gallery, not Projects');
+  expect(shot?.wrongScreen).toBe('drew the page titled Component gallery, not Tasks');
 });
 
 it('a document that is not the app, at the Projects address, is a wrong screen', async () => {
