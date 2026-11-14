@@ -66,7 +66,10 @@ async function snapshotRead(
   const view = async (tx: TenantQuery) => {
     const session = await standingOf(tx, presented, 'required');
     if ('refused' in session) return session;
-    return { session, served: await serveUnaudited(tx, session, request) };
+    const served = await serveUnaudited(tx, session, request);
+    // The snapshot transaction's own time, which its audit row names (#2370).
+    const [at] = await tx.query<{ readonly served_at: Date }>('select now() as served_at');
+    return { session, served: { ...served, servedAt: at?.served_at } };
   };
   const serve = async () =>
     await database.withBusiness(businessId, view, SNAPSHOT).catch((cause: unknown) => {
