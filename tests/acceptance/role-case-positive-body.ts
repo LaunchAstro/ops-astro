@@ -187,7 +187,6 @@ export function createPositiveBody(
       case 'task.read':
       case 'task.execution':
       case 'trace.read':
-      // #1245: the staff an internal comment on the task may name, asked as `task.read` is.
       case 'task.mentionable':
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
@@ -221,8 +220,7 @@ export function createPositiveBody(
       case 'credential.issue':
       case 'credential.revoke':
         return await credentialBody(declaration.name, context);
-      // S0-5: the admin holds `operations:manage` in alpha, which operates the
-      // harness's installation.
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the harness's installation.
       case 'operations.record_gate_item':
       case 'operations.change_installation_mode':
         return await gateBody(declaration.name);
