@@ -12,7 +12,10 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { CAPTURE_POOL_VERSION } from '../../packages/core-connectors/src/index.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
 
-type GateCommand = 'operations.record_gate_item' | 'operations.change_installation_mode';
+type GateCommand =
+  | 'operations.record_gate_item'
+  | 'operations.change_installation_mode'
+  | 'operations.record_capture_pool_review';
 
 const evidence = (item: string): string => `https://evidence.example/${item}/${randomUUID()}`;
 
@@ -175,6 +178,8 @@ export function createGateBody(context: BodyContext): (name: GateCommand) => Pro
   let sent = 0;
   let allDone = false;
   return async function gateBody(name: GateCommand): Promise<Prepared> {
+    // C35 (#2018): a capture pool review is recorded under the same grant.
+    if (name === 'operations.record_capture_pool_review') return { body: poolReviewBody() };
     if (name === 'operations.record_gate_item') {
       const item = GATE_ITEMS[sent % GATE_ITEMS.length]!;
       sent += 1;

@@ -25,6 +25,7 @@ import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS, STOP } from './data-effects-runs.ts';
 import { SECTION_EFFECTS } from './data-effects-sections.ts';
 import { DELETE_REQUEST_EFFECTS } from './data-effects-delete-request.ts';
+import { OPERATIONS_EFFECTS } from './data-effects-operations.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -173,10 +174,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'legal.publish_version': LEGAL,
   'privacy.set_overseas_service': writing(business('overseas_services')),
   'privacy.set_data_class': writing(business('data_classes')),
-  // The installation's own rows: no client's, so no client-scoped write.
-  'operations.record_gate_item': writing(business('ops.gate_items')),
-  'operations.change_installation_mode': writing(business('ops.installation')),
-  'operations.record_capture_pool_review': writing(business('ops.capture_pool_reviews')),
+  ...OPERATIONS_EFFECTS,
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   // Custody (C31): a set may store a client's credential (a clientId), so it

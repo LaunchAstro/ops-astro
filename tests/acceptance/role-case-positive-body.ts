@@ -25,7 +25,7 @@ import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient, siteBody } from './role-case-access-bodies.ts';
-import { createGateBody, poolReviewBody } from './role-case-gate-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, isConversationCommand, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
@@ -219,14 +219,11 @@ export function createPositiveBody(
       case 'credential.issue':
       case 'credential.revoke':
         return await credentialBody(declaration.name, context);
-      // S0-5: the admin holds `operations:manage` in alpha, which operates the
-      // harness's installation.
+      // S0-5, C35 (#2018): the admin holds `operations:manage` in alpha, the installation's.
       case 'operations.record_gate_item':
       case 'operations.change_installation_mode':
-        return await gateBody(declaration.name);
-      // C35 (#2018): recorded the same way, under the same grant.
       case 'operations.record_capture_pool_review':
-        return { body: poolReviewBody() };
+        return await gateBody(declaration.name);
       case 'budget.top_up':
       case 'budget.record_outcome':
       case 'budget.write_off':
