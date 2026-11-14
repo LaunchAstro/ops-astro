@@ -2,15 +2,23 @@
 -- was taken. `task.read` answers from one repeatable read snapshot and writes its audit row
 -- afterwards, in a transaction of its own, so `occurred_at` (that later transaction's time,
 -- the chain's own order) is a moment after the answer. `served_at` is the snapshot
--- transaction's time, written only on a `task.read` row and never later than the row itself.
+-- transaction's time, written only on a `task.read` row: a finite time no later than the row
+-- itself and within a day before it.
 --
 -- The hash takes `served_at` only when it is set, after every earlier field, so every row
--- written before this migration, and every row without one, hashes exactly as it did.
+-- written before this migration, and every row without one, hashes exactly as it did. It is
+-- taken as seconds since the epoch, which spells every instant differently: a clock reading
+-- would spell the same time in two eras alike, and an infinite time as no time at all.
 
 alter table public.audit_events
   add column served_at timestamptz,
   add constraint audit_events_served_at_shape check (
-    served_at is null or (command = 'task.read' and served_at <= occurred_at)
+    served_at is null or (
+      command = 'task.read'
+      and isfinite(served_at)
+      and served_at <= occurred_at
+      and served_at >= occurred_at - interval '1 day'
+    )
   );
 
 create function public.audit_event_hash(
@@ -48,8 +56,7 @@ create function public.audit_event_hash(
       coalesce(attempted::text, '') ||
       coalesce('|origin_conversation:' || origin_conversation_id::text, '') ||
       coalesce('|field_changes_v1:' || field_changes::text, '') ||
-      coalesce('|served_at_v1:' ||
-        to_char(served_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US'), ''),
+      coalesce('|served_at_v1:' || extract(epoch from served_at)::text, ''),
       'utf8')), 'hex')
   $$;
 
