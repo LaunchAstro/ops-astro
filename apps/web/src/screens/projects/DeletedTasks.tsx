@@ -7,8 +7,9 @@
 //
 // One Restore press is one intent: its operation id is minted once per batch
 // and reused if the answer is lost and the person presses again, so the
-// server restores once (`held-operations.ts`). The page mounts this under the
-// reader's grant key, so a switch of business or person starts it afresh.
+// server restores once (`held-operations.ts`). Everything below is mounted
+// under the reader's grant key, so a switch of business or person starts it
+// afresh: a list or a Restore answered for the one before is never drawn.
 
 import { useRef, type ReactElement } from 'react';
 import { Button, Table } from '@launchastro/ui';
@@ -34,6 +35,10 @@ export interface DeletedTasksProps {
 }
 
 export function DeletedTasks(props: DeletedTasksProps): ReactElement {
+  return <DeletedTasksFor key={props.grantKey} {...props} />;
+}
+
+function DeletedTasksFor(props: DeletedTasksProps): ReactElement {
   const { client, grantKey } = props;
   const read = useRead<TaskBinResult>({
     grantKey,

@@ -16,7 +16,10 @@ interface Sent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-type Reply = { readonly body: unknown; readonly status: number } | 'lost';
+type Reply =
+  | { readonly body: unknown; readonly status: number }
+  | 'lost'
+  | Promise<{ readonly body: unknown; readonly status: number }>;
 
 const ROW = {
   batchId: '0b9f6c1e-1d2a-4e5b-9c3d-7a8b9c0d1e2f',
@@ -37,11 +40,12 @@ const RESTORED = {
 };
 
 /** A server answering each request with the next reply for its command. */
-function server(replies: Readonly<Record<string, Reply[]>>) {
+function server(replies: Readonly<Record<string, Reply[]>>, businessKey = 'alpha') {
   const sent: Sent[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
-    const command = at.slice(at.lastIndexOf('/b/alpha/') + 9).replace('/', '.');
+    const prefix = `/b/${businessKey}/`;
+    const command = at.slice(at.lastIndexOf(prefix) + prefix.length).replace('/', '.');
     sent.push({
       command,
       body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'],
@@ -49,9 +53,10 @@ function server(replies: Readonly<Record<string, Reply[]>>) {
     const reply = replies[command]?.shift();
     if (reply === undefined) throw new Error(`no reply left for ${command}`);
     if (reply === 'lost') return Promise.reject(new TypeError('network down'));
+    if (reply instanceof Promise) return reply.then((late) => json(late.body, late.status));
     return Promise.resolve(json(reply.body, reply.status));
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+  const client = new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
   return { client, sent };
 }
 
@@ -124,4 +129,56 @@ it('sends a Restore whose answer was lost again under the same operation id', as
   expect(ids).toHaveLength(2);
   expect(typeof ids[0]).toBe('string');
   expect(ids[1]).toBe(ids[0]);
+});
+
+/** A reply the test lets land when it chooses. */
+type Late = { readonly body: unknown; readonly status: number };
+
+function held(): { readonly reply: Promise<Late>; readonly land: (late: Late) => void } {
+  const landers: ((late: Late) => void)[] = [];
+  const reply = new Promise<Late>((resolve) => {
+    landers.push(resolve);
+  });
+  return { reply, land: (late) => landers.forEach((land) => land(late)) };
+}
+
+const REFUSED = {
+  body: {
+    refused: true,
+    code: 'NOT_FOUND',
+    names: ['trash batch'],
+    fixes: ['CANARY-ALPHA-REFUSAL'],
+  },
+  status: 404,
+};
+
+it('never draws the previous business’s list or restore answer after a switch', async () => {
+  const lateList = held();
+  const alpha = server({ 'task.bin': [lateList.reply] });
+  const bravo = server({ 'task.bin': [BIN([])] }, 'bravo');
+  const view = await mount(<DeletedTasks client={alpha.client} grantKey="alpha:ada" />);
+  await settled();
+  await view.render(<DeletedTasks client={bravo.client} grantKey="bravo:ben" />);
+  await settled();
+  lateList.land(BIN([ROW]));
+  await settled();
+  expect(view.text()).not.toContain('Draft the spring newsletter');
+  expect(view.text()).toContain('No deleted tasks.');
+});
+
+it('drops a restore answered after a switch, drawing no refusal and reading nothing again', async () => {
+  const lateRestore = held();
+  const alpha = server({ 'task.bin': [BIN([ROW])], 'task.restore': [lateRestore.reply] });
+  const bravo = server({ 'task.bin': [BIN([])] }, 'bravo');
+  const view = await mount(<DeletedTasks client={alpha.client} grantKey="alpha:ada" />);
+  await settled();
+  await view.click('[data-act="restore"] button');
+  await view.render(<DeletedTasks client={bravo.client} grantKey="bravo:ben" />);
+  await settled();
+  lateRestore.land(REFUSED);
+  await settled();
+  expect(view.find('[data-restore-refused]')).toBeNull();
+  expect(view.text()).not.toContain('CANARY-ALPHA-REFUSAL');
+  expect(alpha.sent.filter((each) => each.command === 'task.bin')).toHaveLength(1);
+  expect(bravo.sent.filter((each) => each.command === 'task.bin')).toHaveLength(1);
 });

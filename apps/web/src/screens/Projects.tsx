@@ -50,7 +50,7 @@ export function Projects(props: ProjectsProps): ReactElement {
       </TabPanel>
       <TabPanel name="projects" tab="deleted" selected={tab}>
         {tab === 'deleted' ? (
-          <DeletedTasks key={props.grantKey} client={props.client} grantKey={props.grantKey} />
+          <DeletedTasks client={props.client} grantKey={props.grantKey} />
         ) : null}
       </TabPanel>
     </div>
