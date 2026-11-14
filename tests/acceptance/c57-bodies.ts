@@ -6,6 +6,12 @@ import { randomUUID } from 'node:crypto';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Caller } from './cast.ts';
 
+/** C57's seeders for the matrix body context (`BodyContext`). */
+export interface C57Seeds {
+  /** A team pin rewritten as a client's, as client review is off (`asClientPin`). */
+  asClientPin?(commentId: string): Promise<void>;
+}
+
 /**
  * A change request of another business's on its review (C57), for the identifier cases: its
  * task stands in for the pin, as the restricted-calls seed's does.

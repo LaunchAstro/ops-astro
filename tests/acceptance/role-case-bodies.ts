@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import type { C80Seeds } from './c80-seeds.ts';
+import type { C57Seeds } from './c57-bodies.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -81,7 +82,7 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext extends C80Seeds {
+export interface BodyContext extends C80Seeds, C57Seeds {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
@@ -102,8 +103,6 @@ export interface BodyContext extends C80Seeds {
    * only needs the body shape, and the share is refused on authority anyway.
    */
   clientTask?(title: string): Promise<Task>;
-  /** C57: a team pin rewritten as a client's, as client review is off (`asClientPin`). */
-  asClientPin?(commentId: string): Promise<void>;
   /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
   ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
   /**
