@@ -80,10 +80,13 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { oneAtATime } from '../support/one-at-a-time.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 const PART = suitePart(process.env['SUITE_PART']);
+/** One prefix's catch-up, seed and calls: over 60 s on a quiet M5 by #2385. */
+const PREFIX_TIMEOUT = 300_000;
 
 /** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
 const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
@@ -868,123 +871,135 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  for (const [index, migration] of onDisk.entries()) {
-    if (!inPart(index, PART)) continue;
-    it(`answers every caller as the contract says after ${migration.version}`, async () => {
-      // The runner refuses while this database has other sessions, and the
-      // callers hold some from the prefix before. Closed for the migration and
-      // opened again on the new prefix.
-      await callers.close();
-      await db.closeSessions();
-      await catchUpTo(index);
+  /** The contract's answers to every caller once `migration`, the index-th on disk, is applied. */
+  const proveAfter = async (index: number, migration: (typeof onDisk)[number]): Promise<void> => {
+    // The runner refuses while this database has other sessions, and the
+    // callers hold some from the prefix before. Closed for the migration and
+    // opened again on the new prefix.
+    await callers.close();
+    await db.closeSessions();
+    await catchUpTo(index);
+    // oxlint-disable-next-line no-await-in-loop
+    const [proof] = await proveEachPrefix(db, [migration]);
+    callers = openCallers(db, { own: alpha, other: bravo });
+    expect(proof?.version).toBe(migration.version);
+    if (proof !== undefined && proof.findings.length > 0) expect(describePrefix(proof)).toBe('');
+    if (migration.version.startsWith('0001')) await openBusinesses();
+
+    // Roles belong to the cluster; the full-schema suite classifies all of them.
+    const workerExists =
+      (await db.admin.execute('select 1 from pg_roles where rolname = $1', [WORKER_ROLE]))
+        .length === 1;
+    const activeCallers = CALLERS.filter((caller) => caller !== 'worker' || workerExists);
+
+    const tables = await catalogueTables(db.admin);
+    const functions = await catalogueFunctions(db.admin);
+    const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
+    let calls = 0;
+    let populated = 0;
+
+    for (const table of tables) {
       // oxlint-disable-next-line no-await-in-loop
-      const [proof] = await proveEachPrefix(db, [migration]);
-      callers = openCallers(db, { own: alpha, other: bravo });
-      expect(proof?.version).toBe(migration.version);
-      if (proof !== undefined && proof.findings.length > 0) expect(describePrefix(proof)).toBe('');
-      if (migration.version.startsWith('0001')) await openBusinesses();
-
-      // Roles belong to the cluster; the full-schema suite classifies all of them.
-      const workerExists =
-        (await db.admin.execute('select 1 from pg_roles where rolname = $1', [WORKER_ROLE]))
-          .length === 1;
-      const activeCallers = CALLERS.filter((caller) => caller !== 'worker' || workerExists);
-
-      const tables = await catalogueTables(db.admin);
-      const functions = await catalogueFunctions(db.admin);
-      const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
-      let calls = 0;
-      let populated = 0;
-
-      for (const table of tables) {
-        // oxlint-disable-next-line no-await-in-loop
-        const own = await ownRows(db.admin, table, alpha);
-        if (table.tenant && own > 0) populated += 1;
-        for (const operation of OPERATIONS) {
-          const text = statementFor(table, operation);
-          for (const caller of activeCallers) {
-            // oxlint-disable-next-line no-await-in-loop
-            const before = await fingerprint(db.admin, table.qualified);
-            // oxlint-disable-next-line no-await-in-loop
-            const outcome = await callers.call(caller, text, table.tenant ? [alpha] : []);
-            // oxlint-disable-next-line no-await-in-loop
-            const after = await fingerprint(db.admin, table.qualified);
-            calls += 1;
-            const expected = expectedOutcome(caller, table, operation, own, migration.version);
-            const line = `${table.qualified} ${operation} ${caller}: ${describeOutcome(outcome)}`;
-            if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
-            if (before !== after) wrong.push(`${line}, the table changed`);
-          }
-        }
-        // oxlint-disable-next-line no-await-in-loop
-        const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
-        if (row === undefined) continue;
-        const finding = copyRowFinding(table, row);
-        if (finding !== undefined) {
-          wrong.push(`${table.qualified} insert copy: ${finding}`);
-          continue;
-        }
-        for (const caller of activeCallers.slice(1)) {
+      const own = await ownRows(db.admin, table, alpha);
+      if (table.tenant && own > 0) populated += 1;
+      for (const operation of OPERATIONS) {
+        const text = statementFor(table, operation);
+        for (const caller of activeCallers) {
           // oxlint-disable-next-line no-await-in-loop
           const before = await fingerprint(db.admin, table.qualified);
           // oxlint-disable-next-line no-await-in-loop
-          const outcome = await callers.call(caller, copyStatement(table), [row]);
+          const outcome = await callers.call(caller, text, table.tenant ? [alpha] : []);
           // oxlint-disable-next-line no-await-in-loop
           const after = await fingerprint(db.admin, table.qualified);
           calls += 1;
-          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version, true);
-          const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
+          const expected = expectedOutcome(caller, table, operation, own, migration.version);
+          const line = `${table.qualified} ${operation} ${caller}: ${describeOutcome(outcome)}`;
           if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+      // oxlint-disable-next-line no-await-in-loop
+      const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
+      if (row === undefined) continue;
+      const finding = copyRowFinding(table, row);
+      if (finding !== undefined) {
+        wrong.push(`${table.qualified} insert copy: ${finding}`);
+        continue;
+      }
+      for (const caller of activeCallers.slice(1)) {
+        // oxlint-disable-next-line no-await-in-loop
+        const before = await fingerprint(db.admin, table.qualified);
+        // oxlint-disable-next-line no-await-in-loop
+        const outcome = await callers.call(caller, copyStatement(table), [row]);
+        // oxlint-disable-next-line no-await-in-loop
+        const after = await fingerprint(db.admin, table.qualified);
+        calls += 1;
+        const expected = expectedOutcome(caller, table, 'insert', 0, migration.version, true);
+        const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
+        if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
+        if (before !== after) wrong.push(`${line}, the table changed`);
+      }
+    }
 
-      wrong.push(
-        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
-      );
+    wrong.push(
+      ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+    );
 
-      for (const fn of functions) {
-        for (const caller of [...activeCallers, 'owner'] as const) {
-          // oxlint-disable-next-line no-await-in-loop
-          const outcome = await callers.call(caller, callFor(fn));
-          calls += 1;
-          const runs =
-            caller === 'owner' ||
-            (APPLICATION_CALLERS.has(caller) && APPLICATION_EXECUTES.includes(fn.qualified));
-          const expected = runs ? (fn.trigger ? 'trigger-only' : 'rows 1') : 'denied';
-          if (describeOutcome(outcome) !== expected) {
-            wrong.push(
-              `${fn.signature} call ${caller}: ${describeOutcome(outcome)}, expected ${expected}`,
-            );
-          }
+    for (const fn of functions) {
+      for (const caller of [...activeCallers, 'owner'] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        const outcome = await callers.call(caller, callFor(fn));
+        calls += 1;
+        const runs =
+          caller === 'owner' ||
+          (APPLICATION_CALLERS.has(caller) && APPLICATION_EXECUTES.includes(fn.qualified));
+        const expected = runs ? (fn.trigger ? 'trigger-only' : 'rows 1') : 'denied';
+        if (describeOutcome(outcome) !== expected) {
+          wrong.push(
+            `${fn.signature} call ${caller}: ${describeOutcome(outcome)}, expected ${expected}`,
+          );
         }
       }
+    }
 
-      counts.push(
-        [
-          migration.version,
-          `tables=${String(tables.length)}`,
-          `tenant=${String(tables.filter((table) => table.tenant).length)}`,
-          `populated=${String(populated)}`,
-          `functions=${String(functions.length)}`,
-          `definers=${String(functions.filter((fn) => fn.definer).length)}`,
-          `callers=${String(activeCallers.length)}`,
-          `worker=${workerExists ? 'called' : 'absent'}`,
-          `calls=${String(calls)}`,
-        ].join('\t'),
-      );
-      // The seed rows go before the next migration, which never saw them.
-      for (const table of tables) {
-        if (!table.tenant || table.qualified === 'public.businesses') continue;
-        // oxlint-disable-next-line no-await-in-loop
-        await asOwner(db.admin, `delete from ${table.qualified} where business_id = any($1)`, [
-          [alpha, bravo],
-        ]);
-      }
-      expect(wrong).toStrictEqual([]);
-      // Every tenant table holds an own row, so no tenancy read was asked of nothing.
-      expect(populated).toBe(tables.filter((table) => table.tenant).length);
-      expect(tables.length).toBeGreaterThan(0);
-    }, 60_000);
+    counts.push(
+      [
+        migration.version,
+        `tables=${String(tables.length)}`,
+        `tenant=${String(tables.filter((table) => table.tenant).length)}`,
+        `populated=${String(populated)}`,
+        `functions=${String(functions.length)}`,
+        `definers=${String(functions.filter((fn) => fn.definer).length)}`,
+        `callers=${String(activeCallers.length)}`,
+        `worker=${workerExists ? 'called' : 'absent'}`,
+        `calls=${String(calls)}`,
+      ].join('\t'),
+    );
+    // The seed rows go before the next migration, which never saw them.
+    for (const table of tables) {
+      if (!table.tenant || table.qualified === 'public.businesses') continue;
+      // oxlint-disable-next-line no-await-in-loop
+      await asOwner(db.admin, `delete from ${table.qualified} where business_id = any($1)`, [
+        [alpha, bravo],
+      ]);
+    }
+    expect(wrong).toStrictEqual([]);
+    // Every tenant table holds an own row, so no tenancy read was asked of nothing.
+    expect(populated).toBe(tables.filter((table) => table.tenant).length);
+    expect(tables.length).toBeGreaterThan(0);
+  };
+
+  // A case past its timeout is failed but not stopped: its body still holds
+  // sessions and seeds rows. Each case waits until every earlier body has ended
+  // before it closes sessions and migrates, so a slow prefix fails alone instead
+  // of refusing the next migration and seeding its rows twice (#2385).
+  const inTurn = oneAtATime();
+  for (const [index, migration] of onDisk.entries()) {
+    if (!inPart(index, PART)) continue;
+    it(
+      `answers every caller as the contract says after ${migration.version}`,
+      () => inTurn(() => proveAfter(index, migration)),
+      PREFIX_TIMEOUT,
+    );
   }
 });
