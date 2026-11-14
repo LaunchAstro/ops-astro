@@ -43,10 +43,12 @@ export async function endOwnSession(
   const { personId, presented } = context.session;
   const sessionId = presented?.sessionId;
   if (presented !== undefined && sessionId !== undefined) {
-    // The ending's keys first, in their one order (the audit chain, then the
-    // session), so the ask and the end see one state: a sign-out, factor
-    // change or reset that ended this session first is refused as any write.
-    await holdEnding(tx, undefined, [sessionId]);
+    // The ending's keys first, in their one order (the audit chain, the
+    // login's subject, then the session), so the ask and the end see one
+    // state: a sign-out, a factor change through any business or a reset's
+    // window (which share only the subject's key) either ended this session
+    // first, and it is refused as any write, or waits for this to commit.
+    await holdEnding(tx, presented.subject, [sessionId]);
     if (await sessionEnded(tx, presented)) {
       return refused(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
     }
