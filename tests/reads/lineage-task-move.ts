@@ -5,7 +5,8 @@
 // another in one statement, leaving the signed decision, version and evidence
 // pack as they were. The lineage and its runs still name one task together.
 
-import type { World } from '../acceptance/world.ts';
+import { randomUUID } from 'node:crypto';
+import { bearer, call, personPath, type World } from '../acceptance/world.ts';
 
 const TABLES = ['proposal_lineages', 'planned_runs'] as const;
 
@@ -34,4 +35,15 @@ export async function moveLineageToTask(
       await world.db.admin.execute(`alter table public.${table} enable trigger all`);
     }
   }
+}
+
+/** Mia's `task.read` body: a member reading every task, the internal reader #1294 names. */
+export async function readAsMia(world: World, taskId: string): Promise<Record<string, unknown>> {
+  const answer = await call(
+    world.api,
+    personPath('alpha', '/task/read'),
+    { operationId: randomUUID(), recordId: taskId },
+    bearer(world.mia.token),
+  );
+  return answer.body;
 }

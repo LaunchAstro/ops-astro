@@ -31,7 +31,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { moveDecidedGate } from './decided-gate-move.ts';
-import { moveLineageToTask } from './lineage-task-move.ts';
+import { moveLineageToTask, readAsMia } from './lineage-task-move.ts';
 
 type Decision = 'approve' | 'reject' | 'request_changes';
 
@@ -277,23 +277,18 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
     await expectIntegrityFault(current, taskId, /seq 1: gate .* is bound to version/u);
   }, 60_000);
 
-  // #1294: the signed evidence names its task. A lineage and its runs the owner
-  // moved to another task carry an intact decision, so B's read must fail
-  // rather than show A's approval and payload on B.
+  // #1294: a lineage moved to another task keeps an intact decision; B's read must fail.
   it('fails a read of a task whose approved lineage the owner moved there from another task', async () => {
     world = await createWorld('evbind');
     const [taskA, taskB] = [await createTask(world), await createTask(world)];
     const on = await propose(world, taskA);
     await decide(world, on, 'approve');
+    expect(JSON.stringify(await readAsMia(world, taskA)), 'mia reads A').toContain(on.versionId);
     expect((await readTask(world, taskB)).status, 'B reads clean before the move').toBe(200);
     await moveLineageToTask(world, on.lineageId, taskB);
     await expectIntegrityFault(world, taskB, /seq 1: version .*'s task is not/u);
-    const asMia = await call(
-      world.api,
-      personPath('alpha', '/task/read'),
-      { operationId: randomUUID(), recordId: taskB },
-      bearer(world.mia.token),
-    );
-    expect(JSON.stringify(asMia.body)).not.toContain(on.versionId);
+    const onB = await readAsMia(world, taskB);
+    expect(onB['code'], "mia's read of B is the fault").toBe('DECISION_INTEGRITY');
+    expect(JSON.stringify(onB)).not.toContain(on.versionId);
   }, 60_000);
 });
