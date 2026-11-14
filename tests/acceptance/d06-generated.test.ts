@@ -14,7 +14,7 @@
 // pickup of fresh approved work just took (`role-case-bodies.ts` `ownLease`).
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { grantTo } from '../commands/fixture.ts';
@@ -27,6 +27,7 @@ import {
   declarationFor,
   durableProbe,
   roomToApprove,
+  signInSchedule,
   expectUnchanged,
   lastAudit,
   probeValue,
@@ -39,6 +40,9 @@ import {
 import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { serverUrl } from './world.ts';
+
+/** How often the people sign in again: well inside a bearer's hour (#2478). */
+const SIGN_IN_EVERY_MS = 20 * 60 * 1000;
 
 /** The two commands that write a record's generic fields, through `tasks-write.ts`. */
 const GENERIC_WRITES: ReadonlySet<CommandName> = new Set(['task.create', 'task.update']);
@@ -60,6 +64,7 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
   let harness: Harness;
   let send: (surface: Surface, name: CommandName, body: Record<string, unknown>) => Promise<Said>;
   let durable: () => Promise<Durable>;
+  let signInIfDue: (() => Promise<boolean>) | undefined;
   const tally = new Tally();
 
   beforeAll(async () => {
@@ -67,7 +72,16 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     send = surfacesOf(harness);
     await roomToApprove(harness);
     durable = await durableProbe(harness);
+    signInIfDue = signInSchedule(async () => await harness.signInAgain(), SIGN_IN_EVERY_MS);
   }, 120_000);
+
+  // #2478: the file runs for hours as one part and a bearer lasts an hour, so every
+  // cell after the first hour answered AUTH_SESSION_EXPIRED. The people sign in
+  // again before the first cell past each SIGN_IN_EVERY_MS, as a browser refreshes
+  // its session, with the last cell's 60 s and slack for a loaded machine to spare.
+  beforeEach(async () => {
+    await signInIfDue?.();
+  });
 
   afterAll(async () => {
     tally.print('person surfaces');

@@ -217,7 +217,9 @@ export function surfacesOf(
       fetch: asBrowser(token, async (url, init) => await world.api.fetch(new Request(url, init))),
     }),
   });
-  const admin = doors(world.ada.token);
+  // The admin's doors, kept while the admin's bearer is the one they were made with:
+  // `signInAgain` replaces it (#2478), and doors made before would send the lapsed one.
+  let admin = { token: world.ada.token, ...doors(world.ada.token) };
   // C39-T's invitation acts come from the harness's current inviter (`freshInviter`).
   return async (surface, name, body) => {
     const caller = isInvitation(name) ? harness.inviter() : world.ada;
@@ -225,6 +227,8 @@ export function surfacesOf(
       const answer = await harness.asPerson(name, body, 'alpha', caller);
       return said(answer.body, answer.status);
     }
+    if (admin.token !== world.ada.token)
+      admin = { token: world.ada.token, ...doors(world.ada.token) };
     const { cli, web } = caller === world.ada ? admin : doors(caller.token);
     if (surface === 'cli') {
       const answer = await cli.run(name, body);
