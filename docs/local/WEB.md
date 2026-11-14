@@ -71,7 +71,8 @@ until that answers), a link to `/settings` and Sign out
 (`packages/ui/src/surfaces/PersonMenu.tsx`). Sign out forgets the session in
 the tab first, so a server that never answers cannot keep anyone signed in,
 then sends two calls naming the ended sign-in's own session id: `session.end`,
-which records the sign-out on the audit chain, and the API's `/api/session/end`,
+which records the sign-out on the audit chain and ends the session at the
+door (#2427), and the API's `/api/session/end`,
 which clears this sign-in's session cookie and leaves the person's others alone
 (`apps/web/src/App.tsx`, `signOut` in `session/sign-in.ts`). The page holds no
 token (S0-6c), so it asks the identity provider for nothing.

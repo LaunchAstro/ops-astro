@@ -6,8 +6,8 @@
 // It now ends the caller's own session, here and in every business the login
 // reaches, in the same transaction as its audit event, and nobody else's. The
 // browser sends it first and then the sign-out route (C23's order), which
-// finds its session already ended: that route still signs out at the provider,
-// so no provider session is left behind.
+// finds its session already ended: refused, that route still signs out at the
+// provider (`signOutRefused`), once, so no provider session is left behind.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';

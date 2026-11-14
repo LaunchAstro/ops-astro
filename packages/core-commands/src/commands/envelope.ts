@@ -637,11 +637,13 @@ async function refusedAtCommit(
 ): Promise<CommandRefusal | undefined> {
   if (isRefused(outcome) && outcome.retains !== true) return undefined;
   const ended =
-    isRefused(outcome) || outcome.endsOwnAccess !== true
-      ? await standsNow(tx, session, request, declaration, standing, asked)
-      : standing.presented === undefined
-        ? undefined
-        : await signedOut(tx, session);
+    !isRefused(outcome) && outcome.endsOwnSession === true
+      ? undefined
+      : isRefused(outcome) || outcome.endsOwnAccess !== true
+        ? await standsNow(tx, session, request, declaration, standing, asked)
+        : standing.presented === undefined
+          ? undefined
+          : await signedOut(tx, session);
   // A success's own last judgement (its lease, say) is asked after the
   // caller's standing, as the agent path asks it (`agent-standing.ts`).
   return ended ?? (isRefused(outcome) ? undefined : await outcome.lastCheck?.());

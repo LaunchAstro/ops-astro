@@ -96,6 +96,12 @@ export interface Applied {
    */
   readonly endsOwnAccess?: true;
   /**
+   * The act ended the caller's own session (`session.end`, #2427), having
+   * asked under the ending's keys that no ending came first, so the envelope
+   * asks nothing more of the session: the ending it would find is the act's.
+   */
+  readonly endsOwnSession?: true;
+  /**
    * The delegation whose credential the answer hands over, which the caller
    * did not present: a take of a launch. The agent's last judgement holds it
    * live after its last wait, as it holds a presented one (`agent-standing.ts`).
