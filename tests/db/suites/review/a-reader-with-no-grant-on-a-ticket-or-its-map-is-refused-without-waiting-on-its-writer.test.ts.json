@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#2403 task read through a map: a reader with no grant on the ticket or its map is refused SCOPE_NOT_GRANTED at once while a writer holds the ticket, as for a fabricated id, so the denial neither waits on the writer nor shows the ticket exists."
+}
