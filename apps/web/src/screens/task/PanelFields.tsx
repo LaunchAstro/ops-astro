@@ -25,7 +25,7 @@ import {
   type InternalTaskDetail as Task,
   type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { useCommand } from '../../records/use-command.ts';
+import { useCommand, type Failure } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { AssigneeField } from './AssigneeField.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
@@ -59,6 +59,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
     command: FieldCommand,
     fields: Readonly<Record<string, unknown>>,
     revision = props.task.revision,
+    unstored?: (failure: Failure) => void,
   ): void => {
     run(
       () =>
@@ -70,6 +71,7 @@ function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
         }),
       (settlement) => {
         if (settlement.kind === 'ok') props.onChanged();
+        else unstored?.(settlement);
       },
     );
   };
@@ -83,25 +85,39 @@ const Refusal = (props: { readonly because: string | null }): ReactElement | nul
     </p>
   );
 
-/** The task's name in the panel head, edited in place: Enter saves, Escape leaves it. */
-export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactElement {
+// The name typed and the revision Rename opened at (a colleague's change since answers stale);
+// a name sent and not stored reopens with Rename on this task only, and stale asks a re-read (#1456).
+function useRename(props: Omit<PanelFieldsProps, 'grantKey'>) {
   const { task } = props;
   const { busy, because, write } = useFieldWrite(props);
-  // The name being typed and the revision the rename opened at: a re-read
-  // keeps the panel mounted, and a colleague's change since answers stale.
   const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null);
+  const [unsaved, setUnsaved] = useState<{ taskId: string; text: string } | null>(null);
+  const kept = unsaved?.taskId === task.id ? unsaved.text : null;
+  const open = (): void => setDraft({ text: kept ?? task.title ?? '', revision: task.revision });
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {
       setDraft(null);
+      setUnsaved(null);
     } else if (event.key === 'Enter' && draft !== null) {
       event.preventDefault();
       const name = draft.text.trim();
       setDraft(null);
+      setUnsaved(null);
       if (name !== '' && name !== task.title) {
-        write('task.update', { title: name }, draft.revision);
+        write('task.update', { title: name }, draft.revision, (failure) => {
+          setUnsaved({ taskId: task.id, text: name });
+          if (failure.kind === 'stale') props.onChanged();
+        });
       }
     }
   };
+  return { busy, because, draft, setDraft, open, onKeyDown };
+}
+
+/** The task's name in the panel head, edited in place: Enter saves, Escape leaves it. */
+export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactElement {
+  const { task } = props;
+  const { busy, because, draft, setDraft, open, onKeyDown } = useRename(props);
   return (
     <>
       {draft === null ? (
@@ -111,7 +127,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           data-panel-field="name"
           disabled={busy}
           title="Rename"
-          onClick={() => setDraft({ text: task.title ?? '', revision: task.revision })}
+          onClick={open}
         >
           {task.title}
         </button>
