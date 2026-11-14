@@ -82,7 +82,7 @@ async function save(key: string, value: string): Promise<string> {
 }
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
-  '#2454 one login in two businesses, through the API',
+  'one login in two businesses is judged in each by its own rows, through the API',
   () => {
     it('is served in each business it is a member of', async () => {
       expect([await save(BUSINESS_KEY, 'dark'), await save(BRAVO, 'dark')]).toStrictEqual([

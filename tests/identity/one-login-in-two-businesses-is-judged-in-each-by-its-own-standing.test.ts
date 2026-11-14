@@ -79,24 +79,27 @@ const save = async (businessId: string, value: string): Promise<string> =>
     } as never),
   );
 
-describe.skipIf(serverUrl === undefined)('#2454 one login in two businesses', () => {
-  it('is served in each business it is a member of', async () => {
-    expect([await save(alpha, 'dark'), await save(bravo, 'dark')]).toStrictEqual([
-      'applied',
-      'applied',
-    ]);
-  });
+describe.skipIf(serverUrl === undefined)(
+  'one login in two businesses is judged in each by its own standing',
+  () => {
+    it('is served in each business it is a member of', async () => {
+      expect([await save(alpha, 'dark'), await save(bravo, 'dark')]).toStrictEqual([
+        'applied',
+        'applied',
+      ]);
+    });
 
-  it('once its alpha access is ended, is refused in alpha and still served in bravo', async () => {
-    const ended = await executeCommand(db.app, alpha, ada.presented, 'api', {
-      command: 'access.end',
-      operationId: randomUUID(),
-      holderId: noah.personId,
-    } as never);
-    expect(codeOf(ended)).toBe('applied');
-    expect([await save(alpha, 'light'), await save(bravo, 'light')]).toStrictEqual([
-      'AUTH_ACCESS_ENDED',
-      'applied',
-    ]);
-  });
-});
+    it('once its alpha access is ended, is refused in alpha and still served in bravo', async () => {
+      const ended = await executeCommand(db.app, alpha, ada.presented, 'api', {
+        command: 'access.end',
+        operationId: randomUUID(),
+        holderId: noah.personId,
+      } as never);
+      expect(codeOf(ended)).toBe('applied');
+      expect([await save(alpha, 'light'), await save(bravo, 'light')]).toStrictEqual([
+        'AUTH_ACCESS_ENDED',
+        'applied',
+      ]);
+    });
+  },
+);
