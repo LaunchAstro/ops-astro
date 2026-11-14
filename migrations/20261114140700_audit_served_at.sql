@@ -7,8 +7,10 @@
 --
 -- The hash takes `served_at` only when it is set, after every earlier field, so every row
 -- written before this migration, and every row without one, hashes exactly as it did. It is
--- taken as seconds since the epoch, which spells every instant differently: a clock reading
--- would spell the same time in two eras alike, and an infinite time as no time at all.
+-- spelled exactly: the UTC clock reading to the microsecond with every digit of its year and
+-- its era, and an infinite time by its name, so no two times Postgres can store spell alike
+-- (seconds since the epoch would round far from it; a reading without its era would spell
+-- the same time in two eras alike; `to_char` spells an infinite time as nothing at all).
 
 alter table public.audit_events
   add column served_at timestamptz,
@@ -56,7 +58,11 @@ create function public.audit_event_hash(
       coalesce(attempted::text, '') ||
       coalesce('|origin_conversation:' || origin_conversation_id::text, '') ||
       coalesce('|field_changes_v1:' || field_changes::text, '') ||
-      coalesce('|served_at_v1:' || extract(epoch from served_at)::text, ''),
+      coalesce('|served_at_v1:' || case
+        when isfinite(served_at)
+          then to_char(served_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US BC')
+        else served_at::text
+      end, ''),
       'utf8')), 'hex')
   $$;
 
