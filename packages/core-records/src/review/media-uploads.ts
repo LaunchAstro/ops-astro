@@ -153,8 +153,10 @@ export async function completeMediaUpload(
 
 /**
  * Abort a started upload at the store and mark it abandoned. An upload the store already
- * completed (a mismatch whose object it did not remove) has no upload to abort, so its object
- * is removed instead; either way it is abandoned only once the store holds nothing of it.
+ * completed (a mismatch whose object it did not remove) is one the store no longer knows, so
+ * its object is removed instead; a store that is unavailable decides nothing, as a delete may
+ * answer success for a key it does not hold. Either way the upload is abandoned only once the
+ * store holds nothing of it.
  */
 export async function abandonMediaUpload(
   tx: TenantQuery,
@@ -164,7 +166,9 @@ export async function abandonMediaUpload(
   const locked = await lockStartedUpload(tx, input.assetId, input.covering);
   if ('code' in locked) return locked;
   const { object_key: key, upload_id: uploadId } = locked.asset;
-  const gone = (await store.abort(key, uploadId)) === true || (await store.remove(key)) === true;
+  const aborted = await store.abort(key, uploadId);
+  const unknown = aborted === false || (aborted !== true && aborted.refused === 'UPLOAD_UNKNOWN');
+  const gone = aborted === true || (unknown && (await store.remove(key)) === true);
   if (!gone) return mediaRefusal('STORE_REFUSED');
   await markUpload(tx, locked.asset.id, 'abandoned', null);
   return { reviewId: locked.review.id };
