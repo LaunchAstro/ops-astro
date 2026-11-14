@@ -17,6 +17,7 @@ import {
   ensureCredentialKeyFile,
   KEYRING_VARIABLE,
   parseCredentialKeys,
+  SECRET_DIGEST_DOMAIN,
   type CredentialIdentity,
 } from '../../packages/core-records/src/authority/credential-keys.ts';
 
@@ -108,5 +109,66 @@ describe('the credential derivation (group 5)', () => {
     expect(readFileSync(file, 'utf8')).toBe(
       `${ACTIVE_KEY_VARIABLE}=a\n${KEYRING_VARIABLE}=a:short\n`,
     );
+  });
+});
+
+const owner = { businessId: identity.businessId, actorId: identity.agentActorId };
+const macOf = (ring: ReturnType<typeof credentialKeyring>, value = '"pin-4821"'): string =>
+  ring.valueMac(owner.businessId, owner.actorId, value);
+
+describe("a sealed secret value's MAC", () => {
+  it('is HMAC-SHA256 under an HKDF subkey of its own domain, never the credential key', async () => {
+    const bytes = Buffer.from(key(), 'base64url');
+    const ring = credentialKeyring('k@1', new Map([['k@1', bytes]]));
+    const { createHmac, hkdfSync } = await import('node:crypto');
+    const text = JSON.stringify([
+      SECRET_DIGEST_DOMAIN,
+      'k@1',
+      owner.businessId,
+      owner.actorId,
+      '"pin-4821"',
+    ]);
+    const subkey = Buffer.from(
+      hkdfSync('sha256', bytes, Buffer.alloc(0), SECRET_DIGEST_DOMAIN, 32),
+    );
+    expect(macOf(ring)).toBe(createHmac('sha256', subkey).update(text).digest('base64url'));
+    expect(macOf(ring)).not.toBe(createHmac('sha256', bytes).update(text).digest('base64url'));
+  });
+
+  it('changes with the key, key id, business, actor and value, and not with their case', () => {
+    const a = Buffer.from(key(), 'base64url');
+    const ring = credentialKeyring('a', new Map([['a', a]]));
+    const base = macOf(ring);
+    expect(
+      ring.valueMac(owner.businessId.toUpperCase(), owner.actorId.toUpperCase(), '"pin-4821"'),
+    ).toBe(base);
+    const variants = [
+      macOf(credentialKeyring('a', new Map([['a', Buffer.from(key(), 'base64url')]]))),
+      macOf(credentialKeyring('b', new Map([['b', a]]))),
+      ring.valueMac(randomUUID(), owner.actorId, '"pin-4821"'),
+      ring.valueMac(owner.businessId, randomUUID(), '"pin-4821"'),
+      macOf(ring, '"pin-4822"'),
+    ];
+    expect(new Set([base, ...variants]).size).toBe(variants.length + 1);
+  });
+});
+
+describe("a sealed secret value's MAC across a key rotation", () => {
+  it('a MAC under an older key still held matches, and none once that key is gone', () => {
+    const [a, b] = [Buffer.from(key(), 'base64url'), Buffer.from(key(), 'base64url')];
+    const older = macOf(credentialKeyring('a', new Map([['a', a]])));
+    const both = credentialKeyring(
+      'b',
+      new Map([
+        ['a', a],
+        ['b', b],
+      ]),
+    );
+    const retired = credentialKeyring('b', new Map([['b', b]]));
+    const matches = (ring: typeof both): boolean =>
+      ring.valueMacMatches(owner.businessId, owner.actorId, '"pin-4821"', (mac) => mac === older);
+    expect(macOf(both)).not.toBe(older);
+    expect(matches(both)).toBe(true);
+    expect(matches(retired)).toBe(false);
   });
 });
