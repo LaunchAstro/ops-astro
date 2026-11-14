@@ -50,7 +50,9 @@ with no edit to the API, and a command with no declaration has no route.
 
 `GET /api/health` is the one exception. It runs a statement and answers from
 the result: `200` with `database: "reachable"`, or `503` with
-`database: "unreachable"` and the reason. It also reports whether the read half
+`database: "unreachable"` and one fixed `detail`, "The database did not
+answer.", never the database's own message, which can name its address and
+port. The cause is logged by its bounded fault code (`faultCode`). It also reports whether the read half
 of the surface is mounted. Where the live channel is mounted, `live` is
 `listening` only when a probe sent on the runtime login is heard back on the
 listener within a second, and `down` otherwise.
