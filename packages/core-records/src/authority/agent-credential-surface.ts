@@ -14,6 +14,8 @@ export {
   type DelegationCredentialKeys,
 } from './credential-keys.ts';
 export {
+  AGENT_NEVER_HOLDS,
+  agentMayHold,
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,

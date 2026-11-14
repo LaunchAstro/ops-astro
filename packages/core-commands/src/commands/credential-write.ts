@@ -23,6 +23,7 @@
 
 import {
   checkAuthority,
+  AGENT_NEVER_HOLDS,
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,
@@ -138,18 +139,6 @@ const MONEY = refuseCommand(
     'Untick them; money actions stay with a person.',
   ],
 );
-
-/**
- * The permission key catalogue's keys no agent may hold (CAPABILITY-SLICES.md)
- * that neither the excluded actions nor the money set already cover (#627).
- */
-const AGENT_NEVER_HOLDS: ReadonlySet<string> = new Set([
-  'account:write',
-  'chat:comment',
-  'conversation:read',
-  'credential:write',
-  'operations:read',
-]);
 
 const neverCarried = (key: { readonly collection: string; readonly action: Action }): boolean =>
   EXCLUDED.has(key.action) || AGENT_NEVER_HOLDS.has(`${key.collection}:${key.action}`);

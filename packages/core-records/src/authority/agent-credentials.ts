@@ -28,12 +28,40 @@ import {
 } from './credential-keys.ts';
 import { digestOf } from './delegations.ts';
 import type { Action } from './grants.ts';
+import { isMoneyKey } from './step-up.ts';
 
 /** The longest an agent credential lives, in days from issue. The one place it is set. */
 export const CREDENTIAL_MAX_DAYS = 90;
 
 /** What an agent credential never carries, whatever its issuer holds. */
 export const CREDENTIAL_EXCLUDED_ACTIONS: readonly Action[] = ['decide', 'share', 'manage'];
+
+/**
+ * The permission key catalogue's keys no agent may hold (CAPABILITY-SLICES.md)
+ * that neither the excluded actions nor the money set already cover (#627).
+ */
+export const AGENT_NEVER_HOLDS: ReadonlySet<string> = new Set([
+  'account:write',
+  'chat:comment',
+  'conversation:read',
+  'credential:write',
+  'operations:read',
+]);
+
+/**
+ * Whether an agent may hold this `collection:action` key: never an excluded
+ * action, a key the catalogue gives no agent, or a money key. Asked at issue,
+ * and again at the door of every call (#2419), so a row written before a key
+ * was refused, or around the refusal, gives its agent nothing on that key.
+ */
+export function agentMayHold(key: string): boolean {
+  const [collection = '', action = ''] = key.split(':');
+  return (
+    !(CREDENTIAL_EXCLUDED_ACTIONS as readonly string[]).includes(action) &&
+    !AGENT_NEVER_HOLDS.has(key) &&
+    !isMoneyKey(collection, action as Action)
+  );
+}
 
 export interface CredentialKey {
   readonly collection: string;

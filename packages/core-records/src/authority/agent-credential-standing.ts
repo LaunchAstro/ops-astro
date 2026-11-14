@@ -10,6 +10,7 @@ import { recordAuthenticationAttempt, subjectDigest } from '../identity/authenti
 import { NO_ASSURANCE, type VerifiedSubject } from '../identity/verified-subject.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { lockAccess } from './access.ts';
+import { agentMayHold } from './agent-credentials.ts';
 import { digestOf } from './delegations.ts';
 
 /**
@@ -26,7 +27,7 @@ export interface CredentialStanding {
   readonly agentActorId: string;
   readonly personId: string;
   readonly roleKey: string | null;
-  /** The ticked `collection:action` keys. */
+  /** The ticked `collection:action` keys an agent may hold: a key no agent may hold is dropped (#2419). */
   readonly scope: readonly string[];
 }
 
@@ -65,7 +66,10 @@ export async function resolveAgentCredential(
     agentActorId: row.agent_actor_id,
     personId: row.issued_by_person_id,
     roleKey: row.role_key,
-    scope: row.scope,
+    // Judged at use as at issue: a row that carries a key no agent may hold,
+    // written before that key was refused or around the refusal, stands within
+    // its other keys only.
+    scope: row.scope.filter(agentMayHold),
   };
 }
 
