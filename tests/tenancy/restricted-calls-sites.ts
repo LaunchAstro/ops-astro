@@ -38,7 +38,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'docs_folders'],
   ['si', 'docs_pages'],
   ['si', 'docs_page_versions'],
-  // C35-X (20261019170000): a decision and Astra's review of a revision, written once.
+  // C35-X (20261114110000): a decision and Astra's review of a revision, written once.
   ['si', 'review_decisions'],
   ['si', 'review_astra_reviews'],
 ];
