@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A write through the envelope and an audited ending of its session through
-// another business (#1291, Sol's round-1 coverage on #2414). The ending takes
-// that business's audit chain, then the login's subject key (ending every
-// other session of the login) or the session's key (a sign-out of this one).
-// The write holds its own business's chain and takes both keys shared at its
-// last ask (`sessionEndedHeld`), so:
-// - an ending holding its key first is waited for, and the write is refused
-//   with nothing kept: no preference, no operation, no applied audit event;
+// another business (#1291, Sol's coverage on #2414). The login is signed in on
+// one provider session, seen in both businesses. An ending through beta takes
+// beta's audit chain, then the login's subject key (an ending of every other
+// session of the login), then each seen session's key; a sign-out takes the
+// chain and the session's key. The write holds alpha's chain and takes the
+// subject's and the session's keys shared at its last ask (`sessionEndedHeld`):
+// - an ending holding its keys first is waited for, and the write is refused
+//   keeping nothing: no preference, no register row, no applied audit event;
+// - an ending holding the subject's key but not yet the session's makes the
+//   write wait at the subject, then takes the session's key and refuses it;
 // - an ending sent after the write's last ask waits for the write to commit.
+// Each wait is observed in `pg_blocking_pids` before anything is released.
 
 import { randomUUID } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { holdSubjectEnding } from '../../packages/core-records/src/identity/ending-keys.ts';
+import { resolveLogin } from '../../packages/core-records/src/identity/login-resolution.ts';
 import {
   endOtherSeenSessions,
   endOwnSession,
@@ -51,11 +56,13 @@ afterAll(async () => {
   await db?.drop();
 });
 
-/** A member of alpha signed in on a session of their own, and the same login's person in beta. */
+/** A member of alpha signed in on one session, the same login's person in beta, the session seen there too. */
 async function signedInTwice() {
   const member = await enrol(db.app, alpha, `Ivy ${randomUUID().slice(0, 6)}`);
   const me: Member = { ...member, presented: { ...member.presented, sessionId: randomUUID() } };
   const { business: beta, person: there } = await standingElsewhere(db, me.presented.subject);
+  const seen = await db.app.withBusiness(beta, (tx) => resolveLogin(tx, me.presented, 'enrolling'));
+  expect('refused' in seen).toBe(false);
   return { me, beta, there };
 }
 
@@ -82,13 +89,13 @@ const save = (database: Database, me: Member, operationId: string) =>
     value: 'dark',
   } as never);
 
-/** What the save left in alpha: the preference, its register rows and its applied audit events. */
+/** What the save left in alpha: the preference, every register row of its id, its applied audit events. */
 async function kept(me: Member, operationId: string): Promise<unknown> {
   const [row] = await db.admin.execute(
     `select (select value from public.person_preferences
               where business_id = $1 and person_id = $2 and key = 'appearance') as value,
             (select count(*)::int from public.operations
-              where business_id = $1 and operation_id = $3 and outcome = 'applied') as operations,
+              where business_id = $1 and operation_id = $3) as operations,
             (select count(*)::int from public.audit_events
               where business_id = $1 and operation_id = $3 and outcome = 'applied') as applied`,
     [alpha, me.personId, operationId],
@@ -96,37 +103,90 @@ async function kept(me: Member, operationId: string): Promise<unknown> {
   return row;
 }
 
+const refusedKeepingNothing = {
+  answer: 'AUTH_SESSION_EXPIRED',
+  kept: { value: null, operations: 0, applied: 0 },
+};
+
+/** The save on its own connection, and whether it has settled. */
+function saving(me: Member, operationId: string) {
+  const saver = connect(db.appUrl);
+  let settled = false;
+  const answer = save(saver, me, operationId).finally(() => {
+    settled = true;
+  });
+  return { answer, settled: () => settled, close: async () => await saver.close() };
+}
+
 it.skipIf(serverUrl === undefined).each(ENDINGS)(
   'a save whose session is being ended through another business by %s waits for it, then keeps nothing',
   async (_name, ending) => {
     const { me, beta, there } = await signedInTwice();
     const operationId = randomUUID();
-    const saver = connect(db.appUrl);
     let held: Held | undefined;
+    let saver: ReturnType<typeof saving> | undefined;
     try {
       let holder = 0;
       held = await hold(db.appUrl, beta, async (tx) => {
         holder = await backendPid(tx);
         await ending(tx, there, me);
       });
-      let settled = false;
-      const saving = save(saver, me, operationId).finally(() => {
-        settled = true;
-      });
-      await blockedBy(db.admin, holder, () => settled, 'the save');
+      saver = saving(me, operationId);
+      await blockedBy(db.admin, holder, saver.settled, 'the save');
       await held.letGo();
       held = undefined;
-      const answer = await saving;
+      const answer = await saver.answer;
       expect({
         answer: isCommandRefusal(answer) ? answer.code : 'applied',
         kept: await kept(me, operationId),
-      }).toStrictEqual({
-        answer: 'AUTH_SESSION_EXPIRED',
-        kept: { value: null, operations: 0, applied: 0 },
-      });
+      }).toStrictEqual(refusedKeepingNothing);
     } finally {
       await held?.letGo();
-      await saver.close();
+      await saver?.close();
+    }
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  'an ending through another business holding the subject key, not yet the session key, makes the save wait, then refuses it',
+  async () => {
+    const { me, beta, there } = await signedInTwice();
+    const operationId = randomUUID();
+    const ender = connect(db.appUrl);
+    const subjectHeld = gate();
+    const goOn = gate();
+    let holder = 0;
+    let saver: ReturnType<typeof saving> | undefined;
+    // The ending's keys in its own order, paused between the subject's and the session's.
+    const ended = ender.withBusiness(beta, async (tx) => {
+      holder = await backendPid(tx);
+      await holdSubjectEnding(tx, me.presented.subject);
+      subjectHeld.release();
+      await goOn.promise;
+      return await endOtherSeenSessions(
+        tx,
+        there,
+        randomUUID(),
+        'end_others',
+        me.presented.subject,
+      );
+    });
+    try {
+      await subjectHeld.promise;
+      saver = saving(me, operationId);
+      await blockedBy(db.admin, holder, saver.settled, 'the save at the subject key');
+      goOn.release();
+      expect(await ended).toBe(1);
+      const answer = await saver.answer;
+      expect({
+        answer: isCommandRefusal(answer) ? answer.code : 'applied',
+        kept: await kept(me, operationId),
+      }).toStrictEqual(refusedKeepingNothing);
+    } finally {
+      goOn.release();
+      await Promise.allSettled([ended]);
+      await saver?.close();
+      await ender.close();
     }
   },
 );
@@ -139,6 +199,7 @@ it.skipIf(serverUrl === undefined).each(ENDINGS)(
     const base = connect(db.appUrl);
     const returned = gate();
     const commit = gate();
+    let writer = 0;
     // The save's own transaction, kept open after the command has done all
     // its work, its last ask included, and before it commits.
     const heldOpen: Database = {
@@ -147,30 +208,29 @@ it.skipIf(serverUrl === undefined).each(ENDINGS)(
       withBusiness: async (id, run) =>
         await base.withBusiness(id, async (tx) => {
           const answer = await run(tx);
+          writer = await backendPid(tx);
           returned.release();
           await commit.promise;
           return answer;
         }),
     };
     try {
-      const saving = save(heldOpen, me, operationId);
+      const answering = save(heldOpen, me, operationId);
       await returned.promise;
+      let endingSettled = false;
       const ended = db.app
         .withBusiness(beta, async (tx) => await ending(tx, there, me))
-        .then(() => 'ended' as const);
-      const first = await Promise.race([ended, delay(1_500).then(() => 'waiting' as const)]);
+        .finally(() => {
+          endingSettled = true;
+        });
+      await blockedBy(db.admin, writer, () => endingSettled, 'the ending');
       commit.release();
-      const answer = await saving;
+      const answer = await answering;
       await ended;
       expect({
-        whileTheSaveWasOpen: first,
         answer: isCommandRefusal(answer) ? answer.code : 'applied',
         kept: await kept(me, operationId),
-      }).toStrictEqual({
-        whileTheSaveWasOpen: 'waiting',
-        answer: 'applied',
-        kept: { value: 'dark', operations: 1, applied: 0 },
-      });
+      }).toStrictEqual({ answer: 'applied', kept: { value: 'dark', operations: 1, applied: 0 } });
     } finally {
       commit.release();
       await base.close();
