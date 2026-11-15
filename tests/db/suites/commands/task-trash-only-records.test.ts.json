@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.trash with onlyRecords refuses a subtree that holds a record the caller did not name (#2523)"
+}

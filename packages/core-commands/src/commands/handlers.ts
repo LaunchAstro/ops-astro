@@ -120,7 +120,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.rank': (tx, context, request) =>
     rankTask(tx, context, request.afterId ?? null, request.beforeId ?? null),
 
-  'task.trash': (tx, context) => trashTask(tx, context),
+  'task.trash': (tx, context, request) => trashTask(tx, context, request.onlyRecords),
   ...DELETE_REQUEST_HANDLERS,
   'task.restore': (tx, context, request) => restoreTasks(tx, context, request.batchId),
   'task.purge': (tx, context, request) => purgeTasks(tx, context, request.olderThanDays),
