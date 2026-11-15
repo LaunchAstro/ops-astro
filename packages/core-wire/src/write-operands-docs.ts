@@ -7,5 +7,13 @@
 export const DOCS_OPERANDS = {
   'docs.create_folder': { name: 'any', parentId: 'id?' },
   'docs.create_page': { folderId: 'id', title: 'any', body: 'any' },
-  'docs.update_page': { pageId: 'id', expectedVersion: 'any', title: 'any?', body: 'any?' },
+  'docs.update_page': {
+    pageId: 'id',
+    expectedVersion: 'any',
+    title: 'any?',
+    body: 'any?',
+    folderId: 'id?',
+  },
+  'docs.rename_folder': { folderId: 'id', name: 'any' },
+  'docs.move_folder': { folderId: 'id', parentId: 'id?' },
 } as const;

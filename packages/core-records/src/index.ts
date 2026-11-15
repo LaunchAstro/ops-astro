@@ -298,3 +298,4 @@ export * from './mandates/question.ts';
 // The mandate writers (MP-14-10a), each in core's lock order.
 export * from './mandates/writes.ts';
 export * from './docs/store.ts';
+export * from './docs/folders.ts';

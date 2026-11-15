@@ -7,7 +7,8 @@
 // are held, so a grant revoked during the wait is `SCOPE_NOT_GRANTED`. A folder or page that is
 // not in this business is `NOT_FOUND` on the field that named it, the answer a fabricated id
 // gets, so a refusal never says whether another business has it. An update names the version it
-// read; a page that has moved on is `VERSION_STALE`, and nothing is overwritten.
+// read; a page that has moved on is `VERSION_STALE`, and nothing is overwritten. A `folderId`
+// moves the page to that folder of the business, as a save (#2514).
 
 import {
   createDocsFolder,
@@ -21,21 +22,21 @@ import {
   subjectsOf,
   updateDocsPage,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { DocsWriter, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { Handler } from './handler-types.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 
-const invalid = (field: string, fix: string): HandlerOutcome =>
+export const invalid = (field: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [field], [fix]));
 
-const notFound = (field: string, what: string): HandlerOutcome =>
+export const notFound = (field: string, what: string): HandlerOutcome =>
   refused(
     refuseCommand('NOT_FOUND', [field], [`No ${what} of this business carries that identifier.`]),
   );
 
-const NOT_GRANTED = refused(
+export const NOT_GRANTED: HandlerOutcome = refused(
   refuseCommand(
     'SCOPE_NOT_GRANTED',
     [],
@@ -43,11 +44,11 @@ const NOT_GRANTED = refused(
   ),
 );
 
-const NAME_FIX = `Send name as text of 1 to ${DOCS_NAME_LIMIT} characters, with no control character.`;
+export const NAME_FIX: string = `Send name as text of 1 to ${DOCS_NAME_LIMIT} characters, with no control character.`;
 const TITLE_FIX = `Send title as text of 1 to ${DOCS_TITLE_LIMIT} characters, with no control character.`;
 const BODY_FIX = `Send body as Markdown text of at most ${DOCS_BODY_LIMIT} characters.`;
 
-const writerOf = (context: Pick<CommandContext, 'session'>) => ({
+export const writerOf = (context: Pick<CommandContext, 'session'>): DocsWriter => ({
   actorId: context.session.actorId,
   subjects: subjectsOf(context.session),
 });
@@ -101,16 +102,18 @@ export async function reviseDocsPage(
   if (request.title !== undefined && title === undefined) return invalid('title', TITLE_FIX);
   const body = request.body === undefined ? undefined : docsBodyOf(request.body);
   if (request.body !== undefined && body === undefined) return invalid('body', BODY_FIX);
-  if (title === undefined && body === undefined) {
-    return invalid('body', 'Send a new body, a new title, or both.');
+  if (title === undefined && body === undefined && request.folderId === undefined) {
+    return invalid('body', 'Send a new body, a new title, a folderId, or any of them.');
   }
   const done = await updateDocsPage(tx, writerOf(context), {
     pageId: request.pageId,
     expectedVersion: expected,
     title,
     body,
+    folderId: request.folderId,
   });
   if (done.kind === 'no-page') return notFound('pageId', 'page');
+  if (done.kind === 'no-folder') return notFound('folderId', 'folder');
   if (done.kind === 'not-granted') return NOT_GRANTED;
   if (done.kind === 'stale') {
     return refused(

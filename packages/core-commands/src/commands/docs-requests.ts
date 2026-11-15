@@ -23,4 +23,15 @@ export type DocsRequest =
       readonly expectedVersion: unknown;
       readonly title?: unknown;
       readonly body?: unknown;
+      readonly folderId?: string;
+    } & Envelope)
+  | ({
+      readonly command: 'docs.rename_folder';
+      readonly folderId: string;
+      readonly name: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'docs.move_folder';
+      readonly folderId: string;
+      readonly parentId?: string;
     } & Envelope);
