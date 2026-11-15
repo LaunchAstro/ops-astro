@@ -12,7 +12,7 @@
 // every write. After an answer the tree and the page are read again. Everything held for one
 // business and sign-in, a draft included, is keyed to them, so a switch starts the screen anew.
 
-import { useState, type ReactElement } from 'react';
+import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Empty } from '@launchastro/ui';
 import type {
   CapabilitiesResult,
@@ -26,6 +26,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { DocsActForm, type DocsAct } from './docs/DocsActs.tsx';
 import { DocsPage } from './docs/DocsPage.tsx';
 import { DocsTree, type Writing } from './docs/DocsTree.tsx';
+import type { Draft } from './docs/PageEditor.tsx';
 import { useDocsWrite } from './docs/docs-write.ts';
 
 /** Whether the session holds `docs:write`, as `session.capabilities` answers it. */
@@ -43,6 +44,7 @@ interface DocsProps {
 function useDocsScreen(props: DocsProps) {
   const { client, grantKey } = props;
   const [act, setAct] = useState<DocsAct | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
   const [changes, setChanges] = useState(0);
   const send = useDocsWrite(client, grantKey);
   const capabilities = useRead<CapabilitiesResult>({
@@ -64,15 +66,18 @@ function useDocsScreen(props: DocsProps) {
     tree.reload();
     setChanges((n) => n + 1);
   };
-  return { act, setAct, changes, changed, tree, writing };
+  return { act, setAct, drafting: { draft, set: setDraft }, changes, changed, tree, writing };
 }
 
-/** The open act's form; a done act closes and the screen reads again. */
+/**
+ * The open act's form. A done act closes only while it is still the open one, so a cancelled
+ * form's late answer closes nothing opened since (S2527-3); the screen reads again either way.
+ */
 function ActPanel(props: {
   readonly act: DocsAct;
   readonly writing: Writing;
   readonly state: ReadState<DocsTreeResult>;
-  readonly setAct: (act: DocsAct | null) => void;
+  readonly setAct: Dispatch<SetStateAction<DocsAct | null>>;
   readonly changed: () => void;
 }): ReactElement {
   const { act, state, setAct } = props;
@@ -83,7 +88,7 @@ function ActPanel(props: {
       folders={state.outcome === 'ready' ? state.value.folders : []}
       send={props.writing.send}
       onDone={() => {
-        setAct(null);
+        setAct((open) => (open === act ? null : open));
         props.changed();
       }}
       onCancel={() => setAct(null)}
@@ -96,7 +101,7 @@ const EMPTY_TREE: DocsTreeResult = { ok: true, folders: [], pages: [] };
 /** The screen for one business and sign-in: its tree, its page, and what it may write. */
 function DocsFor(props: DocsProps): ReactElement {
   const [chosen, setChosen] = useState<string | null>(null);
-  const { act, setAct, changes, changed, tree, writing } = useDocsScreen(props);
+  const { act, setAct, drafting, changes, changed, tree, writing } = useDocsScreen(props);
   const { state, reload } = tree;
   return (
     <section className="stack" aria-label="Docs">
@@ -129,6 +134,7 @@ function DocsFor(props: DocsProps): ReactElement {
                   {...props}
                   pageId={chosen}
                   writing={writing}
+                  drafting={drafting}
                   onChanged={changed}
                 />
               )}

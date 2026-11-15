@@ -5,8 +5,13 @@
 // becomes markup), Save and Cancel. Save sends docs.update_page with the version the page was
 // opened at; a page that moved on in between is refused, shown as "changed since you opened
 // it", and the draft stays so nothing typed is lost and nothing is overwritten.
+//
+// The draft lives with the screen (`Draft`, held by `Docs.tsx`), not in this editor: a routine
+// re-read redraws the page and this editor with it, and the words come back as they were
+// (S2527-1). A save closes the editor only when nothing was typed while it was in flight; words
+// typed meanwhile stay, and the next save starts from the version that save made (S2527-2).
 
-import { useState, type ReactElement } from 'react';
+import { useState, type Dispatch, type ReactElement, type SetStateAction } from 'react';
 import { Markdown } from '../task/Markdown.tsx';
 import type { DocsSend } from './docs-write.ts';
 
@@ -72,40 +77,67 @@ export function SendRow(props: {
   );
 }
 
-export function PageEditor(props: {
+/** The page being edited: the version it was opened at, the words so far, a refusal's words. */
+export interface Draft {
   readonly pageId: string;
-  /** The version the page was opened at: the one a save is checked against. */
   readonly version: number;
-  readonly body: string;
+  readonly text: string;
+  readonly words: string | null;
+}
+
+/** The screen's draft and its setter, which outlive every re-read of the page. */
+export interface Drafting {
+  readonly draft: Draft | null;
+  readonly set: Dispatch<SetStateAction<Draft | null>>;
+}
+
+/** After a save of `sent`: closed when the draft still says it, else kept on the version made. */
+function afterSave(current: Draft | null, sent: Draft, version: unknown): Draft | null {
+  if (current?.pageId !== sent.pageId) return current;
+  if (current.text === sent.text) return null;
+  return typeof version === 'number' ? { ...current, version, words: null } : current;
+}
+
+export function PageEditor(props: {
+  readonly draft: Draft;
+  readonly set: Drafting['set'];
   readonly send: DocsSend;
   readonly onSaved: () => void;
-  readonly onCancel: () => void;
 }): ReactElement {
-  const { pageId, version, send } = props;
-  const [draft, setDraft] = useState(props.body);
-  const [words, setWords] = useState<string | null>(null);
+  const { draft, set, send } = props;
+  const { pageId } = draft;
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     const answer = await send(`save:${pageId}`, 'docs.update_page', {
       pageId,
-      expectedVersion: version,
-      body: draft,
+      expectedVersion: draft.version,
+      body: draft.text,
     });
     setBusy(false);
-    if (answer.kind === 'done') props.onSaved();
-    if (answer.kind === 'refused') setWords(answer.words);
+    if (answer.kind === 'done') {
+      set((current) => afterSave(current, draft, answer.detail['version']));
+      props.onSaved();
+    }
+    if (answer.kind === 'refused') {
+      const { words } = answer;
+      set((current) => (current?.pageId === pageId ? { ...current, words } : current));
+    }
   };
   return (
     <div className="stack" data-docs-editor="">
-      <DraftAndPreview pageId={pageId} draft={draft} onType={setDraft} />
+      <DraftAndPreview
+        pageId={pageId}
+        draft={draft.text}
+        onType={(text) => set((current) => (current === null ? null : { ...current, text }))}
+      />
       <SendRow
-        words={words}
+        words={draft.words}
         busy={busy}
         label="Save"
         act="save"
         onSend={() => void save()}
-        onCancel={props.onCancel}
+        onCancel={() => set(null)}
       />
     </div>
   );

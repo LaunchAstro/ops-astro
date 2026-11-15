@@ -57,12 +57,8 @@ export function useDocsWrite(client: OperationsClient, grantKey: string): DocsSe
           words: result.code === 'VERSION_STALE' ? CHANGED_SINCE_OPENED : describeRefusal(result),
         };
       }
-      const detail = (result as { readonly detail?: unknown }).detail;
-      return {
-        kind: 'done',
-        detail:
-          typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {},
-      };
+      // The answer is the command's outcome under `value` (`operations/client.ts`).
+      return { kind: 'done', detail: result.value.detail ?? {} };
     },
     [client, desk],
   );
