@@ -4,4 +4,5 @@
 // move (#2514), exported as one from the package index.
 
 export * from './store.ts';
+export * from './text.ts';
 export * from './folders.ts';
