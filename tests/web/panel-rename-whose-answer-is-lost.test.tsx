@@ -76,7 +76,8 @@ describe('two tabs renaming one task at once', () => {
       await releaseHeld(api.held, x);
       await releaseHeld(api.held, y);
       expect(api.record.title).toBe('From A');
-      expect([a.counted.changed, b.counted.changed]).toStrictEqual([1, 0]);
+      // A's stored rename counts a change; B's stale refusal asks a re-read (#1456).
+      expect([a.counted.changed, b.counted.changed]).toStrictEqual([1, 1]);
       expect(b.view.find('[role="alert"]')?.textContent).toContain('VERSION_STALE');
       await b.view.click('[data-panel-field="name"]');
       expect((b.view.find('#panel-field-name') as HTMLInputElement | null)?.value).toBe('From B');
