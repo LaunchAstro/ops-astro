@@ -3,7 +3,7 @@
 // A person's delete (#2345) and the request's three (#2351), spread into `handlers.ts`'s
 // table, which is at its line cap.
 
-import type { DeleteRequestCommandName } from '../../../core-wire/src/surface-bin-names.ts';
+import type { DeleteRequestCommandName } from '../../../core-wire/src/index.ts';
 import type { Handler } from './handler-types.ts';
 import { deleteTask } from './tasks-delete.ts';
 import { answerDeleteRequest, requestDelete } from './tasks-delete-request.ts';
