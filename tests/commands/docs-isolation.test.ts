@@ -179,8 +179,8 @@ describe.skipIf(serverUrl === undefined)(
         ];
         await refusedEach(world, bodies, picked.credential);
         // Under its docs:write delegation an agent still names the task it works under (#2519):
-        // a body naming none is refused before any authority.
-        await refusedEach(world, bodies, docsCredential, 'FIELD_VALUE_INVALID');
+        // a body naming none is checked on no task, outside the delegation's purpose.
+        await refusedEach(world, bodies, docsCredential, 'DELEGATION_OUT_OF_PURPOSE');
         const taskId = picked.taskId;
         const onTask = [
           { command: 'docs.create_folder', name: 'agent made', taskId },

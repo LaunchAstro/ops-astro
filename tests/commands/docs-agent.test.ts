@@ -193,7 +193,7 @@ live(
 live('(1) the task named is the delegation’s own, named at all, and holds no client', async () => {
   const before = await written();
   expect(codeOf(await asAgent({ command: 'docs.create_folder', name: 'no task' }))).toBe(
-    'FIELD_VALUE_INVALID',
+    'DELEGATION_OUT_OF_PURPOSE',
   );
   const other = await world.pickUp(decider, 'a sibling task');
   expect(

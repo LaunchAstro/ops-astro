@@ -28,7 +28,7 @@ import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { AgentCall, AgentRequest, NoOperands } from './agent-call.ts';
 import { fileDocsFolderAs, fileDocsPageAs, reviseDocsPageAs } from './docs.ts';
 import { invalid } from './operands.ts';
-import { isRefused, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 import type { CommandRequest } from './requests.ts';
 
@@ -42,7 +42,7 @@ export interface DocsAgentRow {
   readonly authority: 'record';
   readonly subjectTask: 'task';
   readonly replay: 'reauthorise';
-  readonly operands: (request: AgentRequest) => NoOperands | Refused;
+  readonly operands: () => NoOperands;
   readonly serve: (
     tx: TenantQuery,
     call: AgentCall,
@@ -89,7 +89,10 @@ const docsRow = (write: Write): DocsAgentRow => ({
   authority: 'record',
   subjectTask: 'task',
   replay: 'reauthorise',
-  operands: (request) => (isUuid(request['taskId']) ? {} : NAME_THE_TASK),
+  // Nothing refused before the delegation answers: a body naming no task, or one that is not
+  // an identifier, is checked on no task and refused DELEGATION_OUT_OF_PURPOSE, as a foreign
+  // and a fabricated one are (`namedTaskId`).
+  operands: () => ({}),
   serve: async (tx, { session, request }, _operands, delegation, taskId) => {
     // The check was made on this task (`namedTaskId`), never the body read again.
     if (taskId === undefined || !isUuid(taskId)) return NAME_THE_TASK;
