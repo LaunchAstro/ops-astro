@@ -555,10 +555,18 @@ export const DELEGATION_STANDS_AT_CHECK: string = delegationStandsAt('clock_time
  */
 const PARENT_ROW = 'select 1 from public.delegations where business_id = $1 and id = $2';
 
+/**
+ * The instant an expiry is judged at: `clock_timestamp()` for every live check,
+ * `now()` (the transaction's start) only for the narrowed late-report lookup,
+ * which must agree with the live answer before it (#1030).
+ */
+type ExpiryClock = 'clock_timestamp()' | 'now()';
+
 export async function parentStanding(
   tx: TenantQuery,
   parentId: string,
   lock: 'for share' | '',
+  clock: ExpiryClock = 'clock_timestamp()',
 ): Promise<DelegationDecision<Delegation>> {
   // Locked alone first: a locking select computes its columns before it waits.
   if (lock !== '') await tx.query(`${PARENT_ROW} ${lock}`, [tx.businessId, parentId]);
@@ -571,7 +579,7 @@ export async function parentStanding(
     }
   >(
     `select ${delegationColumns()}, settled_at is not null as settled,
-            expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
+            expires_at <= ${clock} as expired, revoked_at is not null as revoked,
             revocation_cause as cause
        from public.delegations where business_id = $1 and id = $2`,
     [tx.businessId, parentId],
@@ -644,7 +652,7 @@ async function resolveAt(
   tx: TenantQuery,
   agentActorId: string,
   credential: string,
-  clock: 'clock_timestamp()' | 'now()',
+  clock: ExpiryClock,
 ): Promise<DelegationDecision<Delegation>> {
   const rows = await tx.query<
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
@@ -757,7 +765,7 @@ export async function resolveNarrowedDelegation(
 ): Promise<{ readonly id: string } | undefined> {
   const resolved = await resolveAt(tx, agentActorId, credential, 'now()');
   if (!resolved.ok) return undefined;
-  const reach = await checkDelegatedAuthority(tx, resolved.value, request);
+  const reach = await checkDelegatedAuthority(tx, resolved.value, request, 'now()');
   if (reach.ok || reach.refusal.code !== 'DELEGATION_NARROWED') return undefined;
   return { id: resolved.value.id };
 }
@@ -858,6 +866,7 @@ export async function checkDelegatedAuthority(
   tx: TenantQuery,
   delegation: Delegation,
   request: ScopeRequest,
+  clock: ExpiryClock = 'clock_timestamp()',
 ): Promise<DelegationDecision<readonly string[]>> {
   if (request.action === 'decide') {
     return refuse(
@@ -910,8 +919,8 @@ export async function checkDelegatedAuthority(
   // here, in the serving transaction, and asked the same question, so its
   // expiry, revocation or narrowing bites at the child's next call.
   if (delegation.parentDelegationId !== null) {
-    const parent = await parentStanding(tx, delegation.parentDelegationId, '');
-    return parent.ok ? await checkDelegatedAuthority(tx, parent.value, request) : parent;
+    const parent = await parentStanding(tx, delegation.parentDelegationId, '', clock);
+    return parent.ok ? await checkDelegatedAuthority(tx, parent.value, request, clock) : parent;
   }
 
   const held = await effectiveGrants(tx, await delegatingSubjects(tx, delegation), request);
