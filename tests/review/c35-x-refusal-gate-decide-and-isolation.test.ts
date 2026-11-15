@@ -115,9 +115,12 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
     };
     expect(await asAgent(decideBody, picked.credential)).not.toBe('not-a-refusal');
     expect(await asAgent(astraBody, picked.credential)).not.toBe('not-a-refusal');
-    const gateDelegation = await w.world.db.app
-      .withBusiness(w.world.business, async (tx) => {
-        const minted = await mintDelegation(tx, {
+    // The gate key cannot be delegated at all: the mint itself is refused (I07), so no agent
+    // ever holds a credential carrying gate:decide (S2129-4: assert it, never skip on it).
+    const gateMint = await w.world.db.app.withBusiness(
+      w.world.business,
+      async (tx) =>
+        await mintDelegation(tx, {
           agentActorId: w.world.agentActorId,
           delegatePersonId: w.ben.personId,
           mintedByActorId: w.ben.actorId,
@@ -126,13 +129,10 @@ describe.skipIf(serverUrl === undefined)('C35-X gate:decide', () => {
           actions: ['decide'],
           purposeScope: { kind: 'record', id: w.taskA },
           expiresAt: new Date(Date.now() + 3_600_000),
-        });
-        return minted.ok ? minted.value.credential : null;
-      })
-      .catch(() => null);
-    if (gateDelegation !== null) {
-      expect(await asAgent(decideBody, gateDelegation)).not.toBe('not-a-refusal');
-    }
+        }),
+    );
+    expect(gateMint.ok).toBe(false);
+    expect(gateMint.ok ? undefined : gateMint.refusal.code).toBe('DELEGATION_EXCLUDES_DECISION');
     expect(await count('review_decisions', w.world.business)).toBe(0);
     expect(await count('review_astra_reviews', w.world.business)).toBe(0);
   });
