@@ -236,13 +236,17 @@ describe.skipIf(serverUrl === undefined)(
         await cli('review.propose_change', { commentId, text: `Lift it ${MARKER}` }, world.ada),
       );
       const changeRequestId = filed['changeRequestId'];
+      const madeUpLease = { leaseId: randomUUID(), fence: 1 };
       const cases: readonly (readonly [string, Body, Caller, string])[] = [
         ['review.propose_change', { commentId, text: 'mine' }, world.noah, 'alpha'],
         ['review.decide_change', { changeRequestId, decision: 'approve' }, world.noah, 'alpha'],
         ['review.decide_change', { changeRequestId, decision: 'refuse' }, world.noah, 'alpha'],
         ['review.read', { reviewId }, world.noah, 'alpha'],
         ['review.decide_change', { changeRequestId, decision: 'approve' }, world.bea, 'bravo'],
+        ['review.propose_change', { commentId, text: 'theirs' }, world.bea, 'bravo'],
         ['review.read', { reviewId }, world.bea, 'bravo'],
+        ['review.make_change_task', { ...madeUpLease, changeRequestId }, world.noah, 'alpha'],
+        ['review.make_change_task', { ...madeUpLease, changeRequestId }, world.bea, 'bravo'],
       ];
       for (const [name, body, who, business] of cases) {
         // eslint-disable-next-line no-await-in-loop -- one served API, one call at a time
