@@ -24,6 +24,7 @@
 
 import { CLIENTS, START_STATE, TAG, TASKS, THREADS, type DemoTask } from './demo-data-plan.ts';
 import {
+  alsoMade,
   applied,
   guarded,
   inner,
@@ -134,10 +135,16 @@ export async function seed(raw: Send, manifest: Manifest, save: () => void): Pro
       `thread:${String(index)}`,
       'conversation.start',
       { body: thread.body, title: thread.title, scope },
-      (a) => ({ kind: 'thread', id: String(inner(a)['conversationId']), name: thread.title }),
+      (a) => threadEntry(a, thread.title),
     );
   }
   return run.fresh;
+}
+
+/** A side chat's manifest entry: the conversation, and its first message beside it. */
+function threadEntry(answer: Body, name: string): Omit<Made, 'step'> {
+  const d = inner(answer);
+  return { kind: 'thread', id: String(d['conversationId']), name, ...alsoMade(d) };
 }
 
 /** One task, from its creation to its end state; its id. */
@@ -249,6 +256,7 @@ function onTask(run: Run, key: string, created: Made) {
         ...(typeof d['gateId'] === 'string'
           ? { gateId: d['gateId'], versionId: String(d['versionId']) }
           : {}),
+        ...alsoMade(d),
       };
     });
     revision = made.revision ?? revision;

@@ -9,7 +9,8 @@
 // broke it (`reads/verified-decisions.ts`). Such a task is checked by search
 // instead, which shows its title without the decisions, and trashed at the
 // revision its last step left in the manifest; a later edit makes that
-// revision stale, and the trash is refused.
+// revision stale, and the trash is refused. A task search no longer finds by
+// its demo title was renamed, and stops the run.
 
 import {
   applied,
@@ -45,7 +46,6 @@ export async function remove(
     const searched = unverifiable(read) ? bySearch(send, manifest, task) : undefined;
     // oxlint-disable-next-line no-await-in-loop
     const found = searched === undefined ? taskShape(applied(read, 'task.read')) : await searched;
-    if (found === undefined) continue;
     const { title, revision } = found;
     if (!title.startsWith(PREFIX) || title !== task.name) {
       throw new Refusal(
@@ -78,15 +78,23 @@ function unverifiable(answer: Answer): boolean {
   );
 }
 
-/** The task's title as search shows it, at its manifest revision; nothing when it is gone. */
+/**
+ * The task's title as search shows it, at its manifest revision. The read
+ * proved the task is there, so a search for its demo title that misses it
+ * means the title changed: that stops the run.
+ */
 async function bySearch(
   send: Send,
   manifest: Manifest,
   task: Made,
-): Promise<{ readonly title: string; readonly revision: number } | undefined> {
+): Promise<{ readonly title: string; readonly revision: number }> {
   const answer = applied(await send('task.search', { query: String(task.name) }), 'task.search');
   const hit = ((answer['hits'] ?? []) as readonly Body[]).find((h) => h['id'] === task.id);
-  if (hit === undefined) return undefined;
+  if (hit === undefined) {
+    throw new Refusal(
+      `task ${task.id} cannot be read and is no longer found as '${String(task.name)}'`,
+    );
+  }
   const revisions = manifest.made.flatMap((m) =>
     m.id === task.id && m.revision !== undefined ? [m.revision] : [],
   );

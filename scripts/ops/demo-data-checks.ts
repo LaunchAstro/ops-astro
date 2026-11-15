@@ -185,6 +185,19 @@ export interface Made {
   readonly revision?: number;
   readonly gateId?: string;
   readonly versionId?: string;
+  /** Every other id the step's answer named as made (a proposal's run, a chat's message). */
+  readonly also?: readonly string[];
+}
+
+/** The ids an answer's detail names as made beside the step's own record. */
+const ALSO_MADE = ['lineageId', 'runId', 'stepId', 'evidencePackId', 'messageId'] as const;
+
+/** `also` for a step's manifest entry: present only when the answer named any. */
+export function alsoMade(detail: Body): { readonly also?: readonly string[] } {
+  const also = ALSO_MADE.flatMap((key) =>
+    typeof detail[key] === 'string' ? [detail[key] as string] : [],
+  );
+  return also.length === 0 ? {} : { also };
 }
 
 export interface Manifest {
