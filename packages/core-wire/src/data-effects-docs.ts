@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5: the Docs commands' data effects (#2493), spread into `COMMAND_EFFECTS`. Docs are the
-// business's own rows, held by no client, so each is `business` data.
+// business's own rows, held by no client, so each is `business` data; the reads write nothing.
 
 import type { CommandName } from './command-names.ts';
 import { business, writing, type DataEffects } from './data-effects-types.ts';
+import { READ } from './data-effects-shapes.ts';
 
 export const DOCS_EFFECTS: {
   readonly [Name in Extract<CommandName, `docs.${string}`>]: DataEffects;
@@ -14,4 +15,6 @@ export const DOCS_EFFECTS: {
   'docs.update_page': writing(business('docs_pages', 'docs_page_versions')),
   'docs.rename_folder': writing(business('docs_folders')),
   'docs.move_folder': writing(business('docs_folders')),
+  'docs.tree': READ,
+  'docs.page': READ,
 };

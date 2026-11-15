@@ -130,8 +130,8 @@ live('docs reads', () => {
     expect(codeOf(updated)).toBe('not-a-refusal');
     const { answer } = await read(w.alpha, w.noah, { read: 'docs.page', pageId: own.pageId });
     expect(codeOf(answer)).toBe('not-a-refusal');
-    const { page } = answer as unknown as { page: Record<string, unknown> };
-    expect(page).toMatchObject({
+    const { document } = answer as unknown as { document: Record<string, unknown> };
+    expect(document).toMatchObject({
       id: own.pageId,
       folderId: own.childId,
       title: 'Handbook',

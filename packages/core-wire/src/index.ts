@@ -296,3 +296,4 @@ export type { ReviewCaptureView, ReviewPictureResult, ReviewReadResult } from '.
 export type { WidthDifference } from './views-review.ts';
 export type { DeleteRequestView } from './views-delete-request.ts';
 export type { TaskBinResult, TaskBinRow } from './views-bin.ts';
+export type { DocsPageResult, DocsTreeResult } from './views-docs.ts';

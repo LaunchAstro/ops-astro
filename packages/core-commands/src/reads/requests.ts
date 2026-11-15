@@ -24,7 +24,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { HistoryOperands } from './history-operands.ts';
 import type { CorrectionReadOperands, CorrectionReadResult } from './correction-read-operands.ts';
-import type { ReviewReadOperands, ReviewReadsResult } from './review-read-operands.ts';
+import type { SectionReadOperands, SectionReadsResult } from './section-read-operands.ts';
 import type { DecideReadResult, DecideReads } from './decide-read-operands.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type { CostPeriodOperands } from './agent-costs.ts';
@@ -91,7 +91,7 @@ export type {
  * serving are typed on these and never on the wire body, so a field a read
  * uses is a field its `parse` checked.
  */
-export interface ReadOperands extends CorrectionReadOperands, ReviewReadOperands, DecideReads {
+export interface ReadOperands extends CorrectionReadOperands, SectionReadOperands, DecideReads {
   readonly 'task.read': { readonly recordId: string; readonly historyEventId?: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': ({ readonly board: string | null } | { readonly mode: 'aggregate' }) & {
@@ -280,7 +280,7 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | CorrectionReadResult
-  | ReviewReadsResult
+  | SectionReadsResult
   | InvitationListResult
   | MapReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
