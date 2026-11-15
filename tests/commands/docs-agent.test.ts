@@ -41,11 +41,15 @@ const idOf = (answer: CommandResult, field: string): string => {
   return String((answer.detail as Record<string, unknown>)[field]);
 };
 
-/** A delegation for one task carrying `collections` x `actions`, as the runtime mints one. */
+/**
+ * A delegation for one task carrying `collections` x write, as the runtime mints one: asked of the
+ * person's business-wide grants, or, `onTheTask`, of what they hold on that task alone.
+ */
 async function delegation(
   person: Member,
   taskId: string,
   collections: readonly string[],
+  onTheTask = false,
 ): Promise<{ readonly credential: string; readonly id: string }> {
   return await world.db.app.withBusiness(world.business, async (tx) => {
     const minted = await mintDelegation(tx, {
@@ -57,6 +61,7 @@ async function delegation(
       actions: ['write'],
       purposeScope: { kind: 'record', id: taskId },
       expiresAt: new Date(Date.now() + 3_600_000),
+      ...(onTheTask ? { holders: [{ kind: 'person' as const, id: person.personId }] } : {}),
     });
     if (!minted.ok) throw new Error(`delegation refused ${minted.refusal.code}`);
     return { credential: minted.value.credential, id: minted.value.delegation.id };
@@ -103,11 +108,12 @@ const live = it.skipIf(serverUrl === undefined);
 /** The task and delegation each row of `table` keyed by `column` names, oldest version first. */
 async function namedOn(table: 'docs_folders' | 'docs_page_versions', column: string, id: string) {
   const order = table === 'docs_page_versions' ? 'order by number' : '';
-  return await world.db.admin.execute<{ task: string | null; delegation: string | null }>(
+  const rows = await world.db.admin.execute<{ task: string | null; delegation: string | null }>(
     `select task_id::text as task, delegation_id::text as delegation
        from public.${table} where business_id = $1 and ${column} = $2 ${order}`,
     [world.business, id],
   );
+  return rows.map(({ task, delegation: by }) => ({ task, delegation: by }));
 }
 
 /** The subject of each applied Docs audit event the agent's actor left, in chain order. */
@@ -220,7 +226,7 @@ live(
     await world.db.app.withBusiness(world.business, async (tx) => {
       await grantTo(tx, narrow, 'write', { kind: 'record', id: task.taskId }, false, 'docs');
     });
-    const held = await delegation(narrow, task.taskId, ['docs']);
+    const held = await delegation(narrow, task.taskId, ['docs'], true);
     const before = await written();
     const answer = await asAgent(
       { command: 'docs.create_page', folderId, title: 'x', body: 'x', taskId: task.taskId },
