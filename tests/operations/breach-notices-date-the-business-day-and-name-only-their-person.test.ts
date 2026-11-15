@@ -104,3 +104,30 @@ describe('breach notices drafted from the runbook template: the people named', (
     expect(notices?.[1]?.body).toContain('Also, Alberta records were exposed.');
   });
 });
+
+describe('breach notices drafted from the runbook template: names in any script', () => {
+  it('a name whose lower case is longer than itself is still taken out (Sol S2502-1)', () => {
+    const notices = draftBreachNotices(RUNBOOK, {
+      incident: incidentOf('İpek received the invoice.', new Date('2026-10-12T01:00:00Z')),
+      oaic: OAIC,
+      people: [ALEX, { name: 'İpek', address: 'ipek@example.test' }],
+      containment: 'İpek deleted it.',
+      steps: 'Write to us if İpek contacts you.',
+    });
+    const alex = notices?.[1];
+    expect(alex?.body).toContain('another person received the invoice.');
+    expect(alex?.body).not.toContain('İpek');
+  });
+
+  it('a letter outside the basic plane before a name still makes it part of a longer word (Sol S2502-2)', () => {
+    const word = `${String.fromCodePoint(0x1_04_00)}Sam`;
+    const notices = draftBreachNotices(RUNBOOK, {
+      incident: incidentOf(`${word} received the invoice.`, new Date('2026-10-12T01:00:00Z')),
+      oaic: OAIC,
+      people: [ALEX, { name: 'Sam', address: 'sam@example.test' }],
+      containment: 'The link was withdrawn.',
+      steps: 'Watch for odd mail.',
+    });
+    expect(notices?.[1]?.body).toContain(`${word} received the invoice.`);
+  });
+});
