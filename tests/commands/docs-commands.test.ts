@@ -230,8 +230,8 @@ live('docs through the commands', () => {
       [{ command: 'docs.create_folder', name: 'x'.repeat(121) }, 'name'],
       [{ command: 'docs.create_page', folderId: home, title: '', body: '' }, 'title'],
       [{ command: 'docs.create_page', folderId: home, title: 'a\u0007b', body: '' }, 'title'],
-      [{ command: 'docs.create_page', folderId: home, title: 'bad\ud800', body: '' }, 'title'],
-      [{ command: 'docs.update_page', pageId, expectedVersion: 1, title: 'bad\ud800' }, 'title'],
+      [{ command: 'docs.create_page', folderId: home, title: 'bad\uD800', body: '' }, 'title'],
+      [{ command: 'docs.update_page', pageId, expectedVersion: 1, title: 'bad\uD800' }, 'title'],
       [
         { command: 'docs.create_page', folderId: home, title: 't', body: 'x'.repeat(200_001) },
         'body',

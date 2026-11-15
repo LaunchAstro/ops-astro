@@ -171,39 +171,14 @@ describe.skipIf(serverUrl === undefined)(
           await as({ command: 'docs.create_page', folderId, title: CANARY, body: CANARY }),
           'pageId',
         );
-        // A delegation that carries docs:write itself, minted by the runtime as the trial mints it
-        // (scoped to the agent's task: a delegation always names its purpose scope).
-        const docsCredential = await world.db.app.withBusiness(world.business, async (tx) => {
-          const minted = await mintDelegation(tx, {
-            agentActorId: world.agentActorId,
-            delegatePersonId: decider.personId,
-            mintedByActorId: decider.actorId,
-            purpose: `docs_${randomUUID().replaceAll('-', '')}`,
-            collections: ['docs'],
-            actions: ['write'],
-            purposeScope: { kind: 'record', id: picked.taskId },
-            expiresAt: new Date(Date.now() + 3_600_000),
-          });
-          if (!minted.ok) throw new Error(`docs delegation refused ${minted.refusal.code}`);
-          return minted.value.credential;
-        });
+        const docsCredential = await docsDelegation(world, decider, picked.taskId);
         const bodies = [
           { command: 'docs.create_folder', name: 'agent made' },
           { command: 'docs.create_page', folderId, title: 'agent made', body: '' },
           { command: 'docs.update_page', pageId, expectedVersion: 1, body: 'agent made' },
         ];
-        for (const [credential, exact] of [
-          [picked.credential, undefined],
-          [docsCredential, 'DELEGATION_EXCLUDES_OPERATION'],
-        ] as const) {
-          for (const body of bodies) {
-            // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
-            const answer = await world.asAgent({ ...body, operationId: randomUUID() }, credential);
-            if (exact === undefined) expect(codeOf(answer), body.command).not.toBe('not-a-refusal');
-            else expect(codeOf(answer), body.command).toBe(exact);
-            expect(JSON.stringify(answer)).not.toContain(CANARY);
-          }
-        }
+        await refusedEach(world, bodies, picked.credential);
+        await refusedEach(world, bodies, docsCredential, 'DELEGATION_EXCLUDES_OPERATION');
         const rows = await world.db.admin.execute<{ readonly n: number }>(
           `select ((select count(*) from public.docs_folders where business_id = $1)
                  + (select count(*) from public.docs_page_versions where business_id = $1))::int as n`,
@@ -216,6 +191,46 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+type World = Awaited<ReturnType<typeof agentWorld>>;
+
+/**
+ * A delegation that carries docs:write itself, minted by the runtime as the trial mints it
+ * (scoped to the agent's task: a delegation always names its purpose scope).
+ */
+async function docsDelegation(world: World, decider: Member, taskId: string): Promise<string> {
+  return await world.db.app.withBusiness(world.business, async (tx) => {
+    const minted = await mintDelegation(tx, {
+      agentActorId: world.agentActorId,
+      delegatePersonId: decider.personId,
+      mintedByActorId: decider.actorId,
+      purpose: `docs_${randomUUID().replaceAll('-', '')}`,
+      collections: ['docs'],
+      actions: ['write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!minted.ok) throw new Error(`docs delegation refused ${minted.refusal.code}`);
+    return minted.value.credential;
+  });
+}
+
+/** Each body sent as the agent under `credential`: refused (as `exact`, when named), no canary. */
+async function refusedEach(
+  world: World,
+  bodies: readonly Record<string, unknown>[],
+  credential: string,
+  exact?: string,
+): Promise<void> {
+  for (const body of bodies) {
+    // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
+    const answer = await world.asAgent({ ...body, operationId: randomUUID() }, credential);
+    const name = String(body['command']);
+    if (exact === undefined) expect(codeOf(answer), name).not.toBe('not-a-refusal');
+    else expect(codeOf(answer), name).toBe(exact);
+    expect(JSON.stringify(answer)).not.toContain(CANARY);
+  }
+}
 
 /** Ada's page, and a `docs:write` grant of the task-only member's that the test revokes. */
 async function pageWithALateWriter() {

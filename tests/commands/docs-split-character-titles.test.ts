@@ -14,16 +14,16 @@ import {
 } from '../../packages/core-commands/src/commands/docs.ts';
 import { docsBodyOf, docsNameOf, docsTitleOf } from '../../packages/core-records/src/index.ts';
 
-const SPLIT = 'bad\ud800';
+const SPLIT = 'bad\uD800';
 const FOLDER = '00000000-0000-4000-8000-000000000001';
 const PAGE = '00000000-0000-4000-8000-000000000002';
 
 const statements: string[] = [];
 const tx = {
   businessId: '00000000-0000-4000-8000-0000000000b1',
-  query: async (sql: string) => {
+  query: (sql: string) => {
     statements.push(sql);
-    return [];
+    return Promise.resolve([]);
   },
 } as never;
 const context = {
