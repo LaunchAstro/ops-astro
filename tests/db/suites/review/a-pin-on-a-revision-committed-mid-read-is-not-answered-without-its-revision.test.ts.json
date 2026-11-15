@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the team review read under read committed: a revision and a pin on it committed between its revisions and pins statements never answer a pin whose revision the answer does not hold."
+}

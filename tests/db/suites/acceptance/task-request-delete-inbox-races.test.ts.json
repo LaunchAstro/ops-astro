@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a delete request's inbox item under a race and a revoked grant: Keep racing a new request leaves an open item exactly on each open request; a recipient revoked after the request leaves an item shown as unattended while the request is open and gone once it lapses"
+}
