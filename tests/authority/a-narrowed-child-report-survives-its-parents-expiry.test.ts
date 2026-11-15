@@ -66,7 +66,7 @@ it('a narrowed child is still found narrowed after its parent expires later in t
         agentActorId: String(world.agent.actorId),
         delegatePersonId: String(world.ada.personId),
         mintedByActorId: String(world.ada.actorId),
-        purpose: 'narrowed-parent',
+        purpose: `narrowed_parent_${randomUUID().slice(0, 8)}`,
         collections: ['task', 'run'],
         actions: ['read', 'write'],
         purposeScope: scope,
@@ -80,7 +80,7 @@ it('a narrowed child is still found narrowed after its parent expires later in t
       parent.value.delegation,
       {
         agentActorId: helper,
-        purpose: 'narrowed-child',
+        purpose: `narrowed_child_${randomUUID().slice(0, 8)}`,
         collections: ['task'],
         actions: ['write'],
         expiresAt: parent.value.delegation.expiresAt,
