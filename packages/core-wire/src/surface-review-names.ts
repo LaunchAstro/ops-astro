@@ -22,4 +22,7 @@ export type ReviewCommandName =
   | 'review.decide_change'
   | 'review.make_change_task'
   | 'review.read'
-  | 'review.picture';
+  | 'review.picture'
+  // C35 (#2018): a closed review of the capture pool, recorded by the operator; the review
+  // section's, so its name sits here, under command-names.ts's line cap.
+  | 'operations.record_capture_pool_review';
