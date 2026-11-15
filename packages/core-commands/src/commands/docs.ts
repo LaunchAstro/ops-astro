@@ -52,7 +52,7 @@ const writerOf = (context: Pick<CommandContext, 'session'>) => ({
   subjects: subjectsOf(context.session),
 });
 
-const createFolder: Handler<'docs.create_folder'> = async (tx, context, request) => {
+export const fileDocsFolder: Handler<'docs.create_folder'> = async (tx, context, request) => {
   const name = docsNameOf(request.name);
   if (name === undefined) return invalid('name', NAME_FIX);
   const made = await createDocsFolder(tx, writerOf(context), {
@@ -73,7 +73,7 @@ const createFolder: Handler<'docs.create_folder'> = async (tx, context, request)
   return applied(null, null, { folderId: made.folderId });
 };
 
-const createPage: Handler<'docs.create_page'> = async (tx, context, request) => {
+export const fileDocsPage: Handler<'docs.create_page'> = async (tx, context, request) => {
   const title = docsTitleOf(request.title);
   if (title === undefined) return invalid('title', TITLE_FIX);
   const body = docsBodyOf(request.body);
@@ -88,7 +88,7 @@ const createPage: Handler<'docs.create_page'> = async (tx, context, request) => 
   return applied(null, null, { pageId: made.pageId, version: made.version });
 };
 
-async function updatePage(
+export async function reviseDocsPage(
   tx: TenantQuery,
   context: CommandContext,
   request: Parameters<Handler<'docs.update_page'>>[2],
@@ -123,11 +123,3 @@ async function updatePage(
   }
   return applied(null, null, { pageId: request.pageId.toLowerCase(), version: done.version });
 }
-
-export const DOCS_HANDLERS: {
-  readonly [K in 'docs.create_folder' | 'docs.create_page' | 'docs.update_page']: Handler<K>;
-} = {
-  'docs.create_folder': createFolder,
-  'docs.create_page': createPage,
-  'docs.update_page': updatePage,
-};

@@ -487,6 +487,35 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, task_id, task_id, 'seed', opened_by_actor_id,
             opened_by_person_id
        from public.reviews where business_id = $1 order by id limit 1 returning 1`,
+  // Docs: the journey files no folder or page. A folder, a page in it and its first version,
+  // each by the business's first actor.
+  'public.docs_folders': `insert into public.docs_folders (business_id, id, name, created_by_actor_id)
+     select business_id, gen_random_uuid(), 'seed ' || gen_random_uuid(), id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  'public.docs_pages': `with f as (
+       insert into public.docs_folders (business_id, id, name, created_by_actor_id)
+       select business_id, gen_random_uuid(), 'seed ' || gen_random_uuid(), id
+         from public.actors where business_id = $1 order by id limit 1
+       returning business_id, id, created_by_actor_id)
+     insert into public.docs_pages
+       (business_id, id, folder_id, title, body, version, created_by_actor_id, updated_by_actor_id)
+     select business_id, gen_random_uuid(), id, 'seed', '', 1, created_by_actor_id,
+            created_by_actor_id
+       from f returning 1`,
+  'public.docs_page_versions': `with f as (
+       insert into public.docs_folders (business_id, id, name, created_by_actor_id)
+       select business_id, gen_random_uuid(), 'seed ' || gen_random_uuid(), id
+         from public.actors where business_id = $1 order by id limit 1
+       returning business_id, id, created_by_actor_id),
+     p as (
+       insert into public.docs_pages
+         (business_id, id, folder_id, title, body, version, created_by_actor_id,
+          updated_by_actor_id)
+       select business_id, gen_random_uuid(), id, 'seed', '', 1, created_by_actor_id,
+              created_by_actor_id
+         from f returning business_id, id, created_by_actor_id)
+     insert into public.docs_page_versions (business_id, page_id, number, title, body, actor_id)
+     select business_id, id, 1, 'seed', '', created_by_actor_id from p returning 1`,
   // C80's revert ask: the journey asks none. One on the business's seeded correction.
   'public.live_correction_revert_asks': `insert into public.live_correction_revert_asks
        (business_id, id, correction_id, asked_by_actor_id, asked_by_person_id)

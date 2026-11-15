@@ -90,7 +90,7 @@ import {
 } from './automation-approvals.ts';
 import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
 import { REVIEW_HANDLERS } from './handlers-review.ts';
-import { DOCS_HANDLERS } from './docs.ts';
+import { DOCS_HANDLERS } from './handlers-docs.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
