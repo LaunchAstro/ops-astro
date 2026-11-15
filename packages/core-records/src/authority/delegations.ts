@@ -562,6 +562,13 @@ const PARENT_ROW = 'select 1 from public.delegations where business_id = $1 and 
  */
 type ExpiryClock = 'clock_timestamp()' | 'now()';
 
+type ParentRow = DelegationRow & {
+  readonly settled: boolean;
+  readonly expired: boolean;
+  readonly cause: RevocationCause | null;
+  readonly revoked: boolean;
+};
+
 export async function parentStanding(
   tx: TenantQuery,
   parentId: string,
@@ -570,14 +577,7 @@ export async function parentStanding(
 ): Promise<DelegationDecision<Delegation>> {
   // Locked alone first: a locking select computes its columns before it waits.
   if (lock !== '') await tx.query(`${PARENT_ROW} ${lock}`, [tx.businessId, parentId]);
-  const rows = await tx.query<
-    DelegationRow & {
-      readonly settled: boolean;
-      readonly expired: boolean;
-      readonly cause: RevocationCause | null;
-      readonly revoked: boolean;
-    }
-  >(
+  const rows = await tx.query<ParentRow>(
     `select ${delegationColumns()}, settled_at is not null as settled,
             expires_at <= ${clock} as expired, revoked_at is not null as revoked,
             revocation_cause as cause

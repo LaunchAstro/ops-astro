@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- one race proof: mint, narrow, wait past the parent's expiry, report */
 //
 // #1030 for a child delegation. A child whose parent's grants were cut answers
 // DELEGATION_NARROWED; the late report that follows in the same transaction
