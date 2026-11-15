@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines-per-function -- one suite on one composed API, its cases in order */
+/* eslint-disable max-lines, max-lines-per-function -- one suite on one composed API, its cases in order */
 //
 // The demo data (scripts/ops/demo-data.ts, #2211, register 253) against the
 // composed API: seeded as one person through the product's commands, every
 // step in the operation register, each task in its state, a stop and a rerun
 // making nothing twice, and removal trashing the manifest's tasks and nothing
-// real, refusing a manifest that names a real task.
+// real, refusing a manifest that names a real task, a demo task with real work
+// filed under it, or one a broken decision chain leaves unreadable.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -106,6 +107,16 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
   }, 180_000);
 
   afterAll(async () => await fixture?.drop());
+
+  const liveDemoTasks = async (): Promise<number> =>
+    Number(
+      (
+        await query<{ n: string }>(
+          `select count(*)::text as n from public.records where business_id = $1
+              and txt_4 like 'Demo %' and deleted_at is null`,
+        )
+      )[0]?.n,
+    );
 
   it('a run stopped part way and run again makes every demo record once, each through the register', async () => {
     let saves = 0;
@@ -218,19 +229,25 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
     for (const row of recipients) expect(row.person).toBe(fixture.member.personId);
   });
 
-  it('a decision chain broken outside the run leaves the accepted task unreadable, as on staging', async () => {
-    // One signed payload altered as the owner, triggers off for the statement alone
-    // (tests/tenancy/wrapper-mutation.test.ts): every later case removes past the break.
-    await fixture.db.admin.execute('alter table public.gate_decisions disable trigger all');
-    try {
-      await query(
-        `update public.gate_decisions
-            set payload = jsonb_set(payload, '{note}', '"approved for something else"')
-          where business_id = $1`,
-      );
-    } finally {
-      await fixture.db.admin.execute('alter table public.gate_decisions enable trigger all');
-    }
+  it('a decision chain broken outside the run leaves a task unreadable, and removal stops there', async () => {
+    // One signed payload altered as the owner, triggers off for the statements alone
+    // (tests/tenancy/wrapper-mutation.test.ts), and put back after.
+    const signed = async (sql: string, values: readonly unknown[] = []): Promise<void> => {
+      await fixture.db.admin.execute('alter table public.gate_decisions disable trigger all');
+      try {
+        await query(sql, values);
+      } finally {
+        await fixture.db.admin.execute('alter table public.gate_decisions enable trigger all');
+      }
+    };
+    const kept = await query<{ id: string; payload: string }>(
+      'select id::text, payload::text from public.gate_decisions where business_id = $1',
+    );
+    await signed(
+      `update public.gate_decisions
+          set payload = jsonb_set(payload, '{note}', '"approved for something else"')
+        where business_id = $1`,
+    );
     const accepted = manifest.made.find(
       (m) => m.kind === 'task' && m.name === TASKS.find((t) => t.end === 'accepted')?.title,
     );
@@ -239,6 +256,17 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
       500,
       'DECISION_INTEGRITY',
     ]);
+    // Its subtasks cannot be read either, so it cannot be checked whole.
+    await expect(remove(send, manifest)).rejects.toThrow('cannot be read');
+    expect(await liveDemoTasks()).toBe(TASKS.length);
+    for (const row of kept) {
+      // eslint-disable-next-line no-await-in-loop
+      await signed(
+        'update public.gate_decisions set payload = $3::jsonb where business_id = $1 and id = $2',
+        [row.id, row.payload],
+      );
+    }
+    expect((await send('task.read', { recordId: String(accepted?.id) })).status).toBe(200);
   });
 
   it('removal refuses a manifest naming a real task, and touches nothing first', async () => {
@@ -251,14 +279,30 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
       ],
     };
     await expect(remove(send, tampered)).rejects.toThrow("titled 'Real task'");
-    const live = await query<{ n: string }>(
-      `select count(*)::text as n from public.records where business_id = $1 and txt_4 like 'Demo %'
-          and deleted_at is null`,
-    );
-    expect(Number(live[0]?.n)).toBe(TASKS.length);
+    expect(await liveDemoTasks()).toBe(TASKS.length);
   });
 
-  it('removal trashes every demo task and no real one, past a broken chain, and a second removal sends no trash', async () => {
+  it('removal refuses a demo task with real work filed under it, and touches nothing first', async () => {
+    const parent = manifest.made.find((m) => m.kind === 'task');
+    const filed = await send('task.create', {
+      operationId: randomUUID(),
+      parentId: parent?.id,
+      fields: { title: 'Real client work' },
+    });
+    expect(filed.status).toBe(200);
+    const child = filed.body as Record<string, unknown>;
+    // task.trash takes the whole subtree, so trashing the parent would take the real work.
+    await expect(remove(send, manifest)).rejects.toThrow('subtask');
+    expect(await liveDemoTasks()).toBe(TASKS.length);
+    const moved = await send('task.trash', {
+      operationId: randomUUID(),
+      recordId: child['recordId'],
+      expectedRevision: child['revision'],
+    });
+    expect(moved.status).toBe(200);
+  });
+
+  it('removal trashes every demo task and no real one, and a second removal sends no trash', async () => {
     expect(await remove(send, manifest)).toStrictEqual({ trashed: TASKS.length, gone: 0 });
     const rows = await query<{ title: string; deleted: boolean }>(
       `select txt_4 as title, deleted_at is not null as deleted from public.records

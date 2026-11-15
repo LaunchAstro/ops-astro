@@ -3,9 +3,10 @@
 //
 // The demo data's seed and removal (scripts/ops/demo-data.ts, #2211) against a
 // stand-in transport, for the two cases the database suite cannot stage: the
-// manifest keeps every id a step's answer names as made (Sol S2505-2), and an
-// unreadable demo task that search no longer finds by its demo title stops the
-// removal before anything is trashed (Sol S2505-1).
+// manifest keeps every id a step's answer names as made (Sol S2505-2); and the
+// removal stops before anything is trashed at a listed task it cannot check
+// whole: one that cannot be read (S2505-1, S2505-3), or one with a subtask the
+// manifest does not list, since task.trash takes the whole subtree (S2505-3).
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -90,6 +91,47 @@ describe('demo data manifest and removal', () => {
       return Promise.resolve({ status: 200, body: {} });
     }, listed);
     await expect(removal).rejects.toBeInstanceOf(Refusal);
+    expect(sent.filter((verb) => verb === 'task.trash')).toStrictEqual([]);
+  });
+
+  it('an unreadable demo task stops the removal even when search still finds its demo title', async () => {
+    const listed = manifest();
+    listed.made.push({ step: 'task:0', kind: 'task', id: id(1), name: 'Demo One', revision: 1 });
+    const sent: string[] = [];
+    const removal = remove((verb) => {
+      sent.push(verb);
+      if (verb === 'task.read') {
+        return Promise.resolve({ status: 500, body: { code: 'DECISION_INTEGRITY' } });
+      }
+      // Search shows the title, but not what sits under the task.
+      if (verb === 'task.search') {
+        return Promise.resolve({ status: 200, body: { hits: [{ id: id(1), title: 'Demo One' }] } });
+      }
+      return Promise.resolve({ status: 200, body: {} });
+    }, listed);
+    await expect(removal).rejects.toThrow('cannot be read');
+    expect(sent.filter((verb) => verb === 'task.trash')).toStrictEqual([]);
+  });
+
+  it('a listed task with a subtask the manifest does not list stops the removal before any trash', async () => {
+    const listed = manifest();
+    listed.made.push(
+      { step: 'task:0', kind: 'task', id: id(1), name: 'Demo One', revision: 1 },
+      { step: 'task:1', kind: 'task', id: id(2), name: 'Demo Two', revision: 1 },
+    );
+    const sent: string[] = [];
+    const removal = remove((verb, body) => {
+      sent.push(verb);
+      if (verb === 'task.read') {
+        const two = body['recordId'] === id(2);
+        // Real work filed under Demo Two since the seed: trashing Demo Two would take it too.
+        const steps = two ? [{ id: id(9), title: 'Real client work' }] : [];
+        const title = two ? 'Demo Two' : 'Demo One';
+        return Promise.resolve({ status: 200, body: { fields: { title }, revision: 1, steps } });
+      }
+      return Promise.resolve({ status: 200, body: {} });
+    }, listed);
+    await expect(removal).rejects.toThrow('subtask');
     expect(sent.filter((verb) => verb === 'task.trash')).toStrictEqual([]);
   });
 });
