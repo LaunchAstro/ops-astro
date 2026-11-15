@@ -61,6 +61,7 @@ function PageBody(props: {
   const open = writing !== null && draft?.pageId === document.id;
   const edit = () =>
     drafting.set({
+      opened: crypto.randomUUID(),
       pageId: document.id,
       version: document.version,
       text: document.body,

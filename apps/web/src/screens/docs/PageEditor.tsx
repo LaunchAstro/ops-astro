@@ -77,8 +77,13 @@ export function SendRow(props: {
   );
 }
 
-/** The page being edited: the version it was opened at, the words so far, a refusal's words. */
+/**
+ * The page being edited: which opening of the editor this is, the version it was opened at, the
+ * words so far, a refusal's words. A save's answer touches only the opening it was sent from, so
+ * a draft cancelled and opened again is a new one, whatever its words (S2527-4).
+ */
 export interface Draft {
+  readonly opened: string;
   readonly pageId: string;
   readonly version: number;
   readonly text: string;
@@ -93,7 +98,7 @@ export interface Drafting {
 
 /** After a save of `sent`: closed when the draft still says it, else kept on the version made. */
 function afterSave(current: Draft | null, sent: Draft, version: unknown): Draft | null {
-  if (current?.pageId !== sent.pageId) return current;
+  if (current?.opened !== sent.opened) return current;
   if (current.text === sent.text) return null;
   return typeof version === 'number' ? { ...current, version, words: null } : current;
 }
@@ -121,7 +126,7 @@ export function PageEditor(props: {
     }
     if (answer.kind === 'refused') {
       const { words } = answer;
-      set((current) => (current?.pageId === pageId ? { ...current, words } : current));
+      set((current) => (current?.opened === draft.opened ? { ...current, words } : current));
     }
   };
   return (
