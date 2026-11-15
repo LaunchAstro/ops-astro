@@ -101,7 +101,12 @@ export const REVIEW_READS: {
     serve: async (tx, session): Promise<ReviewListResult | CommandRefusal> => {
       if (!(await holdsAnywhere(tx, reviewRead(session)))) return NO_REVIEW_READ;
       if (!isInternalReader(session.roleKey)) return NO_REVIEW_READ;
-      return { ok: true, reviews: await listCoveredReviews(tx, reviewRead(session)) };
+      const reviews = await listCoveredReviews(tx, reviewRead(session));
+      // A grant revoked between the check and the list lists nothing: asked again, a caller who
+      // now holds review:read nowhere is refused as such, never answered an empty list.
+      if (reviews.length === 0 && !(await holdsAnywhere(tx, reviewRead(session))))
+        return NO_REVIEW_READ;
+      return { ok: true, reviews };
     },
   },
 };
