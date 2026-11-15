@@ -16,6 +16,7 @@ export const RAIL_GLYPHS: Readonly<Record<string, GlyphName>> = {
   'agency:projects': 'briefcase',
   'agency:clients': 'users',
   'agency:connections': 'plug',
+  'agency:docs': 'document',
   'agency:general': 'settings-sliders',
   'clients:brief': 'document',
   'clients:projects': 'briefcase',

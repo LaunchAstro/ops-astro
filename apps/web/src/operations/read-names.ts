@@ -113,6 +113,9 @@ export const READ_NAMES = [
   'review.read',
   // One landed capture's picture bytes (C35), under the same grant as its review.
   'review.picture',
+  // The business's folder tree and one page (#2493), under `docs:read` on the server.
+  'docs.tree',
+  'docs.page',
   // The business's team invitations (C39-T), under `access:share` on the server.
   'invitation.list',
   // The Workflow triggers registry (C33), under `settings:read` on the server.

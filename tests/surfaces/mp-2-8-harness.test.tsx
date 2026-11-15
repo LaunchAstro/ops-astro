@@ -283,13 +283,13 @@ it("C23 harness leg: the person circle round and 22 across at the strip's far ri
   });
 }, 600_000);
 
-it('MP-2-10 harness leg: a reserved address (/docs/) draws the one shared Not here yet state, with no Docs in the rail and no sideways scroll', async () => {
+it('MP-2-10 harness leg: a reserved address (/docs/snippets/) draws the one shared Not here yet state, with no Snippets in the rail and no sideways scroll', async () => {
   await each(async (width, theme, at) => {
-    const page = await open('/docs/', width, theme);
+    const page = await open('/docs/snippets/', width, theme);
     const state = '.readstate[data-outcome="placeholder"] .empty__title';
     expect(await page.locator(state).textContent()).toBe('Not here yet');
     const rail = await page.locator('.rail__item').allTextContents();
-    expect(rail, `rail at ${at}`).not.toContain('Docs');
+    expect(rail, `rail at ${at}`).not.toContain('Snippets');
     expect(await sideways(page), `no sideways scroll at ${at}`).toBeLessThanOrEqual(width);
     await page.close();
   });

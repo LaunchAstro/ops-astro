@@ -65,6 +65,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // A name the vocabulary takes once, so each run makes its own (MP-4-11).
   ['tag.create', { name: `tag ${randomUUID().slice(0, 8)}` }],
   ['tag.list', {}],
+  ['docs.tree', {}],
   // The reader's own to-dos (MP-7-1).
   ['task.todos', {}],
   ['task.search', { query: 'brochure' }],

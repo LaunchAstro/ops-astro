@@ -37,6 +37,8 @@ const PINNED_IDENTIFIERS = {
   'conversation.models': ['conversationId'],
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
+  'docs.page': ['pageId'],
+  'docs.tree': [],
   'finance.agent_costs': [],
   'finance.skill_costs': [],
   'gate.pending': [],
@@ -245,6 +247,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'chat.conversations': BODIES.map(() => null),
   'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
   'invitation.list': BODIES.map(() => null),
+  // #2493: the tree takes nothing; a page is named by its id, which none of these bodies carries.
+  'docs.tree': BODIES.map(() => null),
+  'docs.page': unsent('pageId', 'Send pageId as the page.'),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -256,7 +261,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty-eight reads', () => {
+  it('names the same fifty reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

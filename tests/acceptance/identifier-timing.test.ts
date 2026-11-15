@@ -503,6 +503,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     // #2514: bravo's folder renamed or moved.
     byAda('docs.rename_folder', 'folderId', docs.folderId, (folderId) => ({ folderId, name: 't' }));
     byAda('docs.move_folder', 'folderId', docs.folderId, (folderId) => ({ folderId }));
+    byAda('docs.page', 'pageId', docs.pageId, (pageId) => ({ pageId }));
     // MP-4-8: the old task names what is duplicated; the copy goes to no client.
     byAda('task.duplicate', 'recordId', f.task.id, (recordId) => ({
       recordId,
@@ -761,11 +762,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 140 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 141 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(140);
-    expect(names).toHaveLength(140);
+    expect(new Set(names).size, 'distinct operations').toBe(141);
+    expect(names).toHaveLength(141);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

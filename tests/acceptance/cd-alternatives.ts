@@ -105,6 +105,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'docs.update_page': ['pageId', 'docs'],
   'docs.rename_folder': ['folderId', 'docs'],
   'docs.move_folder': ['folderId', 'docs'],
+  'docs.page': ['pageId', 'docs'],
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
   'credential.revoke': ['credentialId', 'control'],

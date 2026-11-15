@@ -9,7 +9,7 @@
 // here until it does, as the tag commands are.
 
 import type { CommandDeclaration } from './surface-declaration.ts';
-import { declare } from './surface-builders.ts';
+import { declare, read } from './surface-builders.ts';
 
 const DOCS_COLLECTION = 'docs';
 
@@ -23,4 +23,7 @@ export const DOCS_SURFACE: readonly CommandDeclaration[] = [
   // #2514: a folder renamed or moved inside the business.
   declare('docs.rename_folder', 'write', ON_THE_BUSINESS(['folderId'])),
   declare('docs.move_folder', 'write', ON_THE_BUSINESS(['folderId', 'parentId'])),
+  // The reads are `docs:read` on the business (#2493 piece 2): a grant at one client reads none.
+  read('docs.tree', DOCS_COLLECTION),
+  read('docs.page', DOCS_COLLECTION),
 ];

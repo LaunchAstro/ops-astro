@@ -66,6 +66,7 @@ import { listInvitations } from './invitations.ts';
 import { CORRECTION_READS } from './live-correction.ts';
 import { REVIEW_READS } from './review.ts';
 import { BIN_READS } from './bin.ts';
+import { DOCS_READS } from './docs.ts';
 import {
   parseHistoryOperands,
   readAutomationHistory,
@@ -951,6 +952,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // C35 (#2011): a review with its revisions and captures, and a landed picture.
   ...REVIEW_READS,
   ...BIN_READS,
+  ...DOCS_READS,
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.
   'automation.registry': {

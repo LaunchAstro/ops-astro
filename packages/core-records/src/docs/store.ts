@@ -217,3 +217,68 @@ export async function updateDocsPage(
   await savePage(tx, next, moving?.toLowerCase() ?? page.folder_id, writer.actorId);
   return { kind: 'updated', version: next.number };
 }
+
+/** A folder in the tree: its parent folder, or none at the top. */
+export interface DocsFolderRow {
+  readonly id: string;
+  readonly name: string;
+  readonly parentId: string | null;
+}
+
+/** A page in the tree: its folder, title and version, never its body. */
+export interface DocsPageEntry {
+  readonly id: string;
+  readonly folderId: string;
+  readonly title: string;
+  readonly version: number;
+}
+
+/** One page as a reader opens it: the Markdown body and the version a save starts from. */
+export interface DocsPageRow extends DocsPageEntry {
+  readonly body: string;
+  readonly updatedAt: string;
+}
+
+/** The business's folders and page titles (#2493 piece 2), by name, filtered to the business. */
+export async function readDocsTree(
+  tx: TenantQuery,
+): Promise<{ readonly folders: DocsFolderRow[]; readonly pages: DocsPageEntry[] }> {
+  const folders = await tx.query<DocsFolderRow>(
+    `select id::text as "id", name, parent_id::text as "parentId"
+       from public.docs_folders where business_id = $1 order by lower(name), id`,
+    [tx.businessId],
+  );
+  const pages = await tx.query<DocsPageEntry>(
+    `select id::text as "id", folder_id::text as "folderId", title, version
+       from public.docs_pages where business_id = $1 order by lower(title), id`,
+    [tx.businessId],
+  );
+  return {
+    folders: folders.map(({ id, name, parentId }) => ({ id, name, parentId })),
+    pages: pages.map(({ id, folderId, title, version }) => ({ id, folderId, title, version })),
+  };
+}
+
+/** One page of the business, or undefined for one that is missing or another business's. */
+export async function readDocsPage(
+  tx: TenantQuery,
+  pageId: string,
+): Promise<DocsPageRow | undefined> {
+  if (!isUuid(pageId)) return undefined;
+  const [row] = await tx.query<{
+    readonly id: string;
+    readonly folderId: string;
+    readonly title: string;
+    readonly body: string;
+    readonly version: number;
+    readonly updatedAt: Date;
+  }>(
+    `select id::text as "id", folder_id::text as "folderId", title, body, version,
+            updated_at as "updatedAt"
+       from public.docs_pages where business_id = $1 and id = $2`,
+    [tx.businessId, pageId.toLowerCase()],
+  );
+  if (row === undefined) return undefined;
+  const { id, folderId, title, body, version, updatedAt } = row;
+  return { id, folderId, title, body, version, updatedAt: new Date(updatedAt).toISOString() };
+}
