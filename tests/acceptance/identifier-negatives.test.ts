@@ -696,6 +696,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           docs.pageId,
           (pageId: string) => ({ pageId, expectedVersion: 1, body: 't' }),
         ],
+        // #2514: bravo's folder renamed or moved.
+        [
+          'docs.rename_folder',
+          'folderId',
+          docs.folderId,
+          (folderId: string) => ({ folderId, name: 't' }),
+        ],
+        ['docs.move_folder', 'folderId', docs.folderId, (folderId: string) => ({ folderId })],
       ] as const;
       for (const [op, field, foreignId, body] of cells) {
         const { operand, forms } = pair(field, foreignId, body);

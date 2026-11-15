@@ -15,6 +15,13 @@ interface DocsContext {
 
 type Prepared = { readonly body: Record<string, unknown> };
 
+const DOCS_WRITES: ReadonlySet<string> = new Set([
+  'docs.create_page',
+  'docs.update_page',
+  'docs.rename_folder',
+  'docs.move_folder',
+]);
+
 const fresh = (what: string): string => `${what} ${randomUUID().slice(0, 8)}`;
 
 async function filed(context: DocsContext, name: CommandName, body: Record<string, unknown>) {
@@ -29,8 +36,14 @@ export async function docsBody(
   context: DocsContext,
 ): Promise<Prepared | undefined> {
   if (name === 'docs.create_folder') return { body: { name: fresh('folder') } };
-  if (name !== 'docs.create_page' && name !== 'docs.update_page') return undefined;
+  if (!DOCS_WRITES.has(name)) return undefined;
   const { folderId } = await filed(context, 'docs.create_folder', { name: fresh('folder') });
+  // #2514: the admin's own folder renamed, or moved under another of its own.
+  if (name === 'docs.rename_folder') return { body: { folderId, name: fresh('renamed') } };
+  if (name === 'docs.move_folder') {
+    const parent = await filed(context, 'docs.create_folder', { name: fresh('parent') });
+    return { body: { folderId, parentId: parent['folderId'] } };
+  }
   if (name === 'docs.create_page')
     return { body: { folderId, title: fresh('page'), body: 'text' } };
   const { pageId } = await filed(context, 'docs.create_page', {

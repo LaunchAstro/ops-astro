@@ -411,6 +411,11 @@ vi.mock('../../packages/core-commands/src/commands/docs.ts', async (original) =>
   fileDocsPage: recorder('fileDocsPage'),
   reviseDocsPage: recorder('reviseDocsPage'),
 }));
+vi.mock('../../packages/core-commands/src/commands/docs-folders.ts', async (original) => ({
+  ...(await original<object>()),
+  renameFolder: recorder('renameFolder'),
+  moveFolder: recorder('moveFolder'),
+}));
 vi.mock('../../packages/core-commands/src/commands/review-change.ts', async (original) => ({
   ...(await original<object>()),
   proposeChange: recorder('proposeChange'),
@@ -624,7 +629,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'tag.create': [],
   'docs.create_folder': ['parentId'],
   'docs.create_page': ['folderId'],
-  'docs.update_page': ['pageId'],
+  'docs.update_page': ['pageId', 'folderId'],
+  'docs.rename_folder': ['folderId'],
+  'docs.move_folder': ['folderId', 'parentId'],
   'agent.create': [],
   'agent.rename': ['agentId'],
   'task.add_tag': ['recordId', 'tagId'],
@@ -689,6 +696,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'docs.create_folder',
   'docs.create_page',
+  'docs.move_folder',
+  'docs.rename_folder',
   'docs.update_page',
   'finance.agent_costs',
   'finance.skill_costs',
@@ -1208,6 +1217,8 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'docs.create_folder', operationId: 'op', name: 'n-folder' },
   { command: 'docs.create_page', operationId: 'op', folderId: 'f-page', title: 't', body: 'b' },
   { command: 'docs.update_page', operationId: 'op', pageId: 'p-update', expectedVersion: 1 },
+  { command: 'docs.rename_folder', operationId: 'op', folderId: 'f-rename', name: 'n-rename' },
+  { command: 'docs.move_folder', operationId: 'op', folderId: 'f-move' },
   { command: 'agent.create', operationId: 'op', name: 'n-agent' },
   { command: 'agent.rename', operationId: 'op', agentId: 'a-rename', name: 'n-rename' },
   { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
@@ -1413,6 +1424,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'docs.create_folder': ['fileDocsFolder', 'request'],
   'docs.create_page': ['fileDocsPage', 'request'],
   'docs.update_page': ['reviseDocsPage', 'request'],
+  'docs.rename_folder': ['renameFolder', 'request'],
+  'docs.move_folder': ['moveFolder', 'request'],
   'agent.create': ['makeAgent', 'n-agent'],
   'agent.rename': ['renameOwnAgent', 'a-rename', 'n-rename'],
   'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
@@ -1471,7 +1484,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and forty-two from an expected revision', () => {
+  it('exempts the same one hundred and forty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

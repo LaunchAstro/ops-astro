@@ -33,7 +33,7 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'review_pin_carries'],
   // C57 (20261114162900): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
-  // Docs (#2493, 20261115002300): a folder is made once; a page moves its text by column; a
+  // Docs (#2493, 20261115002300): a folder and a page move by column (20261115104000); a
   // version row is written once and never changed.
   ['si', 'docs_folders'],
   ['si', 'docs_pages'],
@@ -111,4 +111,7 @@ export const SITE_UPDATES = [
     from: '20261115002300',
     columns: ['title', 'body', 'version', 'updated_by_actor_id', 'updated_at'],
   },
+  // Docs piece 4a (#2514, 20261115104000): a folder is renamed or moved, and a page moved.
+  { table: 'public.docs_folders', from: '20261115104000', columns: ['name', 'parent_id'] },
+  { table: 'public.docs_pages', from: '20261115104000', columns: ['folder_id'] },
 ] as const;
