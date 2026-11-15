@@ -53,7 +53,16 @@ const origin = values.origin ?? usage('name the deployed origin with --origin');
 const business = values.business ?? usage('name the business with --business');
 const out = values.out ?? usage('name the evidence file with --out');
 const bearer = process.env['OPS_ASTRO_TOKEN'] ?? usage('set OPS_ASTRO_TOKEN (ops-astro login)');
-if (!/^https?:\/\/[^/]+$/u.test(origin)) usage('--origin is a scheme and host only');
+/** The origin exactly as URL reads it: a scheme and host, with no path, query, fragment or login. */
+function isBareOrigin(text: string): boolean {
+  try {
+    const url = new URL(text);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === text;
+  } catch {
+    return false;
+  }
+}
+if (!isBareOrigin(origin)) usage('--origin is a scheme and host only');
 
 /** One request; a redirect is never followed, so the bearer goes nowhere else. */
 async function call(path: string, body?: Record<string, unknown>): Promise<Answer> {
