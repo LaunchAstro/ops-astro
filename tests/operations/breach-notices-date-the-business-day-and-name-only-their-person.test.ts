@@ -159,6 +159,20 @@ describe('breach notices drafted from the runbook template: one sense of the sam
     expect(own?.body).toContain('ΟΣ received the invoice.');
   });
 
+  it('a sharp s and its capital fold together, whichever way round', () => {
+    const pairs: readonly (readonly [string, string])[] = [
+      ['Groß', 'GROẞ'],
+      ['GROẞ', 'Groß'],
+    ];
+    for (const [name, text] of pairs) {
+      const alex = draftFor(
+        { name, address: 'gross@example.test' },
+        `${text} received the invoice.`,
+      )?.[1];
+      expect(alex?.body, name).toContain('another person received the invoice.');
+    }
+  });
+
   it('a name typed with a separate accent mark is taken out of text that holds it composed', () => {
     const alex = draftFor(
       { name: 'Ame\u0301lie', address: 'amelie@example.test' },
