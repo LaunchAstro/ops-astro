@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a narrowed child delegation is still found by the late report after its parent expires in the same transaction"
+}
