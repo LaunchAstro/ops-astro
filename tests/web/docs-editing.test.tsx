@@ -9,7 +9,11 @@
 // docs:write; the server still asks it on every write.
 
 import { afterEach, expect, it, vi } from 'vitest';
-import { open, json, session, settle } from './mp-2-1-support.tsx';
+import { open, json, settle } from './mp-2-1-support.tsx';
+import { mount } from '../surfaces/mount.tsx';
+import { DocsScreen } from '../../apps/web/src/screens/Docs.tsx';
+import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { tabRollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -171,13 +175,35 @@ it('a save whose answer never arrived goes again under the same operation id', a
 });
 
 it('a business switch drops the draft', async () => {
-  const page = await openPage([], ['read', 'write']);
-  await page.view.click('[data-docs-act="edit"]');
-  await page.view.type('textarea[data-docs-draft]', 'alpha words');
-  page.sessions.set(session('bravo'));
+  const clientFor = (businessKey: string) =>
+    new OperationsClient({
+      origin: '',
+      businessKey,
+      signedIn: true,
+      fetch: docsFetch([], ['read', 'write']) as unknown as typeof globalThis.fetch,
+    });
+  const screen = (businessKey: string) => (
+    <DocsScreen
+      client={clientFor(businessKey)}
+      grantKey={`${businessKey}:mia`}
+      rollup={tabRollupFloor()}
+    />
+  );
+  const view = await mount(screen('alpha'));
   await settle();
-  expect(page.view.text()).not.toContain('alpha words');
-  expect(page.view.find('textarea[data-docs-draft]')).toBeNull();
+  await view.click('[data-page-id="p-one"]');
+  await settle();
+  await view.click('[data-docs-act="edit"]');
+  await view.type('textarea[data-docs-draft]', 'alpha words');
+  await view.render(screen('bravo'));
+  await settle();
+  await settle();
+  // Bravo's own tree has drawn, and nothing chosen, opened or typed for alpha carried over.
+  expect(view.find('[data-page-id="p-one"]')).not.toBeNull();
+  expect(view.find('article')).toBeNull();
+  expect(view.find('textarea[data-docs-draft]')).toBeNull();
+  expect(view.text()).not.toContain('alpha words');
+  await view.unmount();
 });
 
 it('New folder and New document send the piece 1 commands', async () => {

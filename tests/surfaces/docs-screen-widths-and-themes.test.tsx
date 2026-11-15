@@ -2,7 +2,8 @@
 //
 // The Docs screen (#2493) on MP-1-7's width-and-theme harness, measured in the pinned browser at
 // 1480, 900 and 390, light and dark: the folder tree beside the page above 640 and above it at
-// 390, the page drawn read-only, and no sideways scroll. Each side is opened by `openSide` with
+// 390, the page drawn read-only, and no sideways scroll; with docs:write (#2515), Edit's textarea
+// beside its preview the same way. Each side is opened by `openSide` with
 // the made-up session; the made-up reads (`made-up-api.ts`) draw the tree and the page, and the
 // person's name is the one other read answered. The rest of the app frame is mp-2-8-harness's.
 
@@ -87,6 +88,23 @@ it('Docs harness leg: the folder tree beside the page above 640 and above it at 
     else expect(read.top, `page under the tree at ${at}`).toBeGreaterThan(tree.bottom - 1);
     const rail = await page.locator('.rail__item').allTextContents();
     if (width > 900) expect(rail.join(' '), `rail at ${at}`).toContain('Docs');
+    expect(await sideways(page), `no sideways scroll at ${at}`).toBeLessThanOrEqual(width);
+    await page.close();
+  });
+}, 600_000);
+
+it('Docs harness leg: Edit draws the textarea beside its preview above 640 and above it at 390, light and dark, no sideways scroll', async () => {
+  await each(async (width, theme, at) => {
+    const page = await open(width, theme);
+    await page.locator('[data-page-id="p-first-week"]').click();
+    await page.locator('[data-docs-act="edit"]').click();
+    await page.locator('textarea[data-docs-draft]').waitFor();
+    expect(await page.locator('[data-docs-preview] .md__h').textContent(), at).toBe('Welcome');
+    const draft = await box(page, 'textarea[data-docs-draft]');
+    const preview = await box(page, '[data-docs-preview]');
+    if (width > 640)
+      expect(preview.left, `preview beside the draft at ${at}`).toBeGreaterThan(draft.right - 1);
+    else expect(preview.top, `preview under the draft at ${at}`).toBeGreaterThan(draft.bottom - 1);
     expect(await sideways(page), `no sideways scroll at ${at}`).toBeLessThanOrEqual(width);
     await page.close();
   });
