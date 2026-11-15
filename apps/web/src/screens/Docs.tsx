@@ -3,7 +3,8 @@
 // The business's Docs (#2493 piece 2): the folder tree on the left from `docs.tree`, and the
 // chosen page drawn read-only on the right from `docs.page`. Both are `docs:read` on the
 // business, so a reader without it sees the plain refusal, never an empty tree. The page's
-// Markdown is drawn by the task brief's renderer: nothing the text says becomes markup.
+// Markdown is drawn by the task brief's renderer: nothing the text says becomes markup. The
+// two columns sit inside the read state, which wraps what it draws, so the grid is its child.
 
 import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
@@ -96,7 +97,7 @@ export function DocsScreen(props: {
     isEmpty: (tree) => tree.folders.length === 0,
   });
   return (
-    <section className="docs" aria-label="Docs">
+    <section className="stack" aria-label="Docs">
       <RecordState
         state={state}
         subject="docs"
@@ -109,7 +110,7 @@ export function DocsScreen(props: {
         }
       >
         {(tree) => (
-          <>
+          <div className="docs">
             <nav className="docs__tree card" aria-label="Folders">
               <ul className="docs__branch">
                 {tree.folders
@@ -139,7 +140,7 @@ export function DocsScreen(props: {
                 />
               )}
             </div>
-          </>
+          </div>
         )}
       </RecordState>
     </section>
