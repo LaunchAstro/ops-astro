@@ -119,7 +119,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
-  'task.trash': TARGET,
+  'task.trash': { ...TARGET, onlyRecords: 'any?' },
   'task.delete': TARGET,
   'task.request_delete': { ...TARGET, reason: 'any' },
   // The request the person was shown: an answer to any other is refused (#2362).

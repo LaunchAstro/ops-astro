@@ -213,7 +213,12 @@ export type CommandRequest =
       readonly beforeId?: string | null;
     } & Targeted)
   | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
-  | ({ readonly command: 'task.trash' | 'task.delete' } & Targeted)
+  | ({
+      readonly command: 'task.trash';
+      /** Every record the caller means to trash, the task first among them (#2523). */
+      readonly onlyRecords?: unknown;
+    } & Targeted)
+  | ({ readonly command: 'task.delete' } & Targeted)
   | ({ readonly command: 'task.request_delete'; readonly reason: unknown } & Targeted)
   | ({
       readonly command: 'task.confirm_delete' | 'task.decline_delete';

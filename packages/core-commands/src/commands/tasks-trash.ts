@@ -21,6 +21,7 @@ import {
   trashSubtree,
   readBusinessSetting,
   checkAuthority,
+  isUuid,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -38,14 +39,43 @@ export async function revisionOf(tx: TenantQuery, recordId: string): Promise<num
   return revision === undefined ? null : Number(revision);
 }
 
-export async function trashTask(tx: TenantQuery, context: CommandContext): Promise<HandlerOutcome> {
+/**
+ * The trash. With `onlyRecords` the caller names every record it means to
+ * trash, the task among them (#2523): the walk's rows are locked first, the
+ * authority is asked of each, and then a live record the list does not name
+ * refuses the whole trash, `TRASH_SUBTREE_CHANGED` with no id and no count,
+ * so a subtask filed after the caller looked, or one it cannot read, is never
+ * trashed unseen. Without it the whole subtree goes, as before.
+ */
+export async function trashTask(
+  tx: TenantQuery,
+  context: CommandContext,
+  onlyRecords?: unknown,
+): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('trashTask: the envelope read no target');
+  const named = namedRecords(onlyRecords, target.id);
+  if (named === null) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['onlyRecords'],
+        ['List the ids of every record to trash, the task itself among them.'],
+      ),
+    );
+  }
   const trashed = await trashSubtree(tx, {
     rootId: target.id,
     actorId: context.session.actorId,
     authorise: async (recordIds: readonly string[]) =>
-      await refuseUnreached(tx, context, target.id, recordIds),
+      (await refuseUnreached(tx, context, target.id, recordIds)) ??
+      (named !== undefined && recordIds.some((id) => !named.has(id))
+        ? refuseCommand(
+            'TRASH_SUBTREE_CHANGED',
+            [],
+            ['Read the task again; something under it was not named.'],
+          )
+        : undefined),
   });
   if ('denied' in trashed) return refused(trashed.denied);
   if (isRecordsRefusal(trashed)) return refused(trashed);
@@ -56,6 +86,21 @@ export async function trashTask(tx: TenantQuery, context: CommandContext): Promi
     batchId: trashed.batchId,
     trashed: trashed.recordIds.length,
   });
+}
+
+/**
+ * `onlyRecords` as ids, lower-cased: `undefined` when it is absent, `null`
+ * when it is not a non-empty list of ids that names the task.
+ */
+function namedRecords(
+  onlyRecords: unknown,
+  rootId: string,
+): ReadonlySet<string> | undefined | null {
+  if (onlyRecords === undefined) return undefined;
+  if (!Array.isArray(onlyRecords) || onlyRecords.length === 0) return null;
+  if (!onlyRecords.every((id) => typeof id === 'string' && isUuid(id))) return null;
+  const named = new Set(onlyRecords.map((id: string) => id.toLowerCase()));
+  return named.has(rootId.toLowerCase()) ? named : null;
 }
 
 /**

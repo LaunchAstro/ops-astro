@@ -511,6 +511,12 @@ const ROWS_HEAD = [
     source: 'C32 CS-2.15',
   },
   {
+    code: 'TRASH_SUBTREE_CHANGED',
+    status: 409,
+    meaning: 'The task has records under it the trash did not name',
+    source: '#2523',
+  },
+  {
     code: 'ACCESS_LAST_MANAGER',
     status: 409,
     meaning: 'It would leave the business with nobody who can change access',
