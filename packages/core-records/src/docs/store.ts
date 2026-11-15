@@ -65,9 +65,10 @@ async function writeStands(tx: TenantQuery, subjects: readonly Subject[]): Promi
 
 async function folderHere(tx: TenantQuery, folderId: string): Promise<boolean> {
   if (!isUuid(folderId)) return false;
-  // Key-share: the folder stays while a child or page is filed under it.
+  // No row lock: the app role may not delete or move a folder, and the insert's foreign key
+  // key-share locks the folder it names, so one read here is still there at the insert.
   const rows = await tx.query<{ readonly id: string }>(
-    'select id from public.docs_folders where business_id = $1 and id = $2::uuid for key share',
+    'select id from public.docs_folders where business_id = $1 and id = $2::uuid',
     [tx.businessId, folderId],
   );
   return rows.length > 0;
