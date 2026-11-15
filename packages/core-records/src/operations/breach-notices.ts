@@ -128,31 +128,44 @@ function fill(
  */
 function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub {
   const words = [...new Set(input.people.flatMap((person) => [person.name, person.address]))]
-    .map((word) => Array.from(word.trim()))
+    .map((word) => folded(word.trim()))
     .filter((word) => word.length > 0)
     .toSorted((a, b) => b.length - a.length);
   const texts = [input.incident.whatHappened, input.containment, input.steps];
   // The names found sit at the odd places.
   const pieces = new Map(texts.map((text) => [text, splitOnNames(text, words)]));
   return (person) => {
-    const own = new Set([person.name, person.address].map((word) => word.trim().toLowerCase()));
+    const own = new Set([person.name, person.address].map((word) => key(folded(word.trim()))));
     return (text) =>
       (pieces.get(text) ?? [text])
-        .map((piece, at) => (at % 2 === 1 && !own.has(piece.toLowerCase()) ? SOMEONE_ELSE : piece))
+        .map((piece, at) => (at % 2 === 1 && !own.has(key(folded(piece))) ? SOMEONE_ELSE : piece))
         .join('');
   };
 }
 
 /**
- * `text` split on whole-word, any-case matches of `words` (each a name's code
- * points, longest first), each match kept as its own piece at an odd index, as
- * a split on a pattern with one group gives. A scan, not a pattern built from
- * the names. It walks code points, not UTF-16 units, and compares one code
- * point at a time, so a letter whose lower case is longer (İ) or one outside
- * the basic plane neither hides a name nor reads as a word boundary.
+ * One fold for the match and the own-name check alike: the text composed
+ * (NFC), then each code point upper-cased and lower-cased on its own, so Σ, σ
+ * and ς fold together, as do a name's case forms, and no fold depends on the
+ * letters beside it.
+ */
+const folded = (text: string): string[] =>
+  Array.from(text.normalize('NFC'), (char) => char.toUpperCase().toLowerCase());
+
+/** A folded word as one string, its code points kept apart. */
+const key = (word: readonly string[]): string => word.join('\u0000');
+
+/**
+ * `text` (composed, NFC) split on whole-word, any-case matches of `words`
+ * (each a name's folded code points, longest first), each match kept as its
+ * own piece at an odd index, as a split on a pattern with one group gives. A
+ * scan, not a pattern built from the names. It walks code points, not UTF-16
+ * units, and compares one code point at a time, so a letter whose lower case
+ * is longer (İ) or one outside the basic plane neither hides a name nor reads
+ * as a word boundary.
  */
 function splitOnNames(text: string, words: readonly (readonly string[])[]): string[] {
-  const chars = [...text];
+  const chars = Array.from(text.normalize('NFC'));
   const pieces: string[] = [];
   let from = 0;
   let at = 0;
@@ -184,9 +197,9 @@ function nameAt(
   );
 }
 
-/** One code point against another, in any case. */
-const sameLetter = (a: string | undefined, b: string): boolean =>
-  a !== undefined && (a === b || a.toLowerCase() === b.toLowerCase());
+/** A text's code point against a folded name's, in any case. */
+const sameLetter = (char: string | undefined, letter: string): boolean =>
+  char !== undefined && char.toUpperCase().toLowerCase() === letter;
 
 /**
  * The notices, the OAIC's first and then one per person in the order given,
