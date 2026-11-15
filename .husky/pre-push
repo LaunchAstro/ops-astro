@@ -202,6 +202,21 @@ remote_base_range() {
   esac
   [ "$2" != "$3" ] || return 1
   git config --get "remote.$2.url" >/dev/null 2>&1 || return 1
+  # ls-remote must reach the receiver the push reaches (Sol S2504-1, S2504-2). Only
+  # two transports read and write one repository: an absolute local path, and
+  # https. SSH and the rest can serve upload-pack and receive-pack from different
+  # repositories; a URL that is also a configured remote's name makes ls-remote
+  # ask that remote; a remote's own upload-pack or receive-pack program can
+  # answer from somewhere else.
+  case "$3" in
+    /* | https://*) ;;
+    *) return 1 ;;
+  esac
+  if git config --get "remote.$3.url" >/dev/null 2>&1 ||
+    git config --get "remote.$2.uploadpack" >/dev/null 2>&1 ||
+    git config --get "remote.$2.receivepack" >/dev/null 2>&1; then
+    return 1
+  fi
   if git config --get-regexp '^url\..*\.(push)?insteadof$' >/dev/null 2>&1; then
     return 1
   fi
