@@ -3,8 +3,9 @@
 // The app frame on MP-1-7's width-and-theme harness (U06, U07), measured in the
 // pinned browser at 1480, 900 and 390, light and dark, each side opened by
 // `openSide` with the made-up session and no API; the one read answered is the
-// person's name (C23). Each test names the leg it proves: MP-2-8's named capture
-// and the harness legs of MP-2-2, -4, -5, -6, -7, -9, -10, C1 and C23. Looks
+// person's name (C23), except the Docs leg (#2493), which answers the made-up reads to draw
+// its tree and page. Each test names the leg it proves: MP-2-8's named capture
+// and the harness legs of MP-2-2, -4, -5, -6, -7, -9, -10, C1, C23 and Docs. Looks
 // against the mockup are the look files'. A client address needs a grant the
 // real entry gives only from MP-10-1, so there tests/visual/client-grant-entry.tsx
 // is swapped in.
@@ -19,6 +20,7 @@ import type { Browser, Page } from 'playwright';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { launchChromium } from '../support/chromium.ts';
 import { madeUpSession, serveApp } from '../visual/app-pages.ts';
+import { answerMadeUp } from '../visual/made-up-api.ts';
 import { load, openSide, shoot, type Catalogue } from '../visual/capture.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
@@ -60,12 +62,22 @@ async function each(look: (width: number, theme: Theme, at: string) => Promise<v
     for (const theme of themes) await look(width, theme, `${width} ${theme}`);
 }
 
-/** One address at one width in one theme, signed in as Mia Hart; `grant` opens every client. */
-async function open(path: string, width: number, theme: Theme, grant = false): Promise<Page> {
+/**
+ * One address at one width in one theme, signed in as Mia Hart; `grant` opens every client, and
+ * `reads` answers the made-up reads (`made-up-api.ts`) for a leg that draws a screen's rows.
+ */
+async function open(
+  path: string,
+  width: number,
+  theme: Theme,
+  grant = false,
+  reads = false,
+): Promise<Page> {
   if (browser === undefined || served === undefined) throw new Error('the harness did not start');
   const { app } = served;
   const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
   // Registered after the side's own routes, so these run first.
+  if (reads) await answerMadeUp(side.context);
   await side.context.route('**/api/b/alpha/session/person', (route) =>
     route.fulfill({ json: { ok: true, person: { name: 'Mia Hart' } } }),
   );
@@ -297,7 +309,7 @@ it('MP-2-10 harness leg: a reserved address (/docs/snippets/) draws the one shar
 
 it('Docs harness leg (#2493): the folder tree beside the page above 640 and above it at 390, the page drawn read-only, light and dark, no sideways scroll', async () => {
   await each(async (width, theme, at) => {
-    const page = await open('/docs/', width, theme);
+    const page = await open('/docs/', width, theme, false, true);
     await page.locator('[data-page-id="p-first-week"]').click();
     await page.locator('article .md__h').waitFor();
     expect(await page.locator('article .md__h').textContent(), at).toBe('Welcome');
