@@ -131,3 +131,39 @@ describe('breach notices drafted from the runbook template: names in any script'
     expect(notices?.[1]?.body).toContain(`${word} received the invoice.`);
   });
 });
+
+describe('breach notices drafted from the runbook template: one sense of the same name', () => {
+  const draftFor = (other: { name: string; address: string }, text: string) =>
+    draftBreachNotices(RUNBOOK, {
+      incident: incidentOf(text, new Date('2026-10-12T01:00:00Z')),
+      oaic: OAIC,
+      people: [ALEX, other],
+      containment: 'The link was withdrawn.',
+      steps: 'Watch for odd mail.',
+    });
+
+  it('a name written in capitals with a final sigma is still taken out', () => {
+    const alex = draftFor(
+      { name: 'Νίκος', address: 'nikos@example.test' },
+      'ΝΊΚΟΣ received the invoice.',
+    )?.[1];
+    expect(alex?.body).toContain('another person received the invoice.');
+    expect(alex?.body).not.toContain('ΝΊΚΟΣ');
+  });
+
+  it("a person's own name in another case is kept in their own notice", () => {
+    const own = draftFor(
+      { name: 'Οσ', address: 'os@example.test' },
+      'ΟΣ received the invoice.',
+    )?.[2];
+    expect(own?.body).toContain('ΟΣ received the invoice.');
+  });
+
+  it('a name typed with a separate accent mark is taken out of text that holds it composed', () => {
+    const alex = draftFor(
+      { name: 'Ame\u0301lie', address: 'amelie@example.test' },
+      'Am\u00E9lie received the invoice.',
+    )?.[1];
+    expect(alex?.body).toContain('another person received the invoice.');
+  });
+});
