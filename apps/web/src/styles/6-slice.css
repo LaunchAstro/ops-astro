@@ -676,8 +676,32 @@
   color: var(--ink-muted);
 }
 
+/* #2515: the textarea beside its preview on a desktop, above it at 640 and under; a folder's
+   Rename and Move sit after its name. */
+.docs__edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.docs__draft {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 16rem;
+  font-family: var(--font-mono, monospace);
+  resize: vertical;
+}
+
+.docs__folder-acts {
+  display: inline-flex;
+  gap: var(--s-2);
+  margin-inline-start: var(--s-2);
+}
+
 @media (width <= 640px) {
-  .docs {
+  .docs,
+  .docs__edit {
     grid-template-columns: minmax(0, 1fr);
   }
 }
