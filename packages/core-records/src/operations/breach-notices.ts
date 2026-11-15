@@ -128,8 +128,8 @@ function fill(
  */
 function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub {
   const words = [...new Set(input.people.flatMap((person) => [person.name, person.address]))]
-    .map((word) => word.trim().toLowerCase())
-    .filter((word) => word !== '')
+    .map((word) => Array.from(word.trim()))
+    .filter((word) => word.length > 0)
     .toSorted((a, b) => b.length - a.length);
   const texts = [input.incident.whatHappened, input.containment, input.steps];
   // The names found sit at the odd places.
@@ -144,37 +144,49 @@ function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub
 }
 
 /**
- * `text` split on whole-word, any-case matches of `words` (lowercase, longest
- * first), each match kept as its own piece at an odd index, as a split on a
- * pattern with one group gives. A scan, not a pattern built from the names.
+ * `text` split on whole-word, any-case matches of `words` (each a name's code
+ * points, longest first), each match kept as its own piece at an odd index, as
+ * a split on a pattern with one group gives. A scan, not a pattern built from
+ * the names. It walks code points, not UTF-16 units, and compares one code
+ * point at a time, so a letter whose lower case is longer (İ) or one outside
+ * the basic plane neither hides a name nor reads as a word boundary.
  */
-function splitOnNames(text: string, words: readonly string[]): string[] {
+function splitOnNames(text: string, words: readonly (readonly string[])[]): string[] {
+  const chars = [...text];
   const pieces: string[] = [];
   let from = 0;
   let at = 0;
-  while (at < text.length) {
+  while (at < chars.length) {
     const word =
-      at > 0 && WORD_CHAR.test(text.charAt(at - 1)) ? undefined : nameAt(text, at, words);
+      at > 0 && WORD_CHAR.test(chars[at - 1] ?? '') ? undefined : nameAt(chars, at, words);
     if (word === undefined) {
       at += 1;
       continue;
     }
-    pieces.push(text.slice(from, at), text.slice(at, at + word.length));
+    pieces.push(chars.slice(from, at).join(''), chars.slice(at, at + word.length).join(''));
     at += word.length;
     from = at;
   }
-  pieces.push(text.slice(from));
+  pieces.push(chars.slice(from).join(''));
   return pieces;
 }
 
-/** The longest of `words` that `text` holds at `at` as a whole word, in any case. */
-function nameAt(text: string, at: number, words: readonly string[]): string | undefined {
+/** The longest of `words` that `chars` holds at `at` as a whole word, in any case. */
+function nameAt(
+  chars: readonly string[],
+  at: number,
+  words: readonly (readonly string[])[],
+): readonly string[] | undefined {
   return words.find(
     (word) =>
-      text.slice(at, at + word.length).toLowerCase() === word &&
-      !WORD_CHAR.test(text.charAt(at + word.length)),
+      word.every((char, n) => sameLetter(chars[at + n], char)) &&
+      !WORD_CHAR.test(chars[at + word.length] ?? ''),
   );
 }
+
+/** One code point against another, in any case. */
+const sameLetter = (a: string | undefined, b: string): boolean =>
+  a !== undefined && (a === b || a.toLowerCase() === b.toLowerCase());
 
 /**
  * The notices, the OAIC's first and then one per person in the order given,
