@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- one suite: the manifest proof, then the removal stop */
 //
 // The demo data's seed and removal (scripts/ops/demo-data.ts, #2211) against a
 // stand-in transport, for the two cases the database suite cannot stage: the
@@ -59,7 +60,7 @@ describe('demo data manifest and removal', () => {
         return Promise.resolve({ status: 200, body: { recordId: made, revision: 1, detail } });
       },
       kept,
-      () => undefined,
+      () => {},
     );
     const saved = JSON.stringify(kept);
     expect(returned.length, 'the plan has a proposal and a side chat').toBeGreaterThan(0);
