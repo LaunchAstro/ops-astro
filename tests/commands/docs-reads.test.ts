@@ -118,7 +118,9 @@ live('docs reads', () => {
     });
     expect(text).not.toContain('the body text');
   });
+});
 
+live('docs reads: one page', () => {
   it('docs.page answers the title, Markdown body and version a reader saves against', async () => {
     const own = await planted(w.alpha, w.ada, 'Handbook', '# Handbook\n\nFirst line.');
     const updated = await w.as(w.alpha, w.ada, {

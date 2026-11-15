@@ -83,10 +83,8 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
   });
 
   it('keeps a section in the rail by its designed pages, and its undesigned ones out of the tabs', () => {
-    // Docs is navigable by its one designed page (#2493); Snippets, still reserved, is no tab.
     const docs = SECTIONS.find((each) => each.namespace === 'agency' && each.id === 'docs');
-    expect(docs?.navigable).toBe(true);
-    expect(docs?.tabs.map((page) => page.label)).toEqual(['Docs']);
+    expect([docs?.navigable, docs?.tabs.map((page) => page.label)]).toEqual([true, ['Docs']]);
     const settings = SECTIONS.find((each) => each.namespace === 'agency' && each.id === 'general');
     expect(settings?.navigable).toBe(true);
     expect(settings?.tabs.map((page) => page.label)).toEqual([

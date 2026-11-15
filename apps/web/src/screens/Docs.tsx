@@ -82,6 +82,33 @@ function DocsPage(props: {
   );
 }
 
+/** The business's top folders, each with its pages and folders beneath. */
+function DocsTree(props: {
+  readonly tree: DocsTreeResult;
+  readonly chosen: string | null;
+  readonly onChoose: (pageId: string) => void;
+}): ReactElement {
+  const { tree, chosen, onChoose } = props;
+  return (
+    <nav className="docs__tree card" aria-label="Folders">
+      <ul className="docs__branch">
+        {tree.folders
+          .filter((folder) => folder.parentId === null)
+          .map((folder) => (
+            <FolderBranch
+              key={folder.id}
+              folder={folder}
+              folders={tree.folders}
+              pages={tree.pages}
+              chosen={chosen}
+              onChoose={onChoose}
+            />
+          ))}
+      </ul>
+    </nav>
+  );
+}
+
 export function DocsScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
@@ -111,22 +138,7 @@ export function DocsScreen(props: {
       >
         {(tree) => (
           <div className="docs">
-            <nav className="docs__tree card" aria-label="Folders">
-              <ul className="docs__branch">
-                {tree.folders
-                  .filter((folder) => folder.parentId === null)
-                  .map((folder) => (
-                    <FolderBranch
-                      key={folder.id}
-                      folder={folder}
-                      folders={tree.folders}
-                      pages={tree.pages}
-                      chosen={chosen}
-                      onChoose={setChosen}
-                    />
-                  ))}
-              </ul>
-            </nav>
+            <DocsTree tree={tree} chosen={chosen} onChoose={setChosen} />
             <div className="docs__page">
               {chosen === null ? (
                 <Empty title="Choose a page." description="Pick a page in a folder to read it." />
