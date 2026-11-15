@@ -7,6 +7,7 @@
     "tests/ci/production-unit-liveness-and-parked-stop.proof.test.ts",
     "tests/ci/production-unit-parks-and-runs-the-worker.proof.test.ts",
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
+    "tests/ci/restore-drill-killed-parent.test.ts",
     "tests/ci/restore-drill.test.ts",
     "tests/ci/restore-includes-sign-in-tables.test.ts",
     "tests/ci/restore-includes-staging-guards.test.ts",
