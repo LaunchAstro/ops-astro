@@ -843,17 +843,22 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         continue;
       }
       // A child handback answers to a child credential, which the pickup's is
-      // not, and names no record: the credential is its whole target.
+      // not, and names no record: the credential is its whole target. A Docs
+      // write needs a delegation carrying docs itself (#2519, the director's
+      // condition 2), which the pickup's is not, so it is excluded before its
+      // task is read.
       const expected = refusal(
         declaration.name === 'task.decide'
           ? 'DELEGATION_EXCLUDES_DECISION'
           : declaration.name === 'run.child_handback'
             ? 'DELEGATION_NOT_LIVE'
-            : AGENT_SURFACE.has(declaration.name)
-              ? 'DELEGATION_OUT_OF_PURPOSE'
-              : declaration.name === 'task.triage'
-                ? 'DELEGATION_EXCLUDES_INTAKE'
-                : 'DELEGATION_EXCLUDES_OPERATION',
+            : declaration.collection === 'docs'
+              ? 'DELEGATION_EXCLUDES_OPERATION'
+              : AGENT_SURFACE.has(declaration.name)
+                ? 'DELEGATION_OUT_OF_PURPOSE'
+                : declaration.name === 'task.triage'
+                  ? 'DELEGATION_EXCLUDES_INTAKE'
+                  : 'DELEGATION_EXCLUDES_OPERATION',
       );
       // A heartbeat, a dispatch, an observe, a check or a model call, like a
       // handback, names its task through the lease and never through a stray

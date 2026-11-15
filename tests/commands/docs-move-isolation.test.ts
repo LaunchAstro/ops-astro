@@ -2,8 +2,9 @@
 //
 // Docs piece 4a isolation (#2514, standing gate 9): a folder rename, a folder move and a page move
 // never reach another business's folder or page, and never file into one; a docs:write grant held
-// at one client reaches none of them; and an agent under a live docs:write delegation reaches none
-// (the agent path is piece 3's). A canary name never reaches an answer, refusals included.
+// at one client reaches none of them; and an agent under a live docs:write delegation never renames
+// or moves a folder, and moves a page only on the task it names (#2519,
+// docs-agent-moves.test.ts). A canary name never reaches an answer, refusals included.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -151,7 +152,7 @@ async function docsDelegation(
 }
 
 it.skipIf(serverUrl === undefined)(
-  'an agent under a live docs:write delegation renames, moves and moves into nothing',
+  'an agent under a live docs:write delegation renames and moves no folder, and moves no page without naming its task',
   async () => {
     const world = await agentWorld('dma', `docs-move-agent-${randomUUID().slice(0, 8)}`);
     try {
@@ -182,7 +183,12 @@ it.skipIf(serverUrl === undefined)(
       ]) {
         // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
         const answer = await world.asAgent({ ...body, operationId: randomUUID() }, credential);
-        expect(codeOf(answer), body.command).toBe('DELEGATION_EXCLUDES_OPERATION');
+        // A folder's rename and move are a person's; a page move asks the task the agent works under.
+        expect(codeOf(answer), body.command).toBe(
+          body.command === 'docs.update_page'
+            ? 'DELEGATION_OUT_OF_PURPOSE'
+            : 'DELEGATION_EXCLUDES_OPERATION',
+        );
         expect(JSON.stringify(answer)).not.toContain(CANARY);
       }
       const rows = await world.db.admin.execute<{ readonly moved: number }>(

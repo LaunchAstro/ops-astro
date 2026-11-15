@@ -9,7 +9,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { grantTo } from './fixture.ts';
 import {
   agentWorld,
@@ -152,7 +151,7 @@ live(
       { command: 'docs.move_folder', folderId, parentId: parent, taskId: picked.taskId },
     ]) {
       // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
-      expect(isCommandRefusal(await asAgent(body)), body.command).toBe(true);
+      expect(codeOf(await asAgent(body)), body.command).toBe('DELEGATION_EXCLUDES_OPERATION');
     }
     const [row] = await world.db.admin.execute<{ name: string; parent: string | null }>(
       `select name, parent_id::text as parent from public.docs_folders
