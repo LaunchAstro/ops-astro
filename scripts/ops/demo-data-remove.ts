@@ -4,13 +4,22 @@
 // product's own command, and nothing else. No command removes a client, a tag
 // or a thread (#2209), so those stay, named Demo.
 //
-// `task.trash` takes a task's whole subtree, so a listed task is trashed only
-// when its read shows every subtask under it is listed too: real work filed
-// under a demo task stops the run. A task whose decision chain does not verify
-// cannot be read (`task.read` answers 500 DECISION_INTEGRITY for every task
-// behind the break, `reads/verified-decisions.ts`), so what sits under it
-// cannot be seen, and it stops the run as well; it is the owner's to look at.
+// `task.trash` takes a task's whole subtree and the demo makes no subtask, so a
+// listed task is trashed only when its read shows no subtask under it: real
+// work filed under a demo task stops the run. Each trash names its one task in
+// `onlyRecords`, so a subtask filed between the read and the trash is refused
+// by the server under its lock (`TRASH_SUBTREE_CHANGED`, #2525) and nothing is
+// trashed with it. Each run sends its trashes under operation ids of its own:
+// the register keeps a refusal under its id and replays it, so a rerun after
+// the owner has looked must not reuse one. A trash whose answer was lost needs
+// no replay either, since the next run's read finds the task gone.
+//
+// A task whose decision chain does not verify cannot be read (`task.read`
+// answers 500 DECISION_INTEGRITY for every task behind the break,
+// `reads/verified-decisions.ts`), so what sits under it cannot be seen, and it
+// stops the run as well; it is the owner's to look at.
 
+import { randomUUID } from 'node:crypto';
 import {
   applied,
   guarded,
@@ -26,8 +35,8 @@ import {
 /**
  * Trash every task the manifest lists, and nothing else. Each is read first,
  * and one that cannot be read, whose title is not the demo title it was made
- * with, or with a subtask the manifest does not list, stops the run before
- * any task is trashed. One no longer there is counted as gone.
+ * with, or with any subtask, stops the run before any task is trashed. One no
+ * longer there is counted as gone.
  */
 export async function remove(
   raw: Send,
@@ -37,6 +46,7 @@ export async function remove(
   const listed = new Set(tasks.map((t) => t.id));
   const send = guarded(raw, listed, new Set());
   const live: { readonly id: string; readonly revision: number }[] = [];
+  const run = randomUUID();
   for (const task of tasks) {
     // Every read before the first trash.
     // oxlint-disable-next-line no-await-in-loop
@@ -51,16 +61,17 @@ export async function remove(
         `task ${task.id} is titled '${title}', not the demo's '${String(task.name)}'`,
       );
     }
-    if (steps.some((step) => !listed.has(step))) {
-      throw new Refusal(`task ${task.id} has a subtask this demo run did not make`);
+    if (steps.length > 0) {
+      throw new Refusal(`task ${task.id} has a subtask, and a demo run makes none`);
     }
     live.push({ id: task.id, revision });
   }
   for (const { id, revision } of live) {
     const body = {
-      operationId: op(manifest, `remove:${id}:${String(revision)}`),
+      operationId: op(manifest, `remove:${run}:${id}:${String(revision)}`),
       recordId: id,
       expectedRevision: revision,
+      onlyRecords: [id],
     };
     // oxlint-disable-next-line no-await-in-loop
     applied(await send('task.trash', body), 'task.trash');

@@ -79,7 +79,11 @@ or sent to a model.
    with the same manifest carries on and makes nothing twice.
 4. To take it out, run `node scripts/ops/demo-data.mjs remove <manifest.json>`.
    It reads every task the manifest lists, stops before any change if one is no
-   longer the demo task it made, cannot be read, or has a subtask the demo did
-   not make (trashing a task trashes what sits under it), then trashes them.
+   longer the demo task it made, cannot be read, or has any subtask (the demo
+   makes none, and trashing a task trashes what sits under it), then trashes
+   them. Each trash names its one task, so a subtask filed after the read is
+   refused (`TRASH_SUBTREE_CHANGED`) and nothing is trashed with it. After a
+   refusal, deal with what it found and run it again: each run is new to the
+   server, so an old refusal is not replayed.
    The clients, the tag and the threads stay, named Demo: no command removes
    them yet (#2209).
