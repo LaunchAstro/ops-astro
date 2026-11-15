@@ -25,6 +25,8 @@ export const PINNED_SHAPE = {
   'conversation.models': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'docs.page': { spine: false, subject: false, authority: 'declared' },
+  'docs.tree': { spine: false, subject: false, authority: 'declared' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
