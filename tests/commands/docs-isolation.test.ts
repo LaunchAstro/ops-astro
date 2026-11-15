@@ -12,6 +12,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { hold, waitingOn } from '../support/lock-waits.ts';
@@ -152,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('docs isolation: another client', () =>
 describe.skipIf(serverUrl === undefined)(
   'docs isolation: another person’s agent under a live delegation',
   () => {
-    it('an agent whose person holds docs:write reaches no docs command and writes nothing', async () => {
+    it('an agent whose person holds docs:write, under its task delegation or a docs:write one, reaches no docs command and writes nothing', async () => {
       const world = await agentWorld('dca', `docs-agent-${randomUUID().slice(0, 8)}`);
       try {
         const decider = await world.decider('decider');
@@ -170,18 +171,38 @@ describe.skipIf(serverUrl === undefined)(
           await as({ command: 'docs.create_page', folderId, title: CANARY, body: CANARY }),
           'pageId',
         );
-        for (const body of [
+        // A delegation that carries docs:write itself, minted by the runtime as the trial mints it
+        // (scoped to the agent's task: a delegation always names its purpose scope).
+        const docsCredential = await world.db.app.withBusiness(world.business, async (tx) => {
+          const minted = await mintDelegation(tx, {
+            agentActorId: world.agentActorId,
+            delegatePersonId: decider.personId,
+            mintedByActorId: decider.actorId,
+            purpose: `docs_${randomUUID().replaceAll('-', '')}`,
+            collections: ['docs'],
+            actions: ['write'],
+            purposeScope: { kind: 'record', id: picked.taskId },
+            expiresAt: new Date(Date.now() + 3_600_000),
+          });
+          if (!minted.ok) throw new Error(`docs delegation refused ${minted.refusal.code}`);
+          return minted.value.credential;
+        });
+        const bodies = [
           { command: 'docs.create_folder', name: 'agent made' },
           { command: 'docs.create_page', folderId, title: 'agent made', body: '' },
           { command: 'docs.update_page', pageId, expectedVersion: 1, body: 'agent made' },
-        ]) {
-          // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
-          const answer = await world.asAgent(
-            { ...body, operationId: randomUUID() },
-            picked.credential,
-          );
-          expect(codeOf(answer), body.command).not.toBe('not-a-refusal');
-          expect(JSON.stringify(answer)).not.toContain(CANARY);
+        ];
+        for (const [credential, exact] of [
+          [picked.credential, undefined],
+          [docsCredential, 'DELEGATION_EXCLUDES_OPERATION'],
+        ] as const) {
+          for (const body of bodies) {
+            // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
+            const answer = await world.asAgent({ ...body, operationId: randomUUID() }, credential);
+            if (exact === undefined) expect(codeOf(answer), body.command).not.toBe('not-a-refusal');
+            else expect(codeOf(answer), body.command).toBe(exact);
+            expect(JSON.stringify(answer)).not.toContain(CANARY);
+          }
         }
         const rows = await world.db.admin.execute<{ readonly n: number }>(
           `select ((select count(*) from public.docs_folders where business_id = $1)
