@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- C55's cases share one harness; each role's grant check sits beside the pin it proves */
 //
 // C55 (TR-SEC-9; ruling ORCH47 (b)6): the operations view lists the security
 // alerts S0-2 raises, each with its time and what it concerns, never its id,
@@ -30,6 +31,7 @@ import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/wo
 import { attempt, Client } from '../db/backup-identity.fixture.ts';
 import { c55Keys, pathOf } from './c55-operations-world.ts';
 import {
+  asForwarder,
   forwarderOn,
   grantsOnAlertLog,
   ROOT,
@@ -274,14 +276,36 @@ describe.skipIf(serverUrl === undefined)('C55 security alerts', () => {
       await app.end();
     }
     // Every grant on the table, by grantee: nothing to PUBLIC (grantee 0), the
-    // application its two columns' select, the forwarder the kind's insert,
-    // and the backup identity what 0045's default privileges give every table.
+    // application its two columns' select, the forwarder the kind's insert and,
+    // for the ninety-day retention (20261114112100_security_alert_log_retention),
+    // the time's select and delete; the backup identity what 0045's default
+    // privileges give every table.
     const held = await grantsOnAlertLog(harness.world.db.admin);
     expect(held).toEqual([
       'ops_astro_app SELECT at',
       'ops_astro_app SELECT kind',
       'ops_astro_backup SELECT *',
+      'ops_astro_forwarder DELETE *',
       'ops_astro_forwarder INSERT kind',
+      'ops_astro_forwarder SELECT at',
     ]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C55 security alerts, the forwarder', () => {
+  it('C55 security alerts grant: the forwarder reads the time and deletes for retention, and reads no kind', async () => {
+    const as = (text: string) => asForwarder(harness.world.db.admin, text);
+    expect(await as('select at from ops.security_alert_log')).toBe('ok');
+    expect(await as('delete from ops.security_alert_log where false')).toBe('ok');
+    for (const text of [
+      'select kind from ops.security_alert_log',
+      'select seq from ops.security_alert_log',
+      'select * from ops.security_alert_log',
+      'update ops.security_alert_log set at = at',
+      'truncate ops.security_alert_log',
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await as(text), text).toBe('42501');
+    }
   });
 });
