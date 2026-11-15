@@ -217,7 +217,9 @@ export function surfacesOf(
       fetch: asBrowser(token, async (url, init) => await world.api.fetch(new Request(url, init))),
     }),
   });
-  const admin = doors(world.ada.token);
+  // The admin's doors, kept while the admin's bearer is the one they were made with:
+  // `signInAgain` replaces it (#2478), and doors made before would send the lapsed one.
+  let admin = { token: world.ada.token, ...doors(world.ada.token) };
   // C39-T's invitation acts come from the harness's current inviter (`freshInviter`).
   return async (surface, name, body) => {
     const caller = isInvitation(name) ? harness.inviter() : world.ada;
@@ -225,6 +227,8 @@ export function surfacesOf(
       const answer = await harness.asPerson(name, body, 'alpha', caller);
       return said(answer.body, answer.status);
     }
+    if (admin.token !== world.ada.token)
+      admin = { token: world.ada.token, ...doors(world.ada.token) };
     const { cli, web } = caller === world.ada ? admin : doors(caller.token);
     if (surface === 'cli') {
       const answer = await cli.run(name, body);
@@ -237,6 +241,27 @@ export function surfacesOf(
     if ('unavailable' in result) throw new Error(`d06: web unavailable ${result.because}`);
     // The web client answers a refusal as one and any other non-2xx as unavailable.
     return 'ok' in result && result.ok ? said(result.value, 200) : said(result, 400);
+  };
+}
+
+/**
+ * #2478: whether the people are due to sign in again, and if so, signing them
+ * in. A bearer lasts an hour and `d06-generated` runs for hours, so it asks
+ * this before every cell. Due once `everyMs` has passed on `clock` since the
+ * last sign-in (the schedule's own start the first time); answers whether it
+ * signed in.
+ */
+export function signInSchedule(
+  signIn: () => Promise<void>,
+  everyMs: number,
+  clock: () => number = Date.now,
+): () => Promise<boolean> {
+  let at = clock();
+  return async () => {
+    if (clock() - at < everyMs) return false;
+    await signIn();
+    at = clock();
+    return true;
   };
 }
 

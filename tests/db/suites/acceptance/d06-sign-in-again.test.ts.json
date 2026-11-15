@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The d06 harness signs every person, agent and client it holds a bearer for in again, on all three surfaces, so d06-generated's hours-long run outlives no session (#2478)."
+}

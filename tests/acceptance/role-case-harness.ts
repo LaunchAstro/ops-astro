@@ -27,6 +27,7 @@ import { installBusinessSettings } from '../../packages/core-records/src/records
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
 import { agentOwnedBy, enrol } from '../commands/fixture.ts';
 import { enrolCaller, type Caller } from './cast.ts';
+import { signInAgainAll } from './sign-in-again.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
@@ -290,6 +291,7 @@ export async function createHarness(part: string): Promise<Harness> {
     reserve,
     activeRoleKeys,
     writeBothComments,
+    signInAgain: async (options) => await signInAgainAll(world, [...clients, inviter], options),
     close: async () => {
       await world.close();
     },

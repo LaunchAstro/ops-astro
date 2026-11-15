@@ -76,5 +76,12 @@ export interface Harness {
   reserve(task: Task, purpose: string): Promise<Answer>;
   activeRoleKeys(): Promise<readonly string[]>;
   writeBothComments(taskId: string): Promise<readonly Answer[]>;
+  /**
+   * Everyone the harness holds a bearer for, signed in again (#2478): the cast,
+   * the agent, the fixture clients and the current inviter, each bearer
+   * replaced where it is held, so every later call carries the new one.
+   * `expiresIn` is the new bearers' life in seconds, an hour unless given.
+   */
+  signInAgain(options?: { readonly expiresIn?: number }): Promise<void>;
   close(): Promise<void>;
 }
