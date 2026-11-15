@@ -10,6 +10,7 @@
 import { useState, type ReactElement } from 'react';
 import type { DocsTreeResult } from '../../../../../packages/core-wire/src/index.ts';
 import type { DocsSend, DocsWriteName } from './docs-write.ts';
+import { SendRow } from './PageEditor.tsx';
 
 type Folder = DocsTreeResult['folders'][number];
 
@@ -145,6 +146,45 @@ function TextField(props: {
   );
 }
 
+/** The fields one act asks for. */
+function ActFields(props: {
+  readonly act: DocsAct;
+  readonly folders: readonly Folder[];
+  readonly typed: Typed;
+  readonly onType: (typed: Typed) => void;
+}): ReactElement {
+  const { act, typed, onType } = props;
+  const named = act.kind === 'new-folder' || act.kind === 'rename-folder';
+  return (
+    <>
+      {named ? (
+        <TextField
+          field="name"
+          label="Name"
+          value={typed.name}
+          onType={(name) => onType({ ...typed, name })}
+        />
+      ) : null}
+      {act.kind === 'new-page' ? (
+        <TextField
+          field="title"
+          label="Title"
+          value={typed.title}
+          onType={(title) => onType({ ...typed, title })}
+        />
+      ) : null}
+      {named ? null : (
+        <FolderChoice
+          act={act}
+          folders={props.folders}
+          value={typed.folder}
+          onChoose={(folder) => onType({ ...typed, folder })}
+        />
+      )}
+    </>
+  );
+}
+
 /** One open act: its fields, Send and Cancel, and the server's words when it refuses. */
 export function DocsActForm(props: {
   readonly act: DocsAct;
@@ -157,8 +197,6 @@ export function DocsActForm(props: {
   const [typed, setTyped] = useState<Typed>(() => startOf(act, folders));
   const [words, setWords] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const named = act.kind === 'new-folder' || act.kind === 'rename-folder';
-  const chooses = act.kind !== 'new-folder' && act.kind !== 'rename-folder';
   const press = async () => {
     const [name, body] = requestOf(act, typed);
     setBusy(true);
@@ -168,52 +206,17 @@ export function DocsActForm(props: {
     if (answer.kind === 'refused') setWords(answer.words);
   };
   return (
-    <form
-      className="card stack"
-      aria-label={LABELS[act.kind]}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void press();
-      }}
-    >
+    <section className="card stack" aria-label={LABELS[act.kind]}>
       <h3>{LABELS[act.kind]}</h3>
-      {named ? (
-        <TextField
-          field="name"
-          label="Name"
-          value={typed.name}
-          onType={(name) => setTyped({ ...typed, name })}
-        />
-      ) : null}
-      {act.kind === 'new-page' ? (
-        <TextField
-          field="title"
-          label="Title"
-          value={typed.title}
-          onType={(title) => setTyped({ ...typed, title })}
-        />
-      ) : null}
-      {chooses ? (
-        <FolderChoice
-          act={act}
-          folders={folders}
-          value={typed.folder}
-          onChoose={(folder) => setTyped({ ...typed, folder })}
-        />
-      ) : null}
-      {words === null ? null : (
-        <p className="field__error" role="alert" data-docs-refusal="">
-          {words}
-        </p>
-      )}
-      <div className="row">
-        <button className="btn btn--primary" type="submit" data-docs-act="send" disabled={busy}>
-          {busy ? 'Sending…' : LABELS[act.kind]}
-        </button>
-        <button className="btn" type="button" data-docs-act="cancel" onClick={props.onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
+      <ActFields act={act} folders={folders} typed={typed} onType={setTyped} />
+      <SendRow
+        words={words}
+        busy={busy}
+        label={LABELS[act.kind]}
+        act="send"
+        onSend={() => void press()}
+        onCancel={props.onCancel}
+      />
+    </section>
   );
 }

@@ -10,6 +10,68 @@ import { useState, type ReactElement } from 'react';
 import { Markdown } from '../task/Markdown.tsx';
 import type { DocsSend } from './docs-write.ts';
 
+/** The draft and its preview, side by side on a desktop. */
+function DraftAndPreview(props: {
+  readonly pageId: string;
+  readonly draft: string;
+  readonly onType: (draft: string) => void;
+}): ReactElement {
+  const { pageId, draft } = props;
+  return (
+    <div className="docs__edit">
+      <div className="field">
+        <label className="tf__k" htmlFor={`docs-draft-${pageId}`}>
+          Markdown
+        </label>
+        <textarea
+          id={`docs-draft-${pageId}`}
+          className="input docs__draft"
+          data-docs-draft=""
+          value={draft}
+          onChange={(event) => props.onType(event.target.value)}
+        />
+      </div>
+      <div className="card" data-docs-preview="" aria-label="Preview">
+        <Markdown source={draft} />
+      </div>
+    </div>
+  );
+}
+
+/** The server's words for the last refused press, Save and Cancel. */
+export function SendRow(props: {
+  readonly words: string | null;
+  readonly busy: boolean;
+  readonly label: string;
+  readonly act: 'save' | 'send';
+  readonly onSend: () => void;
+  readonly onCancel: () => void;
+}): ReactElement {
+  return (
+    <>
+      {props.words === null ? null : (
+        <p className="field__error" role="alert" data-docs-refusal="">
+          {props.words}
+        </p>
+      )}
+      <div className="row">
+        <button
+          className="btn btn--primary"
+          type="button"
+          data-docs-act={props.act}
+          disabled={props.busy}
+          onClick={props.onSend}
+        >
+          {props.busy ? 'Sending…' : props.label}
+        </button>
+        <button className="btn" type="button" data-docs-act="cancel" onClick={props.onCancel}>
+          Cancel
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function PageEditor(props: {
   readonly pageId: string;
   /** The version the page was opened at: the one a save is checked against. */
@@ -36,42 +98,15 @@ export function PageEditor(props: {
   };
   return (
     <div className="stack" data-docs-editor="">
-      <div className="docs__edit">
-        <div className="field">
-          <label className="tf__k" htmlFor={`docs-draft-${pageId}`}>
-            Markdown
-          </label>
-          <textarea
-            id={`docs-draft-${pageId}`}
-            className="input docs__draft"
-            data-docs-draft=""
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-        </div>
-        <div className="card" data-docs-preview="" aria-label="Preview">
-          <Markdown source={draft} />
-        </div>
-      </div>
-      {words === null ? null : (
-        <p className="field__error" role="alert" data-docs-refusal="">
-          {words}
-        </p>
-      )}
-      <div className="row">
-        <button
-          className="btn btn--primary"
-          type="button"
-          data-docs-act="save"
-          disabled={busy}
-          onClick={() => void save()}
-        >
-          {busy ? 'Saving…' : 'Save'}
-        </button>
-        <button className="btn" type="button" data-docs-act="cancel" onClick={props.onCancel}>
-          Cancel
-        </button>
-      </div>
+      <DraftAndPreview pageId={pageId} draft={draft} onType={setDraft} />
+      <SendRow
+        words={words}
+        busy={busy}
+        label="Save"
+        act="save"
+        onSend={() => void save()}
+        onCancel={props.onCancel}
+      />
     </div>
   );
 }
