@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Docs piece 4a (#2514): two crossing folder moves queued on the tree lock leave one applied and the other refused, never a cycle; a rename racing a create of the same name leaves one folder of that name and a UNIQUE_VALUE_TAKEN refusal, never a fault."
+}

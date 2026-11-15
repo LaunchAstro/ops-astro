@@ -19,5 +19,8 @@ const ON_THE_BUSINESS = (untargetedIdentifiers: readonly string[]) =>
 export const DOCS_SURFACE: readonly CommandDeclaration[] = [
   declare('docs.create_folder', 'write', ON_THE_BUSINESS(['parentId'])),
   declare('docs.create_page', 'write', ON_THE_BUSINESS(['folderId'])),
-  declare('docs.update_page', 'write', ON_THE_BUSINESS(['pageId'])),
+  declare('docs.update_page', 'write', ON_THE_BUSINESS(['pageId', 'folderId'])),
+  // #2514: a folder renamed or moved inside the business.
+  declare('docs.rename_folder', 'write', ON_THE_BUSINESS(['folderId'])),
+  declare('docs.move_folder', 'write', ON_THE_BUSINESS(['folderId', 'parentId'])),
 ];

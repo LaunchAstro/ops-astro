@@ -12,4 +12,6 @@ export const DOCS_EFFECTS: {
   'docs.create_folder': writing(business('docs_folders')),
   'docs.create_page': writing(business('docs_pages', 'docs_page_versions')),
   'docs.update_page': writing(business('docs_pages', 'docs_page_versions')),
+  'docs.rename_folder': writing(business('docs_folders')),
+  'docs.move_folder': writing(business('docs_folders')),
 };

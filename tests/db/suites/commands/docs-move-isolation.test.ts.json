@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Docs piece 4a isolation (#2514): a folder rename, folder move or page move never reaches or files into another business's folder or page; a docs:write grant held at one client reaches none; an agent under a docs:write delegation reaches none; a canary never reaches an answer."
+}

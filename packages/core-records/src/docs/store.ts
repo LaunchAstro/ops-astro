@@ -11,7 +11,9 @@
 // Each write holds the caller's `docs:write` grants (`holdCoveringGrants`) and asks them again
 // at the statement's own instant once its rows are locked: a grant revoked or expired while the
 // write waited covers nothing. An update locks its page, then compares the version it read, so
-// two saves from one version leave one and the other is told the page moved on.
+// two saves from one version leave one and the other is told the page moved on. A page's move to
+// another folder of the business (#2514) is such an update; folder renames and moves are in
+// `folders.ts`.
 
 import { randomUUID } from 'node:crypto';
 import type { Subject } from '../authority/grants.ts';
@@ -62,7 +64,7 @@ const docsWrite = (subjects: readonly Subject[]): Covering => ({
 });
 
 /** The caller's `docs:write` held for the transaction and asked again now, at business scope. */
-async function writeStands(tx: TenantQuery, subjects: readonly Subject[]): Promise<boolean> {
+export async function writeStands(tx: TenantQuery, subjects: readonly Subject[]): Promise<boolean> {
   const covering = docsWrite(subjects);
   await holdCoveringGrants(tx, covering);
   return await coveredAt(tx, covering, null);
@@ -70,8 +72,9 @@ async function writeStands(tx: TenantQuery, subjects: readonly Subject[]): Promi
 
 async function folderHere(tx: TenantQuery, folderId: string): Promise<boolean> {
   if (!isUuid(folderId)) return false;
-  // No row lock: the app role may not delete or move a folder, and the insert's foreign key
-  // key-share locks the folder it names, so one read here is still there at the insert.
+  // No row lock: no folder is ever deleted, and the insert's foreign key key-share locks the
+  // folder it names, so one read here is still there at the insert. A folder moved meanwhile
+  // (#2514) is still the business's, and a new folder or page under it makes no cycle.
   const rows = await tx.query<{ readonly id: string }>(
     'select id from public.docs_folders where business_id = $1 and id = $2::uuid',
     [tx.businessId, folderId],
@@ -154,6 +157,23 @@ export async function createDocsPage(
   return { kind: 'created', pageId: id, version: 1 };
 }
 
+/** A page's new title, body, folder and version, and the version row that records it. */
+async function savePage(
+  tx: TenantQuery,
+  next: Parameters<typeof appendVersion>[1],
+  folderId: string,
+  actorId: string,
+): Promise<void> {
+  await tx.query(
+    `update public.docs_pages
+        set title = $3, body = $4, version = $5, updated_by_actor_id = $6, updated_at = now(),
+            folder_id = $7::uuid
+      where business_id = $1 and id = $2`,
+    [tx.businessId, next.id, next.title, next.body, next.number, actorId, folderId],
+  );
+  await appendVersion(tx, next, actorId);
+}
+
 export async function updateDocsPage(
   tx: TenantQuery,
   writer: DocsWriter,
@@ -162,10 +182,13 @@ export async function updateDocsPage(
     readonly expectedVersion: number;
     readonly title: string | undefined;
     readonly body: string | undefined;
+    /** A move (#2514): the folder the page goes to, in this business. */
+    readonly folderId?: string | undefined;
   },
 ): Promise<
   | { readonly kind: 'updated'; readonly version: number }
   | { readonly kind: 'no-page' }
+  | { readonly kind: 'no-folder' }
   | { readonly kind: 'stale'; readonly version: number }
   | Lost
 > {
@@ -174,12 +197,15 @@ export async function updateDocsPage(
     readonly id: string;
     readonly title: string;
     readonly body: string;
+    readonly folder_id: string;
     readonly version: number;
   }>(
-    `select id, title, body, version from public.docs_pages where business_id = $1 and id = $2 for update`,
+    `select id, title, body, folder_id, version from public.docs_pages where business_id = $1 and id = $2 for update`,
     [tx.businessId, input.pageId.toLowerCase()],
   );
   if (page === undefined) return { kind: 'no-page' };
+  const moving = input.folderId;
+  if (moving !== undefined && !(await folderHere(tx, moving))) return { kind: 'no-folder' };
   if (!(await writeStands(tx, writer.subjects))) return { kind: 'not-granted' };
   if (page.version !== input.expectedVersion) return { kind: 'stale', version: page.version };
   const next = {
@@ -188,12 +214,6 @@ export async function updateDocsPage(
     title: input.title ?? page.title,
     body: input.body ?? page.body,
   };
-  await tx.query(
-    `update public.docs_pages
-        set title = $3, body = $4, version = $5, updated_by_actor_id = $6, updated_at = now()
-      where business_id = $1 and id = $2`,
-    [tx.businessId, page.id, next.title, next.body, next.number, writer.actorId],
-  );
-  await appendVersion(tx, next, writer.actorId);
+  await savePage(tx, next, moving?.toLowerCase() ?? page.folder_id, writer.actorId);
   return { kind: 'updated', version: next.number };
 }

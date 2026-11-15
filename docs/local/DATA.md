@@ -341,7 +341,10 @@ Docs are three tables of the business's own (20261115002300, #2493):
 parent whatever its case), `docs_pages` (a title, its folder and a Markdown
 body as text, with the version number of its newest write) and
 `docs_page_versions` (the title and body of every create and update, keyed by
-page and number, never changed).
+page and number, never changed). Since 20261115104000 (#2514) a folder is
+renamed or moved and a page moved between folders: a move locks every folder of
+the business in id order before it reads the tree, so no folder lands under
+itself.
 
 A new task ranks after the last of its siblings: the tasks under its parent,
 or for a top-level task the tasks on its board with no parent. Trashed siblings

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Docs piece 4a (#2514): docs.rename_folder and docs.move_folder under docs:write on the business; a move under the folder itself or its own subfolder, a name the target holds and a missing folder or parent are refused and change nothing; a page move through docs.update_page names its version and appends a version row; each applied rename and move is audited."
+}

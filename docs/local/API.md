@@ -2835,6 +2835,14 @@ Each create and update appends one row to `docs_page_versions`; the answer's
 `detail` carries `folderId`, or `pageId` and `version`. No agent reaches them
 yet, although the key catalogue allows `docs:write` inside a delegation.
 
+`docs.rename_folder` (`folderId`, `name`) and `docs.move_folder` (`folderId`,
+`parentId?`; none moves it to the top) take `docs:write` the same way (#2514),
+and `docs.update_page` takes a `folderId?` that moves the page, as a save that
+names its `expectedVersion` and appends a version row. A move under the folder
+itself or one of its own subfolders is `FIELD_VALUE_INVALID` naming `parentId`;
+a name the target folder holds already is `UNIQUE_VALUE_TAKEN` naming `name`.
+Their `detail` carries `folderId`.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `task.bin`, `task.ledger`, `task.search`,
