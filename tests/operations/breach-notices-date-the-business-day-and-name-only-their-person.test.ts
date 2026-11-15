@@ -106,7 +106,7 @@ describe('breach notices drafted from the runbook template: the people named', (
 });
 
 describe('breach notices drafted from the runbook template: names in any script', () => {
-  it('a name whose lower case is longer than itself is still taken out (Sol S2502-1)', () => {
+  it('a name whose lower case is longer than itself is still taken out', () => {
     const notices = draftBreachNotices(RUNBOOK, {
       incident: incidentOf('İpek received the invoice.', new Date('2026-10-12T01:00:00Z')),
       oaic: OAIC,
@@ -119,7 +119,7 @@ describe('breach notices drafted from the runbook template: names in any script'
     expect(alex?.body).not.toContain('İpek');
   });
 
-  it('a letter outside the basic plane before a name still makes it part of a longer word (Sol S2502-2)', () => {
+  it('a letter outside the basic plane before a name still makes it part of a longer word', () => {
     const word = `${String.fromCodePoint(0x1_04_00)}Sam`;
     const notices = draftBreachNotices(RUNBOOK, {
       incident: incidentOf(`${word} received the invoice.`, new Date('2026-10-12T01:00:00Z')),
