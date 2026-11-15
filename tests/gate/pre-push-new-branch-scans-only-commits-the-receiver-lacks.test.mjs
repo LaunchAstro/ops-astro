@@ -7,7 +7,8 @@
 // remote's own tracking tips (refs/remotes/<remote>/*) and the receiver
 // advertises it right now; anything else is scanned as before.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
@@ -126,3 +127,47 @@ test('with nothing passed on this machine, a first push to the receiver holding 
   assert.deepEqual(scanned(result.output), [`${dirty}..${tip}`]);
   assert.equal(f.published('origin', 'fresh'), tip);
 });
+
+// Sol's S2504-1 and S2504-2 on d3ae6f0: the receiver that answers ls-remote must be
+// the one the push reaches. A relative URL that names another remote, and an SSH
+// command that serves fetches and pushes from different repositories, both broke that.
+const answeredElsewhere = (t, mode) => {
+  const { f, tip } = dirtyMainOnOrigin(t);
+  const previous = f.git('remote', 'get-url', 'origin');
+  const receiver = join(f.repo, 'receiver.git');
+  f.git('init', '-q', '--bare', receiver);
+  if (mode === 'relative') {
+    f.git('remote', 'set-url', 'origin', 'receiver.git');
+    f.git('remote', 'add', 'receiver.git', previous);
+  } else {
+    const ssh = join(f.scratch, 'ssh');
+    writeFileSync(
+      ssh,
+      `#!/bin/sh\ncase "$*" in\n  *git-upload-pack*) exec git-upload-pack '${previous}' ;;\n` +
+        `  *git-receive-pack*) exec git-receive-pack '${receiver}' ;;\n  *) exit 1 ;;\nesac\n`,
+    );
+    chmodSync(ssh, 0o755);
+    f.git('config', 'core.sshCommand', ssh);
+    f.git('config', 'ssh.variant', 'simple');
+    f.git('remote', 'set-url', 'origin', `${['git', 'synthetic.invalid'].join('@')}:repo.git`);
+  }
+  return { f, tip, receiver };
+};
+
+for (const mode of ['relative', 'ssh']) {
+  test(`a ${mode} push URL whose ls-remote answers from another repository keeps the full scan`, (t) => {
+    const { f, tip, receiver } = answeredElsewhere(t, mode);
+    const result = f.push('origin', 'fresh');
+    assert.equal(result.status, 1, result.output);
+    assert.deepEqual(scanned(result.output), [tip]);
+    const got = spawnSync('git', [
+      '--git-dir',
+      receiver,
+      'rev-parse',
+      '-q',
+      '--verify',
+      'refs/heads/fresh',
+    ]);
+    assert.notEqual(got.status, 0, 'the receiver that lacked the old history got nothing');
+  });
+}
