@@ -25,11 +25,19 @@ case "$remote/$branch" in
   *[!A-Za-z0-9._/-]* | -*) echo "pass-main: refusing an unusual remote or branch name" >&2; exit 2 ;;
 esac
 
-git fetch -q -- "$remote" "+refs/heads/$branch:refs/remotes/$remote/$branch"
-tip=$(git rev-parse --verify "refs/remotes/$remote/$branch^{commit}")
+# Git's own diagnostics quote the remote's URL, which can hold a key or a
+# denied term, so a failure here says only that it failed, in fixed words.
+stop() {
+  echo "pass-main: $1; recording nothing" >&2
+  exit 1
+}
+url=$(git remote get-url --push -- "$remote" 2>/dev/null) || stop "no such remote"
+git fetch -q -- "$remote" "+refs/heads/$branch:refs/remotes/$remote/$branch" >/dev/null 2>&1 ||
+  stop "the fetch of the remote's branch failed"
+tip=$(git rev-parse -q --verify "refs/remotes/$remote/$branch^{commit}") ||
+  stop "the fetched branch is not a commit"
 zero=0000000000000000000000000000000000000000
 [ ${#tip} -eq 64 ] && zero=0000000000000000000000000000000000000000000000000000000000000000
-url=$(git remote get-url --push -- "$remote")
 
 # Through git itself, as a push runs it: the same hook (core.hooksPath), the
 # same PATH (git puts its exec path first) and so the same fingerprint, so the
