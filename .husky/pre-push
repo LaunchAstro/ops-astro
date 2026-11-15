@@ -184,6 +184,46 @@ first_push_range() {
   fi
 }
 
+# The range a branch's first push scans when the push target already holds
+# part of it (DECISIONS 130): BASE..LOCAL, with BASE a commit that is both one
+# of the target remote's own tracking tips (refs/remotes/$2/*, never another
+# remote's) and a tip the receiver at $3 advertises right now. A tracking ref
+# alone proves nothing: it can be stale, or the remote's URL can have changed
+# since the fetch. Asking the receiver closes both. A URL rewrite rule would
+# make that question reach a different receiver than the push (Git rewrites a
+# pushed URL again when it is handed to a new command), so with any rule
+# configured, a push to a bare URL, or a remote name outside plain characters,
+# there is no BASE. Of the candidates LOCAL reaches, BASE leaves the fewest to
+# scan. Commits under BASE were scanned when they were published there; this
+# machine did not scan them, so a push narrowed this way records no receipt.
+remote_base_range() {
+  case "$2" in
+    '' | *[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  [ "$2" != "$3" ] || return 1
+  git config --get "remote.$2.url" >/dev/null 2>&1 || return 1
+  if git config --get-regexp '^url\..*\.(push)?insteadof$' >/dev/null 2>&1; then
+    return 1
+  fi
+  [ "$(git cat-file -t "$1" 2>/dev/null || true)" = commit ] || return 1
+  tracked=$(git for-each-ref --format='%(objectname)' "refs/remotes/$2/" | sort -u) &&
+    [ -n "$tracked" ] || return 1
+  advertised=$(git ls-remote -- "$3" 2>/dev/null) || return 1
+  advertised=$(printf '%s\n' "$advertised" | awk '{ print $1 }' | sort -u)
+  base=""
+  fewest=""
+  for tip in $({ printf '%s\n' "$tracked"; printf '%s\n' "$advertised"; } | sort | uniq -d); do
+    if git merge-base --is-ancestor "$tip" "$1" 2>/dev/null &&
+      count=$(git rev-list --count "$tip..$1") &&
+      { [ -z "$fewest" ] || [ "$count" -lt "$fewest" ]; }; then
+      fewest=$count
+      base=$tip
+    fi
+  done
+  [ -n "$base" ] || return 1
+  echo "$base..$1"
+}
+
 # Points the gate and public-content runs at one commit's scanners, or at
 # the checkout's with no commit. A commit whose scanners cannot be read is
 # refused: nothing is published unscanned.
@@ -343,9 +383,15 @@ scan() {
 # first-push case, and the one that matters most. Nothing local proves what
 # the receiver holds (a remote-tracking ref can be stale, and a rewritten URL
 # or SSH command can reach another receiver), so the range is every commit
-# this machine's gate has not passed, not every commit the remote lacks.
+# this machine's gate has not passed, less what the receiver itself says it
+# holds among the target remote's tracking tips (remote_base_range), never
+# merely every commit a remote-tracking ref says the remote has.
 pushed=""
 had_input=0
+# Git names the push target: the remote's name (or the URL, for a push to a
+# bare URL) and the URL it pushes to. remote_base_range reads both.
+push_remote=${1:-}
+push_url=${2:-}
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -z "${local_sha:-}" ] && continue
   had_input=1
@@ -382,9 +428,18 @@ if [ -n "$pushed" ]; then
         public_fingerprint=$(printf '%s %s\n' "$fingerprint" "$public_main" | git hash-object --stdin) || public_fingerprint=""
       fi
     fi
+    narrowed=0
     if [ "$range" = first ]; then
       if [ -n "$fingerprint" ]; then
         range=$(first_push_range "$sha" "$fingerprint")
+        # The receiver's own tips, where they leave fewer to scan than the receipts.
+        if held=$(remote_base_range "$sha" "$push_remote" "$push_url") &&
+          held_count=$(git rev-list --count "$held") &&
+          range_count=$(git rev-list --count "$range") &&
+          [ "$held_count" -lt "$range_count" ]; then
+          range=$held
+          narrowed=1
+        fi
       else
         range=$sha
       fi
@@ -399,7 +454,7 @@ if [ -n "$pushed" ]; then
     # does not name, so nothing is recorded.
     if [ -n "$fingerprint" ] && [ "$(git cat-file -t "$sha" 2>/dev/null || true)" = commit ]; then
       if pinned_push && [ "$(scan_fingerprint "$sha" || true)" = "$fingerprint" ]; then
-        if [ "${item#*:}" = first ]; then
+        if [ "${item#*:}" = first ] && [ "$narrowed" -eq 0 ]; then
           echo "$(git rev-parse "$sha") $fingerprint" >> "$passed_list"
         fi
         if [ -n "$public_fingerprint" ] &&

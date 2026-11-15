@@ -31,6 +31,8 @@ const recorded = (f) => {
 const mainElsewhere = (t, remotes, fetched) => {
   const f = firstPushFixture(t, { hooked: false });
   for (const remote of remotes) f.git('push', '-q', remote, 'main');
+  // A push writes the remote's tracking ref too; only the fetched remotes keep one here.
+  for (const remote of remotes) f.git('update-ref', '-d', `refs/remotes/${remote}/main`);
   for (const remote of fetched) f.git('fetch', '-q', remote);
   installHook(f.repo);
   f.git('checkout', '-q', '-b', 'fresh');

@@ -209,7 +209,9 @@ test('a refused commit is not passed: a clean branch built on it is still scanne
   assert.equal(f.published('origin', 'built-on-it'), '');
 });
 
-test('with nothing passed on this machine, a first push scans everything, even with an origin/main', (t) => {
+// DECISIONS 130: a commit the push target already holds is not published again.
+// What protects publication is that a receiver which lacks it gets it scanned.
+const dirtyMainOnOrigin = (t) => {
   // History reaches the remote before the hook exists here: a fresh clone
   // has the same shape, an origin/main and no commit this gate has passed.
   const f = firstPushFixture(t, { hooked: false });
@@ -218,18 +220,31 @@ test('with nothing passed on this machine, a first push scans everything, even w
   f.git('fetch', '-q', 'origin');
   assert.equal(f.git('rev-parse', 'refs/remotes/origin/main'), dirty);
   installHook(f.repo);
-
   f.git('checkout', '-q', '-b', 'fresh');
-  const tip = f.commit('fresh.txt', 'clean\n', 'fresh');
-  const result = f.push('origin', 'fresh');
+  return { f, dirty, tip: f.commit('fresh.txt', 'clean\n', 'fresh') };
+};
+
+test('with nothing passed on this machine, a first push to another receiver scans everything', (t) => {
+  const { f, tip } = dirtyMainOnOrigin(t);
+  const result = f.push('elsewhere', 'fresh');
   assert.equal(result.status, 1, result.output);
   assert.deepEqual(scanned(result.output), [tip]);
-  assert.equal(f.published('origin', 'fresh'), '');
+  assert.equal(f.published('elsewhere', 'fresh'), '');
+});
+
+test('with nothing passed on this machine, a first push to the receiver holding main scans only past it', (t) => {
+  const { f, dirty, tip } = dirtyMainOnOrigin(t);
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(scanned(result.output), [`${dirty}..${tip}`]);
+  assert.equal(f.published('origin', 'fresh'), tip);
 });
 
 test('a record with one line not of its form is not trusted at all', (t) => {
   const f = firstPushFixture(t);
   assert.equal(f.push('origin', 'main').status, 0);
+  // Only the record may narrow here: the receiver's own tip would (DECISIONS 130).
+  f.git('update-ref', '-d', 'refs/remotes/origin/main');
   appendFileSync(recordOf(f), 'main\n');
 
   f.git('checkout', '-q', '-b', 'after-damage');
@@ -255,6 +270,8 @@ test('a passed commit the pushed commit does not reach does not narrow its scan'
 test('a private list that arrives after a commit passed means a full scan', (t) => {
   const f = firstPushFixture(t);
   assert.equal(f.push('origin', 'main').status, 0);
+  // Only the record may narrow here: the receiver's own tip would (DECISIONS 130).
+  f.git('update-ref', '-d', 'refs/remotes/origin/main');
   const list = join(f.scratch, 'terms.txt');
   // Built at run time: a term written here would be found in this file's own
   // copy, which the fixture commits with the scanners.
@@ -270,6 +287,8 @@ test('a private list that arrives after a commit passed means a full scan', (t) 
 test('a record that is a symlink is not trusted', (t) => {
   const f = firstPushFixture(t);
   assert.equal(f.push('origin', 'main').status, 0);
+  // Only the record may narrow here: the receiver's own tip would (DECISIONS 130).
+  f.git('update-ref', '-d', 'refs/remotes/origin/main');
   const record = recordOf(f);
   renameSync(record, `${record}.target`);
   symlinkSync(`${record}.target`, record);
