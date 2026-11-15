@@ -9,6 +9,7 @@
 // remote says it holds.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -42,7 +43,8 @@ const cleared = [
 
 /** pass-main.sh in the fixture repository, with the fixture's private list. */
 const receipt = (f, terms = f.terms) => {
-  const env = { ...process.env, HUB_GATE_TERMS: terms, HUB_PRE_PUSH_HOOK: hook };
+  // The fixture's hook wrapper runs FIRST_PUSH_HOOK, as its own pushes do.
+  const env = { ...process.env, HUB_GATE_TERMS: terms, FIRST_PUSH_HOOK: hook };
   for (const name of cleared) delete env[name];
   const result = spawnSync('sh', [passMain, 'origin', 'main'], {
     cwd: f.repo,
@@ -114,7 +116,8 @@ test('a key in main from before any receipt is found by pass-main, which records
 test('a changed private list voids the receipt: the first push scans everything', (t) => {
   const { f } = mergedMain(t);
   assert.equal(receipt(f).status, 0);
-  writeFileSync(f.terms, `${readFileSync(f.terms, 'utf8')}zq-another-made-up-term\n`);
+  // Built at run time: a term written here would be found in this file's copy in the fixture.
+  writeFileSync(f.terms, `${readFileSync(f.terms, 'utf8')}zq${randomBytes(6).toString('hex')}\n`);
   f.git('checkout', '-q', '-b', 'fresh');
   const tip = f.commit('fresh.txt', 'clean\n', 'fresh');
   const result = f.push('origin', 'fresh');
