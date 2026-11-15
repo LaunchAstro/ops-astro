@@ -153,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('docs isolation: another client', () =>
 describe.skipIf(serverUrl === undefined)(
   'docs isolation: another person’s agent under a live delegation',
   () => {
-    it('an agent whose person holds docs:write, under its task delegation or a docs:write one, reaches no docs command and writes nothing', async () => {
+    it('an agent whose person holds docs:write reaches no docs command without its docs:write delegation and the task it names, and writes nothing', async () => {
       const world = await agentWorld('dca', `docs-agent-${randomUUID().slice(0, 8)}`);
       try {
         const decider = await world.decider('decider');
@@ -178,7 +178,16 @@ describe.skipIf(serverUrl === undefined)(
           { command: 'docs.update_page', pageId, expectedVersion: 1, body: 'agent made' },
         ];
         await refusedEach(world, bodies, picked.credential);
-        await refusedEach(world, bodies, docsCredential, 'DELEGATION_EXCLUDES_OPERATION');
+        // Under its docs:write delegation an agent still names the task it works under (#2519):
+        // a body naming none is checked on no task, outside the delegation's purpose.
+        await refusedEach(world, bodies, docsCredential, 'DELEGATION_OUT_OF_PURPOSE');
+        const taskId = picked.taskId;
+        const onTask = [
+          { command: 'docs.create_folder', name: 'agent made', taskId },
+          { command: 'docs.create_page', folderId, title: 'agent made', body: '', taskId },
+          { command: 'docs.update_page', pageId, expectedVersion: 1, body: 'agent made', taskId },
+        ];
+        await refusedEach(world, onTask, picked.credential, 'DELEGATION_EXCLUDES_OPERATION');
         const rows = await world.db.admin.execute<{ readonly n: number }>(
           `select ((select count(*) from public.docs_folders where business_id = $1)
                  + (select count(*) from public.docs_page_versions where business_id = $1))::int as n`,

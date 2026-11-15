@@ -66,6 +66,8 @@ const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set([
   ...(['task.decide', 'task.create', 'task.request_delete', 'task.take_launch'] as const),
   ...(['review.open', 'review.capture', 'review.pin_comment', 'review.propose_change'] as const),
   'review.make_change_task',
+  // The hold's pickup delegation carries no docs: each Docs write is excluded from it (#2519).
+  ...(['docs.create_folder', 'docs.create_page', 'docs.update_page'] as const),
 ]);
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),

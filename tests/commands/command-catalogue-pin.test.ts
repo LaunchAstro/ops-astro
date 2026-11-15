@@ -629,9 +629,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
   'tag.create': [],
-  'docs.create_folder': ['parentId'],
-  'docs.create_page': ['folderId'],
-  'docs.update_page': ['pageId', 'folderId'],
+  'docs.create_folder': ['parentId', 'taskId'],
+  'docs.create_page': ['folderId', 'taskId'],
+  'docs.update_page': ['pageId', 'folderId', 'taskId'],
   'docs.rename_folder': ['folderId'],
   'docs.move_folder': ['folderId', 'parentId'],
   'agent.create': [],
@@ -820,6 +820,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  // The three Docs writes, on the task the agent names in taskId (#2519).
+  'docs.create_folder',
+  'docs.create_page',
+  'docs.update_page',
   'live_correction.request',
   'model.call',
   'onboarding.step_result',
@@ -1494,7 +1498,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same twenty-eight, three of them before a pickup', () => {
+  it('lets an agent reach the same thirty-one, three of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

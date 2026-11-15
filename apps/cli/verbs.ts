@@ -227,6 +227,45 @@ export const VERB_TABLE: readonly VerbRow[] = [
     usage: '[--fields a,b] [--json]',
     body: () => ({}),
   },
+  // Docs (#2519): an agent names the task it works under with --task; a person names none.
+  {
+    verb: 'docs folder',
+    command: 'docs.create_folder',
+    usage: '--name <text> [--parent <folder id>] [--task <id>]',
+    body: (_id, flags) => ({
+      name: need(flags, 'name'),
+      ...optional('parentId', maybe(flags, 'parent')),
+      ...optional('taskId', maybe(flags, 'task')),
+    }),
+  },
+  {
+    verb: 'docs page',
+    command: 'docs.create_page',
+    usage: '--folder <id> --title <text> --text <markdown> [--task <id>]',
+    body: (_id, flags) => ({
+      folderId: need(flags, 'folder'),
+      title: need(flags, 'title'),
+      body: need(flags, 'text'),
+      ...optional('taskId', maybe(flags, 'task')),
+    }),
+  },
+  {
+    verb: 'docs update',
+    command: 'docs.update_page',
+    usage: '<page id> --version n [--title <text>] [--text <markdown>] [--task <id>]',
+    body: (id, flags) => {
+      if (id === undefined) throw new UsageError('name the page by its id');
+      const version = Number(need(flags, 'version'));
+      if (!Number.isInteger(version)) throw new UsageError('--version is a whole number');
+      return {
+        pageId: id,
+        expectedVersion: version,
+        ...optional('title', maybe(flags, 'title')),
+        ...optional('body', maybe(flags, 'text')),
+        ...optional('taskId', maybe(flags, 'task')),
+      };
+    },
+  },
 ];
 
 /** The whole help, as an agent loads it: one line per verb. */

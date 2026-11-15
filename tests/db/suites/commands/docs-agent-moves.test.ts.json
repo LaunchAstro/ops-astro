@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "Docs, the agent path after the folder moves (#2519): an agent's page move is asked as its save is (its task's docs:write delegation, the person's business-scope docs:write) and names its task and delegation; an agent never renames or moves a folder."
+}

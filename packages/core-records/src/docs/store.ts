@@ -22,38 +22,6 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 export const DOCS_COLLECTION = 'docs';
-/** The longest folder name and page title 20261115002300 keeps, and the longest body. */
-export const DOCS_NAME_LIMIT = 120;
-export const DOCS_TITLE_LIMIT = 200;
-export const DOCS_BODY_LIMIT = 200_000;
-
-// oxlint-disable-next-line no-control-regex -- control characters are what it refuses
-const CONTROL = /[\u0000-\u001F\u007F]/u;
-// A split character (an unpaired surrogate; with `u` a paired one is one code point and does not
-// match), which the text writer would store as U+FFFD, text nobody sent (`storableText`'s rule).
-const SPLIT = /[\uD800-\uDFFF]/u;
-
-function lineOf(value: unknown, limit: number): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const line = value.trim();
-  if (line.length === 0 || line.length > limit || CONTROL.test(line)) return undefined;
-  if (SPLIT.test(line)) return undefined;
-  return line;
-}
-
-/** A folder name a person meant: trimmed, 1 to 120 characters, no control or split character. */
-export const docsNameOf = (value: unknown): string | undefined => lineOf(value, DOCS_NAME_LIMIT);
-/** A page title: trimmed, 1 to 200 characters, no control or split character. */
-export const docsTitleOf = (value: unknown): string | undefined => lineOf(value, DOCS_TITLE_LIMIT);
-
-/** A Markdown body as sent: up to 200,000 characters, no NUL (Postgres keeps none), no split character. */
-export function docsBodyOf(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length > DOCS_BODY_LIMIT || value.includes('\u0000')) {
-    return undefined;
-  }
-  if (SPLIT.test(value)) return undefined;
-  return value;
-}
 
 type Lost = { readonly kind: 'not-granted' };
 
@@ -85,7 +53,17 @@ async function folderHere(tx: TenantQuery, folderId: string): Promise<boolean> {
 export interface DocsWriter {
   readonly actorId: string;
   readonly subjects: readonly Subject[];
+  /**
+   * An agent's write (#2519): the task it works under and the delegation it holds, kept on the
+   * folder or version row (20261115112100). `subjects` are then its delegating person's.
+   */
+  readonly agent?: { readonly taskId: string; readonly delegationId: string };
 }
+
+const agentPair = (writer: DocsWriter): readonly [string | null, string | null] => [
+  writer.agent?.taskId ?? null,
+  writer.agent?.delegationId ?? null,
+];
 
 export async function createDocsFolder(
   tx: TenantQuery,
@@ -102,8 +80,9 @@ export async function createDocsFolder(
   }
   if (!(await writeStands(tx, writer.subjects))) return { kind: 'not-granted' };
   const rows = await tx.query<{ readonly id: string }>(
-    `insert into public.docs_folders (business_id, id, parent_id, name, created_by_actor_id)
-     values ($1, $2, $3::uuid, $4, $5)
+    `insert into public.docs_folders
+       (business_id, id, parent_id, name, created_by_actor_id, task_id, delegation_id)
+     values ($1, $2, $3::uuid, $4, $5, $6::uuid, $7::uuid)
      on conflict (business_id, coalesce(parent_id, business_id), lower(name)) do nothing
      returning id`,
     [
@@ -112,6 +91,7 @@ export async function createDocsFolder(
       input.parentId?.toLowerCase() ?? null,
       input.name,
       writer.actorId,
+      ...agentPair(writer),
     ],
   );
   const row = rows[0];
@@ -126,12 +106,21 @@ async function appendVersion(
     readonly title: string;
     readonly body: string;
   },
-  actorId: string,
+  writer: DocsWriter,
 ): Promise<void> {
   await tx.query(
-    `insert into public.docs_page_versions (business_id, page_id, number, title, body, actor_id)
-     values ($1, $2, $3, $4, $5, $6)`,
-    [tx.businessId, page.id, page.number, page.title, page.body, actorId],
+    `insert into public.docs_page_versions
+       (business_id, page_id, number, title, body, actor_id, task_id, delegation_id)
+     values ($1, $2, $3, $4, $5, $6, $7::uuid, $8::uuid)`,
+    [
+      tx.businessId,
+      page.id,
+      page.number,
+      page.title,
+      page.body,
+      writer.actorId,
+      ...agentPair(writer),
+    ],
   );
 }
 
@@ -153,7 +142,7 @@ export async function createDocsPage(
      values ($1, $2, $3::uuid, $4, $5, 1, $6, $6)`,
     [tx.businessId, id, input.folderId.toLowerCase(), input.title, input.body, writer.actorId],
   );
-  await appendVersion(tx, { id, number: 1, title: input.title, body: input.body }, writer.actorId);
+  await appendVersion(tx, { id, number: 1, title: input.title, body: input.body }, writer);
   return { kind: 'created', pageId: id, version: 1 };
 }
 
@@ -162,16 +151,16 @@ async function savePage(
   tx: TenantQuery,
   next: Parameters<typeof appendVersion>[1],
   folderId: string,
-  actorId: string,
+  writer: DocsWriter,
 ): Promise<void> {
   await tx.query(
     `update public.docs_pages
         set title = $3, body = $4, version = $5, updated_by_actor_id = $6, updated_at = now(),
             folder_id = $7::uuid
       where business_id = $1 and id = $2`,
-    [tx.businessId, next.id, next.title, next.body, next.number, actorId, folderId],
+    [tx.businessId, next.id, next.title, next.body, next.number, writer.actorId, folderId],
   );
-  await appendVersion(tx, next, actorId);
+  await appendVersion(tx, next, writer);
 }
 
 export async function updateDocsPage(
@@ -214,7 +203,7 @@ export async function updateDocsPage(
     title: input.title ?? page.title,
     body: input.body ?? page.body,
   };
-  await savePage(tx, next, moving?.toLowerCase() ?? page.folder_id, writer.actorId);
+  await savePage(tx, next, moving?.toLowerCase() ?? page.folder_id, writer);
   return { kind: 'updated', version: next.number };
 }
 
