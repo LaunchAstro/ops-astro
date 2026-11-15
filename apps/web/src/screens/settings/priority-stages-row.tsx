@@ -53,7 +53,8 @@ function usePriorityDraft(model: SettingsModel): {
 
 export function PriorityStagesRow(props: {
   readonly model: SettingsModel;
-  readonly conflict: ReactElement | null;
+  /** The conflict block, given the boxes ticked now: Write over it writes those. */
+  readonly conflict: (chosen: readonly string[]) => ReactElement | null;
 }): ReactElement {
   const { model } = props;
   const row = model.rowFor('priority');
@@ -81,7 +82,7 @@ export function PriorityStagesRow(props: {
         </button>
         {model.answered ? <Held which="priority" row={row} /> : null}
       </div>
-      {props.conflict}
+      {props.conflict(chosen)}
     </div>
   );
 }
