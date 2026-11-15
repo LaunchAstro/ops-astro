@@ -4,12 +4,14 @@
 // person and decided by a person, at the review's holder. Every write locks the review the
 // caller's grant covers (`lockCoveredReview`), so a filing and a decision on one review run
 // one after the other, and a grant that does not cover the holder meets the answer an absent
-// request gets. A request records only its own state: approval makes no task (#2117).
+// request gets. Approval makes no task: an approved request with none is the pending cause a
+// worker holds under its live lease on the review's task and makes a task of (#2117).
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Covering } from '../site/covering.ts';
 import { lockCoveredReview } from './reviews.ts';
+import { holdTaskLease, type LeaseAt, type ObservedRefusal } from '../site/task-lease.ts';
 
 export type ChangeRequestState = 'proposed' | 'approved' | 'refused';
 export type ChangeRequestDecision = 'approve' | 'refuse';
@@ -134,4 +136,86 @@ export async function decideChangeRequest(
   );
   if (row === undefined) return { code: 'CHANGE_REQUEST_ALREADY_DECIDED' };
   return { id, state, partyId: review.partyId };
+}
+
+/** An approved request held for its task: still pending, or the task already made of it. */
+export type HeldChange =
+  | { readonly pending: true; readonly id: string; readonly taskId: string; readonly text: string }
+  | { readonly pending: false; readonly id: string; readonly createdTaskId: string };
+
+/**
+ * The approved request `id` on the task the caller's live lease is on, locked and read again
+ * after the lock wait, under the lease and the grants it stands on (`holdTaskLease`). A request
+ * proposed, refused, on another task or absent is `NOT_FOUND`: only approval is a cause.
+ */
+export async function holdApprovedChange(
+  tx: TenantQuery,
+  at: LeaseAt,
+  id: string,
+): Promise<
+  | { readonly ok: true; readonly subject: HeldChange }
+  | { readonly ok: false; readonly code: ObservedRefusal }
+> {
+  return await holdTaskLease(tx, at, async (taskId): Promise<HeldChange | undefined> => {
+    const [row] = await tx.query<{
+      readonly task_id: string;
+      readonly request_text: string;
+      readonly created_task_id: string | null;
+    }>(
+      `select task_id, request_text, created_task_id from public.review_change_requests
+        where business_id = $1 and id = $2 and task_id = $3 and state = 'approved'
+        for update`,
+      [tx.businessId, id, taskId],
+    );
+    if (row === undefined) return undefined;
+    return row.created_task_id === null
+      ? { pending: true, id, taskId: row.task_id, text: row.request_text }
+      : { pending: false, id, createdTaskId: row.created_task_id };
+  });
+}
+
+/** Links the task made of the held request `id`; the task and the link commit together. */
+export async function linkChangeTask(tx: TenantQuery, id: string, taskId: string): Promise<void> {
+  const linked = await tx.query(
+    `update public.review_change_requests set created_task_id = $3, updated_at = now()
+      where business_id = $1 and id = $2 and state = 'approved' and created_task_id is null
+      returning id`,
+    [tx.businessId, id, taskId],
+  );
+  if (linked.length !== 1) throw new Error('linkChangeTask: the held request was not pending');
+}
+
+export interface ChangeRequestView {
+  readonly changeRequestId: string;
+  readonly commentId: string;
+  readonly state: ChangeRequestState;
+  readonly text: string;
+  /** The task made of an approved request; null while it is pending or for any other state. */
+  readonly createdTaskId: string | null;
+}
+
+/** A review's change requests, oldest first, for a reader the review's read already admits. */
+export async function readChangeRequests(
+  tx: TenantQuery,
+  reviewId: string,
+): Promise<readonly ChangeRequestView[]> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly comment_id: string;
+    readonly state: ChangeRequestState;
+    readonly request_text: string;
+    readonly created_task_id: string | null;
+  }>(
+    `select id, comment_id, state, request_text, created_task_id
+       from public.review_change_requests
+      where business_id = $1 and review_id = $2 order by created_at, id`,
+    [tx.businessId, reviewId],
+  );
+  return rows.map((row) => ({
+    changeRequestId: row.id,
+    commentId: row.comment_id,
+    state: row.state,
+    text: row.request_text,
+    createdTaskId: row.created_task_id,
+  }));
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "A worker lease that runs out while the agent path waits on its identity hold makes no change-request task and leaves the request unlinked"
+}

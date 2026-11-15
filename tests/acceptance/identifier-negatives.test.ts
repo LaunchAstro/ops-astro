@@ -31,6 +31,7 @@ import { gateEvidence, gateRecordBody } from './role-case-gate-bodies.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { siteBody } from './role-case-access-bodies.ts';
+import { enrolAgent } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import {
@@ -828,6 +829,20 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('review.decide_change', 'changeRequestId', ada, 'NOT_FOUND', {
         foreign: { changeRequestId, decision: 'approve' },
         fabricated: { changeRequestId: randomUUID(), decision: 'approve' },
+      });
+      // #2117: a fresh worker's own live lease (the world's agent holds one delegation per
+      // purpose, which the agent case takes), naming bravo's request or a made-up one.
+      const worker = await enrolAgent(
+        w.h.world.db,
+        w.h.world.alpha,
+        w.h.world.ada.actorId as string,
+      );
+      const own = await w.pickUp(worker, 'an agent lease a change request is named under');
+      const agent: Presenter = { kind: 'agent', identity: worker, credential: own.credential };
+      const lease = { leaseId: own.leaseId, fence: own.fence };
+      await refuses('review.make_change_task', 'changeRequestId', agent, 'NOT_FOUND', {
+        foreign: { ...lease, changeRequestId },
+        fabricated: { ...lease, changeRequestId: randomUUID() },
       });
     },
     120_000,

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "A lease that runs out while a change-request task waits for placement or the audit chain makes no task, and two calls at once reach two database sessions"
+}
