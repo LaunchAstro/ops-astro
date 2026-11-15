@@ -10,7 +10,9 @@
 // caller sends the parts straight to the store at URLs the store signs, asks
 // again after a disconnect for what the store holds, and completes. Nothing is
 // a revision until the store's own size and digest match the declared ones
-// (`media-uploads.ts`, the calls after the start).
+// (`media-uploads.ts`, the calls after the start), and the upload contract
+// (#2039, `upload-contract.ts`) refuses a type its kind does not take or a
+// size past its kind's limit before the store is asked anything.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -23,6 +25,7 @@ import {
   type ReviewWriter,
 } from './reviews.ts';
 import type { ObjectTransfers } from './storage.ts';
+import { refusalAtStart } from './upload-contract.ts';
 
 export const MEDIA_KINDS = ['video', 'audio', 'image', 'pdf'] as const;
 export type MediaKind = (typeof MEDIA_KINDS)[number];
@@ -53,7 +56,10 @@ export type MediaRefusal = {
     | 'UPLOAD_NOT_OPEN'
     | 'UPLOAD_INCOMPLETE'
     | 'UPLOAD_MISMATCH'
-    | 'STORE_REFUSED';
+    | 'STORE_REFUSED'
+    | 'TYPE_UNSUPPORTED'
+    | 'TOO_LARGE_FOR_CLASS'
+    | 'STORE_ANSWER_REFUSED';
 };
 
 export interface MediaUpload {
@@ -121,8 +127,9 @@ async function lockMediaReview(
 }
 
 /**
- * Start an upload of a declared asset on the task's media review. A camera original is refused
- * before the store is asked anything; the task is read under a share lock for its holder, as a
+ * Start an upload of a declared asset on the task's media review. A camera original, a type its
+ * kind does not take and a size past its kind's limit are refused before the store is asked
+ * anything; the task is read under a share lock for its holder, as a
  * page review's open reads it. The caller's grant at that holder is the command's to judge.
  */
 export async function startMediaUpload(
@@ -136,6 +143,8 @@ export async function startMediaUpload(
 ): Promise<MediaUpload | MediaRefusal> {
   const { declared, writer } = input;
   if (!isReviewRender(declared)) return mediaRefusal('CAMERA_ORIGINAL');
+  const refused = refusalAtStart(declared);
+  if (refused !== null) return mediaRefusal(refused);
   const holder = await holderOfTask(tx, input.taskId);
   if (holder === undefined) return mediaRefusal('NOT_FOUND');
   const review = await lockMediaReview(tx, input.taskId, holder.partyId, writer);

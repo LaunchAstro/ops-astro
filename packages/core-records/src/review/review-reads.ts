@@ -16,6 +16,9 @@ import type { CaptureWidth, Review } from './reviews.ts';
 import { readPins, type PinView } from './pins.ts';
 import { readCarried, type CarriedPinView } from './carries.ts';
 import { DATABASE_STORAGE } from './storage.ts';
+import type { MediaKind } from './media.ts';
+import type { ContractRefusal } from './upload-contract.ts';
+import type { MediaProbe } from './mp4-probe.ts';
 
 export interface CaptureView {
   readonly width: CaptureWidth;
@@ -25,11 +28,22 @@ export interface CaptureView {
   readonly observation: Readonly<Record<string, unknown>> | null;
 }
 
+/** A media revision's asset (#2039): whether it can play, and why not when it cannot. */
+export interface MediaView {
+  readonly assetId: string;
+  readonly kind: MediaKind;
+  readonly playable: boolean;
+  readonly why: 'quarantined' | 'scan_failed' | ContractRefusal | null;
+  readonly probe: MediaProbe | null;
+}
+
 export interface RevisionView {
   readonly revisionId: string;
   readonly number: number;
   readonly digest: string;
   readonly captures: readonly CaptureView[];
+  /** A media review's revisions only. */
+  readonly media?: MediaView;
 }
 
 export interface ReviewView extends Omit<Review, 'id' | 'revisionCount'> {
@@ -75,12 +89,8 @@ export async function readCoveredReview(
     [tx.businessId, reviewId],
   );
   const captures = await capturesOf(tx, reviewId);
-  const views = revisions.map((revision) => ({
-    revisionId: revision.id,
-    number: revision.number,
-    digest: revision.digest,
-    captures: captures.get(revision.id) ?? [],
-  }));
+  const media = review.kind === 'media' ? await mediaOf(tx, reviewId) : undefined;
+  const views = revisionViews(revisions, captures, media);
   const notes = await notesOf(tx, { reviewId, taskId: review.task_id }, views);
   if (!(await stillCovered(tx, covering, reviewId))) return undefined;
   return {
@@ -108,6 +118,78 @@ async function notesOf(
     pins: await readPins(tx, held.taskId, read),
     ...(await readCarried(tx, held, views.at(-1) ?? null)),
   };
+}
+
+const withMedia = (view: RevisionView, media: MediaView | undefined): RevisionView =>
+  media === undefined ? view : { ...view, media };
+
+/** Each revision with its captures by width and, on a media review, its media. */
+const revisionViews = (
+  revisions: readonly { readonly id: string; readonly number: number; readonly digest: string }[],
+  captures: Awaited<ReturnType<typeof capturesOf>>,
+  media: ReadonlyMap<string, MediaView> | undefined,
+): RevisionView[] =>
+  revisions.map((revision) =>
+    withMedia(
+      {
+        revisionId: revision.id,
+        number: revision.number,
+        digest: revision.digest,
+        captures: captures.get(revision.id) ?? [],
+      },
+      media?.get(revision.id),
+    ),
+  );
+
+interface MediaRow {
+  readonly id: string;
+  readonly revision_id: string;
+  readonly kind: MediaKind;
+  readonly refusal: ContractRefusal | null;
+  readonly scan_state: 'quarantined' | 'passed' | 'failed' | null;
+  readonly probe_codec: string | null;
+  readonly probe_fps_num: string;
+  readonly probe_fps_den: string;
+  readonly probe_timecode: string;
+  readonly probe_duration: string;
+  readonly probe_timescale: string;
+}
+
+const WHY_NOT_PLAYABLE = {
+  quarantined: 'quarantined',
+  failed: 'scan_failed',
+  passed: null,
+} as const;
+
+/** A completed asset as the read says it: playable once passed, else why not. */
+const mediaViewOf = (row: MediaRow): MediaView => ({
+  assetId: row.id,
+  kind: row.kind,
+  playable: row.scan_state === 'passed',
+  why: row.refusal ?? (row.scan_state === null ? null : WHY_NOT_PLAYABLE[row.scan_state]),
+  // The probe's columns are all set or none (`review_media_assets_probe_whole`).
+  probe:
+    row.probe_codec === null
+      ? null
+      : {
+          codec: row.probe_codec,
+          fps: { num: Number(row.probe_fps_num), den: Number(row.probe_fps_den) },
+          startTimecode: row.probe_timecode,
+          duration: Number(row.probe_duration),
+          timescale: Number(row.probe_timescale),
+        },
+});
+
+/** Each completed asset of a media review, by the revision it is. */
+async function mediaOf(tx: TenantQuery, reviewId: string): Promise<ReadonlyMap<string, MediaView>> {
+  const rows = await tx.query<MediaRow>(
+    `select id, revision_id, kind, refusal, scan_state, probe_codec, probe_fps_num::text,
+            probe_fps_den::text, probe_timecode, probe_duration::text, probe_timescale::text
+       from public.review_media_assets
+      where business_id = $1 and review_id = $2 and state = 'completed'`,
+    [tx.businessId, reviewId],
+  );
+  return new Map(rows.map((row) => [row.revision_id, mediaViewOf(row)]));
 }
 
 /** Every capture of the review's revisions, widest first, by the revision it is of. */
@@ -147,9 +229,10 @@ async function capturesOf(
 
 /**
  * Whether the caller's grant still covers the review at its holder, in a statement of its own.
- * Asked after the read's last part, so a grant revoked or expired meanwhile reads nothing.
+ * Asked after a read's last part or a lock wait, so a grant revoked or expired meanwhile covers
+ * nothing.
  */
-async function stillCovered(
+export async function stillCovered(
   tx: TenantQuery,
   covering: Covering,
   reviewId: string,

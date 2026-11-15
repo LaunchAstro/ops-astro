@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// U89 (#2039, C73): the contract reads a completed object back only through
+// the store's range read, a GET signed for that one object: every range is of
+// the asset's own key, none asks past the per-read limit, and a render whose
+// moov sits after a large mdat is probed without fetching the whole object.
+// A store that answers a range with a byte more, or a byte fewer, than asked
+// refuses the completion: the object is removed, the upload is abandoned and
+// no revision is written.
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { c35World, type C35World } from './c35-world.ts';
+import { mediaStoreDouble, type MediaStoreDouble } from './media-store-double.ts';
+import { mediaCalls, renderOf, type MediaCalls } from './media-world.ts';
+import { mp4Of, type Mp4Shape } from './media-fixtures.ts';
+import { MOST_RANGE_BYTES } from '../../packages/core-records/src/index.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
+if (serverUrl === undefined)
+  console.warn('C73 range read: DATABASE_URL is unset, so nothing below ran.');
+
+let w: C35World;
+let store: MediaStoreDouble;
+let media: MediaCalls;
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  w = await c35World('c73range');
+  store = mediaStoreDouble(1024 * 1024);
+  media = mediaCalls(w, store);
+}, 120_000);
+afterAll(async () => {
+  if (serverUrl !== undefined) await w.world.drop();
+});
+
+const LARGE: Mp4Shape = {
+  codec: 'avc1',
+  timescale: 12_800,
+  delta: 512,
+  frames: 25,
+  timecode: { nominal: 25, dropFrame: false, start: 0 },
+  moovAtEnd: true,
+  padding: 3 * 1024 * 1024,
+};
+
+describe.skipIf(serverUrl === undefined)('C73 the range read', () => {
+  it('C73 the range read is bounded to its own object; a hostile answer refuses the completion', async () => {
+    const render = mp4Of(LARGE);
+    const read = await media.upload(w.ava, w.taskA, renderOf(render), render);
+    expect(read.completed).toMatchObject({
+      number: 1,
+      admission: { verdict: 'quarantined', probe: { startTimecode: '00:00:00:00' } },
+    });
+    const [key] = store.objects.keys();
+    expect(store.ranges.length).toBeGreaterThan(0);
+    expect(store.ranges.every((range) => range.key === key)).toBe(true);
+    expect(Math.max(...store.ranges.map((range) => range.length))).toBeLessThanOrEqual(
+      MOST_RANGE_BYTES,
+    );
+    const fetched = store.ranges.reduce((sum, range) => sum + range.length, 0);
+    expect(fetched).toBeLessThan(render.byteLength / 4);
+
+    const small = mp4Of({ ...LARGE, moovAtEnd: false, padding: 64 });
+    store.answer = 'longer';
+    const longer = await media.upload(w.ava, w.taskA, renderOf(small), small);
+    store.answer = 'shorter';
+    const shorter = await media.upload(w.ava, w.taskA, renderOf(small), small);
+    store.answer = 'honest';
+    expect([longer.completed, shorter.completed]).toStrictEqual([
+      { code: 'STORE_ANSWER_REFUSED' },
+      { code: 'STORE_ANSWER_REFUSED' },
+    ]);
+    expect(store.objects.size).toBe(1);
+    expect(
+      (await media.rows('review_media_assets', w.world.business)).map((row) => row['state']),
+    ).toStrictEqual(['completed', 'abandoned', 'abandoned']);
+    expect(await media.rows('review_revisions', w.world.business)).toHaveLength(1);
+  });
+});
+
+// S2126-1's kind on the contract's own refusal: a hostile answer abandons the upload only once
+// the store has removed the object; a removal answered false keeps it open, and abandoning it
+// later removes what was stored.
+describe.skipIf(serverUrl === undefined)('C73 a hostile answer the store could not remove', () => {
+  it('C73 a hostile answer whose object stays stored keeps the upload open for cleanup', async () => {
+    const own = mediaStoreDouble(1024 * 1024);
+    const calls = mediaCalls(w, own);
+    const small = mp4Of({ ...LARGE, moovAtEnd: false, padding: 64 });
+    const remove = own.remove.bind(own);
+    own.answer = 'longer';
+    own.remove = () => Promise.resolve(false);
+    const hostile = await calls.upload(w.ava, w.taskA, renderOf(small), small);
+    own.answer = 'honest';
+    expect(hostile.completed).toStrictEqual({ code: 'STORE_REFUSED' });
+    expect(own.objects.size).toBe(1);
+    const state = async () =>
+      (await calls.rows('review_media_assets', w.world.business)).find(
+        (row) => row['id'] === hostile.assetId,
+      )?.['state'];
+    expect(await state()).toBe('started');
+
+    own.remove = remove;
+    expect(await calls.abandon(w.ava, hostile.assetId)).toMatchObject({
+      reviewId: expect.any(String),
+    });
+    expect(own.objects.size).toBe(0);
+    expect(await state()).toBe('abandoned');
+  });
+});
+
+// Sol round 1 on #2484: an MP4 whose own box points past the object's end is the file's fault,
+// not the store's. The contract asks no range outside the object and refuses the asset as
+// unreadable, keeping its revision, rather than calling the store hostile.
+describe.skipIf(serverUrl === undefined)('C73 a probe that points past the object', () => {
+  it('C73 a timecode sample past the object asks the store nothing outside it and is unreadable', async () => {
+    const own = mediaStoreDouble(1024 * 1024);
+    const calls = mediaCalls(w, own);
+    const body = mp4Of({
+      codec: 'avc1',
+      timescale: 25,
+      delta: 1,
+      frames: 10,
+      timecode: { nominal: 25, dropFrame: false, start: 0 },
+    });
+    const stco = Buffer.from(body).indexOf('stco');
+    if (stco < 0) throw new Error('the render carries a timecode chunk offset');
+    new DataView(body.buffer, body.byteOffset).setUint32(stco + 12, 1_000_000);
+
+    const outside = await calls.upload(w.ava, w.taskA, renderOf(body), body);
+    expect(outside.completed).toMatchObject({
+      admission: { verdict: 'refused', refusal: 'PROBE_UNREADABLE' },
+    });
+    expect(own.ranges.length).toBeGreaterThan(0);
+    expect(
+      own.ranges.filter(
+        (range) => range.length === 0 || range.from + range.length > body.byteLength,
+      ),
+    ).toStrictEqual([]);
+  });
+});

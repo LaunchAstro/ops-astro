@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 upgrade: the contract's migration applies over a media upload completed before it, keeps the row and admits it quarantined, so it signs no read until a scan passes."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C73 upload contract: a PDF declared as an MP4 is refused by its sniffed type and its object removed, an oversized or unsupported declaration is refused before the store is asked, a test-virus file lands quarantined and its scan fails; none signs and the review read says why."
+}
