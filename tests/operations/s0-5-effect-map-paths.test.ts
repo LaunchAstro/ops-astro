@@ -28,6 +28,7 @@ import { WAYFINDER_EFFECTS } from '../../packages/core-wire/src/data-effects-way
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { PROPOSAL, type Task } from '../acceptance/role-case-bodies.ts';
 import { serverUrl } from '../acceptance/world.ts';
+import { asClientPin } from '../review/client-pin-seed.ts';
 import { ABOUT_FILE } from '../site/party-site-fixture.ts';
 import { pathFaults } from './s0-5-effect-diff.ts';
 
@@ -178,8 +179,10 @@ async function changeTaskOnAMap(): Promise<() => Promise<string>> {
     width: 1480,
     selector: [{ ...spot, value: 'xywh=0,0,9,9' }],
     body: 'a pin',
-    audience: 'client',
+    audience: 'internal',
   });
+  // Client review is off, so the team pin is rewritten as a client's (`client-pin-seed.ts`).
+  await asClientPin(harness.world.db.admin, harness.world.alpha, String(pinned['commentId']));
   const filed = await ok('review.propose_change', {
     commentId: pinned['commentId'],
     text: 'a change',
