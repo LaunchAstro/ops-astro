@@ -59,7 +59,11 @@ export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts
  * `world.ts` grants the admin all four collections.
  */
 // eslint-disable-next-line max-lines-per-function -- one world, built in one place
-export async function createHarness(part: string): Promise<Harness> {
+export async function createHarness(
+  part: string,
+  _options: { readonly keepStatements?: number } = {},
+): Promise<Harness> {
+  // Not built yet (#2512): the statement log keeps every statement.
   const world = await createWorld(part);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
   // C80's approver from the start, the admin: a request is refused while none is set.

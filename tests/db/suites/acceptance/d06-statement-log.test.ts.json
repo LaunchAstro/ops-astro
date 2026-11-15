@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The d06 harness can keep a bounded statement log, so d06-generated's whole run does not hold every statement it sends until the worker runs out of heap (#2512); the default log stays whole for the proofs that read it."
+}
