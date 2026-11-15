@@ -7,7 +7,7 @@
 // `task.check` is: another person's live lease refuses for the delegation's reason, and the
 // agent's own lease reaches its own capture. Each picked-up task carries a review with both
 // widths asked, so a crossing names the other person's real revision and the control the
-// agent's own. A pin is refused outside the delegation's own task as the open is, and so is a
+// agent's own; so is the carry of pins onto a revision (#2075). A pin is refused outside the delegation's own task as the open is, and so is a
 // change request filed from the other person's client pin (C57, #2016). Registered inside
 // api-1-isolation.test.ts's describe. Made-up names only.
 
@@ -55,6 +55,8 @@ export const reviewBodies = (
   'review.capture': () => ({ revisionId }),
   'review.capture_claim': () => ({ ...lease, revisionId }),
   'review.capture_land': () => ({ ...lease, revisionId, ...LANDING }),
+  // The worker's carry of pins onto a revision, asked of the lease as the claim is (#2075, #2483).
+  'review.carry_pins': () => ({ ...lease, revisionId }),
   // A pin on the revision's desktop capture, which the planted review has asked (#2012).
   'review.pin_comment': () => ({
     revisionId,
@@ -76,6 +78,7 @@ export const REVIEW_REASONS: Record<string, string> = Object.fromEntries(
     'review.capture',
     'review.capture_claim',
     'review.capture_land',
+    'review.carry_pins',
     'review.pin_comment',
     'review.propose_change',
   ].map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE']),
@@ -156,15 +159,16 @@ export function reviewCrossingControl(): void {
     }
   });
 
-  it('API-1 isolation: the review crossings opened, asked, claimed, landed, pinned and filed nothing', async () => {
+  it('API-1 isolation: the review crossings opened, asked, claimed, landed, carried, pinned and filed nothing', async () => {
     const reviews = await fixture.db.admin.execute<{ reviews: number; revisions: number }>(
       `select (select count(*) from public.reviews)::int as reviews,
               (select count(*) from public.review_revisions)::int as revisions,
               (select count(*) from public.records where data ? 'anchor')::int as pins,
-              (select count(*) from public.review_change_requests)::int as requests`,
+              (select count(*) from public.review_change_requests)::int as requests,
+              (select count(*) from public.review_pin_carries)::int as carries`,
     );
     // The one pin is the planted client pin.
-    expect(reviews).toEqual([{ reviews: 2, revisions: 2, pins: 1, requests: 0 }]);
+    expect(reviews).toEqual([{ reviews: 2, revisions: 2, pins: 1, requests: 0, carries: 0 }]);
     expect(await captures(revision.foreign)).toEqual([
       { width: 390, state: 'requested', lease_id: null },
       { width: 1480, state: 'requested', lease_id: null },
