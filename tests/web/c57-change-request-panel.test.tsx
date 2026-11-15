@@ -13,6 +13,26 @@ import { ChangeRequestPanel } from '../../apps/web/src/screens/review/ChangeRequ
 import { MARKER, dataOf, pin, props, request } from './c57-change-request-fixtures.ts';
 
 describe('C57 change-request panel', () => {
+  it('names the task a made request made, in its text and not only in an attribute', async () => {
+    const opened: string[] = [];
+    const view = await mount(
+      <ChangeRequestPanel
+        {...props({
+          load: {
+            kind: 'ready',
+            pins: [],
+            requests: [request({ state: 'approved', createdTaskId: 'task-made-123' })],
+          },
+          onOpenTask: (taskId) => opened.push(taskId),
+        })}
+      />,
+    );
+    expect(view.find('[data-change-request="cr-1"]')?.textContent).toContain('task-made-123');
+    await view.click('[data-made-task] button');
+    expect(opened).toEqual(['task-made-123']);
+    await view.unmount();
+  });
+
   it('draws each phase in its words, and a pending request is never drawn as done', async () => {
     const view = await mount(
       <ChangeRequestPanel
