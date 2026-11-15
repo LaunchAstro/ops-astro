@@ -61,3 +61,24 @@ export async function grantsOnAlertLog(admin: AdminConnection): Promise<readonly
   );
   return rows.map((row) => row.held);
 }
+
+/** Thrown to roll back a statement that succeeded, so a check as the forwarder changes nothing. */
+class Undone extends Error {}
+
+/**
+ * `text` run as `ops_astro_forwarder` in its own transaction, the way the
+ * forwarder takes the role, then rolled back: `ok`, or the refusal's code.
+ */
+export async function asForwarder(admin: AdminConnection, text: string): Promise<string> {
+  try {
+    await admin.transaction(async (execute) => {
+      await execute('set local role ops_astro_forwarder');
+      await execute(text);
+      throw new Undone();
+    });
+  } catch (error) {
+    if (error instanceof Undone) return 'ok';
+    return (error as { code?: string }).code ?? 'unknown';
+  }
+  return 'unknown';
+}
