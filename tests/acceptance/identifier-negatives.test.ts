@@ -704,6 +704,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           (folderId: string) => ({ folderId, name: 't' }),
         ],
         ['docs.move_folder', 'folderId', docs.folderId, (folderId: string) => ({ folderId })],
+        ['docs.page', 'pageId', docs.pageId, (pageId: string) => ({ pageId })],
       ] as const;
       for (const [op, field, foreignId, body] of cells) {
         const { operand, forms } = pair(field, foreignId, body);

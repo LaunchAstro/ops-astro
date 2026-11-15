@@ -503,6 +503,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     // #2514: bravo's folder renamed or moved.
     byAda('docs.rename_folder', 'folderId', docs.folderId, (folderId) => ({ folderId, name: 't' }));
     byAda('docs.move_folder', 'folderId', docs.folderId, (folderId) => ({ folderId }));
+    byAda('docs.page', 'pageId', docs.pageId, (pageId) => ({ pageId }));
     // MP-4-8: the old task names what is duplicated; the copy goes to no client.
     byAda('task.duplicate', 'recordId', f.task.id, (recordId) => ({
       recordId,

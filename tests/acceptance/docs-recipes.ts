@@ -15,11 +15,13 @@ interface DocsContext {
 
 type Prepared = { readonly body: Record<string, unknown> };
 
-const DOCS_WRITES: ReadonlySet<string> = new Set([
+/** The commands whose body starts from the admin's own folder. */
+const FROM_A_FOLDER: ReadonlySet<string> = new Set([
   'docs.create_page',
   'docs.update_page',
   'docs.rename_folder',
   'docs.move_folder',
+  'docs.page',
 ]);
 
 const fresh = (what: string): string => `${what} ${randomUUID().slice(0, 8)}`;
@@ -36,7 +38,8 @@ export async function docsBody(
   context: DocsContext,
 ): Promise<Prepared | undefined> {
   if (name === 'docs.create_folder') return { body: { name: fresh('folder') } };
-  if (!DOCS_WRITES.has(name)) return undefined;
+  if (name === 'docs.tree') return { body: {} };
+  if (!FROM_A_FOLDER.has(name)) return undefined;
   const { folderId } = await filed(context, 'docs.create_folder', { name: fresh('folder') });
   // #2514: the admin's own folder renamed, or moved under another of its own.
   if (name === 'docs.rename_folder') return { body: { folderId, name: fresh('renamed') } };
@@ -51,6 +54,7 @@ export async function docsBody(
     title: fresh('page'),
     body: 'text',
   });
+  if (name === 'docs.page') return { body: { pageId } };
   return { body: { pageId, expectedVersion: 1, body: 'revised' } };
 }
 
