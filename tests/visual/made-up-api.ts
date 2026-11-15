@@ -106,9 +106,6 @@ const READS = {
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
       { collection: 'custody', action: 'manage' },
-      // The Docs screen's Edit, New, Rename and Move (#2515).
-      { collection: 'docs', action: 'read' },
-      { collection: 'docs', action: 'write' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,

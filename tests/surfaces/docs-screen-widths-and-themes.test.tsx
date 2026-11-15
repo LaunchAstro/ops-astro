@@ -18,6 +18,12 @@ import { launchChromium } from '../support/chromium.ts';
 import { madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { load, openSide } from '../visual/capture.ts';
 import { answerMadeUp } from '../visual/made-up-api.ts';
+
+const MADE_UP_CAPABILITIES = { ok: true, personId: 'p-mia', businessKey: 'alpha' };
+const DOCS_GRANTS = [
+  { collection: 'docs', action: 'read' },
+  { collection: 'docs', action: 'write' },
+];
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
 import type { Packet, Theme } from '../visual/packet.ts';
 
@@ -62,6 +68,10 @@ async function open(width: number, theme: Theme): Promise<Page> {
   await answerMadeUp(side.context);
   await side.context.route('**/api/b/alpha/session/person', (route) =>
     route.fulfill({ json: { ok: true, person: { name: 'Mia Hart' } } }),
+  );
+  // Mia holds docs:read and docs:write here, so Edit, New, Rename and Move draw (#2515).
+  await side.context.route('**/api/b/alpha/session/capabilities', (route) =>
+    route.fulfill({ json: { ...MADE_UP_CAPABILITIES, grants: DOCS_GRANTS } }),
   );
   const page = await load(side, packet, new URL('/docs/', app).href);
   page.on('close', () => {
