@@ -55,8 +55,11 @@ export interface SettingsModel {
   readonly wrote: (which: Which) => number | undefined;
   /** Writes against `base` when given: the revision a draft was built on, not the row on screen. */
   readonly save: (which: Which, value: Draft, base?: number) => void;
-  /** The second explicit press: the person choosing to overwrite what they saw. */
-  readonly writeOver: () => void;
+  /**
+   * The second explicit press: the person choosing to overwrite what they saw,
+   * with `current` when the row's draft has moved on since the conflict.
+   */
+  readonly writeOver: (current?: Draft) => void;
   /** Asks the settings read again, after it did not come back. */
   readonly retry: () => void;
   /** Something this screen decided, not the server. Never dressed as a refusal. */
