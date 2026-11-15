@@ -19,8 +19,9 @@
 // - a proposal's ceiling is AUD 5 at most, and its step is never the
 //   worker's, whose pickup takes only its own launched task anyway.
 // Removal (`demo-data-remove.ts`) trashes only the manifest's tasks, each read first and refused
-// unless its title is still the demo one. No command removes a client, a tag
-// or a thread (#2209), so those stay, named Demo.
+// unless its title is still the demo one and every subtask under it is the
+// demo's too. No command removes a client, a tag or a thread (#2209), so those
+// stay, named Demo.
 
 import { CLIENTS, START_STATE, TAG, TASKS, THREADS, type DemoTask } from './demo-data-plan.ts';
 import {

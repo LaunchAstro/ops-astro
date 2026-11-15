@@ -79,5 +79,7 @@ or sent to a model.
    with the same manifest carries on and makes nothing twice.
 4. To take it out, run `node scripts/ops/demo-data.mjs remove <manifest.json>`.
    It reads every task the manifest lists, stops before any change if one is no
-   longer the demo task it made, then trashes them. The clients, the tag and
-   the threads stay, named Demo: no command removes them yet (#2209).
+   longer the demo task it made, cannot be read, or has a subtask the demo did
+   not make (trashing a task trashes what sits under it), then trashes them.
+   The clients, the tag and the threads stay, named Demo: no command removes
+   them yet (#2209).
