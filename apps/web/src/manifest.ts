@@ -76,7 +76,7 @@ agency | Connections & signal
   connections | Connections & signal | connections/ | MP-14-7 | /agency/connections-and-signal/
   site-health | Site health | connections/site-health/ | MP-14-11 | /agency/site-health/
 agency | Docs
-  ?docs | Docs | docs/ | MP-2-10
+  docs | Docs | @agency:docs | 2493
   ?snippets | Snippets | docs/snippets/ | MP-2-10
 agency | Settings
   general | General | @agency:settings | MP-2-11

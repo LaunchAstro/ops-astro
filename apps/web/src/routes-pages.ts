@@ -4,6 +4,14 @@
 // `ROUTES` spreads them in place and checks them as it checks its own.
 
 export const PAGE_ROUTES = {
+  // The business's Docs (#2493): the folder tree and one page, read-only until editing lands.
+  'agency:docs': {
+    namespace: 'agency',
+    path: '/docs/',
+    title: 'Docs',
+    surface: 'none',
+    authenticated: true,
+  },
   'agency:maps': {
     namespace: 'agency',
     path: '/projects/maps/',
