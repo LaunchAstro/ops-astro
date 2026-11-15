@@ -24,5 +24,6 @@ export const REVIEW_EFFECTS: {
   'review.propose_change': writing(client('review_change_requests')),
   'review.decide_change': writing(client('review_change_requests')),
   'review.read': writing([]),
+  'review.list': writing([]),
   'review.picture': writing([]),
 };

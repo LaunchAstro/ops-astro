@@ -724,6 +724,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture_land',
   'review.carry_pins',
   'review.decide_change',
+  'review.list',
   'review.open',
   'review.picture',
   'review.pin_comment',

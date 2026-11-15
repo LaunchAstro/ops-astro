@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What the review reads answer (C35, #2011): one review with its revisions and their captures
-// by width, and one landed picture's bytes, base64.
+// by width, and one landed picture's bytes, base64; and the list of reviews the caller reads.
 
-import type { Anchor, ReviewPicture, ReviewView } from '../../core-records/src/index.ts';
+import type {
+  Anchor,
+  ReviewPicture,
+  ReviewSummary,
+  ReviewView,
+} from '../../core-records/src/index.ts';
 
 export type { CaptureView as ReviewCaptureView } from '../../core-records/src/index.ts';
 
@@ -22,3 +27,9 @@ export type CommentPin = {
   /** A pin's spot on a review's capture (C35); absent on a comment that is no pin. */
   readonly anchor?: Anchor;
 };
+
+/** The Reviews page's rows: the business's reviews the caller's grant covers. */
+export interface ReviewListResult {
+  readonly ok: true;
+  readonly reviews: readonly ReviewSummary[];
+}

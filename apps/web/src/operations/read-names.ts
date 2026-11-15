@@ -111,6 +111,8 @@ export const READ_NAMES = [
   'live_correction.receipts',
   // One review with its revisions and captures (C35), under any grant on the server.
   'review.read',
+  // The business's reviews the reader's grant covers, for Projects > Reviews (MP-8-1).
+  'review.list',
   // One landed capture's picture bytes (C35), under the same grant as its review.
   'review.picture',
   // The business's team invitations (C39-T), under `access:share` on the server.

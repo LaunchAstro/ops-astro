@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "review.list puts the review with the newest pin or change request first, and refuses SCOPE_NOT_GRANTED, not an empty list, when the caller's only review:read is revoked mid-read."
+}

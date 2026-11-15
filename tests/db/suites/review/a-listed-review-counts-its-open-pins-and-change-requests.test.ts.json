@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "review.list counts a review's live pins not yet filed and its change requests waiting for a decision, and names its client."
+}

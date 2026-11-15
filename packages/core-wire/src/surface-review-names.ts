@@ -7,7 +7,8 @@
  * A person, or an agent on that person's credential, opens a review, asks a capture of a
  * revision and pins a comment on a spot of one (#2012); a worker claims the capture and lands
  * it under its lease, and carries the pins onto the new revision (#2075); the review, with its
- * revisions, captures and pins, and a landed picture are read.
+ * revisions, captures and pins, and a landed picture are read, and the business's reviews are
+ * listed for the Reviews page.
  * A person files a client pin as a change request and a person decides it (C57, #2016).
  */
 export type ReviewCommandName =
@@ -20,4 +21,5 @@ export type ReviewCommandName =
   | 'review.propose_change'
   | 'review.decide_change'
   | 'review.read'
+  | 'review.list'
   | 'review.picture';
