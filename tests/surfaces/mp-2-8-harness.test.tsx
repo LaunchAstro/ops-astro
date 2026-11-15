@@ -294,3 +294,22 @@ it('MP-2-10 harness leg: a reserved address (/docs/snippets/) draws the one shar
     await page.close();
   });
 }, 600_000);
+
+it('Docs harness leg (#2493): the folder tree beside the page above 640 and above it at 390, the page drawn read-only, light and dark, no sideways scroll', async () => {
+  await each(async (width, theme, at) => {
+    const page = await open('/docs/', width, theme);
+    await page.locator('[data-page-id="p-first-week"]').click();
+    await page.locator('article .md__h').waitFor();
+    expect(await page.locator('article .md__h').textContent(), at).toBe('Welcome');
+    expect(await page.locator('article textarea, article [contenteditable]').count(), at).toBe(0);
+    const tree = await box(page, '.docs__tree');
+    const read = await box(page, '.docs__page');
+    if (width > 640)
+      expect(read.left, `page beside the tree at ${at}`).toBeGreaterThan(tree.right - 1);
+    else expect(read.top, `page under the tree at ${at}`).toBeGreaterThan(tree.bottom - 1);
+    const rail = await page.locator('.rail__item').allTextContents();
+    if (width > 900) expect(rail.join(' '), `rail at ${at}`).toContain('Docs');
+    expect(await sideways(page), `no sideways scroll at ${at}`).toBeLessThanOrEqual(width);
+    await page.close();
+  });
+}, 600_000);
