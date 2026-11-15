@@ -2,11 +2,13 @@
 //
 // C35-X (#2166): a carry the land said was due, refused, faulted or never answered, fails the
 // pass the way an unclaimed capture does: logged by its code, the lease handed back failed
-// with that code, and no heartbeat.
+// with that code, and no heartbeat. An answer that names no carry of the revision, such as a
+// 200 with no JSON through the runner's own adapter, is no answer (S2172-2).
 
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentCall, Answer } from '../../apps/site-runner/claims.ts';
-import { passes, passFor } from '../../apps/site-runner/main.ts';
+import { apiCall, passes, passFor } from '../../apps/site-runner/main.ts';
+import { pathOf } from '../../packages/core-wire/src/index.ts';
 import { reviewCaptures, type SizedBrowser } from '../../apps/site-runner/review-captures.ts';
 import { AGENCY_POOL, PAGE, publicResolver, replay, SHEET } from './c35-runner-world.ts';
 
@@ -49,12 +51,18 @@ function answering(carry: () => Promise<Answer>): AgentCall & {
   return Object.assign(call, { calls });
 }
 
-/** One pass with one capture on the queue whose lands answer carryDue, its carry by `carry`. */
-async function onePass(carry: () => Promise<Answer>): Promise<{
+interface Pass {
   readonly calls: readonly { readonly verb: string; readonly body: unknown }[];
   readonly pings: number;
-}> {
-  const call = answering(carry);
+}
+
+/** One pass with one capture on the queue whose lands answer carryDue, its carry by `carry`. */
+async function onePass(carry: () => Promise<Answer>): Promise<Pass> {
+  return await passWith(answering(carry));
+}
+
+/** The same pass through any agent call that records what it sent. */
+async function passWith(call: AgentCall & { readonly calls: Pass['calls'] }): Promise<Pass> {
   const tx = {
     businessId: 'b1',
     query: async () => await Promise.resolve([{ revision_id: 'v1', page_url: PAGE }]),
@@ -114,4 +122,37 @@ it('C35-X a refused, faulted or unanswered carry fails the pass without a heartb
     expect(logged.mock.calls.flat().join(' ')).toContain(`review capture t1 ${code}`);
     expect(pass.pings).toBe(0);
   }
+});
+
+it('C35-X a carry answered 200 with no JSON, through the runner adapter, fails as CARRY_FAULT', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  const logged = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const fake = answering(async () => await Promise.resolve({ detail: {} }));
+  const verbs = new Map(
+    ['task.queue', 'task.pickup', 'review.capture_claim', 'task.heartbeat', 'review.capture_land']
+      .concat(['review.carry_pins', 'task.handback'])
+      .map((verb) => [pathOf(verb as never), verb]),
+  );
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const verb = [...verbs].find(([path]) => String(url).endsWith(path))?.[1] ?? 'unknown';
+    if (verb === 'review.carry_pins') {
+      fake.calls.push({ verb, body: JSON.parse(String(init?.body)) as unknown });
+      return new Response('<html>upstream unavailable</html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    }
+    const answer = await fake(verb, JSON.parse(String(init?.body)) as never, undefined);
+    return Response.json(answer);
+  });
+  const settings = { OPS_ASTRO_API_URL: 'https://api.example', OPS_ASTRO_BUSINESS: 'test' };
+  const real = apiCall(settings as never, async () => await Promise.resolve('test-only'));
+  const pass = await passWith(Object.assign(real, { calls: fake.calls }));
+  expect(pass.calls.filter((one) => one.verb === 'review.carry_pins')).toHaveLength(1);
+  expect(pass.calls.find((one) => one.verb === 'task.handback')?.body).toMatchObject({
+    outcome: 'failed',
+    report: { capture: 'CARRY_FAULT' },
+  });
+  expect(logged.mock.calls.flat().join(' ')).toContain('review capture t1 CARRY_FAULT');
+  expect(pass.pings).toBe(0);
 });
