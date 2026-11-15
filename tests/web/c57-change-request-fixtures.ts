@@ -39,6 +39,7 @@ export const props = (over: Partial<ChangeRequestPanelProps> = {}): ChangeReques
   onDecide: () => {},
   onFile: () => {},
   onOpenTask: () => {},
+  onReadAgain: () => {},
   ...over,
 });
 

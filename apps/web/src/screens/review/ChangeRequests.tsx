@@ -35,6 +35,8 @@ export interface ChangeRequestPanelProps {
   readonly onDecide: (changeRequestId: string, decision: 'approve' | 'refuse') => void;
   readonly onFile: (commentId: string, text: string) => void;
   readonly onOpenTask: (taskId: string) => void;
+  /** Read the review again after a read that got no answer. */
+  readonly onReadAgain: () => void;
 }
 
 const TITLE = 'Change requests';
@@ -90,16 +92,19 @@ function Request(props: {
         </p>
       ) : null}
       {made === null ? null : (
-        <div className="btnrow" data-made-task={made}>
-          <Button
-            variant="text"
-            onClick={() => {
-              panel.onOpenTask(made);
-            }}
-          >
-            Open the task it was made
-          </Button>
-        </div>
+        <>
+          <p className="card__sub">Made task {made}</p>
+          <div className="btnrow" data-made-task={made}>
+            <Button
+              variant="text"
+              onClick={() => {
+                panel.onOpenTask(made);
+              }}
+            >
+              Open the task it was made
+            </Button>
+          </div>
+        </>
       )}
       {phase === 'proposed' && panel.canDecide ? <Decide request={request} panel={panel} /> : null}
     </div>
@@ -138,6 +143,62 @@ function FilePin(props: {
   );
 }
 
+/** The review's requests, the agent path's wait and the client pins a person may still file. */
+function Ready(props: {
+  readonly load: Extract<DockLoad, { kind: 'ready' }>;
+  readonly panel: ChangeRequestPanelProps;
+}): ReactElement {
+  const { load, panel } = props;
+  return (
+    <>
+      {panel.note === null ? null : (
+        <Banner tone="warn" lead="Not done:">
+          {panel.note}
+        </Banner>
+      )}
+      {load.requests.length === 0 ? (
+        <Empty look="inline" title="No change requests on this review yet" />
+      ) : (
+        <div className="stack" role="list">
+          {load.requests.map((request) => (
+            <Request key={request.changeRequestId} request={request} panel={panel} />
+          ))}
+        </div>
+      )}
+      <div data-agent-path={panel.agent}>
+        <Banner tone="info" lead="Agent filing:">
+          {AGENT_WAIT}
+        </Banner>
+      </div>
+      <div className="stack" role="list">
+        {unfiledClientPins(load.pins, load.requests).map((pin) => (
+          <FilePin key={pin.commentId} pin={pin} panel={panel} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** A read that got no answer: the server could not be reached, which is no refusal. */
+function NoAnswer(props: {
+  readonly because: string;
+  readonly onReadAgain: () => void;
+}): ReactElement {
+  return (
+    <Banner tone="warn" lead="No answer from the server:">
+      {props.because}{' '}
+      <button
+        type="button"
+        className="btn btn--sm btn--secondary"
+        data-read-again
+        onClick={props.onReadAgain}
+      >
+        Read again
+      </button>
+    </Banner>
+  );
+}
+
 export function ChangeRequestPanel(props: ChangeRequestPanelProps): ReactElement {
   const { load } = props;
   return (
@@ -150,6 +211,8 @@ export function ChangeRequestPanel(props: ChangeRequestPanelProps): ReactElement
           <p className="card__sub" role="status">
             Reading the review’s change requests…
           </p>
+        ) : load.kind === 'unavailable' ? (
+          <NoAnswer because={load.because} onReadAgain={props.onReadAgain} />
         ) : load.kind === 'refused' ? (
           <Empty
             look="inline"
@@ -157,32 +220,7 @@ export function ChangeRequestPanel(props: ChangeRequestPanelProps): ReactElement
             description={load.because}
           />
         ) : (
-          <>
-            {props.note === null ? null : (
-              <Banner tone="warn" lead="Not done:">
-                {props.note}
-              </Banner>
-            )}
-            {load.requests.length === 0 ? (
-              <Empty look="inline" title="No change requests on this review yet" />
-            ) : (
-              <div className="stack" role="list">
-                {load.requests.map((request) => (
-                  <Request key={request.changeRequestId} request={request} panel={props} />
-                ))}
-              </div>
-            )}
-            <div data-agent-path={props.agent}>
-              <Banner tone="info" lead="Agent filing:">
-                {AGENT_WAIT}
-              </Banner>
-            </div>
-            <div className="stack" role="list">
-              {unfiledClientPins(load.pins, load.requests).map((pin) => (
-                <FilePin key={pin.commentId} pin={pin} panel={props} />
-              ))}
-            </div>
-          </>
+          <Ready load={load} panel={props} />
         )}
       </div>
     </section>
@@ -206,6 +244,7 @@ export function ChangeRequestDock(props: {
       onDecide={model.decide}
       onFile={model.file}
       onOpenTask={props.onOpenTask}
+      onReadAgain={model.readAgain}
     />
   );
 }

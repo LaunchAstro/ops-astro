@@ -15,10 +15,14 @@ import type { ReviewReadResult } from '../../../../../packages/core-wire/src/ind
 export type ChangeRequestView = ReviewReadResult['review']['changeRequests'][number];
 export type PinView = ReviewReadResult['review']['pins'][number];
 
-/** What the panel has read: nothing yet, the server's refusal, or the review's requests and pins. */
+/**
+ * What the panel has read: nothing yet, the server's refusal, no answer at all (the server could
+ * not be reached, never drawn as a refusal), or the review's requests and pins.
+ */
 export type DockLoad =
   | { readonly kind: 'loading' }
   | { readonly kind: 'refused'; readonly because: string }
+  | { readonly kind: 'unavailable'; readonly because: string }
   | {
       readonly kind: 'ready';
       readonly requests: readonly ChangeRequestView[];

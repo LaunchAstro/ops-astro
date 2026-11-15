@@ -34,9 +34,11 @@ export interface ChangeRequestModel {
   readonly note: string | null;
   readonly decide: (changeRequestId: string, decision: 'approve' | 'refuse') => void;
   readonly file: (commentId: string, text: string) => void;
+  /** Read the review again, after a read that got no answer. Held intents stay. */
+  readonly readAgain: () => void;
 }
 
-interface Drawn extends Omit<ChangeRequestModel, 'decide' | 'file'> {
+interface Drawn extends Omit<ChangeRequestModel, 'decide' | 'file' | 'readAgain'> {
   /** The client, business and review the state was read in. */
   readonly scope: string;
   /** Which entry into that scope it is: every write and read is tagged with it. */
@@ -56,6 +58,7 @@ const blank = (scope: string, visit: number): Drawn => ({
 
 async function readLoad(client: DockClient, reviewId: string): Promise<DockLoad> {
   const result = await client.read<ReviewReadResult>('review.read', { reviewId });
+  if ('unavailable' in result) return { kind: 'unavailable', because: result.because };
   if (!('ok' in result)) return { kind: 'refused', because: describeFailure(result) ?? '' };
   const { changeRequests, pins } = result.value.review;
   return { kind: 'ready', requests: changeRequests, pins };
@@ -157,5 +160,8 @@ export function useChangeRequests(client: DockClient, reviewId: string): ChangeR
       client.mutate('review.propose_change', { commentId, text }, { operationId }),
     );
   };
-  return { ...current, decide, file };
+  const readAgain = (): void => {
+    void reread();
+  };
+  return { ...current, decide, file, readAgain };
 }
