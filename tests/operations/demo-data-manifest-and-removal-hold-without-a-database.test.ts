@@ -5,8 +5,11 @@
 // stand-in transport, for the two cases the database suite cannot stage: the
 // manifest keeps every id a step's answer names as made (Sol S2505-2); and the
 // removal stops before anything is trashed at a listed task it cannot check
-// whole: one that cannot be read (S2505-1, S2505-3), or one with a subtask the
-// manifest does not list, since task.trash takes the whole subtree (S2505-3).
+// whole: one that cannot be read (S2505-1, S2505-3), or one with any subtask,
+// since task.trash takes the whole subtree and the demo makes none (S2505-3);
+// and each trash names its one task in onlyRecords, so a subtask filed after
+// the read is refused by the server (#2525, S2505-4), under an operation id
+// new to each run, so a refusal is never replayed to the next.
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -133,5 +136,72 @@ describe('demo data manifest and removal', () => {
     }, listed);
     await expect(removal).rejects.toThrow('subtask');
     expect(sent.filter((verb) => verb === 'task.trash')).toStrictEqual([]);
+  });
+
+  it('a listed task under a listed task stops the removal before any trash: the demo makes no subtask', async () => {
+    const listed = manifest();
+    listed.made.push(
+      { step: 'task:0', kind: 'task', id: id(1), name: 'Demo One', revision: 1 },
+      { step: 'task:1', kind: 'task', id: id(2), name: 'Demo Two', revision: 1 },
+    );
+    const sent: string[] = [];
+    const removal = remove((verb, body) => {
+      sent.push(verb);
+      if (verb === 'task.read') {
+        const one = body['recordId'] === id(1);
+        // onlyRecords names one task, so trashing Demo One would be refused after other trashes.
+        const steps = one ? [{ id: id(2), title: 'Demo Two' }] : [];
+        const title = one ? 'Demo One' : 'Demo Two';
+        return Promise.resolve({ status: 200, body: { fields: { title }, revision: 1, steps } });
+      }
+      return Promise.resolve({ status: 200, body: {} });
+    }, listed);
+    await expect(removal).rejects.toThrow('subtask');
+    expect(sent.filter((verb) => verb === 'task.trash')).toStrictEqual([]);
+  });
+
+  it('each trash names its one task in onlyRecords', async () => {
+    const listed = manifest();
+    listed.made.push(
+      { step: 'task:0', kind: 'task', id: id(1), name: 'Demo One', revision: 1 },
+      { step: 'task:1', kind: 'task', id: id(2), name: 'Demo Two', revision: 3 },
+    );
+    const trashes: Body[] = [];
+    const result = await remove((verb, body) => {
+      if (verb === 'task.read') {
+        const title = body['recordId'] === id(1) ? 'Demo One' : 'Demo Two';
+        const revision = body['recordId'] === id(1) ? 1 : 3;
+        return Promise.resolve({ status: 200, body: { fields: { title }, revision, steps: [] } });
+      }
+      if (verb === 'task.trash') trashes.push(body);
+      return Promise.resolve({ status: 200, body: {} });
+    }, listed);
+    expect(result).toStrictEqual({ trashed: 2, gone: 0 });
+    expect(
+      trashes.map((body) => [body['recordId'], body['expectedRevision'], body['onlyRecords']]),
+    ).toStrictEqual([
+      [id(1), 1, [id(1)]],
+      [id(2), 3, [id(2)]],
+    ]);
+  });
+
+  it('each removal run sends its trashes under new operation ids, so a refusal is never replayed', async () => {
+    const listed = manifest();
+    listed.made.push({ step: 'task:0', kind: 'task', id: id(1), name: 'Demo One', revision: 1 });
+    const operations: unknown[] = [];
+    const run = async (): Promise<unknown> =>
+      await remove((verb, body) => {
+        if (verb === 'task.read') {
+          const answer = { fields: { title: 'Demo One' }, revision: 1, steps: [] };
+          return Promise.resolve({ status: 200, body: answer });
+        }
+        operations.push(body['operationId']);
+        // The register keeps a refusal under its operation id and replays it.
+        return Promise.resolve({ status: 409, body: { code: 'TRASH_SUBTREE_CHANGED' } });
+      }, listed);
+    await expect(run()).rejects.toThrow('TRASH_SUBTREE_CHANGED');
+    await expect(run()).rejects.toThrow('TRASH_SUBTREE_CHANGED');
+    expect(operations).toHaveLength(2);
+    expect(operations[0]).not.toBe(operations[1]);
   });
 });

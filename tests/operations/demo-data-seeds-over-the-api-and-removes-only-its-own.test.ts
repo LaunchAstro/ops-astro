@@ -6,7 +6,9 @@
 // step in the operation register, each task in its state, a stop and a rerun
 // making nothing twice, and removal trashing the manifest's tasks and nothing
 // real, refusing a manifest that names a real task, a demo task with real work
-// filed under it, or one a broken decision chain leaves unreadable.
+// filed under it (before the read, between the read and the trash, or one the
+// person cannot read, #2525), or one a broken decision chain leaves
+// unreadable; and a refused removal is not replayed to the next run.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -301,6 +303,112 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
     });
     expect(moved.status).toBe(200);
   });
+
+  it('a subtask filed between the read and the trash is refused TRASH_SUBTREE_CHANGED, and nothing is trashed', async () => {
+    let child: Record<string, unknown> | undefined;
+    // Real work filed under the first demo task after removal read it, before its trash.
+    const racing: Send = async (verb, body) => {
+      if (verb === 'task.trash' && child === undefined) {
+        const filed = await send('task.create', {
+          operationId: randomUUID(),
+          parentId: body['recordId'],
+          fields: { title: 'Real client work' },
+        });
+        expect(filed.status).toBe(200);
+        child = filed.body as Record<string, unknown>;
+      }
+      return await send(verb, body);
+    };
+    await expect(remove(racing, manifest)).rejects.toThrow(
+      'task.trash answered 409 TRASH_SUBTREE_CHANGED',
+    );
+    expect(await liveDemoTasks()).toBe(TASKS.length);
+    expect((await send('task.read', { recordId: child?.['recordId'] })).status).toBe(200);
+    const moved = await send('task.trash', {
+      operationId: randomUUID(),
+      recordId: child?.['recordId'],
+      expectedRevision: child?.['revision'],
+    });
+    expect(moved.status).toBe(200);
+    // The next case removes with this same manifest: a refusal is not replayed to it.
+  });
+
+  it('a real subtask the person cannot read under a demo task is refused TRASH_SUBTREE_CHANGED, and stays', async () => {
+    // Business-wide task:write, but task:read held on the demo task alone (S2505-3):
+    // its read lists no subtask, and only the trash's own walk sees the child.
+    const own = await createApiFixture('demohidden');
+    try {
+      const ownApi = own.compose();
+      const ownCredential = await tokenFor(own.member.presented.subject, {
+        secondFactor: true,
+        expiresIn: 3600,
+      });
+      const cli = createCli({
+        businessKey: BUSINESS_KEY,
+        credential: ownCredential,
+        transport: async (path, body, bearer) =>
+          await ownApi.fetch(
+            new Request(`http://api.test${path}`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
+              body,
+            }),
+          ),
+      });
+      const ownSend: Send = async (verb, body) => {
+        const answer = await cli.run(verb, body);
+        return { status: answer.status, body: answer.body };
+      };
+      const parent = await ownSend('task.create', {
+        operationId: randomUUID(),
+        fields: { title: 'Demo Parent' },
+      });
+      expect(parent.status).toBe(200);
+      const made = parent.body as { recordId: string; revision: number };
+      const child = await ownSend('task.create', {
+        operationId: randomUUID(),
+        parentId: made.recordId,
+        fields: { title: 'Real client work' },
+      });
+      expect(child.status).toBe(200);
+      const childId = String((child.body as { recordId: string }).recordId);
+      await own.db.app.withBusiness(own.business, async (tx) => {
+        await tx.query(
+          `update public.grants set revoked_at = greatest(now(), granted_at)
+            where business_id = $1 and subject_kind = 'person' and subject_id = $2
+              and collection = 'task' and action = 'read'`,
+          [own.business, own.member.personId],
+        );
+        await grantTo(tx, own.member, 'read', { kind: 'record', id: made.recordId });
+      });
+      const read = await ownSend('task.read', { recordId: made.recordId });
+      expect(read.status).toBe(200);
+      const listed: Manifest = {
+        ...manifest,
+        batch: randomUUID().slice(0, 12),
+        made: [
+          {
+            step: 'task:0',
+            kind: 'task',
+            id: made.recordId,
+            name: 'Demo Parent',
+            revision: made.revision,
+          },
+        ],
+      };
+      await expect(remove(ownSend, listed)).rejects.toThrow(
+        'task.trash answered 409 TRASH_SUBTREE_CHANGED',
+      );
+      const rows = await own.db.admin.execute<{ id: string; deleted: boolean }>(
+        `select id::text, deleted_at is not null as deleted from public.records
+          where business_id = $1 and id = any($2::uuid[])`,
+        [own.business, [made.recordId, childId]],
+      );
+      expect(rows.map((row) => row.deleted)).toStrictEqual([false, false]);
+    } finally {
+      await own.drop();
+    }
+  }, 180_000);
 
   it('removal trashes every demo task and no real one, and a second removal sends no trash', async () => {
     expect(await remove(send, manifest)).toStrictEqual({ trashed: TASKS.length, gone: 0 });
