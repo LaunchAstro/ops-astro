@@ -92,8 +92,9 @@ export class HostileStoreAnswer extends Error {
 
 /**
  * A completed object's bytes by range, each read bounded and checked: the head read once and
- * served from memory, any other range asked of the store. An answer of another length than
- * the object holds there throws `HostileStoreAnswer`.
+ * served from memory, any other range asked of the store. A range wholly outside the object
+ * answers no bytes without asking the store; an answer of another length than the object holds
+ * there throws `HostileStoreAnswer`.
  */
 export function rangeReader(
   store: ObjectTransfers,
@@ -103,6 +104,9 @@ export function rangeReader(
   let head: Uint8Array | undefined;
   const read = async (from: number, length: number): Promise<Uint8Array> => {
     const expected = Math.max(0, Math.min(length, MOST_RANGE_BYTES, byteCount - from));
+    // Nothing of the object lies there: the file pointed outside itself, so the store is asked
+    // nothing and the reader gets no bytes (a probe then finds the file unreadable).
+    if (expected === 0) return new Uint8Array(0);
     const answer = await store.readRange(key, from, expected);
     if (!(answer instanceof Uint8Array) || answer.byteLength !== expected)
       throw new HostileStoreAnswer();

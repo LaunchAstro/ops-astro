@@ -11,6 +11,7 @@
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Covering } from '../site/covering.ts';
 import { lockCoveredReview } from './reviews.ts';
+import { stillCovered } from './review-reads.ts';
 import type { ObjectTransfers, SignedTransfer } from './storage.ts';
 import { mediaRefusal, type MediaRefusal } from './media.ts';
 import { MOST_RANGE_BYTES, rangeReader } from './upload-contract.ts';
@@ -99,8 +100,8 @@ export async function landMediaScan(
  * A GET of an asset signed for `lifeSeconds`, for playback or delivery, only once its scan has
  * passed: a life that is not a whole number of seconds from one to `MOST_READ_LIFE_SECONDS` is
  * refused before anything is read, then the review is judged by the caller's grant under its
- * lock, then the asset's own state read in the same transaction. Each other state is refused by
- * its name.
+ * lock, then the asset's own state read under its lock in the same transaction and the grant
+ * judged again after that wait. Each other state is refused by its name.
  */
 export async function signMediaRead(
   tx: TenantQuery,
@@ -127,7 +128,10 @@ export async function signMediaRead(
         for share`,
     [tx.businessId, input.assetId, review.id],
   );
-  if (asset === undefined) return mediaRefusal('NOT_FOUND');
+  // The asset lock can wait on a landing scan: the grant is asked again after that wait, so one
+  // that ended meanwhile signs nothing and learns nothing of the asset's state.
+  if (asset === undefined || !(await stillCovered(tx, input.covering, review.id)))
+    return mediaRefusal('NOT_FOUND');
   if (asset.refusal !== null) return { code: 'ASSET_REFUSED' };
   if (asset.scan_state === null) return { code: 'ASSET_NOT_COMPLETE' };
   if (asset.scan_state === 'quarantined') return { code: 'ASSET_QUARANTINED' };

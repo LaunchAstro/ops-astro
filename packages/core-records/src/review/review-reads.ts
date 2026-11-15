@@ -229,9 +229,10 @@ async function capturesOf(
 
 /**
  * Whether the caller's grant still covers the review at its holder, in a statement of its own.
- * Asked after the read's last part, so a grant revoked or expired meanwhile reads nothing.
+ * Asked after a read's last part or a lock wait, so a grant revoked or expired meanwhile covers
+ * nothing.
  */
-async function stillCovered(
+export async function stillCovered(
   tx: TenantQuery,
   covering: Covering,
   reviewId: string,

@@ -9,7 +9,8 @@
 -- timescale) is written once at completion; the scan's engine and time land
 -- with its answer. A row not completed carries neither a refusal nor a scan
 -- state. The probe's numbers are an MP4's unsigned 32-bit fields (its
--- duration a safe integer), so they are bigint.
+-- duration a safe integer), so they are bigint. An asset completed before
+-- the contract lands quarantined, with no probe.
 
 alter table public.review_media_assets
   add column refusal         text,
@@ -21,7 +22,13 @@ alter table public.review_media_assets
   add column probe_fps_den   bigint,
   add column probe_timecode  text,
   add column probe_duration  bigint,
-  add column probe_timescale bigint,
+  add column probe_timescale bigint;
+
+-- An upload completed before this contract was never sniffed, probed or
+-- scanned: it is admitted quarantined, so it plays only once a scan passes.
+update public.review_media_assets set scan_state = 'quarantined' where state = 'completed';
+
+alter table public.review_media_assets
   add constraint review_media_assets_refusal_known
     check (refusal in ('TYPE_MISMATCH', 'PROBE_DISAGREES', 'PROBE_UNREADABLE')),
   add constraint review_media_assets_scan_state_known
