@@ -27,7 +27,11 @@ export interface TaskStateRow {
   readonly machineCategory: MachineCategory;
 }
 
-/** The states an installation has, in the order a board draws them. */
+/**
+ * The states an installation has, in the order a board draws them: by
+ * position, then id, as `task.read` lists them, so a reopen lands in the first
+ * unstarted state the read lists even when two share a position.
+ */
 export async function readTaskStates(
   tx: TenantQuery,
   taskStateTypeId: string,
@@ -40,7 +44,7 @@ export async function readTaskStates(
     `select id, data ->> 'key' as key, data ->> 'machine_category' as machine_category
        from records
       where business_id = $1 and record_type_id = $2 and deleted_at is null
-      order by num_1`,
+      order by num_1, id`,
     [tx.businessId, taskStateTypeId],
   );
   return rows.map((row) => ({

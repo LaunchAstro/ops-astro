@@ -25,9 +25,8 @@ import {
   type InternalTaskDetail as Task,
   type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { useCommand, type Settlement } from '../../records/use-command.ts';
-import { submitEdit } from '../../records/submit.ts';
 import { AssigneeField } from './AssigneeField.tsx';
+import { useFieldWrite } from './panel-field-write.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
@@ -48,34 +47,6 @@ export interface PanelFieldsProps extends ClientSeams {
   /** The business's task states `task.read` sent, the Status select's choices. */
   readonly states?: readonly TaskStateView[];
   readonly onChanged: () => void;
-}
-
-type FieldCommand = 'task.update' | 'task.set_stage';
-
-/** One field write at the read revision, or the one an edit started from; a landed one is counted. */
-function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
-  const { busy, because, run } = useCommand();
-  const write = (
-    command: FieldCommand,
-    fields: Readonly<Record<string, unknown>>,
-    revision = props.task.revision,
-    then?: (settlement: Settlement) => void,
-  ): void => {
-    run(
-      () =>
-        submitEdit(props.client, {
-          command,
-          recordId: props.task.id,
-          expectedRevision: revision,
-          fields,
-        }),
-      (settlement) => {
-        if (settlement.kind === 'ok') props.onChanged();
-        then?.(settlement);
-      },
-    );
-  };
-  return { busy, because, write };
 }
 
 const Refusal = (props: { readonly because: string | null }): ReactElement | null =>

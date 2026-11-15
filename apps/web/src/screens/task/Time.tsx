@@ -17,7 +17,8 @@ import { useSignedInName } from '../../app-state.ts';
 import { Avatar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
-import { holding, useHeldOperations } from './held-operations.ts';
+import { holding, useHeldOperations, useHoldTaskRead } from './held-operations.ts';
+import { noteHold } from './time-note-hold.ts';
 
 const loggedOn = (at: string): string =>
   new Date(at).toLocaleDateString('en-AU', {
@@ -33,6 +34,8 @@ function NoteBox(props: {
   readonly onDraft: (next: string) => void;
   readonly onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
 }): ReactElement {
+  // While the box is open, its save's reread keeps the task page drawn (#1455).
+  useHoldTaskRead(true);
   return (
     <input
       className="field__input"
@@ -48,29 +51,41 @@ function NoteBox(props: {
   );
 }
 
+/** Enter or Space on the note's keyboard stop opens its box. */
+const opener =
+  (open: () => void) =>
+  (event: KeyboardEvent<HTMLSpanElement>): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    open();
+  };
+
 /** The note, a keyboard stop that opens an inline box: Enter saves, Escape leaves it. */
 function EntryNote(props: {
   readonly entry: TimeEntryView;
   readonly run: Run;
+  /** A save is out: Enter sends nothing, so it takes no held id either. */
+  readonly busy: boolean;
   readonly client: OperationsClient;
   readonly onChanged: () => void;
 }): ReactElement {
   const { entry } = props;
   const [draft, setDraft] = useState<string | null>(null);
-  const open = (event: KeyboardEvent<HTMLSpanElement>): void => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    setDraft(entry.note);
-  };
+  const held = useHeldOperations();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') setDraft(null);
     if (event.key !== 'Enter' || draft === null) return;
     event.preventDefault();
+    if (props.busy) return;
+    const body = { entryId: entry.id, note: draft };
+    const hold = noteHold(held, body, entry.note, () => props.client.newOperationId());
     props.run(
-      () => props.client.mutate('time.set_note', { entryId: entry.id, note: draft }),
+      () => props.client.mutate('time.set_note', body, { operationId: hold.id }),
       (settlement) => {
+        hold.settle(settlement.kind);
         if (settlement.kind !== 'ok') return;
-        setDraft(null);
+        // Words typed while it was saving are not this answer's to close.
+        setDraft((current) => (current === body.note ? null : current));
         props.onChanged();
       },
     );
@@ -86,7 +101,9 @@ function EntryNote(props: {
         onClick={() => {
           setDraft(entry.note);
         }}
-        onKeyDown={open}
+        onKeyDown={opener(() => {
+          setDraft(entry.note);
+        })}
       >
         {entry.note === '' ? 'Add a note' : entry.note}
       </span>

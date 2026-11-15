@@ -91,7 +91,7 @@ function onMenuKey(event: KeyboardEvent<HTMLInputElement>, menu: Menu): void {
     event.preventDefault();
     const step = event.key === 'ArrowDown' ? 1 : -1;
     menu.mark(Math.min(Math.max(menu.marked + step, 0), Math.max(menu.rows.length - 1, 0)));
-  } else if (event.key === 'Enter') {
+  } else if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
     event.preventDefault();
     const row = menu.rows[menu.marked];
     if (row !== undefined) menu.choose(row);
