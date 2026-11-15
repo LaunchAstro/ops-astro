@@ -127,6 +127,14 @@ describe.skipIf(serverUrl === undefined)('C35-X the review decision', () => {
     expect(codeOf(await w.decide(w.ben, opened))).toBe('not-a-refusal');
     // No correction, publish, receipt, message, outbox row or task: nothing but the decision.
     expect(await otherRows()).toStrictEqual(before);
+    // The census sees a change in place, not only a new row: the same task, one value added.
+    const [probe] = await w.world.db.admin.execute<{ readonly id: string }>(
+      `update public.records set data = data || '{"censusProbe": true}'::jsonb
+        where business_id = $1 and id = $2 returning id`,
+      [w.world.business, w.taskA],
+    );
+    expect(probe?.id).toBe(w.taskA);
+    expect(await otherRows()).not.toStrictEqual(before);
   });
 
   it('C35-X audit readback (revision approved (exact version))', async () => {
