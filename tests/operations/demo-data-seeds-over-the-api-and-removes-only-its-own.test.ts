@@ -262,7 +262,7 @@ describe.skipIf(serverUrl === undefined)('demo data over the API', () => {
     for (const row of kept) {
       // eslint-disable-next-line no-await-in-loop
       await signed(
-        'update public.gate_decisions set payload = $3::jsonb where business_id = $1 and id = $2',
+        'update public.gate_decisions set payload = $3::text::jsonb where business_id = $1 and id = $2',
         [row.id, row.payload],
       );
     }
