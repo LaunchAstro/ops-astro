@@ -31,6 +31,8 @@ export async function carryPins(
   const carried = await call('review.carry_pins', { leaseId, fence, revisionId }, pickup).catch(
     () => ({ fault: true }) as const,
   );
-  if ('detail' in carried) return undefined;
+  // Applied only when the answer names the carry of this revision: an empty or foreign detail
+  // (a 200 with no JSON, say) is no answer (S2172-2).
+  if ('detail' in carried && carried.detail['revisionId'] === revisionId) return undefined;
   return new PinsUncarried('refused' in carried ? printable(carried.refused) : 'CARRY_FAULT');
 }

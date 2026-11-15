@@ -142,7 +142,7 @@ it('C35-X a carry answered 200 with no JSON, through the runner adapter, fails a
         headers: { 'content-type': 'text/html' },
       });
     }
-    const answer = await fake(verb, JSON.parse(String(init?.body)) as never, undefined);
+    const answer = await fake(verb, JSON.parse(String(init?.body)) as never);
     return Response.json(answer);
   });
   const settings = { OPS_ASTRO_API_URL: 'https://api.example', OPS_ASTRO_BUSINESS: 'test' };
