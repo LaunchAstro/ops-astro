@@ -390,6 +390,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'packages/core-records/src/tenancy/privileges.ts',
     "the tenancy wrapper's default-deny conformance check, part of that protected component",
   ],
+  [
+    'apps/web/src/screens/review/ChangeRequests.tsx',
+    "C57's change-request panel (#2119); #2150 places it on the review workspace once #2105 lands",
+  ],
 ]);
 
 const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file);
