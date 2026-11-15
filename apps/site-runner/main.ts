@@ -32,7 +32,7 @@ import { HOSTING_ORIGIN, readSettings, SOURCE_ORIGIN, type Settings } from './se
 import { custodySites, siteDestinations, type RunnerSites } from './sites.ts';
 
 /** The agent's calls through the command line's own entry, settled to an `Answer`. */
-function apiCall(settings: Settings, bearer: () => Promise<string>): AgentCall {
+export function apiCall(settings: Settings, bearer: () => Promise<string>): AgentCall {
   const transport = httpTransport(settings.OPS_ASTRO_API_URL);
   return async (verb, body, pickup) => {
     const cli = createCli({
