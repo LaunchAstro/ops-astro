@@ -307,7 +307,7 @@ it('MP-2-10 harness leg: a reserved address (/docs/snippets/) draws the one shar
   });
 }, 600_000);
 
-it('Docs harness leg (#2493): the folder tree beside the page above 640 and above it at 390, the page drawn read-only, light and dark, no sideways scroll', async () => {
+it('Docs harness leg: the folder tree beside the page above 640 and above it at 390, the page drawn read-only, light and dark, no sideways scroll', async () => {
   await each(async (width, theme, at) => {
     const page = await open('/docs/', width, theme, false, true);
     await page.locator('[data-page-id="p-first-week"]').click();
