@@ -24,6 +24,7 @@ import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS, STOP } from './data-effects-runs.ts';
 import { REVIEW_EFFECTS } from './data-effects-review.ts';
+import { DOCS_EFFECTS } from './data-effects-docs.ts';
 import { DELETE_REQUEST_EFFECTS } from './data-effects-delete-request.ts';
 export type {
   ClassedEffects,
@@ -167,6 +168,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_priority_stages': SETTINGS,
   ...LIVE_CORRECTION_EFFECTS,
   ...REVIEW_EFFECTS,
+  ...DOCS_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

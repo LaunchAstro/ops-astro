@@ -46,6 +46,7 @@ Lane GRILL-FOLD, 27 September 2026, on the scoping decision "one key catalogue b
 | `credential:write` | every signed-in person, for agent credentials they issue, never wider than their own grants (self-scoped) | no | API-2 |  |
 | `custody:manage` | owner and administrators | no | C31, C63, C79, C67, MP-13-5, MP-14-10b, MP-14-7a, C88 |  |
 | `docs:decide` | owner and administrators | no | C51, C68 (accepting or refusing an agent's change; changing a page's audience, lane ALIGN-FOLD) |  |
+| `docs:read` | agency members where granted; owner and administrators | yes, inside its delegation | Docs thin slice (#2493): the folder tree and a page's text |  |
 | `docs:write` | agency members where granted; owner and administrators | yes, inside its delegation | C28, C41-D, C51, C68, C86, WF-8, C84 |  |
 | `experiment:decide` | owner and administrators | no | C26 |  |
 | `experiment:write` | agency members where granted; owner and administrators | yes, inside its delegation | C26 |  |
