@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a time note saved again after a different note is stored as a new intent, read back from the time entry row through the real command envelope"
+}
