@@ -89,7 +89,7 @@ import {
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
 import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
-import { REVIEW_HANDLERS } from './handlers-review.ts';
+import { SECTION_HANDLERS } from './handlers-sections.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
@@ -198,7 +198,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
   ...LIVE_CORRECTION_HANDLERS,
-  ...REVIEW_HANDLERS,
+  ...SECTION_HANDLERS,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
   // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the

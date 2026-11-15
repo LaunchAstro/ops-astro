@@ -21,6 +21,7 @@
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { LANDING, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
 import { seedForeignChangeRequest } from './c57-bodies.ts';
+import { seedForeignDocs } from './docs-recipes.ts';
 import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -486,6 +487,19 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     // MP-4-11: the task names what is tagged.
     byAda('task.add_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
     byAda('task.remove_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
+    // Docs (#2493): bravo's folder and page, each NOT_FOUND as a fabricated one is.
+    const docs = await seedForeignDocs(w.h.world.db.admin, w.h.world.bravo, f.admin);
+    byAda('docs.create_folder', 'parentId', docs.folderId, (parentId) => ({ name: 't', parentId }));
+    byAda('docs.create_page', 'folderId', docs.folderId, (folderId) => ({
+      folderId,
+      title: 't',
+      body: 't',
+    }));
+    byAda('docs.update_page', 'pageId', docs.pageId, (pageId) => ({
+      pageId,
+      expectedVersion: 1,
+      body: 't',
+    }));
     // MP-4-8: the old task names what is duplicated; the copy goes to no client.
     byAda('task.duplicate', 'recordId', f.task.id, (recordId) => ({
       recordId,
@@ -744,11 +758,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 135 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 138 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(135);
-    expect(names).toHaveLength(135);
+    expect(new Set(names).size, 'distinct operations').toBe(138);
+    expect(names).toHaveLength(138);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -37,6 +37,7 @@ import { OWN_AGENT_SURFACE } from './surface-agents.ts';
 import { SITE_SURFACE } from './surface-site.ts';
 import { LAUNCH_SURFACE } from './surface-launch.ts';
 import { REVIEW_SURFACE } from './surface-review.ts';
+import { DOCS_SURFACE } from './surface-docs.ts';
 import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -662,6 +663,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   ...SITE_SURFACE,
   ...REVIEW_SURFACE,
+  ...DOCS_SURFACE,
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the

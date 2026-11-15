@@ -270,6 +270,23 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     proposed_by_actor_id: randomUUID(),
     proposed_by_person_id: randomUUID(),
   },
+  // Docs: the journey files no folder or page; one of each, and the page's first version.
+  'public.docs_folders': { name: 'seed', created_by_actor_id: randomUUID() },
+  'public.docs_pages': {
+    folder_id: randomUUID(),
+    title: 'seed',
+    body: '',
+    version: 1,
+    created_by_actor_id: randomUUID(),
+    updated_by_actor_id: randomUUID(),
+  },
+  'public.docs_page_versions': {
+    page_id: randomUUID(),
+    number: 1,
+    title: 'seed',
+    body: '',
+    actor_id: randomUUID(),
+  },
   // C35-X: the journey carries no pin; one lost carry between made-up revisions.
   'public.review_pin_carries': {
     review_id: randomUUID(),

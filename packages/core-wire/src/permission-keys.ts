@@ -25,7 +25,7 @@ const CATALOGUE: Readonly<Record<string, readonly string[]>> = {
   connection: ['read', 'write'],
   conversation: ['read', 'write'],
   custody: ['manage'],
-  docs: ['decide', 'write'],
+  docs: ['decide', 'read', 'write'],
   experiment: ['decide', 'write'],
   export: ['read'],
   finance: ['read'],

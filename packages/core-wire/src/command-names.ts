@@ -6,7 +6,7 @@
 import type { LaunchCommandName } from './surface-launch-names.ts';
 import type { SetupCommandName } from './surface-setup.ts';
 import type { SiteCommandName } from './surface-site-names.ts';
-import type { ReviewCommandName } from './surface-review-names.ts';
+import type { SectionCommandName } from './surface-section-names.ts';
 import type { BinCommandName } from './surface-bin-names.ts';
 
 export type CommandName =
@@ -297,4 +297,4 @@ export type CommandName =
   | SetupCommandName
   | LaunchCommandName
   | SiteCommandName
-  | ReviewCommandName;
+  | SectionCommandName;

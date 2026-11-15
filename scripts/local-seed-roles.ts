@@ -113,6 +113,10 @@ export const GRANTS_BY_ROLE: Readonly<
     // and `proposal:decide`, the owner's and administrators'.
     ['proposal', 'write'],
     ['proposal', 'decide'],
+    // Docs (#2493): filing folders and pages is `docs:write`, reading them `docs:read`, the
+    // owner's and administrators' on install and a member's only where granted.
+    ['docs', 'write'],
+    ['docs', 'read'],
   ],
   member: [
     ['task', 'read'],

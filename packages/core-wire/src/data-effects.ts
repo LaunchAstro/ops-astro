@@ -23,7 +23,7 @@ import { INVITATION_EFFECTS } from './data-effects-invitations.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 import { LAUNCH_EFFECTS } from './data-effects-launch.ts';
 import { MODEL_CALL_EFFECTS, RUN_END_EFFECTS, STOP } from './data-effects-runs.ts';
-import { REVIEW_EFFECTS } from './data-effects-review.ts';
+import { SECTION_EFFECTS } from './data-effects-sections.ts';
 import { DELETE_REQUEST_EFFECTS } from './data-effects-delete-request.ts';
 export type {
   ClassedEffects,
@@ -166,7 +166,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_retention_window': SETTINGS,
   'settings.set_priority_stages': SETTINGS,
   ...LIVE_CORRECTION_EFFECTS,
-  ...REVIEW_EFFECTS,
+  ...SECTION_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

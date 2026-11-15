@@ -336,6 +336,13 @@ the tags a task carries are rows of `task_tags`, keyed by the task and the
 tag (0081, MP-4-11): written by `tag.create`, `task.add_tag` and
 `task.remove_tag`, read on `task.read` and by `tag.list`.
 
+Docs are three tables of the business's own (20261115002300, #2493):
+`docs_folders` (a tree; the parent is named by the tenant pair, one name per
+parent whatever its case), `docs_pages` (a title, its folder and a Markdown
+body as text, with the version number of its newest write) and
+`docs_page_versions` (the title and body of every create and update, keyed by
+page and number, never changed).
+
 A new task ranks after the last of its siblings: the tasks under its parent,
 or for a top-level task the tasks on its board with no parent. Trashed siblings
 count, because a trashed task keeps its rank and a restore brings it back, so a

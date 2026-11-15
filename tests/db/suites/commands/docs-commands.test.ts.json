@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Docs thin slice (#2493): folders, pages as Markdown text and a version row per write through docs.create_folder, docs.create_page and docs.update_page under docs:write on the business; a stale version, a missing folder, parent or page and an out-of-shape field are refused and write nothing; each applied write is audited."
+}

@@ -2823,6 +2823,18 @@ its own name (`tag created`, `task.tag added`, `task.tag removed`). No agent
 reaches them yet, although the key catalogue allows both keys inside a
 delegation.
 
+`docs.create_folder` (`name`, `parentId?`), `docs.create_page` (`folderId`,
+`title`, `body`) and `docs.update_page` (`pageId`, `expectedVersion`, `title?`,
+`body?`) take `docs:write`, asked of the business and again by the Docs store
+once its rows are held (#2493). Docs are the business's own: a grant held at one
+client covers none of it. A folder or page that is not here is `NOT_FOUND`
+naming its field; a folder name taken under the same parent is
+`UNIQUE_VALUE_TAKEN` naming `name`; an update whose `expectedVersion` the page
+has moved past is `VERSION_STALE` naming `expectedVersion` and writes nothing.
+Each create and update appends one row to `docs_page_versions`; the answer's
+`detail` carries `folderId`, or `pageId` and `version`. No agent reaches them
+yet, although the key catalogue allows `docs:write` inside a delegation.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `task.bin`, `task.ledger`, `task.search`,

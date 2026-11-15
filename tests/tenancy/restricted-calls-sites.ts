@@ -33,6 +33,11 @@ export const SITE_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'review_pin_carries'],
   // C57 (20261114162900): a change request is filed once and decided once, by column.
   ['si', 'review_change_requests'],
+  // Docs (#2493, 20261115002300): a folder is made once; a page moves its text by column; a
+  // version row is written once and never changed.
+  ['si', 'docs_folders'],
+  ['si', 'docs_pages'],
+  ['si', 'docs_page_versions'],
 ];
 
 /** Executed: the freeze's one question; security invoker, so it reads no more than its caller may. */
@@ -100,5 +105,10 @@ export const SITE_UPDATES = [
       'created_task_id',
       'updated_at',
     ],
+  },
+  {
+    table: 'public.docs_pages',
+    from: '20261115002300',
+    columns: ['title', 'body', 'version', 'updated_by_actor_id', 'updated_at'],
   },
 ] as const;
