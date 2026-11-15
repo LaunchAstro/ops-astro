@@ -162,3 +162,50 @@ it('revoking a root access grant is refused when every other manager sits two gr
     await world.close();
   }
 });
+
+it.each([
+  [
+    'whose login link was ended',
+    `update public.person_logins set active = false, deactivated_at = now() where person_id = $1`,
+  ],
+  [
+    'whose acting identity was ended',
+    `update public.actors set active = false, deactivated_at = now() where person_id = $1 and kind = 'person'`,
+  ],
+])(
+  'revoking the last manager who can sign in is refused while the other manager is a member %s',
+  async (_, cutOff) => {
+    const world = await createWorld('lastmanagersignin');
+    try {
+      const rootId = await world.db.app.withBusiness(world.alpha, async (tx) => {
+        const root = await delegatingRoot(tx, world.ada.personId);
+        const noah = await issueGrant(tx, [], {
+          subject: { kind: 'person', id: String(world.noah.personId) },
+          scope: { kind: 'business', id: null },
+          collection: 'access',
+          action: 'manage',
+          parentGrantId: null,
+          grantedByActorId: String(world.ada.actorId),
+        });
+        expect(noah.ok).toBe(true);
+        await tx.query(cutOff, [world.noah.personId]);
+        return root.id;
+      });
+      const answer = await call(
+        world.api,
+        personPath('alpha', '/access/revoke'),
+        { operationId: randomUUID(), grantId: rootId },
+        bearer(world.ada.token),
+      );
+      const revoked = await world.db.app.withBusiness(world.alpha, (tx) =>
+        tx.query(`select 1 from public.grants where id = $1 and revoked_at is not null`, [rootId]),
+      );
+      expect({ code: answer.code, revoked: revoked.length }).toEqual({
+        code: 'ACCESS_LAST_MANAGER',
+        revoked: 0,
+      });
+    } finally {
+      await world.close();
+    }
+  },
+);

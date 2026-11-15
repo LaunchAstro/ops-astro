@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a delegation's expiry is judged after the lock it waited on, on the statement's clock: a replay lookup, a revocation, a child mint and a narrowed late report"
+}
