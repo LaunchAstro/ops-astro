@@ -10,7 +10,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { firstPushFixture, installHook, scanned, source } from './first-push-fixture.mjs';
+import {
+  firstPushFixture,
+  installHook,
+  scanned,
+  source,
+  tokenShaped,
+} from './first-push-fixture.mjs';
 
 const canary = readFileSync(join(source, 'tests/gate/canary.txt'), 'utf8').match(
   /[Kk]wathorne [A-Za-z]+ [A-Za-z]+/u,
@@ -88,4 +94,35 @@ test('a URL rewrite rule anywhere keeps the full scan', (t) => {
   const result = f.push('origin', 'fresh');
   assert.equal(result.status, 0, result.output);
   assert.deepEqual(scanned(result.output), [tip]);
+});
+
+// DECISIONS 130: a commit the push target already holds is not published again.
+// What protects publication is that a receiver which lacks it gets it scanned.
+const dirtyMainOnOrigin = (t) => {
+  // History reaches the remote before the hook exists here: a fresh clone
+  // has the same shape, an origin/main and no commit this gate has passed.
+  const f = firstPushFixture(t, { hooked: false });
+  const dirty = f.commit('config.txt', `token = ${tokenShaped()}\n`, 'old config');
+  f.git('push', '-q', 'origin', 'main');
+  f.git('fetch', '-q', 'origin');
+  assert.equal(f.git('rev-parse', 'refs/remotes/origin/main'), dirty);
+  installHook(f.repo);
+  f.git('checkout', '-q', '-b', 'fresh');
+  return { f, dirty, tip: f.commit('fresh.txt', 'clean\n', 'fresh') };
+};
+
+test('with nothing passed on this machine, a first push to another receiver scans everything', (t) => {
+  const { f, tip } = dirtyMainOnOrigin(t);
+  const result = f.push('elsewhere', 'fresh');
+  assert.equal(result.status, 1, result.output);
+  assert.deepEqual(scanned(result.output), [tip]);
+  assert.equal(f.published('elsewhere', 'fresh'), '');
+});
+
+test('with nothing passed on this machine, a first push to the receiver holding main scans only past it', (t) => {
+  const { f, dirty, tip } = dirtyMainOnOrigin(t);
+  const result = f.push('origin', 'fresh');
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(scanned(result.output), [`${dirty}..${tip}`]);
+  assert.equal(f.published('origin', 'fresh'), tip);
 });
