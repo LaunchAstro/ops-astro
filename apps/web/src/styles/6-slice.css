@@ -652,3 +652,32 @@
   width: min(31rem, 90vw);
   padding: 0.75rem;
 }
+
+/* #2493 Docs: the folder tree beside the chosen page on a desktop, the tree above the page at
+   640 and under. Nested folders indent by one step; a page is a plain row in its folder. */
+.docs {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+
+.docs__branch {
+  margin: 0;
+  padding-inline-start: var(--s-4);
+  list-style: none;
+}
+
+.docs__tree > .docs__branch {
+  padding-inline-start: 0;
+}
+
+.docs__folder {
+  color: var(--ink-muted);
+}
+
+@media (width <= 640px) {
+  .docs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
