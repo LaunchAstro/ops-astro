@@ -25,13 +25,14 @@ import { realSurfaces, scanUses } from '../../scripts/command-parity.mjs';
 import { edit, real } from './api-1-catalogue-support.ts';
 
 const WEB = join(import.meta.dirname, '..', '..', 'apps', 'web', 'src');
-/** `handlers.ts` and the team chat, wayfinder, live correction and review blocks it spreads in. */
+/** `handlers.ts` and the team chat, wayfinder, live correction, review, docs and delete-request blocks it spreads in. */
 const HANDLER_FILES = [
   'handlers.ts',
   'chat-handlers.ts',
   'handlers-wayfinder.ts',
   'live-correction-handlers.ts',
   'handlers-review.ts',
+  'handlers-docs.ts',
   'handlers-delete-request.ts',
 ];
 const NAMESPACES = new Set(COMMAND_SURFACE.map((one) => one.name.split('.')[0] as string));
