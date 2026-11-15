@@ -18,6 +18,10 @@ import { grantTo, shareWithClient, WHOLE_BUSINESS, type Member } from '../comman
 export const CANARY = 'CANARY-c81-drill-recipient-5d17a9';
 export const DAY_MS: number = 24 * 60 * 60 * 1000;
 
+/** The business's day an instant falls on, as a notice dates it: YYYY-MM-DD. */
+export const businessDayOf = (iso: string): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Brisbane' }).format(new Date(iso));
+
 export type Name =
   | 'operations.read'
   | 'privacy.record_incident'
