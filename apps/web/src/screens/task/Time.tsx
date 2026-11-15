@@ -79,6 +79,8 @@ function noteHold(
 function EntryNote(props: {
   readonly entry: TimeEntryView;
   readonly run: Run;
+  /** A save is out: Enter sends nothing, so it takes no held id either. */
+  readonly busy: boolean;
   readonly client: OperationsClient;
   readonly onChanged: () => void;
 }): ReactElement {
@@ -94,6 +96,7 @@ function EntryNote(props: {
     if (event.key === 'Escape') setDraft(null);
     if (event.key !== 'Enter' || draft === null) return;
     event.preventDefault();
+    if (props.busy) return;
     const body = { entryId: entry.id, note: draft };
     const hold = noteHold(held, body, entry.note, () => props.client.newOperationId());
     props.run(
