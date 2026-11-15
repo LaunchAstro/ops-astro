@@ -25,7 +25,7 @@ interface Seen {
   readonly body: Record<string, unknown>;
 }
 
-type Answer = { readonly status: number; readonly body: unknown };
+type Answer = { readonly status: number; readonly body: unknown; readonly location?: string };
 
 const servers: Server[] = [];
 const folders: string[] = [];
@@ -85,7 +85,10 @@ async function deployed(answer?: (path: string) => Answer | undefined) {
       seen.push({ path, auth: request.headers.authorization, body });
       const fields = body['fields'] as { title?: string } | undefined;
       const chosen = answer?.(path) ?? answerFor(path, fields, record);
-      response.writeHead(chosen.status, { 'content-type': 'application/json' });
+      response.writeHead(chosen.status, {
+        'content-type': 'application/json',
+        ...(chosen.location === undefined ? {} : { location: chosen.location }),
+      });
       response.end(JSON.stringify(chosen.body));
     })();
   });
@@ -199,4 +202,31 @@ it('without an origin on the command line, or without a bearer, it sends nothing
   const noToken = await run(['--origin', api.origin, '--business', 'alpha'], null);
   expect(noToken.code).toBe(2);
   expect(api.seen).toStrictEqual([]);
+});
+
+it('an origin that is more than scheme and host is refused before anything is sent', async () => {
+  const api = await deployed();
+  for (const origin of [
+    `${api.origin}?x=1`,
+    `${api.origin}#top`,
+    `${api.origin}/`,
+    `${api.origin}/app`,
+  ]) {
+    // eslint-disable-next-line no-await-in-loop -- one run at a time, each checked
+    const result = await run(['--origin', origin, '--business', 'alpha']);
+    expect(result.code, origin).toBe(2);
+  }
+  expect(api.seen).toStrictEqual([]);
+});
+
+it('a redirect is never followed, so the bearer reaches no other server', async () => {
+  const elsewhere = await deployed();
+  const api = await deployed((path) =>
+    path.endsWith('/task/create')
+      ? { status: 307, body: {}, location: `${elsewhere.origin}/api/b/alpha/task/create` }
+      : undefined,
+  );
+  const result = await run(['--origin', api.origin, '--business', 'alpha']);
+  expect(result.code).toBe(1);
+  expect(elsewhere.seen, 'the other server is never asked').toStrictEqual([]);
 });
