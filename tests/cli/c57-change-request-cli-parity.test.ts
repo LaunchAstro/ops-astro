@@ -22,6 +22,7 @@ import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import type { Caller } from '../acceptance/cast.ts';
 import { bindAboutPage, ABOUT_FILE } from '../site/party-site-fixture.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
+import { asClientPin } from '../review/client-pin-seed.ts';
 
 const MARKER = `client-words-${randomUUID().slice(0, 8)}`;
 
@@ -83,27 +84,28 @@ describe.skipIf(serverUrl === undefined)(
       return answer.body;
     };
 
-    /** A client pin carrying the planted words on the review's revision. */
-    const clientPin = async (): Promise<string> =>
-      String(
-        (
-          (
-            await ok('review.pin_comment', {
-              revisionId,
-              width: 1480,
-              selector: [
-                {
-                  type: 'FragmentSelector',
-                  conformsTo: 'http://www.w3.org/TR/media-frags/',
-                  value: 'xywh=0,0,9,9',
-                },
-              ],
-              body: `Can the heading sit higher? ${MARKER}`,
-              audience: 'client',
-            })
-          )['detail'] as Body
-        )['commentId'],
-      );
+    /**
+     * A client pin carrying the planted words on the review's revision. Client review is off,
+     * so the pin is made for the team and rewritten as a client's (`client-pin-seed.ts`).
+     */
+    const clientPin = async (): Promise<string> => {
+      const pinned = await ok('review.pin_comment', {
+        revisionId,
+        width: 1480,
+        selector: [
+          {
+            type: 'FragmentSelector',
+            conformsTo: 'http://www.w3.org/TR/media-frags/',
+            value: 'xywh=0,0,9,9',
+          },
+        ],
+        body: `Can the heading sit higher? ${MARKER}`,
+        audience: 'internal',
+      });
+      const commentId = String((pinned['detail'] as Body)['commentId']);
+      await asClientPin(world.db.admin, world.alpha, commentId);
+      return commentId;
+    };
 
     /** ada's own live lease on the review's task, as the matrix takes it (EX-01). */
     async function lease(): Promise<{ readonly leaseId: unknown; readonly fence: unknown }> {
