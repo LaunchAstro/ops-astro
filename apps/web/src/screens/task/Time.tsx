@@ -17,7 +17,8 @@ import { useSignedInName } from '../../app-state.ts';
 import { Avatar } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
-import { holding, useHeldOperations, useHoldTaskRead, type Held } from './held-operations.ts';
+import { holding, useHeldOperations, useHoldTaskRead } from './held-operations.ts';
+import { noteHold } from './time-note-hold.ts';
 
 const loggedOn = (at: string): string =>
   new Date(at).toLocaleDateString('en-AU', {
@@ -50,31 +51,15 @@ function NoteBox(props: {
   );
 }
 
-/**
- * One held note per entry: the same words sent again over the same note, after
- * a lost answer, go under the held id; other words, or a note read back changed
- * since, replace it, so a note typed back later is a new save, never a replay
- * of an earlier one's stored answer.
- */
-function noteHold(
-  held: Held,
-  body: { entryId: string; note: string },
-  over: string,
-  mint: () => string,
-) {
-  const slot = `time.set_note ${body.entryId}`;
-  const words = `${slot} words`;
-  const said = JSON.stringify([over, body.note]);
-  const id = held[words] === said ? (held[slot] ?? mint()) : mint();
-  held[slot] = id;
-  held[words] = said;
-  const settle = (kind: string): void => {
-    if (kind === 'unknown' || held[slot] !== id) return;
-    held[slot] = undefined;
-    held[words] = undefined;
+/** Enter or Space on the note's keyboard stop opens its box. */
+const opener =
+  (open: () => void) =>
+  (event: KeyboardEvent<HTMLSpanElement>): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    open();
   };
-  return { id, settle };
-}
+
 /** The note, a keyboard stop that opens an inline box: Enter saves, Escape leaves it. */
 function EntryNote(props: {
   readonly entry: TimeEntryView;
@@ -87,11 +72,6 @@ function EntryNote(props: {
   const { entry } = props;
   const [draft, setDraft] = useState<string | null>(null);
   const held = useHeldOperations();
-  const open = (event: KeyboardEvent<HTMLSpanElement>): void => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    setDraft(entry.note);
-  };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') setDraft(null);
     if (event.key !== 'Enter' || draft === null) return;
@@ -121,7 +101,9 @@ function EntryNote(props: {
         onClick={() => {
           setDraft(entry.note);
         }}
-        onKeyDown={open}
+        onKeyDown={opener(() => {
+          setDraft(entry.note);
+        })}
       >
         {entry.note === '' ? 'Add a note' : entry.note}
       </span>

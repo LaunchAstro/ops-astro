@@ -28,7 +28,8 @@ const ENTRY = {
 
 const BOX = 'input[data-time-note-edit]';
 
-it('an Enter ignored while a note save is out keeps that save’s id for its retry', async () => {
+/** A fetch whose first note save is stored, then its answer lost when `lose` is called. */
+function firstAnswerLost() {
   const sent: { readonly note: unknown; readonly id: unknown }[] = [];
   let loseFirst: (() => void) | undefined;
   const fetch = ((_url: string, init?: RequestInit) => {
@@ -52,6 +53,12 @@ it('an Enter ignored while a note save is out keeps that save’s id for its ret
       }),
     );
   }) as unknown as typeof globalThis.fetch;
+  const lose = (): void => loseFirst?.();
+  return { sent, lose, fetch };
+}
+
+it('an Enter ignored while a note save is out keeps that save’s id for its retry', async () => {
+  const { sent, lose, fetch } = firstAnswerLost();
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const view = await mount(
     <TimeLog
@@ -74,7 +81,7 @@ it('an Enter ignored while a note save is out keeps that save’s id for its ret
   expect(sent, 'the Enter while busy sends nothing').toHaveLength(1);
   await typeInto(view, BOX, 'First note');
   await act(async () => {
-    loseFirst?.();
+    lose();
     await Promise.resolve();
   });
   await tick();
