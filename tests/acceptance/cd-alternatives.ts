@@ -27,6 +27,7 @@ export const CASE = {
   liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   review: 'refuses a foreign and a fabricated task, revision, review or picture alike (C35)',
   changeRequest: 'refuses a foreign and a fabricated pin or change request alike (C57)',
+  docs: 'refuses a foreign and a fabricated folder or page alike (#2493)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
@@ -99,6 +100,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'time.delete': ['entryId', 'time'],
   'task.add_tag': ['recordId', 'tag'],
   'task.remove_tag': ['recordId', 'tag'],
+  'docs.create_folder': ['parentId', 'docs'],
+  'docs.create_page': ['folderId', 'docs'],
+  'docs.update_page': ['pageId', 'docs'],
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
   'credential.revoke': ['credentialId', 'control'],

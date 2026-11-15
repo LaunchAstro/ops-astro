@@ -20,6 +20,7 @@
 import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { LANDING, seedAskedRevision, seedForeignPicture, seedForeignReview } from './c35-bodies.ts';
 import { seedForeignChangeRequest } from './c57-bodies.ts';
+import { seedForeignDocs } from './docs-recipes.ts';
 import { ABOUT, PAGE } from '../site/c80-sites.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -664,6 +665,40 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const onTag = (recordId: string) => ({ recordId, tagId: TAG });
       for (const op of ['task.add_tag', 'task.remove_tag'] as const) {
         const { operand, forms } = pair('recordId', w.foreign.task.id, onTag);
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    120_000,
+  );
+
+  it(
+    CASE.docs,
+    async () => {
+      // Docs (#2493): bravo's folder and page are foreign; each answers as a fabricated one does.
+      const docs = await seedForeignDocs(w.h.world.db.admin, w.h.world.bravo, w.foreign.admin);
+      const cells = [
+        [
+          'docs.create_folder',
+          'parentId',
+          docs.folderId,
+          (parentId: string) => ({ name: 't', parentId }),
+        ],
+        [
+          'docs.create_page',
+          'folderId',
+          docs.folderId,
+          (folderId: string) => ({ folderId, title: 't', body: 't' }),
+        ],
+        [
+          'docs.update_page',
+          'pageId',
+          docs.pageId,
+          (pageId: string) => ({ pageId, expectedVersion: 1, body: 't' }),
+        ],
+      ] as const;
+      for (const [op, field, foreignId, body] of cells) {
+        const { operand, forms } = pair(field, foreignId, body);
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, operand, ada, 'NOT_FOUND', forms);
       }

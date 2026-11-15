@@ -155,6 +155,9 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   // C57 (#2016): a client pin filed as a change request, and decided.
   ['proposal', 'write'],
   ['proposal', 'decide'],
+  // Docs (#2493): folders and pages filed, and read.
+  ['docs', 'write'],
+  ['docs', 'read'],
 ];
 
 export async function tokenFor(
