@@ -75,6 +75,8 @@
 // The eighteenth is #1623 R1's `run.end`: an untargeted lease write an agent
 // reaches under its delegation, its `leaseId` shaped by the runtime, one row
 // in each table that lists it, and a person handler that refuses.
+// The nineteenth is #2523's `task.trash` handing on its optional
+// `onlyRecords` to `trashTask`; nothing else moved.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -1286,7 +1288,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.reparent': ['reparentTask', 'parent'],
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],
-  'task.trash': ['trashTask'],
+  'task.trash': ['trashTask', undefined],
   'task.delete': ['deleteTask'],
   'task.request_delete': ['requestDelete', 'why'],
   'task.confirm_delete': ['answerDeleteRequest', 'confirmed', 'q'],
