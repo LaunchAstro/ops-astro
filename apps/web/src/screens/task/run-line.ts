@@ -42,7 +42,6 @@ export function runLineOf(
   if (read.outcome === 'denied') return unknown('The server withheld run status.');
   const execution = completedExecution(read, taskId);
   if (execution === null) return unknown();
-
   const states = execution.runs.map((run) => run.state);
   const unfamiliar = states.find(
     (state) =>
@@ -53,18 +52,19 @@ export function runLineOf(
   // `claimed` (`retireAttempt`), so the state alone would still read as running (#1719).
   const stopped = stoppedLine(execution);
   if (stopped !== null) return stopped;
+  const live = liveStates(execution);
   const attempts = proposals
     ?.flatMap((proposal) => proposal.reservations)
     .flatMap((reservation) => (reservation.attempt === null ? [] : [reservation.attempt]));
   const running = attempts?.some((attempt) => ['reserved', 'dispatched'].includes(attempt.state));
-  if (states.includes('waiting_budget'))
+  if (live.has('waiting_budget'))
     return { shape: 'waiting', words: 'Engine work is awaiting budget.' };
-  if (states.includes('claimed') || running === true)
+  if (live.has('claimed') || running === true)
     return {
       shape: 'running',
       words: running === true ? `Attempt ${attempts?.length} · running` : 'Engine work · running',
     };
-  if (states.includes('planned')) return { shape: 'queued', words: 'Engine work · queued' };
+  if (live.has('planned')) return { shape: 'queued', words: 'Engine work · queued' };
   if (attempts === undefined) return unknown('Proposal run evidence was not carried.');
   const uncertain = attempts.find(
     (attempt) => !['handed_back', 'abandoned', 'settled', 'dropped'].includes(attempt.state),
@@ -82,6 +82,16 @@ export function runLineOf(
         ? 'Engine work was handed back.'
         : 'Every run on this task has finished.',
   };
+}
+
+/**
+ * The states of the runs with no stored stop. A stopped run is not live whatever its state, so an
+ * older run its stop left `claimed` does not make a newer planned run read as running (#2473).
+ */
+function liveStates(execution: TaskExecution): ReadonlySet<string> {
+  return new Set(
+    execution.runs.filter((run) => (run.runOutcome ?? null) === null).map((run) => run.state),
+  );
 }
 
 /**
