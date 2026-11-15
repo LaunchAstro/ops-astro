@@ -9,7 +9,7 @@
 // prints it, and stops at the first step that does not answer as expected.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,8 +28,10 @@ interface Seen {
 type Answer = { readonly status: number; readonly body: unknown };
 
 const servers: Server[] = [];
+const folders: string[] = [];
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => new Promise((done) => s.close(done))));
+  for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
 });
 
 const bodyOf = async (request: IncomingMessage): Promise<Record<string, unknown>> => {
@@ -92,10 +94,12 @@ async function deployed(answer: (path: string) => Answer | undefined = () => und
 }
 
 /** Runs the script; answers its exit code, its output and its evidence file. */
-async function run(args: readonly string[], token: string | undefined = TOKEN) {
-  const out = join(mkdtempSync(join(tmpdir(), 'u117-')), 'evidence.json');
+async function run(args: readonly string[], token: string | null = TOKEN) {
+  const folder = mkdtempSync(join(tmpdir(), 'u117-'));
+  folders.push(folder);
+  const out = join(folder, 'evidence.json');
   const { OPS_ASTRO_TOKEN: _unset, ...rest } = process.env;
-  const env = token === undefined ? rest : { ...rest, OPS_ASTRO_TOKEN: token };
+  const env = token === null ? rest : { ...rest, OPS_ASTRO_TOKEN: token };
   const child = spawn(process.execPath, [SCRIPT, ...args, '--out', out], { env });
   let output = '';
   child.stdout.on('data', (chunk) => (output += String(chunk)));
@@ -186,7 +190,7 @@ describe('the U117 journey against a deployed version', () => {
     const api = await deployed();
     const noOrigin = await run(['--business', 'alpha']);
     expect(noOrigin.code).toBe(2);
-    const noToken = await run(['--origin', api.origin, '--business', 'alpha'], undefined);
+    const noToken = await run(['--origin', api.origin, '--business', 'alpha'], null);
     expect(noToken.code).toBe(2);
     expect(api.seen).toStrictEqual([]);
   });
