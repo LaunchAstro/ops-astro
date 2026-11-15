@@ -64,8 +64,9 @@ const page = async (member: Member, folderId: string, title: string, body: strin
     detail(await run(member, { command: 'docs.create_page', folderId, title, body }))['pageId'],
   );
 
+/** The page's version rows, oldest first, as plain objects (the driver's rows carry a prototype). */
 async function versions(pageId: string) {
-  return await w.db.admin.execute<{
+  const rows = await w.db.admin.execute<{
     readonly number: number;
     readonly title: string;
     readonly body: string;
@@ -75,6 +76,7 @@ async function versions(pageId: string) {
       where page_id = $1 order by number`,
     [pageId],
   );
+  return rows.map(({ number, title, body, actor_id }) => ({ number, title, body, actor_id }));
 }
 
 async function pageRow(pageId: string) {
