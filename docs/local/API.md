@@ -2843,6 +2843,14 @@ itself or one of its own subfolders is `FIELD_VALUE_INVALID` naming `parentId`;
 a name the target folder holds already is `UNIQUE_VALUE_TAKEN` naming `name`.
 Their `detail` carries `folderId`.
 
+`docs.tree` (no operands) and `docs.page` (`pageId`) take `docs:read`, asked of
+the business. The tree answers `folders` (`id`, `name`, `parentId`, `null` at
+the top) and `pages` (`id`, `folderId`, `title`, `version`), never a body. The
+page answers `document` (`id`, `folderId`, `title`, `body` as Markdown text,
+`version`, `updatedAt`); a save names that `version`. Another business's page
+is `NOT_FOUND` naming `pageId`, as a missing one is, and a grant held at one
+client reads neither. No agent reaches them yet.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `task.bin`, `task.ledger`, `task.search`,
