@@ -25,10 +25,11 @@ afterAll(async () => {
 });
 
 /**
- * Rows in every business-scoped public table of alpha but the decision's own and the call's
- * own bookkeeping: its audit row, its sign-in and its operation register.
+ * Every business-scoped public table of alpha but the decision's own and the call's own
+ * bookkeeping (its audit row, its sign-in and its operation register): its row count and a
+ * digest of every row's whole text, so an update in place shows as well as an insert (S2129-5).
  */
-async function otherRows(): Promise<Readonly<Record<string, number>>> {
+async function otherRows(): Promise<Readonly<Record<string, string>>> {
   const tables = await w.world.db.admin.execute<{ readonly name: string }>(
     `select c.table_name as name from information_schema.columns c
        join information_schema.tables t
@@ -39,14 +40,16 @@ async function otherRows(): Promise<Readonly<Record<string, number>>> {
           'review_decisions', 'audit_events', 'authentication_attempts', 'operations')
       order by 1`,
   );
-  const counts: Record<string, number> = {};
+  const counts: Record<string, string> = {};
   for (const { name } of tables) {
-    // oxlint-disable-next-line no-await-in-loop -- one count per table
+    // oxlint-disable-next-line no-await-in-loop -- one census line per table
     const [row] = await w.world.db.admin.execute<{ readonly n: string }>(
-      `select count(*)::text as n from public.${name} where business_id = $1`,
+      `select count(*)::text || ':' || coalesce(md5(string_agg(r::text, '|' order by r::text)), '')
+              as n
+         from public.${name} r where business_id = $1`,
       [w.world.business],
     );
-    counts[name] = Number(row?.n);
+    counts[name] = String(row?.n);
   }
   return counts;
 }
