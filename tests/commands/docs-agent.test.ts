@@ -11,9 +11,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { grantTo, type Member } from './fixture.ts';
 import {
   agentWorld,
@@ -23,6 +20,7 @@ import {
   type PickedUp,
 } from './agent-fixture.ts';
 import { WHOLE } from './time-world.ts';
+import { docsRowCount, idOf, mintDocsDelegation, namedOnRows } from './docs-agent-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) {
@@ -36,49 +34,18 @@ let credential: string;
 let delegationId: string;
 let folderId: string;
 
-const idOf = (answer: CommandResult, field: string): string => {
-  if (isCommandRefusal(answer)) throw new Error(`refused ${answer.code}`);
-  return String((answer.detail as Record<string, unknown>)[field]);
-};
-
-/**
- * A delegation for one task carrying `collections` x write, as the runtime mints one: asked of the
- * person's business-wide grants, or, `onTheTask`, of what they hold on that task alone.
- */
-async function delegation(
+const delegation = async (
   person: Member,
   taskId: string,
   collections: readonly string[],
   onTheTask = false,
-): Promise<{ readonly credential: string; readonly id: string }> {
-  return await world.db.app.withBusiness(world.business, async (tx) => {
-    const minted = await mintDelegation(tx, {
-      agentActorId: world.agentActorId,
-      delegatePersonId: person.personId,
-      mintedByActorId: person.actorId,
-      purpose: `docs_${randomUUID().replaceAll('-', '')}`,
-      collections: [...collections],
-      actions: ['write'],
-      purposeScope: { kind: 'record', id: taskId },
-      expiresAt: new Date(Date.now() + 3_600_000),
-      ...(onTheTask ? { holders: [{ kind: 'person' as const, id: person.personId }] } : {}),
-    });
-    if (!minted.ok) throw new Error(`delegation refused ${minted.refusal.code}`);
-    return { credential: minted.value.credential, id: minted.value.delegation.id };
-  });
-}
+) => await mintDocsDelegation(world, person, taskId, collections, onTheTask);
+const written = async () => await docsRowCount(world);
+const namedOn = async (table: 'docs_folders' | 'docs_page_versions', column: string, id: string) =>
+  await namedOnRows(world, table, column, id);
 
 const asAgent = async (body: Record<string, unknown>, held = credential) =>
   await world.asAgent({ ...body, operationId: randomUUID() }, held);
-
-async function written(): Promise<number> {
-  const [row] = await world.db.admin.execute<{ readonly n: number }>(
-    `select ((select count(*) from public.docs_folders where business_id = $1)
-           + (select count(*) from public.docs_page_versions where business_id = $1))::int as n`,
-    [world.business],
-  );
-  return row?.n ?? -1;
-}
 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
@@ -104,17 +71,6 @@ afterAll(async () => {
 });
 
 const live = it.skipIf(serverUrl === undefined);
-
-/** The task and delegation each row of `table` keyed by `column` names, oldest version first. */
-async function namedOn(table: 'docs_folders' | 'docs_page_versions', column: string, id: string) {
-  const order = table === 'docs_page_versions' ? 'order by number' : '';
-  const rows = await world.db.admin.execute<{ task: string | null; delegation: string | null }>(
-    `select task_id::text as task, delegation_id::text as delegation
-       from public.${table} where business_id = $1 and ${column} = $2 ${order}`,
-    [world.business, id],
-  );
-  return rows.map(({ task, delegation: by }) => ({ task, delegation: by }));
-}
 
 /** The subject of each applied Docs audit event the agent's actor left, in chain order. */
 async function agentAudit(): Promise<readonly (string | null)[]> {
