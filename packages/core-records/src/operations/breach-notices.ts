@@ -145,12 +145,13 @@ function othersOut(input: BreachNoticeInput): (person: NoticeRecipient) => Scrub
 
 /**
  * One fold for the match and the own-name check alike: the text composed
- * (NFC), then each code point upper-cased and lower-cased on its own, so Σ, σ
- * and ς fold together, as do a name's case forms, and no fold depends on the
+ * (NFC), then each code point lower-, upper- and lower-cased on its own, so Σ,
+ * σ and ς fold together, as do ß and ẞ and every other letter with its case
+ * forms (checked over every letter Unicode has), and no fold depends on the
  * letters beside it.
  */
-const folded = (text: string): string[] =>
-  Array.from(text.normalize('NFC'), (char) => char.toUpperCase().toLowerCase());
+const foldLetter = (char: string): string => char.toLowerCase().toUpperCase().toLowerCase();
+const folded = (text: string): string[] => Array.from(text.normalize('NFC'), foldLetter);
 
 /** A folded word as one string, its code points kept apart. */
 const key = (word: readonly string[]): string => word.join('\u0000');
@@ -199,7 +200,7 @@ function nameAt(
 
 /** A text's code point against a folded name's, in any case. */
 const sameLetter = (char: string | undefined, letter: string): boolean =>
-  char !== undefined && char.toUpperCase().toLowerCase() === letter;
+  char !== undefined && foldLetter(char) === letter;
 
 /**
  * The notices, the OAIC's first and then one per person in the order given,
