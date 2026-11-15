@@ -70,7 +70,8 @@ describe.skipIf(serverUrl === undefined)('C73 the contract upgrade', () => {
          from public.review_media_assets where business_id = $1`,
       [w.world.business],
     );
-    expect(rows).toStrictEqual([
+    // The driver's rows are its own class: compare their fields as plain objects.
+    expect(rows.map((row) => Object.fromEntries(Object.entries(row)))).toStrictEqual([
       {
         id: held.assetId,
         state: 'completed',
