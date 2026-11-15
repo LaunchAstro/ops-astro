@@ -238,6 +238,7 @@ export type {
 } from './signal-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
+export type { DeleteRequestCommandName } from './surface-bin-names.ts';
 export {
   PROPOSAL_DESCRIPTION_LIMIT,
   PROPOSAL_ESTIMATE_LIMIT,
