@@ -257,7 +257,8 @@ describe.skipIf(serverUrl === undefined)('S0-5 isolation', () => {
       'packages/core-commands/src/commands/gate-write.ts',
       // C55's alerts read only operator_business_id, to keep them to the operating business.
       'packages/core-records/src/operations/security-alerts.ts',
-      'packages/core-wire/src/data-effects.ts',
+      // The installation's commands' data effects, moved out of data-effects.ts under its cap (#2242).
+      'packages/core-wire/src/data-effects-operations.ts',
     ]);
   });
 });
