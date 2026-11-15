@@ -26,6 +26,7 @@ import type { Action } from '../../packages/core-records/src/authority/grants.ts
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import type { Assurance } from '../../packages/core-records/src/identity/verified-subject.ts';
 import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
+import { SECTION_PAIRS } from './cast-section-pairs.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -148,16 +149,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['mandate', 'manage'],
   // MP-14-9, MP-14-6: what agent runs cost, the key catalogue's `finance:read`.
   ['finance', 'read'],
-  // C35 (#2011, #2012): a page review opened, its capture asked and read, and pins on it.
-  ['review', 'write'],
-  ['review', 'read'],
-  ['review', 'comment'],
-  // C57 (#2016): a client pin filed as a change request, and decided.
-  ['proposal', 'write'],
-  ['proposal', 'decide'],
-  // Docs (#2493): folders and pages filed, and read.
-  ['docs', 'write'],
-  ['docs', 'read'],
+  // C35, C57 and Docs, in `cast-section-pairs.ts`.
+  ...SECTION_PAIRS,
 ];
 
 export async function tokenFor(
