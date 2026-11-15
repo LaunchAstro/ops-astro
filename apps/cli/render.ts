@@ -54,8 +54,18 @@ export function refusalLine(body: Json, key: string): string {
 }
 
 /** A write's result in one line: what ran, the record it touched and its revision. */
+const DOCS_HANDLES = ['folderId', 'pageId', 'version'] as const;
+
 export function writeLine(command: string, body: Json): string {
   const id = typeof body['recordId'] === 'string' ? ` ${body['recordId']}` : '';
   const revision = typeof body['revision'] === 'number' ? ` r${String(body['revision'])}` : '';
-  return `ok ${command}${id}${revision}`;
+  // A Docs write names no record: its folder or page, and the page's version, are its handle.
+  const detail = body['detail'];
+  const named =
+    typeof detail === 'object' && detail !== null && !Array.isArray(detail)
+      ? DOCS_HANDLES.filter((key) => key in detail)
+          .map((key) => ` ${key} ${String((detail as Json)[key])}`)
+          .join('')
+      : '';
+  return `ok ${command}${id}${revision}${named}`;
 }

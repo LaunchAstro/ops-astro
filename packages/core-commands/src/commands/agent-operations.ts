@@ -27,6 +27,7 @@ import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts
 import { CORRECTION_REQUEST } from './live-correction-agent.ts';
 import { RUN_END } from './run-end-agent.ts';
 import { reviewAgentRows } from './review-agent.ts';
+import { docsAgentRows } from './docs-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import { handbackLease } from './tasks-handback.ts';
 import { pickupReservation } from './tasks-pickup.ts';
@@ -131,8 +132,11 @@ export type TypedOperation<O extends object> =
     })
   | (AgentOperationRow<O> & {
       readonly authority: 'record';
-      /** Where the check finds its task: the body's lease or record, a revision's, or a review's. */
-      readonly subjectTask: 'lease' | 'record' | 'revision' | 'review';
+      /**
+       * Where the check finds its task: the body's lease or record, a revision's, a review's, or
+       * the body's `taskId` (a Docs write, which also needs its collection in the delegation).
+       */
+      readonly subjectTask: 'lease' | 'record' | 'revision' | 'review' | 'task';
       /**
        * Under the delegation, on the task the check was made on, or
        * `undefined` when the call named none and the check fell back to the
@@ -895,6 +899,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
   ['live_correction.request', row(CORRECTION_REQUEST)],
   ['run.end', row(RUN_END)],
   ...reviewAgentRows(row),
+  ...docsAgentRows(row),
   [
     'model.call',
     modelCallRow(() =>

@@ -29,6 +29,10 @@ const TAKEN_LAUNCH_FIXES: readonly string[] = [
   'What it answers is written by the run itself, not by a separate call.',
 ];
 
+const DOCS_DELEGATION_FIXES: readonly string[] = [
+  'Docs are written under a delegation that carries docs:write itself, minted for the task you name.',
+];
+
 const PRE_PICKUP_DECISION_FIXES: readonly string[] = [
   'A person decides, with their own credential.',
   ...NO_DELEGATION_FIXES.slice(1),
@@ -169,6 +173,16 @@ export async function authorise<O extends object>(
     return { refusal: outside.ok ? unreachable() : outside.refusal };
   }
 
+  // A Docs write (#2519) is reached only by a delegation that carries its collection: one made
+  // for the task's own work is excluded from it outright, never told it is merely out of purpose.
+  if (
+    operation.subjectTask === 'task' &&
+    !delegation.collections.includes(declaration.collection)
+  ) {
+    return refusing(
+      refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], DOCS_DELEGATION_FIXES),
+    );
+  }
   const named = await namedTaskId(tx, request, operation.subjectTask);
   const question: ScopeRequest = {
     collection: declaration.collection,
@@ -219,6 +233,11 @@ async function namedTaskId(
   // record, so the one-task check refuses it as it refuses another task's, and a malformed, a
   // foreign and a fabricated id answer alike.
   if (subjectTask === 'review') return (await reviewTaskOf(tx, request)) ?? '';
+  // A Docs write names its task in `taskId`, the row's operands having refused any other shape.
+  if (subjectTask === 'task') {
+    const taskId = request['taskId'];
+    return isUuid(taskId) ? taskId.toLowerCase() : '';
+  }
   // The id as sent: `String([id])` is the id, and the array itself would then
   // reach the bound parameter.
   const leaseId = request['leaseId'];
