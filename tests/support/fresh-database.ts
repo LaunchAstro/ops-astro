@@ -78,6 +78,12 @@ export interface FreshDatabaseOptions {
   readonly migrationsDirectory?: string;
   /** Migrate this database from empty itself rather than clone the migrated template. */
   readonly fromEmpty?: boolean;
+  /**
+   * Keep at least the newest this many statements in `log`, and at most twice
+   * that, rather than every one. Unset, the log is whole: proofs that slice it
+   * by position (c58, cq-2) read all of it. A run of hours sets it (#2512).
+   */
+  readonly keepStatements?: number;
 }
 
 function identifier(name: string): string {
@@ -141,7 +147,9 @@ async function createDatabase(
   const restrictedRole = `${name}_out`;
   const password = randomBytes(24).toString('base64url');
   const restrictedPassword = randomBytes(24).toString('base64url');
-  const log = createStatementLog();
+  const log = createStatementLog(
+    options.keepStatements === undefined ? {} : { keep: options.keepStatements },
+  );
 
   // The database before its roles, which cannot go while it still exists.
   const dropStatements = [
