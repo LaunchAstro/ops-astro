@@ -135,3 +135,17 @@ test('a second pass after main advances scans only the new merge', (t) => {
   assert.deepEqual(scanned(passed.output), [`${f.base}..${merged}`]);
   assert.match(recorded(f), new RegExp(`^${merged} `, 'mu'));
 });
+
+test('a failed fetch names neither a key nor a denied term from the remote URL, and records nothing', (t) => {
+  const { f } = mergedMain(t);
+  const key = tokenShaped();
+  // A remote that does not answer, its URL carrying a key and the canary.
+  f.git('remote', 'set-url', 'origin', join(`${f.repo}-gone`, key, canary));
+  const passed = receipt(f);
+  // Booleans, not the output: a failure here must not print what it checks for.
+  assert.notEqual(passed.status, 0, 'pass-main exits non-zero');
+  assert.equal(passed.output.includes(key), false, 'the key reached the output');
+  assert.equal(passed.output.toLowerCase().includes(canary.toLowerCase()), false, 'the term reached the output');
+  assert.equal(passed.output.includes('pass-main: '), true, 'pass-main says why it stopped');
+  assert.equal(recorded(f), '');
+});
