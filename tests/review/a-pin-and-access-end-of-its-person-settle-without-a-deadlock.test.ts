@@ -195,26 +195,29 @@ async function raced(
   }
 }
 
-describe.skipIf(serverUrl === undefined)('#2402 a pin and access.end of its person', () => {
-  it("an agent's pin paused at its task lock and access.end of its delegating person settle with no deadlock", async () => {
-    const reviewed = await pinnableAndReserved();
-    const credential = await commentOn(reviewed.taskId);
-    const outcome = await raced(
-      reviewed.taskId,
-      async (database) =>
-        await executeAgentCommand(
-          database,
-          w.world.business,
-          agentLogin(w),
-          credential,
-          pinBody(reviewed.revisionId) as never,
-        ),
-    );
-    // The pin held ava's grants before her access ended: it lands, and access.end follows it.
-    expect(outcome).toStrictEqual({
-      pinned: 'not-a-refusal',
-      ended: 'not-a-refusal',
-      deadlocks: [],
-    });
-  }, 60_000);
-});
+describe.skipIf(serverUrl === undefined)(
+  'a pin and access.end of its person settle without a deadlock',
+  () => {
+    it("an agent's pin paused at its task lock and access.end of its delegating person settle with no deadlock", async () => {
+      const reviewed = await pinnableAndReserved();
+      const credential = await commentOn(reviewed.taskId);
+      const outcome = await raced(
+        reviewed.taskId,
+        async (database) =>
+          await executeAgentCommand(
+            database,
+            w.world.business,
+            agentLogin(w),
+            credential,
+            pinBody(reviewed.revisionId) as never,
+          ),
+      );
+      // The pin held ava's grants before her access ended: it lands, and access.end follows it.
+      expect(outcome).toStrictEqual({
+        pinned: 'not-a-refusal',
+        ended: 'not-a-refusal',
+        deadlocks: [],
+      });
+    }, 60_000);
+  },
+);

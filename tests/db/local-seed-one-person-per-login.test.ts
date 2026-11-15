@@ -68,49 +68,52 @@ async function personOfLogins(): Promise<ReadonlyMap<string, string>> {
   return mapped;
 }
 
-describe.skipIf(serverUrl === undefined)('#2417 the local seed, before and after auth:seed', () => {
-  beforeAll(async () => {
-    ({ PEOPLE: people } = (await import(logins)) as { PEOPLE: readonly Login[] });
-    // First run: no users file, so the seed writes its placeholders.
-    cast = await openCast('ls2417oneperson');
-    firstMembers = await members();
-    firstPersonOf = await personOfLogins();
-    // auth:seed: its own list, each with a new password and the provider's subject.
-    const users = people.map((login) => ({
-      ...login,
-      password: `local-${randomUUID().slice(0, 12)}`,
-      subject: randomUUID(),
-      provider: 'supabase',
-    }));
-    writeFileSync(join(cast.local, 'synthetic-users.json'), JSON.stringify(users), {
-      mode: 0o600,
+describe.skipIf(serverUrl === undefined)(
+  'the local seed, run before and after auth:seed, keeps one person per login',
+  () => {
+    beforeAll(async () => {
+      ({ PEOPLE: people } = (await import(logins)) as { PEOPLE: readonly Login[] });
+      // First run: no users file, so the seed writes its placeholders.
+      cast = await openCast('ls2417oneperson');
+      firstMembers = await members();
+      firstPersonOf = await personOfLogins();
+      // auth:seed: its own list, each with a new password and the provider's subject.
+      const users = people.map((login) => ({
+        ...login,
+        password: `local-${randomUUID().slice(0, 12)}`,
+        subject: randomUUID(),
+        provider: 'supabase',
+      }));
+      writeFileSync(join(cast.local, 'synthetic-users.json'), JSON.stringify(users), {
+        mode: 0o600,
+      });
+      // Second run: the seed again, on the file auth:seed wrote.
+      secondRun = runSeed(join(cast.root, 'scripts/local-seed.mjs'), {
+        admin: cast.db,
+        local: cast.local,
+        confirm: true,
+      });
+    }, 300_000);
+
+    afterAll(async () => {
+      await closeWorld(cast);
     });
-    // Second run: the seed again, on the file auth:seed wrote.
-    secondRun = runSeed(join(cast.root, 'scripts/local-seed.mjs'), {
-      admin: cast.db,
-      local: cast.local,
-      confirm: true,
+
+    it('runs the second time', () => {
+      expect(secondRun.status, secondRun.out).toBe(0);
     });
-  }, 300_000);
 
-  afterAll(async () => {
-    await closeWorld(cast);
-  });
+    it('adds no person with a membership on the second run', async () => {
+      expect(await members()).toStrictEqual(firstMembers);
+    });
 
-  it('runs the second time', () => {
-    expect(secondRun.status, secondRun.out).toBe(0);
-  });
-
-  it('adds no person with a membership on the second run', async () => {
-    expect(await members()).toStrictEqual(firstMembers);
-  });
-
-  it("maps each of the cast's new logins to the person the first run made", async () => {
-    const second = await personOfLogins();
-    const emails = people.filter((login) => login.role !== 'none').map((login) => login.email);
-    expect(emails.length).toBeGreaterThan(0);
-    expect(emails.map((email) => second.get(email))).toStrictEqual(
-      emails.map((email) => firstPersonOf.get(email)),
-    );
-  });
-});
+    it("maps each of the cast's new logins to the person the first run made", async () => {
+      const second = await personOfLogins();
+      const emails = people.filter((login) => login.role !== 'none').map((login) => login.email);
+      expect(emails.length).toBeGreaterThan(0);
+      expect(emails.map((email) => second.get(email))).toStrictEqual(
+        emails.map((email) => firstPersonOf.get(email)),
+      );
+    });
+  },
+);
