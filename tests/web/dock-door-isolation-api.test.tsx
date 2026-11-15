@@ -92,8 +92,11 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
     expect(page.find('[data-panel-id="todos"]')?.textContent).toContain(w.canary);
     expect(readsOf(w, heard).map((each) => each.status)).toContain(200);
 
+    // Away to a page that lists no tasks, so the canary gone proves the panel
+    // left the task. The Tasks list opens on All tasks (#2406, DECISIONS 91)
+    // and rightly lists a task the person can still read here (#2510).
     const link = document.createElement('a');
-    link.setAttribute('href', '/projects/');
+    link.setAttribute('href', '/clients/');
     (page.find('[data-panel-id="todos"] .dpanel__body') as HTMLElement).append(link);
     await act(() => {
       link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
