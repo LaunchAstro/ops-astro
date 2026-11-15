@@ -3,7 +3,9 @@
 // An escalation holds its recipient's decide grants before its runtime locks,
 // so a revocation of one of them waits for it. A grant issued after that hold
 // is not held: a revocation of it would not wait. The recipient check under
-// the locks therefore rests only on held grants. Driven on separate backends:
+// the locks therefore rests only on held grants, and so does the decider's own
+// re-check: a decision called on the runtime directly, outside the command
+// entry's access lock, is held the same way. Driven on separate backends:
 // escalate is paused after its grant hold, the recipient is granted decide
 // across the business through access.grant, escalate runs on through its
 // recipient check, the grant is revoked through access.revoke, and escalate
@@ -15,6 +17,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isRetryableViolation } from '../../packages/core-commands/src/commands/register-store.ts';
 import { decide, gateSigningKey } from '../../packages/core-runtime/src/index.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
 import { afterFirstGrantHold, letDeciderEndAccess } from './escalation-access-end-harness.ts';
 import {
@@ -26,6 +29,7 @@ import {
   propose,
   racer,
   rows,
+  waitPast,
   type Body,
   type Detail,
   type Schedules,
@@ -96,8 +100,14 @@ function stopping(tx: TenantQuery, stops: readonly Stop[]): TenantQuery {
   };
 }
 
-/** Escalate to `recipient` on `database`, stopping where `stops` say. */
-async function escalate(database: Database, version: Detail, recipient: Member, stops: Stop[]) {
+/** Decide the gate as `decider` on `database`, stopping where `stops` say. */
+async function decideAs(
+  database: Database,
+  version: Detail,
+  decider: Member,
+  decision: { readonly decision: 'escalate' | 'request_changes'; readonly recipient?: Member },
+  stops: Stop[],
+) {
   const signingKey = gateSigningKey();
   if (signingKey === undefined) throw new Error('no signing key in the fixture');
   const decided = await database.withBusiness(
@@ -106,22 +116,33 @@ async function escalate(database: Database, version: Detail, recipient: Member, 
       await decide(stopping(tx, stops), {
         gateId: String(version['gateId']),
         versionId: String(version['versionId']),
-        decidedByPersonId: s.decider.personId,
-        decidedByActorId: s.decider.actorId,
+        decidedByPersonId: decider.personId,
+        decidedByActorId: decider.actorId,
         subjects: [
-          { kind: 'person', id: s.decider.personId },
-          { kind: 'actor', id: s.decider.actorId },
+          { kind: 'person', id: decider.personId },
+          { kind: 'actor', id: decider.actorId },
         ],
         collection: 'task',
-        decision: 'escalate',
-        note: 'escalate at the bound',
+        decision: decision.decision,
+        note: `${decision.decision} under a late grant`,
         signingKey,
         capId: s.capId,
-        recipientPersonId: recipient.personId,
+        ...(decision.recipient === undefined
+          ? {}
+          : { recipientPersonId: decision.recipient.personId }),
       }),
   );
   return decided.ok ? 'applied' : decided.refusal.code;
 }
+
+/** Escalate to `recipient` on `database`, stopping where `stops` say. */
+async function escalate(database: Database, version: Detail, recipient: Member, stops: Stop[]) {
+  return await decideAs(database, version, s.decider, { decision: 'escalate', recipient }, stops);
+}
+
+/** Just after the re-check under the locks reads which covering grants are live at its instant. */
+const liveAtLockedInstant: Stop['at'] = (sql) =>
+  sql.includes('id = any($2::uuid[])') && sql.includes('expires_at > $3::timestamptz');
 
 /**
  * The last of the recipient checks under the locks: whether the task is theirs,
@@ -199,6 +220,79 @@ describe.skipIf(serverUrl === undefined)('an escalation rests on held grants onl
     const escalation = await retriedOnce(first, version, recipient);
     expect({ escalation, gate: await gateNow(version) }).toEqual({
       escalation: 'SCOPE_NOT_GRANTED',
+      gate: { to: null, state: 'pending' },
+    });
+  });
+});
+
+/** A decide grant on one task for `decider`, ending three seconds from now on the database clock. */
+async function shortLivedDecide(decider: Member, taskId: string): Promise<string> {
+  return await s.db.app.withBusiness(s.business, async (tx) => {
+    const [clock] = await tx.query<{ readonly at: Date }>(
+      `select clock_timestamp() + interval '3 seconds' as at`,
+    );
+    const issued = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: decider.personId },
+      scope: { kind: 'record', id: taskId },
+      collection: 'task',
+      action: 'decide',
+      expiresAt: clock?.at ?? null,
+      parentGrantId: null,
+      grantedByActorId: s.decider.actorId,
+    });
+    if (!issued.ok) throw new Error(`the short-lived grant was refused ${issued.refusal.code}`);
+    return issued.value;
+  });
+}
+
+/** The decision's answer, retried once on a rolled-back schedule as the command entry does. */
+async function decidedOnce(first: Promise<string>, version: Detail, decider: Member) {
+  try {
+    return await first;
+  } catch (cause) {
+    if (!isRetryableViolation(cause)) throw cause;
+    return await decideAs(s.db.app, version, decider, { decision: 'request_changes' }, []);
+  }
+}
+
+describe.skipIf(serverUrl === undefined)('a decision rests on held grants only', () => {
+  it('never records a decision resting on a decide grant issued after the hold and revoked before the write', async () => {
+    const taskId = await createTask(s, `decide late grant ${randomUUID()}`);
+    const version = await propose(s, taskId);
+    const decider = await enrol(s.db.app, s.business, `late-decider-${randomUUID()}`);
+    const shortLived = await shortLivedDecide(decider, taskId);
+    const afterHold = stopAt((sql) => afterFirstGrantHold.at(sql));
+    const afterCheck = stopAt(liveAtLockedInstant);
+    const deciding = racer(s);
+    const first = decideAs(deciding, version, decider, { decision: 'request_changes' }, [
+      afterHold,
+      afterCheck,
+    ]).finally(async () => {
+      await deciding.close();
+    });
+    first.catch(() => null);
+    await afterHold.reached.held;
+
+    const granted = await elsewhere({
+      command: 'access.grant',
+      operationId: randomUUID(),
+      holderId: decider.personId,
+      collection: 'task',
+      action: 'decide',
+    });
+    await waitPast(s, 'select expires_at from public.grants where id = $1', shortLived);
+    afterHold.resume.release();
+    await Promise.race([afterCheck.reached.held, first.catch(() => null)]);
+
+    await elsewhere({
+      command: 'access.revoke',
+      operationId: randomUUID(),
+      grantId: granted['grantId'],
+    });
+    afterCheck.resume.release();
+    const decided = await decidedOnce(first, version, decider);
+    expect({ decided, gate: await gateNow(version) }).toEqual({
+      decided: 'SCOPE_NOT_GRANTED',
       gate: { to: null, state: 'pending' },
     });
   });

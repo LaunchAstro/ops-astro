@@ -98,7 +98,10 @@ export async function grantAccess(
  * How many people who can sign in hold business-wide `access:manage` by a
  * live grant other than the ones named. A grant cut from a leaving one (named,
  * or held by the leaving person) is not counted either: it stops being
- * effective with its parent. Asked under the access lock.
+ * effective with its parent. Signing in takes what `resolveLogin` takes: an
+ * active membership, an active login link and an active person actor, and a
+ * grant on an actor counts only while that actor is active. Asked under the
+ * access lock.
  */
 export async function otherManagers(
   tx: TenantQuery,
@@ -131,7 +134,13 @@ export async function otherManagers(
         and m.person_id = coalesce(a.person_id, e.subject_id)
       where e.business_id = $1
         and e.collection = 'access' and e.action = 'manage' and e.scope_kind = 'business'
-        and (e.subject_kind = 'person' or a.person_id is not null)
+        and (e.subject_kind = 'person' or (a.person_id is not null and a.active))
+        and exists (select 1 from public.person_logins pl
+                     where pl.business_id = e.business_id and pl.active
+                       and pl.person_id = coalesce(a.person_id, e.subject_id))
+        and exists (select 1 from public.actors pa
+                     where pa.business_id = e.business_id and pa.kind = 'person' and pa.active
+                       and pa.person_id = coalesce(a.person_id, e.subject_id))
         and not exists (select 1 from gone where gone.id = e.id)
         and coalesce(a.person_id, e.subject_id) is distinct from $3::uuid`,
     [tx.businessId, leaving, leavingPersonId],
