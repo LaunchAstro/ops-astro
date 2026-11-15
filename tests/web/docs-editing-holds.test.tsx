@@ -5,7 +5,8 @@
 // or a late answer. A routine re-read keeps the editor's draft, a refused one included
 // (S2527-1); words typed while a save was in flight stay, and the next save starts from the
 // version that save made (S2527-2); a cancelled form's late success closes nothing opened since
-// (S2527-3); and an answer for an owner the screen has left draws nothing (the owner guard).
+// (S2527-3), nor closes a draft reopened since, even one with the same words (S2527-4); and an
+// answer for an owner the screen has left draws nothing (the owner guard).
 
 import { afterEach, expect, it, vi } from 'vitest';
 import { useState, type ReactElement } from 'react';
@@ -114,7 +115,7 @@ const stale = () =>
     json({ refused: true, code: 'VERSION_STALE', names: ['expectedVersion'], fixes: [] }, 409),
   );
 
-it('S2527-1: a routine re-read keeps the draft, a refused one included', async () => {
+it('a routine re-read keeps the draft, a refused one included', async () => {
   const sent: Sent[] = [];
   const page = await editing(sent, { 'docs.update_page': stale });
   await page.view.type('textarea[data-docs-draft]', 'unsaved words');
@@ -134,7 +135,7 @@ it('S2527-1: a routine re-read keeps the draft, a refused one included', async (
   expect(writesOf(sent, 'docs.update_page').map((s) => s.body['expectedVersion'])).toEqual([2, 2]);
 });
 
-it('S2527-2: words typed while a save was in flight stay, and the next save starts from its version', async () => {
+it('words typed while a save was in flight stay, and the next save starts from its version', async () => {
   const sent: Sent[] = [];
   const first = held();
   let saves = 0;
@@ -157,7 +158,31 @@ it('S2527-2: words typed while a save was in flight stay, and the next save star
   expect(page.view.find('textarea[data-docs-draft]')).toBeNull();
 });
 
-it('S2527-3: a cancelled form’s late success closes nothing opened since', async () => {
+it('a late save answer closes nothing reopened since, even with the same words', async () => {
+  const sent: Sent[] = [];
+  const first = held();
+  let saves = 0;
+  const save = () => {
+    saves += 1;
+    return saves === 1 ? first.answer : Promise.resolve(json({ ok: true, detail: { version: 4 } }));
+  };
+  const page = await editing(sent, { 'docs.update_page': save });
+  await page.view.type('textarea[data-docs-draft]', 'restore these words');
+  await page.view.click('[data-docs-act="save"]');
+  await page.view.click('[data-docs-act="cancel"]');
+  await page.view.click('[data-docs-act="edit"]');
+  await page.view.type('textarea[data-docs-draft]', 'restore these words');
+  first.release(json({ ok: true, detail: { pageId: 'p-one', version: 3 } }));
+  await settle();
+  await settle();
+  // The reopened draft is its own: the old save's answer neither closes it nor moves its version.
+  expect(draftOf(page)).toBe('restore these words');
+  await page.view.click('[data-docs-act="save"]');
+  await settle();
+  expect(writesOf(sent, 'docs.update_page').map((s) => s.body['expectedVersion'])).toEqual([2, 2]);
+});
+
+it('a cancelled form’s late success closes nothing opened since', async () => {
   const sent: Sent[] = [];
   const first = held();
   let made = 0;
