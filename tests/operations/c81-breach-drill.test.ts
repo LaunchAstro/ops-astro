@@ -13,8 +13,7 @@
 // live delegation from Ada. The runbook's words are made up: the owner's text
 // is installation data, and this repository never names the agency.
 //
-// The world is `c81-breach-drill-world.ts`; the 30-day assessment clock is in
-// `c81-breach-drill-clock.test.ts`.
+// The world is `c81-breach-drill-world.ts`; the clock, `c81-breach-drill-clock.test.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -22,6 +21,7 @@ import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { agentPath, bearer, call, serverUrl } from '../acceptance/world.ts';
 import {
   as,
+  businessDayOf,
   CANARY,
   clientToken,
   closeDrill,
@@ -95,7 +95,7 @@ async function c81BreachDrillNoticesTheOaicAnd(): Promise<void> {
   for (const notice of notices) {
     expect(notice.subject).toBe('A privacy incident involving your information');
     expect(notice.body).toContain(`Dear ${notice.name},`);
-    expect(notice.body).toContain(`on ${incidentBody.foundAt.slice(0, 10)} we found that`);
+    expect(notice.body).toContain(`on ${businessDayOf(incidentBody.foundAt)} we found that`);
     expect(notice.body).toContain(incidentBody.whatHappened);
     expect(notice.body).toContain('**Information involved:** contact, financial.');
     expect(notice.body).toContain(given.containment);
