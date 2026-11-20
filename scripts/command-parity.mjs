@@ -188,6 +188,7 @@ const under = (root) => COMMAND_SURFACE.map((one) => root + pathOf(one.name));
 const OPERANDS = {
   'task.read': { recordId: 'r' },
   'task.execution': { recordId: 'r' },
+  'task.mentionable': { recordId: 'r' },
   'task.board': { board: null },
   'task.receipt': { attemptId: 'a' },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },

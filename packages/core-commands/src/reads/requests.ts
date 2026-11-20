@@ -86,10 +86,9 @@ export type {
 } from '../../../core-wire/src/index.ts';
 
 /**
- * What each read takes, once its catalogue row has checked the body
- * (`ReadRow.parse` in `reads/catalogue.ts`). A row's lookups, authority and
- * serving are typed on these and never on the wire body, so a field a read
- * uses is a field its `parse` checked.
+ * What each read takes, once its catalogue row has checked the body (`ReadRow.parse` in
+ * `reads/catalogue.ts`). A row's lookups, authority and serving are typed on these and never on
+ * the wire body, so a field a read uses is a field its `parse` checked.
  */
 export interface ReadOperands extends CorrectionReadOperands, SectionReadOperands, DecideReads {
   readonly 'task.read': { readonly recordId: string; readonly historyEventId?: string } & Paging;
@@ -111,6 +110,7 @@ export interface ReadOperands extends CorrectionReadOperands, SectionReadOperand
     readonly query: string | null;
   };
   readonly 'person.list': NoOperands;
+  readonly 'task.mentionable': { readonly recordId: string };
   /** The business's tag vocabulary (MP-4-11). */
   readonly 'tag.list': NoOperands;
   /**

@@ -36,9 +36,11 @@ it('keyboard person selection sends structured internal mentions without writing
     },
   ]);
   expect(server.requests.map((r) => r.path)).toEqual([
-    '/api/b/alpha/person/list',
+    '/api/b/alpha/task/mentionable',
     '/api/b/alpha/task/comment',
   ]);
+  // #1245: the picker asks for this task's readers, not the whole business.
+  expect(server.requests[0]?.body).toMatchObject({ recordId: 'task-one' });
   // Posted, the composer holds no selection: a held one, absent from the
   // emptied body, would draw Clear mentions. Nor does the sent mention carry
   // into the next note, even one that names the same person in text.

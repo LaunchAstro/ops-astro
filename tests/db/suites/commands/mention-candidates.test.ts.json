@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the mention picker's read offers only staff who can read the task, never another client's reader or another business's staff, and names nobody to a caller who cannot read the task or the people directory"
+}

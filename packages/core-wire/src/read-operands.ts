@@ -62,6 +62,7 @@ export const READ_OPERANDS: Readonly<Partial<Record<CommandName, ReadBody>>> = {
   'task.search': { query: 'text' },
   'task.ledger': { timeZone: 'text', before: 'text?|null', query: 'text?|null' },
   'person.list': NONE,
+  'task.mentionable': RECORD,
   'tag.list': NONE,
   'task.todos': TODO_SCOPE,
   'team.list': NONE,

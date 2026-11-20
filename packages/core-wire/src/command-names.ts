@@ -61,9 +61,9 @@ export type CommandName =
   // over the applied writes in `audit_events`, never a second record of them.
   | 'task.ledger'
   | 'person.list'
-  // Search over what the caller may read (C1). The grant it takes is `read`
-  // on tasks at whatever scope the caller holds it, asked by the search
-  // itself so the scope is part of the statement that finds candidates.
+  | 'task.mentionable'
+  // Search over what the caller may read (C1): it asks `read` on tasks at whatever scope the
+  // caller holds it, itself, so the scope is part of the statement that finds candidates.
   | 'task.search'
   | 'team.list'
   // The preset planner. It reads the model and writes nothing at all, so it is

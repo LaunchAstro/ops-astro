@@ -10,8 +10,7 @@
 // a screen from a shape the API no longer sends. Test side only: the page
 // asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows (made-up-rows.ts) follow the pinned mockup's Projects board, so a capture reads
-// against the mockup's page. Every name and client is made up.
+// The rows (made-up-rows.ts) follow the pinned mockup's Projects board; every name is made up.
 
 import type {
   AgentMineResult,
@@ -76,6 +75,7 @@ const READS = {
   'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
   'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
+  'task.mentionable': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
     settings: [

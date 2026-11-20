@@ -33,6 +33,7 @@ export const READ_NAMES = [
   'task.read',
   'task.board',
   'person.list',
+  'task.mentionable',
   'team.list',
   'settings.read',
   'session.capabilities',

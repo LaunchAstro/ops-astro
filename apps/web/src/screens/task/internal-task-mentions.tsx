@@ -43,7 +43,7 @@ export function useInternalTaskMentions(
   return useRead<PersonListResult>({
     grantKey: grantKey ?? client.businessKey,
     deps: [client, recordId],
-    run: () => client.read<PersonListResult>('person.list', {}),
+    run: () => client.read<PersonListResult>('task.mentionable', { recordId }),
     rollup: tabRollupFloor(),
     isEmpty: (value) => value.persons.length === 0,
   });

@@ -133,13 +133,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.ledger': READ,
   'task.execution': READ,
   'person.list': READ,
+  'task.mentionable': READ,
   // The Team panel's staff list (MP-7-10).
   'team.list': READ,
   'preset.plan': READ,
   'settings.read': READ,
   'session.capabilities': READ,
-  // The person menu (C23): the caller's own name; and the sign-out, which
-  // writes only its audit event (the browser ends the credential itself).
+  // The person menu (C23): the caller's own name; the sign-out writes only its audit event.
   'session.person': READ,
   'session.end': READ,
   // The caller's own preferences (MP-2-11a), a row of their own in the business.

@@ -50,6 +50,7 @@ export const PINNED_SHAPE = {
   'task.bin': { spine: true, subject: false, authority: 'holds-any-grant' },
   'task.board': { spine: true, subject: false, authority: 'declared-within' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
+  'task.mentionable': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
