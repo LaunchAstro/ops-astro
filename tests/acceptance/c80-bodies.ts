@@ -22,8 +22,11 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/v
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 import { revertBody, reviewBody } from './c80-revert-body.ts';
+import { reviseAsAnother } from './c35-x-seeds.ts';
+import type { C80Seeds } from './c80-seeds.ts';
 import { bindAboutPage } from '../site/party-site-fixture.ts';
 import { asClientPin } from '../review/client-pin-seed.ts';
+import type { C57Seeds } from './c57-bodies.ts';
 import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
 import type { Answer, World } from './world.ts';
 
@@ -143,15 +146,7 @@ export const taskBodyContext = (
   world: Pick<World, 'db' | 'alpha' | 'ada'>,
   taskId: string,
 ): Required<
-  Pick<
-    BodyContext,
-    | 'alphaTaskId'
-    | 'adminPersonId'
-    | 'seedCorrection'
-    | 'seedLiveCorrection'
-    | 'bindClientSite'
-    | 'asClientPin'
-  >
+  Pick<BodyContext, keyof C80Seeds | keyof C57Seeds | 'alphaTaskId' | 'adminPersonId'>
 > => {
   // Asked for by a member of its own, holding the run:write the request rests on,
   // so the matrix's callers keep exactly their declared grants.
@@ -178,6 +173,7 @@ export const taskBodyContext = (
         async (tx) => await bindAboutPage(tx, partyId, world.ada.actorId as string),
       ),
     asClientPin: async (commentId) => await asClientPin(world.db.admin, world.alpha, commentId),
+    reviseAsAnother: reviseAsAnother(world),
   };
 };
 

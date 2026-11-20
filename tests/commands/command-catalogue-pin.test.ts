@@ -431,6 +431,11 @@ vi.mock('../../packages/core-commands/src/commands/review-pin.ts', async (origin
   ...(await original<object>()),
   pinComment: recorder('pinComment'),
 }));
+vi.mock('../../packages/core-commands/src/commands/review-decide.ts', async (original) => ({
+  ...(await original<object>()),
+  decideReview: recorder('decideReview'),
+  recordAstraReview: recorder('recordAstraReview'),
+}));
 vi.mock(
   '../../packages/core-commands/src/commands/live-correction-review.ts',
   async (original) => ({
@@ -575,11 +580,13 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'review.capture_claim': ['leaseId', 'revisionId'],
   'review.capture_land': ['leaseId', 'revisionId'],
   'review.carry_pins': ['leaseId', 'revisionId'],
+  'review.decide': ['reviewId'],
   'review.decide_change': ['changeRequestId'],
   'review.make_change_task': ['leaseId', 'changeRequestId'],
   'review.open': ['taskId'],
   'review.pin_comment': ['revisionId'],
   'review.propose_change': ['commentId'],
+  'review.record_astra_review': ['reviewId'],
   'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
@@ -754,6 +761,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.capture_claim',
   'review.capture_land',
   'review.carry_pins',
+  'review.decide',
   'review.decide_change',
   'review.make_change_task',
   'review.open',
@@ -761,6 +769,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'review.pin_comment',
   'review.propose_change',
   'review.read',
+  'review.record_astra_review',
   'run.child_handback',
   'run.delegate_child',
   'run.end',
@@ -1149,6 +1158,15 @@ const REQUESTS: readonly CommandRequest[] = [
     picture: 'AA==',
     observation: {},
   },
+  { command: 'review.decide', operationId: 'op', reviewId: 'r', digest: 'd', response: 'approve' },
+  {
+    command: 'review.record_astra_review',
+    operationId: 'op',
+    reviewId: 'r',
+    digest: 'd',
+    verdict: 'approve',
+    review: 't',
+  },
   {
     command: 'review.pin_comment',
     operationId: 'op',
@@ -1388,6 +1406,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'review.propose_change': ['proposeChange', 'request'],
   'review.decide_change': ['decideChange', 'request'],
   'review.make_change_task': ['makeChangeTaskAsPerson', 'request'],
+  'review.decide': ['decideReview', 'request'],
+  'review.record_astra_review': ['recordAstraReview', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',
