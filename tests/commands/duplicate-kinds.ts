@@ -9,6 +9,7 @@ import { COMMAND_SURFACE, TASK_STAGES } from '../../packages/core-wire/src/index
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { CANARY, alpha, as, clientA, clientStander, owner, revisionOf } from './duplicate-world.ts';
+import { INSTALLATION_DECLARED } from './duplicate-kinds-installation.ts';
 
 export type Carry = 'carried' | 'name only' | 'not carried';
 type Plant = (taskId: string) => Promise<CommandResult>;
@@ -207,8 +208,7 @@ export const DECLARED: Readonly<
   'legal.draft_version': { carry: 'not carried', plant: 'a legal document, not a task' },
   'legal.approve_version': { carry: 'not carried', plant: 'a legal document, not a task' },
   'legal.publish_version': { carry: 'not carried', plant: 'a legal document, not a task' },
-  'operations.record_gate_item': { carry: 'not carried', plant: 'the installation, not a task' },
-  'operations.change_installation_mode': { carry: 'not carried', plant: 'the installation' },
+  ...INSTALLATION_DECLARED,
   'delegation.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'conversation.start': { carry: 'not carried', plant: 'a person’s own conversation' },
   'conversation.message': { carry: 'not carried', plant: 'needs a conversation' },

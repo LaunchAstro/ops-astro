@@ -411,6 +411,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
+  // C35 (#2018): a closed capture pool review, recorded the same way, never by an agent.
+  declare('operations.record_capture_pool_review', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
 
   // API-2: an agent credential is a person's own, so both are `credential:write`
   // and never an agent's. A revocation of another person's credential asks

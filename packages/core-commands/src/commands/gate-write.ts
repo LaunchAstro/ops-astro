@@ -102,10 +102,14 @@ interface Installation {
   readonly operator_business_id: string | null;
 }
 
-/** The installation under its row lock, or a refusal when the caller's business does not operate it. */
-async function lockedForOperator(
+/**
+ * The installation under its row lock, or a refusal when the caller's business does not operate
+ * it, naming what only the operator does (`act`).
+ */
+export async function lockedForOperator(
   tx: TenantQuery,
   context: CommandContext,
+  act = 'moves its first-client gate',
 ): Promise<Installation | HandlerOutcome> {
   const [installation] = await tx.query<Installation>(
     'select mode, operator_business_id from ops.installation for update',
@@ -115,7 +119,7 @@ async function lockedForOperator(
       refuseCommand(
         'SCOPE_NOT_GRANTED',
         ['operations:manage'],
-        ['Only the business that operates this installation moves its first-client gate.'],
+        [`Only the business that operates this installation ${act}.`],
       ),
     );
   }

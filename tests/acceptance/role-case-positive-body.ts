@@ -219,10 +219,10 @@ export function createPositiveBody(
       case 'credential.issue':
       case 'credential.revoke':
         return await credentialBody(declaration.name, context);
-      // S0-5: the admin holds `operations:manage` in alpha, which operates the
-      // harness's installation.
+      // S0-5, C35 (#2018): the admin holds `operations:manage` in alpha, the installation's.
       case 'operations.record_gate_item':
       case 'operations.change_installation_mode':
+      case 'operations.record_capture_pool_review':
         return await gateBody(declaration.name);
       case 'budget.top_up':
       case 'budget.record_outcome':
