@@ -57,3 +57,33 @@ the script outside any checkout (to
 `@...@` fields into `~/Library/LaunchAgents/`, then
 `launchctl bootstrap gui/501 <plist>`: through `gui/501`, never bare ssh, since
 only there does `gh` reach the keychain.
+
+## Fill a business with demo data, and take it out again
+
+The step is `demo-data.mjs` (plan in `demo-data-plan.ts`, safeguards in
+`demo-data-checks.ts`, removal in `demo-data-remove.ts`). It needs the grants
+its commands are declared with, and checks them before it writes. It makes
+three made-up clients, a `Demo` tag, fourteen tasks across every state
+(new, planned, waiting on review, accepted, in progress, waiting on client,
+on hold and done) with comments, three plans played back for review, and
+three side-chat threads. Every name starts `Demo `, every address is
+example.com or .test, and nothing is assigned, launched, invited, mentioned
+or sent to a model.
+
+1. Sign in as yourself with the command line's `login`, as above.
+2. Set `OPS_ASTRO_TOKEN` (that bearer), `OPS_ASTRO_API` (the app's address)
+   and `OPS_ASTRO_BUSINESS`. Leave `OPS_ASTRO_AGENT` and
+   `OPS_ASTRO_DELEGATION` unset.
+3. Run `node scripts/ops/demo-data.mjs seed <manifest.json>`. The manifest
+   lists every id the run made, and holds no credential. Running it again
+   with the same manifest carries on and makes nothing twice.
+4. To take it out, run `node scripts/ops/demo-data.mjs remove <manifest.json>`.
+   It reads every task the manifest lists, stops before any change if one is no
+   longer the demo task it made, cannot be read, or has any subtask (the demo
+   makes none, and trashing a task trashes what sits under it), then trashes
+   them. Each trash names its one task, so a subtask filed after the read is
+   refused (`TRASH_SUBTREE_CHANGED`) and nothing is trashed with it. After a
+   refusal, deal with what it found and run it again: each run is new to the
+   server, so an old refusal is not replayed.
+   The clients, the tag and the threads stay, named Demo: no command removes
+   them yet (#2209).
