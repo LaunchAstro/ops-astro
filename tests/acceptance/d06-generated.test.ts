@@ -41,6 +41,12 @@ import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { serverUrl } from './world.ts';
 
+/**
+ * The statements the fixture's log keeps (#2512): every one, over 23,000 cells,
+ * filled the worker's heap after about 20,400. No cell here reads the log.
+ */
+const STATEMENTS_KEPT = 1_000;
+
 /** How often the people sign in again: well inside a bearer's hour (#2478). */
 const SIGN_IN_EVERY_MS = 20 * 60 * 1000;
 
@@ -68,7 +74,7 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
   const tally = new Tally();
 
   beforeAll(async () => {
-    harness = await createHarness('d06g');
+    harness = await createHarness('d06g', { keepStatements: STATEMENTS_KEPT });
     send = surfacesOf(harness);
     await roomToApprove(harness);
     durable = await durableProbe(harness);

@@ -41,6 +41,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
+  type FreshDatabaseOptions,
 } from '../support/fresh-database.ts';
 import {
   insertActor,
@@ -102,13 +103,16 @@ export interface World {
   readonly broker: ReplayBroker;
   close(): Promise<void>;
 }
+/** How the world's database is made: `keepStatements` as `FreshDatabaseOptions` reads it. */
+export type WorldOptions = Pick<FreshDatabaseOptions, 'keepStatements'>;
+
 /**
  * Build the world.
  *
  * `part` names the throwaway database so a run that leaves one behind says
  * which proof left it.
  */
-export async function createWorld(part: string): Promise<World> {
+export async function createWorld(part: string, options: WorldOptions = {}): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
   // The broker's public key custody seals to (C31). The world holds no private
@@ -124,7 +128,7 @@ export async function createWorld(part: string): Promise<World> {
     '../support/instruction-root',
   );
 
-  const db = await createFreshDatabase({ part });
+  const db = await createFreshDatabase({ part, ...options });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;
   const bravo = (await insertBusiness(db.app, 'bravo')) as BusinessId;
   // S0-5 (0059): alpha operates the installation, as provisioning sets it.

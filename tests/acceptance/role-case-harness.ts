@@ -25,6 +25,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
+import type { WorldOptions } from './world.ts';
 import { agentOwnedBy, enrol } from '../commands/fixture.ts';
 import { enrolCaller, type Caller } from './cast.ts';
 import { signInAgainAll } from './sign-in-again.ts';
@@ -59,8 +60,8 @@ export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts
  * `world.ts` grants the admin all four collections.
  */
 // eslint-disable-next-line max-lines-per-function -- one world, built in one place
-export async function createHarness(part: string): Promise<Harness> {
-  const world = await createWorld(part);
+export async function createHarness(part: string, kept: WorldOptions = {}): Promise<Harness> {
+  const world = await createWorld(part, kept);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
   // C80's approver from the start, the admin: a request is refused while none is set.
   await world.db.admin.execute(
